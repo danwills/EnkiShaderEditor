@@ -21,6 +21,16 @@
 		app:icon="@drawable/ic_keyboard_tab"
 		app:iconSize="24dp" />
 
+	<Button
+		android:id="@+id/extra_pause_shader"
+		style="@style/FilledBarButton"
+		android:layout_width="@dimen/extra_key_tab_width"
+		android:layout_height="@dimen/extra_key_height"
+		android:layout_weight="0"
+		android:contentDescription="@string/pause_shader"
+		app:icon="@drawable/ic_pause"
+		app:iconSize="24dp" />
+
 	<androidx.recyclerview.widget.RecyclerView
 		android:id="@+id/completions"
 		android:layout_width="0dp"

@@ -11,7 +11,7 @@ Declare requested GLES version in **very first line** of shader:
 You can also use `310 es` or `320 es` if your device supports it.
 
 In GLES 3.x, fragment output changes from `gl_FragColor` to your own `out vec4` variable.
-ShaderEditor detects version directive and creates matching GLES context automatically.
+Enki Shader Editor detects version directive and creates matching GLES context automatically.
 
 Do not put comments or blank lines before `#version ...`.
 
@@ -40,8 +40,8 @@ Shader can still compile and run normally even when driver does not report usefu
 
 ## `Set wallpaper` does not work
 
-You need to set ShaderEditor as live wallpaper first.
-Go to system **Settings → Display → Wallpaper → Live Wallpapers** and choose **Shader Editor**.
+You need to set Enki Shader Editor as live wallpaper first.
+Go to system **Settings → Display → Wallpaper → Live Wallpapers** and choose **Enki Shader Editor**.
 
 As soon as Shader Wallpaper is active live wallpaper, you can change what shader is running from app menu with **Set as wallpaper** and **Update wallpaper**.
 
@@ -107,10 +107,35 @@ If you add `///p:noise` after declaration, backbuffer starts with noise texture 
 uniform sampler2D backbuffer;///p:noise
 ```
 
+## How do I visualize audio?
+
+Declare the audio uniform like this:
+
+```glsl
+uniform sampler2D audioSpectrum;
+```
+
+It's a 512x2 texture matching ShaderToy's audio input layout: sample `vec2(x, 0.25)` for the
+frequency spectrum (low to high) and `vec2(x, 0.75)` for the waveform, both 0.0 to 1.0:
+
+```glsl
+float freq = texture2D(audioSpectrum, vec2(x, 0.25)).x;
+float wave = texture2D(audioSpectrum, vec2(x, 0.75)).x;
+```
+
+By default this listens to the microphone (needs the record audio permission). Enable
+**Settings → Use system playback audio** to analyze what the device is playing back instead —
+you'll be asked to grant a one-time capture permission each time you run a shader that uses it.
+When the system dialog appears, choose **Entire screen**, not **A single app** — picking an app
+switches you to it instead of capturing its audio, since Android requires that app to be in the
+foreground to share its playback. If you cancel the prompt, toggle the setting off and back on to
+ask again. System playback audio only works while running a shader in the app; the live wallpaper
+and manual preview always fall back to the microphone.
+
 ## Can I paste ShaderToy code directly?
 
 Yes.
-If pasted code contains `mainImage()`, ShaderEditor automatically converts common ShaderToy names:
+If pasted code contains `mainImage()`, Enki Shader Editor automatically converts common ShaderToy names:
 
 - `iResolution` → `resolution`
 - `iGlobalTime` → `time`
@@ -123,23 +148,23 @@ A wrapper `main()` is generated automatically.
 
 Use **Settings → Import/Export Database** to back up and restore entire shader collection, including textures.
 
-On older Android versions (below 10), you can also export individual `.glsl` files to `Downloads/ShaderEditor`.
+On older Android versions (below 10), you can also export individual `.glsl` files to `Downloads/EnkiShaderEditor`.
 
 ## Can I use custom textures?
 
 Yes.
 Open **Menu → Add Uniform → 2D Textures** or **Cube Maps** tab.
-Pick image, crop if needed, set sampler parameters like wrap and filter, and ShaderEditor inserts uniform declaration into code.
+Pick image, crop if needed, set sampler parameters like wrap and filter, and Enki Shader Editor inserts uniform declaration into code.
 
 ## What is `#define SHADER_EDITOR`?
 
-ShaderEditor injects this line automatically into every shader:
+Enki Shader Editor injects this line automatically into every shader:
 
 ```glsl
 #define SHADER_EDITOR 1
 ```
 
-Use `#ifdef SHADER_EDITOR` when you want code that only runs inside ShaderEditor.
+Use `#ifdef SHADER_EDITOR` when you want code that only runs inside Enki Shader Editor.
 Useful for portable shaders shared with other GLSL environments.
 
 ## What fonts are available?

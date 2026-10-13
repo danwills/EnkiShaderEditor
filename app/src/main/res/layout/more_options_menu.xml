@@ -1,0 +1,92 @@
+<ScrollView
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	android:layout_width="wrap_content"
+	android:layout_height="wrap_content"
+	android:layout_gravity="end"
+	android:background="@drawable/background_menu">
+
+	<LinearLayout
+		android:layout_width="@dimen/menu_width"
+		android:layout_height="wrap_content"
+		android:orientation="vertical">
+
+		<Button
+			android:id="@+id/update_wallpaper"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/update_wallpaper"
+			app:icon="@drawable/ic_wallpaper" />
+
+		<Button
+			android:id="@+id/add_uniform"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/add_uniform"
+			app:icon="@drawable/ic_arrow_insert" />
+
+		<Button
+			android:id="@+id/load_sample"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/load_sample"
+			app:icon="@drawable/ic_quick_reference_all" />
+
+		<Button
+			android:id="@+id/find_in_shader"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/find_in_shader"
+			app:icon="@drawable/ic_search" />
+
+		<com.google.android.material.divider.MaterialDivider
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginVertical="4dp"
+			app:dividerInsetEnd="8dp"
+			app:dividerInsetStart="8dp" />
+
+		<Button
+			android:id="@+id/faq"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/faq"
+			app:icon="@drawable/ic_forum" />
+
+		<com.google.android.material.divider.MaterialDivider
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginVertical="4dp"
+			app:dividerInsetEnd="8dp"
+			app:dividerInsetStart="8dp" />
+
+		<CheckBox
+			android:id="@+id/show_extra_keys_box"
+			style="@style/Widget.Material3.Button.UnelevatedButton"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:background="?attr/selectableItemBackground"
+			android:button="@null"
+			android:drawableStart="@drawable/ic_bottom_panel_open"
+			android:drawableEnd="?android:attr/listChoiceIndicatorMultiple"
+			android:drawablePadding="8dp"
+			app:drawableTint="@color/menu_item_selector"
+			android:gravity="center|start"
+			android:paddingHorizontal="12dp"
+			android:text="@string/show_extra_keys"
+			android:textColor="@color/menu_item_selector"
+			app:iconSize="24dp"
+			app:textAllCaps="false" />
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			app:hintEnabled="false" />
+
+	</LinearLayout>
+</ScrollView>

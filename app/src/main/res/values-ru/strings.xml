@@ -14,13 +14,32 @@
 	<string name="redo">Повторить</string>
 	<string name="save_shader">Сохранить шейдер</string>
 	<string name="add_shader">Новый шейдер</string>
+	<string name="paste_as_new_shader">Вставить как новый шейдер</string>
+	<string name="select_quality">Качество рендера</string>
+	<string name="clipboard_empty">Буфер обмена пуст</string>
 	<string name="duplicate_shader">Сохранить как новый шейдер</string>
 	<string name="delete_shader">Удалить шейдер</string>
 	<string name="share_shader">Поделиться шейдером</string>
+	<string name="copy_shader">Копировать шейдер в буфер обмена</string>
 	<string name="update_wallpaper">Обновить обою</string>
 	<string name="set_as_wallpaper">Установить новую обою</string>
+	<string name="pause_shader">Приостановить шейдер</string>
+	<string name="resume_shader">Продолжить шейдер</string>
 	<string name="faq">ЧаВо</string>
 	<string name="show_extra_keys">Дополнительные клавиши</string>
+	<string name="fullscreen">Полноэкранный режим</string>
+	<string name="hide_toolbar">Скрыть верхнее меню</string>
+	<string name="shader_stats">Статистика шейдера</string>
+	<string name="more_options">Другие параметры</string>
+	<string name="stats_lines_chars">Строк: %1$d Символов: %2$d</string>
+	<string name="stats_compile_ms_ok">Последняя компиляция: %1$d мс (успешно)</string>
+	<string name="stats_compile_ms_failed">Последняя компиляция: %1$d мс (ошибка)</string>
+	<string name="stats_compile_unknown">Компиляция ещё не выполнялась</string>
+	<string name="stats_fps">Текущая частота кадров: %1$d fps</string>
+	<string name="stats_fps_unknown">Частота кадров пока недоступна</string>
+	<string name="previous_shader">Предыдущий шейдер</string>
+	<string name="next_shader">Следующий шейдер</string>
+	<string name="random_shader">Случайный шейдер</string>
 	<string name="settings">Настройки</string>
 	<string name="sure_remove_shader">Вы уверены, что хотите удалить этот шейдер?</string>
 	<string name="rename_shader">Переименовать шейдер</string>
@@ -45,8 +64,25 @@
 	<string name="sort_by_last_modification_summary">Сортировать шейдеры по недавним изменениям</string>
 	<string name="sensors">Сенсоры</string>
 	<string name="sensor_delay">Задержка сенсоров</string>
+	<string name="use_microphone_audio">Использовать микрофон</string>
+	<string name="use_microphone_audio_summary">Для uniform-переменной audioSpectrum слушать микрофон. Используется как запасной вариант, если звук воспроизведения включён, но ещё недоступен; выключите, чтобы оставаться без звука вместо этого.</string>
+	<string name="use_system_audio">Использовать системный звук воспроизведения</string>
+	<string name="use_system_audio_summary">Для uniform-переменной audioSpectrum также пытаться анализировать звук, воспроизводимый устройством. Работает только при запуске шейдера в приложении (для живых обоев и ручного предпросмотра используется микрофон, если он включён). В появившемся диалоге выбирайте \"Весь экран\", а не \"Одно приложение\" (выбор приложения переключит вас на него, а не захватит его звук). Если вы отменили запрос, выключите и снова включите этот параметр, чтобы спросить ещё раз.</string>
 	<string name="no_shader_selected">Шейдер не выбран</string>
 	<string name="shader">Шейдер</string>
+	<string name="expand_collapse">Развернуть/свернуть</string>
+	<string name="show_shaders_in_name_tree">Показать шейдеры в виде дерева имён</string>
+	<string name="add_shader_to_name_group">Добавить шейдер в группу имён</string>
+	<string name="show_similar_shaders">Показать похожие шейдеры</string>
+	<string name="pick_parent_shader">Выберите шейдер, в группу которого добавить этот</string>
+	<string name="name_group_prefix_label">Новое имя будет начинаться с: %1$s</string>
+	<string name="name_group_postfix_hint">Окончание</string>
+	<string name="name_already_exists">Шейдер с именем \"%1$s\" уже существует. Переименовать всё равно?</string>
+	<string name="renamed_shader_to">Переименовано в %1$s</string>
+	<string name="no_similar_shaders">Похожих шейдеров не найдено</string>
+	<string name="similar_shaders_threshold_label">Минимальное сходство: %1$d%%</string>
+	<string name="similar_shaders_include_source">Также сравнивать исходный код шейдера</string>
+	<string name="unnamed_shaders_group">Без названия</string>
 	<string name="editor">Редактор</string>
 	<string name="run_mode">Режим исполнения</string>
 	<string name="update_delay">Задержка в обновлении</string>
@@ -72,9 +108,9 @@
 	<string name="default_new_shader">Шейдер "по-умолчанию"</string>
 	<string name="import_export">Импортирование &amp; Экспортирование</string>
 	<string name="import_shaders_files">Импорт шейдеров из файлов</string>
-	<string name="import_shaders_files_summary">Импортировать шейдеры из *.glsl файлов в папке Download/ShaderEditor</string>
+	<string name="import_shaders_files_summary">Импортировать шейдеры из *.glsl файлов в папке Download/EnkiShaderEditor</string>
 	<string name="export_shaders_files">Экспорт шейдеров в файлы</string>
-	<string name="export_shaders_files_summary">Экспортировать все шейдеры в папку Download/ShaderEditor</string>
+	<string name="export_shaders_files_summary">Экспортировать все шейдеры в папку Download/EnkiShaderEditor</string>
 	<string name="import_database">Импорт базы данных</string>
 	<string name="import_database_summary">Импортировать ранее использованную SQLite базу данных</string>
 	<string name="export_database">Экспорт базы данных</string>
@@ -160,6 +196,9 @@
 	<string name="start_random">Random value from 0.0 to 1.0, initialized at load</string>
 	<string name="media_volume_level">Уровень громкости с 0.0 до 1.0</string>
 	<string name="microphone_amplitude">Громкость звука, входящего в микрофон с 0.0 до 1.0</string>
+	<string name="audio_spectrum">Текстура спектра/формы волны звука (512x2), соответствующая формату аудиовхода ShaderToy</string>
+	<string name="audio_capture_channel_name">Захват звука</string>
+	<string name="audio_capture_notification_title">Захват системного звука для предпросмотра шейдера</string>
 
 	<!-- UniformSampler2dPageFragment -->
 	<string name="texture_preview">Предпросмотр текстуры</string>
@@ -221,6 +260,13 @@
 
 	<!-- LoadSampleFragment -->
 	<string name="load_sample">Загрузить пример</string>
+	<string name="find_shader">Найти шейдер</string>
+	<string name="load">Загрузить</string>
+	<string name="search_shader_source">Искать также в исходном коде шейдера</string>
+	<string name="fuzzy_matching">Нечёткое совпадение</string>
+	<string name="find_in_shader">Найти в шейдере</string>
+	<string name="find_next">Найти далее</string>
+	<string name="no_matches_found">Совпадений не найдено</string>
 	<string name="sample_battery_name">Баттарея</string>
 	<string name="sample_battery_rationale">Горизонтальный показатель заряда аккамулятора</string>
 	<string name="sample_camera_back_name">Задняя камера</string>

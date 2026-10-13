@@ -8,6 +8,10 @@
 	<!-- Camera textures are only supported from API > 14 -->
 	<uses-permission android:name="android.permission.CAMERA"/>
 	<uses-permission android:name="android.permission.RECORD_AUDIO"/>
+	<!-- Required (API 34+) to use MediaProjection for system audio capture -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 	<!-- Required to import textures on API < 19 from gallery apps
 		that do not use grantUriPermission(); later API's will not
 		see that permission -->
@@ -64,13 +68,17 @@
 				android:name="android.service.wallpaper"
 				android:resource="@xml/wallpaper"/>
 		</service>
-		<service android:name="de.markusfisch.android.shadereditor.service.NotificationService"
+		<service android:name="enk.danwills.android.enkishadereditor.service.NotificationService"
 			android:exported="false"
 			android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
 			<intent-filter>
 				<action android:name="android.service.notification.NotificationListenerService"/>
 			</intent-filter>
 		</service>
+		<service
+			android:name=".service.AudioCaptureForegroundService"
+			android:foregroundServiceType="mediaProjection"
+			android:exported="false"/>
 
 		<activity
 			android:name=".activity.SplashActivity"

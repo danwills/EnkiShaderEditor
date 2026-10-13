@@ -4,7 +4,7 @@
 		android:title="@string/preferences"
 	android:key="preferences">
 	<PreferenceCategory android:title="@string/wallpaper">
-		<de.markusfisch.android.shadereditor.preference.ShaderListPreference
+		<enk.danwills.android.enkishadereditor.preference.ShaderListPreference
 			android:key="shader"
 			android:title="@string/shader"/>
 		<androidx.preference.SwitchPreferenceCompat
@@ -110,7 +110,7 @@
 			android:summary="@string/hide_native_suggestions_summary"
 			android:checked="true"
 			android:defaultValue="true"/>
-		<de.markusfisch.android.shadereditor.preference.ShaderListPreference
+		<enk.danwills.android.enkishadereditor.preference.ShaderListPreference
 			android:key="default_new_shader"
 			android:title="@string/default_new_shader"/>
 	</PreferenceCategory>
@@ -121,6 +121,18 @@
 			android:entries="@array/sensor_delay_names"
 			android:entryValues="@array/sensor_delay_values"
 			android:defaultValue="Normal"/>
+		<androidx.preference.SwitchPreferenceCompat
+			android:key="use_microphone_audio"
+			android:title="@string/use_microphone_audio"
+			android:summary="@string/use_microphone_audio_summary"
+			android:checked="true"
+			android:defaultValue="true"/>
+		<androidx.preference.SwitchPreferenceCompat
+			android:key="use_system_audio"
+			android:title="@string/use_system_audio"
+			android:summary="@string/use_system_audio_summary"
+			android:checked="false"
+			android:defaultValue="false"/>
 	</PreferenceCategory>
 	<PreferenceCategory
 			android:key="import_export"

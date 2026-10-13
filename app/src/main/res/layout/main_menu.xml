@@ -51,6 +51,14 @@
 			app:icon="@drawable/ic_add" />
 
 		<Button
+			android:id="@+id/paste_as_new_shader"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/paste_as_new_shader"
+			app:icon="@drawable/ic_content_paste" />
+
+		<Button
 			android:id="@+id/save_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
@@ -92,28 +100,29 @@
 			app:icon="@drawable/ic_share" />
 
 		<Button
-			android:id="@+id/update_wallpaper"
+			android:id="@+id/copy_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/update_wallpaper"
-			app:icon="@drawable/ic_wallpaper" />
+			android:gravity="center|start"
+			android:text="@string/copy_shader"
+			app:icon="@drawable/ic_content_copy" />
 
 		<Button
-			android:id="@+id/add_uniform"
+			android:id="@+id/pause_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/add_uniform"
-			app:icon="@drawable/ic_arrow_insert" />
+			android:text="@string/pause_shader"
+			app:icon="@drawable/ic_pause" />
 
 		<Button
-			android:id="@+id/load_sample"
+			android:id="@+id/find_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/load_sample"
-			app:icon="@drawable/ic_quick_reference_all" />
+			android:text="@string/find_shader"
+			app:icon="@drawable/ic_search" />
 
 		<com.google.android.material.divider.MaterialDivider
 			android:layout_width="match_parent"
@@ -131,12 +140,28 @@
 			app:icon="@drawable/ic_settings" />
 
 		<Button
-			android:id="@+id/faq"
+			android:id="@+id/fullscreen"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/faq"
-			app:icon="@drawable/ic_forum" />
+			android:text="@string/fullscreen"
+			app:icon="@drawable/ic_fullscreen" />
+
+		<Button
+			android:id="@+id/hide_toolbar"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/hide_toolbar"
+			app:icon="@drawable/ic_bottom_panel_close" />
+
+		<Button
+			android:id="@+id/shader_stats"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/shader_stats"
+			app:icon="@drawable/ic_stats" />
 
 		<com.google.android.material.divider.MaterialDivider
 			android:layout_width="match_parent"
@@ -145,23 +170,13 @@
 			app:dividerInsetEnd="8dp"
 			app:dividerInsetStart="8dp" />
 
-		<CheckBox
-			android:id="@+id/show_extra_keys_box"
-			style="@style/Widget.Material3.Button.UnelevatedButton"
+		<Button
+			android:id="@+id/more_options"
+			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:background="?attr/selectableItemBackground"
-			android:button="@null"
-			android:drawableStart="@drawable/ic_bottom_panel_open"
-			android:drawableEnd="?android:attr/listChoiceIndicatorMultiple"
-			android:drawablePadding="8dp"
-			app:drawableTint="@color/menu_item_selector"
-			android:gravity="center|start"
-			android:paddingHorizontal="12dp"
-			android:text="@string/show_extra_keys"
-			android:textColor="@color/menu_item_selector"
-			app:iconSize="24dp"
-			app:textAllCaps="false" />
+			android:text="@string/more_options"
+			app:icon="@drawable/ic_next" />
 
 		<com.google.android.material.textfield.TextInputLayout
 			android:layout_width="match_parent"

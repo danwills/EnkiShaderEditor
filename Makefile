@@ -1,4 +1,4 @@
-PACKAGE = de.markusfisch.android.shadereditor
+PACKAGE = enk.danwills.android.enkishadereditor
 
 all: debug install start
 

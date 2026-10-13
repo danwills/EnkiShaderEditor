@@ -1,59 +1,130 @@
-<androidx.appcompat.widget.Toolbar
+<LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto"
-	android:id="@+id/toolbar"
+	android:id="@+id/toolbar_container"
 	android:layout_width="match_parent"
-	android:layout_height="?attr/actionBarSize"
-	android:background="@color/primary_translucent"
-	android:theme="@style/ThemeOverlay.Material3.ActionBar"
-	app:popupTheme="@style/ThemeOverlay.Material3"
-	app:subtitleTextAppearance="@style/Subtitle"
-	app:titleTextAppearance="@style/Title">
+	android:layout_height="wrap_content"
+	android:orientation="vertical">
 
-	<Button
-		android:id="@+id/menu_btn"
-		style="@style/IconButton"
-		android:layout_width="48dp"
+	<androidx.appcompat.widget.Toolbar
+		android:id="@+id/toolbar"
+		android:layout_width="match_parent"
+		android:layout_height="?attr/actionBarSize"
+		android:background="@color/primary_translucent"
+		android:theme="@style/ThemeOverlay.Material3.ActionBar"
+		app:popupTheme="@style/ThemeOverlay.Material3"
+		app:subtitleTextAppearance="@style/Subtitle"
+		app:titleTextAppearance="@style/Title">
+
+		<Button
+			android:id="@+id/menu_btn"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="end"
+			android:layout_marginEnd="4dp"
+			app:icon="@drawable/ic_more_vert"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/toggle_code"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="end"
+			android:layout_marginEnd="4dp"
+			app:icon="@drawable/ic_visibility"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/run_code"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="end"
+			android:layout_marginEnd="4dp"
+			app:icon="@drawable/ic_play_arrow"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/show_errors"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="end"
+			android:layout_marginEnd="4dp"
+			app:icon="@drawable/ic_error"
+			app:iconSize="24dp" />
+
+		<Spinner
+			android:id="@+id/quality"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:layout_marginEnd="4dp" />
+	</androidx.appcompat.widget.Toolbar>
+
+	<LinearLayout
+		android:id="@+id/shader_nav_row"
+		android:layout_width="match_parent"
 		android:layout_height="48dp"
-		android:layout_gravity="end"
-		android:layout_marginEnd="4dp"
-		app:icon="@drawable/ic_more_vert"
-		app:iconSize="24dp" />
+		android:background="@color/primary_translucent"
+		android:orientation="horizontal"
+		android:gravity="center_vertical">
 
-	<Button
-		android:id="@+id/toggle_code"
-		style="@style/IconButton"
-		android:layout_width="48dp"
-		android:layout_height="48dp"
-		android:layout_gravity="end"
-		android:layout_marginEnd="4dp"
-		app:icon="@drawable/ic_visibility"
-		app:iconSize="24dp" />
+		<Button
+			android:id="@+id/previous_shader"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:contentDescription="@string/previous_shader"
+			app:icon="@drawable/ic_previous"
+			app:iconSize="24dp" />
 
-	<Button
-		android:id="@+id/run_code"
-		style="@style/IconButton"
-		android:layout_width="48dp"
-		android:layout_height="48dp"
-		android:layout_gravity="end"
-		android:layout_marginEnd="4dp"
-		app:icon="@drawable/ic_play_arrow"
-		app:iconSize="24dp" />
+		<Button
+			android:id="@+id/next_shader"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:contentDescription="@string/next_shader"
+			app:icon="@drawable/ic_next"
+			app:iconSize="24dp" />
 
-	<Button
-		android:id="@+id/show_errors"
-		style="@style/IconButton"
-		android:layout_width="48dp"
-		android:layout_height="48dp"
-		android:layout_gravity="end"
-		android:layout_marginEnd="4dp"
-		app:icon="@drawable/ic_error"
-		app:iconSize="24dp" />
+		<Button
+			android:id="@+id/random_shader"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:contentDescription="@string/random_shader"
+			app:icon="@drawable/ic_dice"
+			app:iconSize="24dp" />
 
-	<Spinner
-		android:id="@+id/quality"
-		android:layout_width="wrap_content"
-		android:layout_height="wrap_content"
-		android:layout_gravity="end"
-		android:layout_marginEnd="4dp" />
-</androidx.appcompat.widget.Toolbar>
+		<View
+			android:layout_width="0dp"
+			android:layout_height="1dp"
+			android:layout_weight="1" />
+
+		<Button
+			android:id="@+id/undo_nav"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:contentDescription="@string/undo"
+			app:icon="@drawable/ic_undo"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/pause_shader_nav"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:layout_marginEnd="4dp"
+			android:contentDescription="@string/pause_shader"
+			app:icon="@drawable/ic_pause"
+			app:iconSize="24dp" />
+	</LinearLayout>
+</LinearLayout>

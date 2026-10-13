@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-	namespace = "de.markusfisch.android.shadereditor"
+	namespace = "enk.danwills.android.enkishadereditor"
 
 	compileSdk = 37
 

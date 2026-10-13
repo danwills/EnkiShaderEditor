@@ -1,5 +1,6 @@
 <FrameLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
 	tools:ignore="Overdraw"
 	android:id="@+id/menu_frame"
@@ -7,13 +8,57 @@
 	android:layout_height="match_parent"
 	android:layout_gravity="start"
 	android:background="@color/background_drawer">
-	<ListView
-		android:id="@+id/shaders"
-		android:choiceMode="singleChoice"
+
+	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="match_parent"
-		android:divider="@android:color/transparent"
-		android:dividerHeight="1px"/>
+		android:orientation="vertical">
+
+		<LinearLayout
+			android:id="@+id/shader_sidebar_toolbar"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="horizontal">
+
+			<Button
+				android:id="@+id/toggle_name_tree"
+				style="@style/IconButton"
+				android:layout_width="40dp"
+				android:layout_height="40dp"
+				android:contentDescription="@string/show_shaders_in_name_tree"
+				app:icon="@drawable/ic_tree"
+				app:iconSize="20dp" />
+
+			<Button
+				android:id="@+id/add_to_name_group"
+				style="@style/IconButton"
+				android:layout_width="40dp"
+				android:layout_height="40dp"
+				android:contentDescription="@string/add_shader_to_name_group"
+				app:icon="@drawable/ic_add"
+				app:iconSize="20dp" />
+
+			<Button
+				android:id="@+id/show_similar_shaders"
+				style="@style/IconButton"
+				android:layout_width="40dp"
+				android:layout_height="40dp"
+				android:contentDescription="@string/show_similar_shaders"
+				app:icon="@drawable/ic_search"
+				app:iconSize="20dp" />
+		</LinearLayout>
+
+		<ListView
+			android:id="@+id/shaders"
+			android:choiceMode="singleChoice"
+			android:layout_width="match_parent"
+			android:layout_height="0dp"
+			android:layout_weight="1"
+			android:divider="@android:color/transparent"
+			android:dividerHeight="1px"/>
+
+	</LinearLayout>
+
 	<FrameLayout
 		android:id="@+id/no_shaders"
 		android:layout_width="match_parent"

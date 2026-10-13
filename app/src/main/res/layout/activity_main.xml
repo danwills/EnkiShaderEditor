@@ -1,6 +1,6 @@
 <merge xmlns:android="http://schemas.android.com/apk/res/android">
 	<!-- ShaderView as the background -->
-	<de.markusfisch.android.shadereditor.widget.ShaderView
+	<enk.danwills.android.enkishadereditor.widget.ShaderView
 		android:id="@+id/preview"
 		android:layout_width="match_parent"
 		android:layout_height="match_parent" />
@@ -21,7 +21,7 @@
 			<include layout="@layout/toolbar_main" />
 
 			<!-- DrawerLayout with main content -->
-			<de.markusfisch.android.shadereditor.widget.TouchThruDrawerLayout
+			<enk.danwills.android.enkishadereditor.widget.TouchThruDrawerLayout
 				android:id="@+id/drawer_layout"
 				android:layout_width="match_parent"
 				android:layout_height="0dp"
@@ -38,7 +38,7 @@
 				<!-- Navigation Drawer -->
 				<include layout="@layout/drawer" />
 
-			</de.markusfisch.android.shadereditor.widget.TouchThruDrawerLayout>
+			</enk.danwills.android.enkishadereditor.widget.TouchThruDrawerLayout>
 
 			<!-- Extra keys row at the bottom -->
 			<include
@@ -50,6 +50,21 @@
 
 		<!-- Nav bar background for SDK35+ -->
 		<include layout="@layout/navbar"/>
+
+		<!-- Transient overlay naming the shader after prev/next/random -->
+		<TextView
+			android:id="@+id/shader_name_overlay"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="center"
+			android:background="@drawable/background_menu"
+			android:paddingHorizontal="24dp"
+			android:paddingVertical="12dp"
+			android:textColor="@color/drawer_text"
+			android:textSize="20sp"
+			android:elevation="8dp"
+			android:visibility="gone"
+			android:alpha="0"/>
 
 	</androidx.coordinatorlayout.widget.CoordinatorLayout>
 </merge>

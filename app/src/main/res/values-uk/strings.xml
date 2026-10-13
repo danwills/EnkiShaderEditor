@@ -14,13 +14,32 @@
 	<string name="redo">Повторити</string>
 	<string name="save_shader">Зберегти шейдер</string>
 	<string name="add_shader">Новий шейдер</string>
+	<string name="paste_as_new_shader">Вставити як новий шейдер</string>
+	<string name="select_quality">Якість рендеру</string>
+	<string name="clipboard_empty">Буфер обміну порожній</string>
 	<string name="duplicate_shader">Зберегти як новий шейдер</string>
 	<string name="delete_shader">Видалити шейдер</string>
 	<string name="share_shader">Поділитися шейдером</string>
+	<string name="copy_shader">Копіювати шейдер у буфер обміну</string>
 	<string name="update_wallpaper">Оновити шпалери</string>
 	<string name="set_as_wallpaper">Встановити як шпалери</string>
+	<string name="pause_shader">Призупинити шейдер</string>
+	<string name="resume_shader">Продовжити шейдер</string>
 	<string name="faq">FAQ</string>
 	<string name="show_extra_keys">Показати додаткові клавіші</string>
+	<string name="fullscreen">Повноекранний режим</string>
+	<string name="hide_toolbar">Сховати верхнє меню</string>
+	<string name="shader_stats">Статистика шейдера</string>
+	<string name="more_options">Інші параметри</string>
+	<string name="stats_lines_chars">Рядків: %1$d Символів: %2$d</string>
+	<string name="stats_compile_ms_ok">Остання компіляція: %1$d мс (успішно)</string>
+	<string name="stats_compile_ms_failed">Остання компіляція: %1$d мс (помилка)</string>
+	<string name="stats_compile_unknown">Компіляцію ще не виконано</string>
+	<string name="stats_fps">Поточна частота кадрів: %1$d fps</string>
+	<string name="stats_fps_unknown">Частота кадрів поки недоступна</string>
+	<string name="previous_shader">Попередній шейдер</string>
+	<string name="next_shader">Наступний шейдер</string>
+	<string name="random_shader">Випадковий шейдер</string>
 	<string name="settings">Налаштування</string>
 	<string name="sure_remove_shader">Ви впевнені, що хочете видалити цей шейдер?</string>
 	<string name="rename_shader">Перейменувати шейдер</string>
@@ -45,8 +64,25 @@
 	<string name="sort_by_last_modification_summary">Сортувати шейдери за датою останньої зміни</string>
 	<string name="sensors">Датчики</string>
 	<string name="sensor_delay">Затримка датчика</string>
+	<string name="use_microphone_audio">Використовувати мікрофон</string>
+	<string name="use_microphone_audio_summary">Для uniform-змінної audioSpectrum слухати мікрофон. Використовується як резервний варіант, якщо системний звук увімкнено, але ще недоступний; вимкніть, щоб натомість залишатися без звуку.</string>
+	<string name="use_system_audio">Використовувати системне відтворення звуку</string>
+	<string name="use_system_audio_summary">Для uniform-змінної audioSpectrum також намагатися аналізувати звук, який відтворює пристрій. Працює лише під час запуску шейдера в додатку (для живих шпалер і ручного перегляду використовується мікрофон, якщо він увімкнений). У діалозі, що з\'явиться, обирайте \"Весь екран\", а не \"Один додаток\" (вибір додатка перемкне вас на нього, а не захопить його звук). Якщо ви скасували запит, вимкніть і знову увімкніть цей параметр, щоб запитати ще раз.</string>
 	<string name="no_shader_selected">Шейдер не вибрано</string>
 	<string name="shader">Шейдер</string>
+	<string name="expand_collapse">Розгорнути/згорнути</string>
+	<string name="show_shaders_in_name_tree">Показати шейдери у вигляді дерева назв</string>
+	<string name="add_shader_to_name_group">Додати шейдер до групи назв</string>
+	<string name="show_similar_shaders">Показати схожі шейдери</string>
+	<string name="pick_parent_shader">Виберіть шейдер, до групи якого додати цей</string>
+	<string name="name_group_prefix_label">Нова назва почнеться з: %1$s</string>
+	<string name="name_group_postfix_hint">Закінчення</string>
+	<string name="name_already_exists">Шейдер з назвою \"%1$s\" вже існує. Перейменувати попри це?</string>
+	<string name="renamed_shader_to">Перейменовано на %1$s</string>
+	<string name="no_similar_shaders">Схожих шейдерів не знайдено</string>
+	<string name="similar_shaders_threshold_label">Мінімальна схожість: %1$d%%</string>
+	<string name="similar_shaders_include_source">Також порівнювати вихідний код шейдера</string>
+	<string name="unnamed_shaders_group">Без назви</string>
 	<string name="editor">Редактор</string>
 	<string name="run_mode">Режим запуску</string>
 	<string name="update_delay">Затримка оновлення</string>
@@ -72,9 +108,9 @@
 	<string name="default_new_shader">Стандартний новий шейдер</string>
 	<string name="import_export">Імпорт та експорт</string>
 	<string name="import_shaders_files">Імпортувати шейдери з файлів</string>
-	<string name="import_shaders_files_summary">Імпортувати всі файли *.glsl із Download/ShaderEditor</string>
+	<string name="import_shaders_files_summary">Імпортувати всі файли *.glsl із Download/EnkiShaderEditor</string>
 	<string name="export_shaders_files">Експортувати шейдери у файли</string>
-	<string name="export_shaders_files_summary">Експортувати всі шейдери в Download/ShaderEditor</string>
+	<string name="export_shaders_files_summary">Експортувати всі шейдери в Download/EnkiShaderEditor</string>
 	<string name="import_database">Імпорт бази даних</string>
 	<string name="import_database_summary">Імпорт попередньо експортованої бази даних SQLite</string>
 	<string name="export_database">Експорт бази даних</string>
@@ -160,6 +196,9 @@
 	<string name="start_random">Випадкове значення від 0,0 до 1,0, ініціалізується під час завантаження</string>
 	<string name="media_volume_level">Рівень гучності медіа від 0,0 до 1,0</string>
 	<string name="microphone_amplitude">Амплітуда вхідного сигналу мікрофона від 0,0 до 1,0</string>
+	<string name="audio_spectrum">Текстура спектра/форми хвилі звуку (512x2), що відповідає формату аудіовходу ShaderToy</string>
+	<string name="audio_capture_channel_name">Захоплення звуку</string>
+	<string name="audio_capture_notification_title">Захоплення системного звуку для попереднього перегляду шейдера</string>
 
 	<!-- UniformSampler2dPageFragment -->
 	<string name="texture_preview">Попередній перегляд текстури</string>
@@ -221,6 +260,13 @@
 
 	<!-- LoadSampleFragment -->
 	<string name="load_sample">Завантажити зразок</string>
+	<string name="find_shader">Знайти шейдер</string>
+	<string name="load">Завантажити</string>
+	<string name="search_shader_source">Шукати також у вихідному коді шейдера</string>
+	<string name="fuzzy_matching">Нечітка відповідність</string>
+	<string name="find_in_shader">Знайти в шейдері</string>
+	<string name="find_next">Знайти далі</string>
+	<string name="no_matches_found">Збігів не знайдено</string>
 	<string name="sample_battery_name">Батарея</string>
 	<string name="sample_battery_rationale">Горизонтальний датчик батареї</string>
 	<string name="sample_camera_back_name">Задня камера</string>

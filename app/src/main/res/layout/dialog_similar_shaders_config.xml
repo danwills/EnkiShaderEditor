@@ -1,0 +1,24 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="16dp">
+	<TextView
+		android:id="@+id/threshold_label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:textSize="14sp"/>
+	<SeekBar
+		android:id="@+id/threshold_seek_bar"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:max="100"/>
+	<CheckBox
+		android:id="@+id/include_source"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:text="@string/similar_shaders_include_source"/>
+</LinearLayout>

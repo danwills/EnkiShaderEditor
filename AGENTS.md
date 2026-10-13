@@ -1,11 +1,11 @@
-# CODEX – ShaderEditor
+# CODEX – Enki Shader Editor
 
 This document captures how the app is structured today so you can change it confidently. Keep it close when you explore the code base.
 
 ---
 
 ## 1. What the app does
-- ShaderEditor is an Android GLSL playground/live wallpaper. Users edit fragment shaders, preview them live, import textures/uniforms, and set any shader as a wallpaper (`README.md`).
+- Enki Shader Editor is an Android GLSL playground/live wallpaper. Users edit fragment shaders, preview them live, import textures/uniforms, and set any shader as a wallpaper (`README.md`).
 - The whole product lives in a single Android application module under `app/`. Source is Java (language level 17) with Gradle Kotlin build scripts.
 - The UI is a single-activity, multi-fragment setup with custom widgets for the editor, shader preview, uniform pickers, and texture tooling.
 - Sensors, camera, microphone, battery status, wallpaper offsets, notification counts, etc., are exposed to shaders as uniforms via `ShaderRenderer`.
@@ -31,7 +31,7 @@ This document captures how the app is structured today so you can change it conf
 | Path | Notes |
 | --- | --- |
 | `app/src/main/AndroidManifest.xml:1` | Permissions (camera, mic, legacy storage), wallpaper + notification services, exported activities. |
-| `app/src/main/java/de/markusfisch/android/shadereditor/` | All runtime code. Key packages: `activity`, `fragment`, `widget`, `opengl`, `database`, `hardware`, `io`, `view`, `adapter`. |
+| `app/src/main/java/enk/danwills/android/enkishadereditor/` | All runtime code. Key packages: `activity`, `fragment`, `widget`, `opengl`, `database`, `hardware`, `io`, `view`, `adapter`. |
 | `app/src/main/res/` | Layouts, drawables, fonts, `res/raw/*.glsl` sample shaders, `res/xml/preferences.xml`. |
 | `res/xml/backup_rules.xml`, `res/xml/extraction_rules.xml` | Backup configuration referenced by the manifest. |
 | `fastlane/metadata/...` | Store descriptions/screenshots. Keep in sync for releases. |
@@ -42,7 +42,7 @@ This document captures how the app is structured today so you can change it conf
 ## 4. Runtime architecture
 
 ### 4.1 Application start
-- `ShaderEditorApp` (`app/src/main/java/de/markusfisch/android/shadereditor/app/ShaderEditorApp.java:1`) is the `Application`. It initializes the singleton `Preferences`, prewarms `Database`, keeps a process-wide `UndoRedo.EditHistory`, turns on StrictMode in debug builds, and registers `BatteryLevelReceiver` (API ≥ 24) to drive low-power behavior.
+- `ShaderEditorApp` (`app/src/main/java/enk/danwills/android/enkishadereditor/app/ShaderEditorApp.java:1`) is the `Application`. It initializes the singleton `Preferences`, prewarms `Database`, keeps a process-wide `UndoRedo.EditHistory`, turns on StrictMode in debug builds, and registers `BatteryLevelReceiver` (API ≥ 24) to drive low-power behavior.
 - Splash flow: `SplashActivity` immediately launches `MainActivity` so the app initializes before the UI is drawn (`activity/SplashActivity.java:1`).
 
 ### 4.2 Main screen plumbing
@@ -95,7 +95,7 @@ This document captures how the app is structured today so you can change it conf
   - Saves both thumbnails (PNG) and full-resolution PNG matrices. Dimensions feed sampler defaults.
 - `DataRecords` (`database/DataRecords.java:1`) holds immutable records used throughout UI/DAOs.
 - Import/export:
-  - `ImportExportAsFiles` (`io/ImportExportAsFiles.java:1`) reads/writes `.glsl` files under `Downloads/ShaderEditor`. Uses legacy storage APIs on Android < Q; guarded by runtime permissions from `PreferencesFragment`.
+  - `ImportExportAsFiles` (`io/ImportExportAsFiles.java:1`) reads/writes `.glsl` files under `Downloads/EnkiShaderEditor`. Uses legacy storage APIs on Android < Q; guarded by runtime permissions from `PreferencesFragment`.
   - `DatabaseImporter` / `DatabaseExporter` support SAF-based SQLite exports/imports.
   - Texture import flows go through `BitmapEditor` and `TextureDao`.
 
