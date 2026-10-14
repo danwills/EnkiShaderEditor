@@ -100,26 +100,22 @@ public class ShaderViewManager {
 		}
 		if (paused) {
 			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
-			shaderView.queueEvent(() -> {
-				ShaderRenderer renderer = shaderView.getRenderer();
-				// Re-stamp the clock's last-frame time so the gap while
-				// paused isn't counted as elapsed shader time on resume.
-				renderer.setRuntimeNanos(renderer.getRuntimeNanos());
-			});
-		} else if (needsRealResume) {
-			needsRealResume = false;
-			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-			shaderView.onResume();
-		} else {
-			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+			shaderView.queueEvent(() -> shaderView.getRenderer().pauseClock());
+			return;
 		}
+		if (needsRealResume) {
+			needsRealResume = false;
+			shaderView.onResume();
+		}
+		shaderView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+		shaderView.queueEvent(() -> shaderView.getRenderer().resumeClock());
 	}
 
-	// Resets the shader's `time`/`runtime` uniforms back to zero without
-	// recompiling, so a "restart" action can rewind a running or paused
-	// shader to its initial state.
+	// Restarts the shader's time-based uniforms (`time`, `runtime`,
+	// `frame`, `startRandom`) without recompiling, so a "restart" action
+	// can rewind a running or paused shader to its initial state.
 	public void restartRuntime() {
-		shaderView.queueEvent(() -> shaderView.getRenderer().setRuntimeNanos(0));
+		shaderView.queueEvent(() -> shaderView.getRenderer().restartTime());
 	}
 
 	public void setFragmentShader(@Nullable String src) {

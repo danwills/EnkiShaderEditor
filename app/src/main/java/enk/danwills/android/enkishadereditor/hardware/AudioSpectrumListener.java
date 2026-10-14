@@ -130,6 +130,10 @@ public class AudioSpectrumListener {
 		return true;
 	}
 
+	public boolean isRunning() {
+		return running;
+	}
+
 	public void unregister() {
 		running = false;
 		if (recordingThread != null) {

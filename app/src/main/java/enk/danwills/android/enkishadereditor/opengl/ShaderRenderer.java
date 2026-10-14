@@ -130,6 +130,20 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.setRuntimeNanos(nanos);
 	}
 
+	// Restarts every time-based uniform (`time`, `runtime`, `frame`,
+	// `startRandom`), not just `runtime` - see BuiltinUniforms.restart().
+	public void restartTime() {
+		builtinUniforms.restart(System.nanoTime());
+	}
+
+	public void pauseClock() {
+		builtinUniforms.pauseClock();
+	}
+
+	public void resumeClock() {
+		builtinUniforms.resumeClock();
+	}
+
 	public void setQuality(float quality) {
 		builtinUniforms.setQuality(quality);
 	}

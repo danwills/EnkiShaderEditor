@@ -54,6 +54,7 @@ final class BuiltinUniforms {
 	private int pointerCount;
 	private int frameNum;
 	private long startTime;
+	private long pausedAtNanos = -1;
 	private float fTimeMax = DEFAULT_FTIME_MAX;
 	private float quality = 1f;
 	private float startRandom;
@@ -72,6 +73,33 @@ final class BuiltinUniforms {
 
 	void setRuntimeNanos(long nanos) {
 		runtimeClock.setElapsedNanos(nanos);
+	}
+
+	// Restarts every time-based uniform (`time`, `runtime`, `frame`,
+	// `startRandom`) back to its initial state, as if the shader had
+	// just started running - not just `runtime` (setRuntimeNanos()
+	// above only resets that one, which most shaders don't even use;
+	// `time`, driven by startTime, is the common ShaderToy-style clock).
+	void restart(long now) {
+		runtimeClock.setElapsedNanos(0);
+		startTime = now;
+		startRandom = (float) Math.random();
+		frameNum = 0;
+	}
+
+	// Suspends time-based uniforms without losing their position, so
+	// resumeClock() can continue smoothly from where they left off
+	// instead of jumping forward by the paused duration.
+	void pauseClock() {
+		pausedAtNanos = System.nanoTime();
+		runtimeClock.pause();
+	}
+
+	void resumeClock() {
+		if (pausedAtNanos >= 0) {
+			startTime += System.nanoTime() - pausedAtNanos;
+			pausedAtNanos = -1;
+		}
 	}
 
 	void setQuality(float quality) {
@@ -113,6 +141,7 @@ final class BuiltinUniforms {
 	@NonNull
 	SurfaceState updateSurface(int width, int height, long now) {
 		runtimeClock.pause();
+		pausedAtNanos = -1;
 		startTime = now;
 		startRandom = (float) Math.random();
 		frameNum = 0;

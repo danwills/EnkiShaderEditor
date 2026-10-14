@@ -47,10 +47,24 @@ final class BuiltinAudioUniforms {
 			@NonNull GlDevice device,
 			@NonNull GlProgram program,
 			@NonNull ShaderTextureResources textureResources) {
-		unregisterListener();
 		spectrumTextureBinding = textureResources.getFirstBinding(
 				ShaderRenderer.UNIFORM_AUDIO_SPECTRUM);
-		openListenerIfNeeded();
+		if (spectrumTextureBinding == null) {
+			unregisterListener();
+			return;
+		}
+		// Leave an already-running capture alone rather than always
+		// tearing it down and rebuilding it here - configure() runs on
+		// every GL context recreation, including a plain app
+		// background/foreground cycle, and re-creating an AudioRecord
+		// against the same MediaProjection in quick succession can
+		// silently deliver only silence instead of throwing. Only
+		// reopen if there's genuinely no capture running right now.
+		var listener = audioSpectrumListener;
+		if (listener == null || !listener.isRunning()) {
+			unregisterListener();
+			openListenerIfNeeded();
+		}
 	}
 
 	void apply(@NonNull GlDevice device) {
