@@ -49,6 +49,8 @@ public class ShaderListManager {
 		void onAddShaderToNameGroup();
 
 		void onConfigureSimilarShaders();
+
+		void onFindShader();
 	}
 
 	private final Activity activity;
@@ -149,6 +151,10 @@ public class ShaderListManager {
 					listener.onConfigureSimilarShaders();
 				}
 			});
+		}
+		Button findShaderButton = activity.findViewById(R.id.find_shader);
+		if (findShaderButton != null) {
+			findShaderButton.setOnClickListener(v -> listener.onFindShader());
 		}
 	}
 

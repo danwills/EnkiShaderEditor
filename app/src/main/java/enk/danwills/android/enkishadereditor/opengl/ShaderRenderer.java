@@ -156,6 +156,28 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.setMediaProjection(mediaProjection);
 	}
 
+	// Clears the "already asked for system audio consent" guard. Safe to
+	// call from any thread (see BuiltinAudioUniforms.resetConsentGuard).
+	// Called ahead of refreshAudioCaptureSource(), separately and not
+	// queued onto the GL thread, so that two preference changes made in
+	// quick succession (e.g. toggling the preference off then back on
+	// before the GL thread next runs) can't both reset the guard after
+	// the first one already re-asked - only the first queued refresh
+	// should actually trigger a new prompt.
+	public void resetAudioCaptureConsent() {
+		builtinUniforms.resetAudioCaptureConsent();
+	}
+
+	// Re-evaluates which audio source to use against the current
+	// preferences, e.g. after "use system playback audio" changes,
+	// without requiring a shader recompile to trigger it.
+	public void refreshAudioCaptureSource() {
+		builtinUniforms.refreshAudioCaptureSource();
+		if (builtinUniforms.consumeNeedsAudioCaptureConsent() && onRendererListener != null) {
+			onRendererListener.onRequestAudioCapture();
+		}
+	}
+
 	public void setCropBorderPixel(boolean cropBorderPixel) {
 		renderPipeline.setCropBorderPixel(cropBorderPixel);
 	}

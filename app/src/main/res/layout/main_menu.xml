@@ -116,14 +116,6 @@
 			android:text="@string/pause_shader"
 			app:icon="@drawable/ic_pause" />
 
-		<Button
-			android:id="@+id/find_shader"
-			style="@style/MenuItem"
-			android:layout_width="match_parent"
-			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/find_shader"
-			app:icon="@drawable/ic_search" />
-
 		<com.google.android.material.divider.MaterialDivider
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
@@ -138,14 +130,6 @@
 			android:layout_height="@dimen/menu_item_height"
 			android:text="@string/settings"
 			app:icon="@drawable/ic_settings" />
-
-		<Button
-			android:id="@+id/fullscreen"
-			style="@style/MenuItem"
-			android:layout_width="match_parent"
-			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/fullscreen"
-			app:icon="@drawable/ic_fullscreen" />
 
 		<Button
 			android:id="@+id/hide_toolbar"

@@ -44,6 +44,15 @@
 				android:layout_width="40dp"
 				android:layout_height="40dp"
 				android:contentDescription="@string/show_similar_shaders"
+				app:icon="@drawable/ic_content_copy"
+				app:iconSize="20dp" />
+
+			<Button
+				android:id="@+id/find_shader"
+				style="@style/IconButton"
+				android:layout_width="40dp"
+				android:layout_height="40dp"
+				android:contentDescription="@string/find_shader"
 				app:icon="@drawable/ic_search"
 				app:iconSize="20dp" />
 		</LinearLayout>

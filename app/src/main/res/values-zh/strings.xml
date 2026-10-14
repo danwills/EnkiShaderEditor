@@ -24,6 +24,7 @@
 	<string name="set_as_wallpaper">设置为新壁纸</string>
 	<string name="pause_shader">暂停着色器</string>
 	<string name="resume_shader">继续着色器</string>
+	<string name="restart_shader">重启着色器</string>
 	<string name="faq">常见问题</string>
 	<string name="show_extra_keys">显示扩展按键</string>
 	<string name="fullscreen">全屏</string>

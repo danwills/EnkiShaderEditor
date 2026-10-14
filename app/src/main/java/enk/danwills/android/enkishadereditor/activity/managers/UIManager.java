@@ -98,7 +98,9 @@ public class UIManager {
 			View.OnClickListener nextClickListener,
 			View.OnClickListener randomClickListener,
 			View.OnClickListener undoClickListener,
-			View.OnClickListener pauseClickListener) {
+			View.OnClickListener pauseClickListener,
+			View.OnClickListener restartClickListener,
+			View.OnClickListener fullscreenClickListener) {
 		View previous = activity.findViewById(R.id.previous_shader);
 		ViewCompat.setTooltipText(previous, activity.getText(R.string.previous_shader));
 		previous.setOnClickListener(previousClickListener);
@@ -118,6 +120,14 @@ public class UIManager {
 		pauseShaderNavButton = activity.findViewById(R.id.pause_shader_nav);
 		ViewCompat.setTooltipText(pauseShaderNavButton, activity.getText(R.string.pause_shader));
 		pauseShaderNavButton.setOnClickListener(pauseClickListener);
+
+		View restart = activity.findViewById(R.id.restart_shader_nav);
+		ViewCompat.setTooltipText(restart, activity.getText(R.string.restart_shader));
+		restart.setOnClickListener(restartClickListener);
+
+		View fullscreen = activity.findViewById(R.id.fullscreen_nav);
+		ViewCompat.setTooltipText(fullscreen, activity.getText(R.string.fullscreen));
+		fullscreen.setOnClickListener(fullscreenClickListener);
 	}
 
 	// Keeps the extra-keys-bar pause button and this always-visible

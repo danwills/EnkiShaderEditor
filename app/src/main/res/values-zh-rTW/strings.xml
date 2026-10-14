@@ -24,6 +24,7 @@
 	<string name="set_as_wallpaper">設置為桌布</string>
 	<string name="pause_shader">暫停著色器</string>
 	<string name="resume_shader">繼續著色器</string>
+	<string name="restart_shader">重啟著色器</string>
 	<string name="faq">常見問題 (FAQ)</string>
 	<string name="show_extra_keys">顯示擴展按鍵</string>
 	<string name="fullscreen">全螢幕</string>

@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.BitmapFactory;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
@@ -63,6 +64,7 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
@@ -86,7 +88,9 @@ public class MainActivity extends AppCompatActivity {
 	private NavigationManager navigationManager;
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
+	private String textAtPauseTime = "";
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
+	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
 	// Backs out of fullscreen and/or the hidden-toolbar mode, in that
 	// order, instead of the normal back action. Enabled only while at
 	// least one of those is active.
@@ -130,6 +134,13 @@ public class MainActivity extends AppCompatActivity {
 				findViewById(R.id.preview),
 				findViewById(R.id.quality),
 				createShaderViewListener());
+		audioPreferenceListener = (preferences, key) -> {
+			if (Preferences.USE_SYSTEM_AUDIO.equals(key)) {
+				shaderViewManager.refreshAudioCaptureSource();
+			}
+		};
+		ShaderEditorApp.preferences.getSharedPreferences()
+				.registerOnSharedPreferenceChangeListener(audioPreferenceListener);
 		extraKeysManager = new ExtraKeysManager(this,
 				findViewById(android.R.id.content),
 				editorFragment::insert,
@@ -165,7 +176,9 @@ public class MainActivity extends AppCompatActivity {
 				v -> navigateShader(1),
 				v -> randomShader(),
 				v -> editorFragment.undo(),
-				v -> togglePauseShader());
+				v -> togglePauseShader(),
+				v -> restartShader(),
+				v -> setFullscreen(!uiManager.isFullscreen()));
 
 		shaderManager.handleSendText(getIntent());
 
@@ -232,6 +245,10 @@ public class MainActivity extends AppCompatActivity {
 		if (shaderListManager != null) {
 			shaderListManager.destroy();
 		}
+		if (audioPreferenceListener != null) {
+			ShaderEditorApp.preferences.getSharedPreferences()
+					.unregisterOnSharedPreferenceChangeListener(audioPreferenceListener);
+		}
 		super.onDestroy();
 	}
 
@@ -280,6 +297,11 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onConfigureSimilarShaders() {
 				showSimilarShadersConfigDialog();
+			}
+
+			@Override
+			public void onFindShader() {
+				showFindShaderDialog();
 			}
 
 			@Override
@@ -423,11 +445,6 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
-			public void onToggleFullscreen() {
-				setFullscreen(!uiManager.isFullscreen());
-			}
-
-			@Override
 			public void onHideToolbar() {
 				setToolbarHidden(true);
 			}
@@ -515,11 +532,6 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public boolean isShaderPaused() {
 				return shaderViewManager.isPaused();
-			}
-
-			@Override
-			public void onFindShader() {
-				showFindShaderDialog();
 			}
 
 			@Override
@@ -661,24 +673,44 @@ public class MainActivity extends AppCompatActivity {
 		if (projectionManager == null) {
 			return;
 		}
-		MediaProjection projection = projectionManager.getMediaProjection(
-				result.getResultCode(), result.getData());
-		// Required before the projection can actually be used to create
-		// an AudioPlaybackCaptureConfiguration on API 34+; see
-		// AudioCaptureForegroundService. This can legitimately throw
-		// ForegroundServiceStartNotAllowedException (API 31+) if Android
+		int resultCode = result.getResultCode();
+		Intent data = result.getData();
+		// getMediaProjection() requires a foreground service of type
+		// mediaProjection to already be running on API 34+, or it throws
+		// SecurityException - and that only becomes true once the
+		// service's startForeground() call actually runs, which (since
+		// the service shares this same main thread) can only happen
+		// after this method returns, not merely after
+		// startForegroundService() is called below. So getMediaProjection()
+		// is deferred to the service's callback instead of called here.
+		// This can legitimately never fire (e.g.
+		// ForegroundServiceStartNotAllowedException, API 31+, if Android
 		// doesn't consider us sufficiently "foreground" at this exact
-		// lifecycle moment (right as we're returning from the picker) -
-		// in that case, just skip system audio for this run rather than
-		// crash; the mic fallback (if enabled) still works.
+		// lifecycle moment, right as we're returning from the picker) -
+		// in that case, system audio is just skipped for this run rather
+		// than crashing; the mic fallback (if enabled) still works.
+		AudioCaptureForegroundService.setListener(
+				new AudioCaptureForegroundService.Listener() {
+					@Override
+					public void onForegroundServiceStarted() {
+						AudioCaptureForegroundService.setListener(null);
+						MediaProjection projection =
+								projectionManager.getMediaProjection(resultCode, data);
+						shaderViewManager.setMediaProjection(projection);
+					}
+
+					@Override
+					public void onForegroundServiceFailed() {
+						AudioCaptureForegroundService.setListener(null);
+					}
+				});
 		try {
 			ContextCompat.startForegroundService(
 					this, new Intent(this, AudioCaptureForegroundService.class));
 		} catch (RuntimeException e) {
 			Log.e(AUDIO_CAPTURE_TAG, "Could not start audio capture foreground service", e);
-			return;
+			AudioCaptureForegroundService.setListener(null);
 		}
-		shaderViewManager.setMediaProjection(projection);
 
 		// Picking a target (an app, or sometimes "entire screen") in the
 		// system picker can leave that target - or the home screen - in
@@ -1026,13 +1058,24 @@ public class MainActivity extends AppCompatActivity {
 
 	private void togglePauseShader() {
 		boolean paused = !shaderViewManager.isPaused();
+		if (paused) {
+			textAtPauseTime = editorFragment.getText();
+		}
 		shaderViewManager.setPaused(paused);
-		if (!paused) {
+		if (!paused && !editorFragment.getText().equals(textAtPauseTime)) {
 			// Catch up on whatever was edited while paused.
 			shaderViewManager.setProjectSession(
 					shaderManager.getEditedProjectSession(editorFragment.getText()));
 		}
 		uiManager.setPauseButtonState(paused);
+	}
+
+	private void restartShader() {
+		if (shaderViewManager.isPaused()) {
+			// Also picks up any edits made while paused.
+			togglePauseShader();
+		}
+		shaderViewManager.restartRuntime();
 	}
 
 	private void runShader() {

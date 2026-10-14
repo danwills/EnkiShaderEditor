@@ -94,6 +94,14 @@ final class BuiltinUniforms {
 		audioUniforms.configure(device, program, textureResources);
 	}
 
+	void resetAudioCaptureConsent() {
+		BuiltinAudioUniforms.resetConsentGuard();
+	}
+
+	void refreshAudioCaptureSource() {
+		audioUniforms.refreshCaptureSource();
+	}
+
 	boolean consumeNeedsAudioCaptureConsent() {
 		return audioUniforms.consumeNeedsAudioCaptureConsent();
 	}

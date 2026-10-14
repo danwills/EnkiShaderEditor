@@ -31,8 +31,6 @@ public class MainMenuManager {
 
 		void onFindInShader();
 
-		void onToggleFullscreen();
-
 		void onHideToolbar();
 	}
 
@@ -58,8 +56,6 @@ public class MainMenuManager {
 		void onTogglePauseShader();
 
 		boolean isShaderPaused();
-
-		void onFindShader();
 
 		long getSelectedShaderId();
 	}
@@ -130,9 +126,7 @@ public class MainMenuManager {
 			shaderActions.onTogglePauseShader();
 			updatePauseShaderButton(popupWindow.getContentView());
 		}, false);
-		setClickListener(R.id.find_shader, shaderActions::onFindShader);
 		setClickListener(R.id.settings, navigationActions::onShowSettings);
-		setClickListener(R.id.fullscreen, editorActions::onToggleFullscreen);
 		setClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
 		setClickListener(R.id.more_options, this::showMoreOptions, false);

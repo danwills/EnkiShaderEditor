@@ -83,6 +83,24 @@ final class BuiltinAudioUniforms {
 		return needs;
 	}
 
+	// Clears the "already asked" guard, so a user action that re-enables
+	// system audio (after a prior denial, or after toggling the
+	// preference off and back on) gets asked again instead of silently
+	// staying on the microphone fallback forever. The flag is volatile
+	// and process-wide, so this is safe to call from any thread.
+	static void resetConsentGuard() {
+		consentAlreadyRequested = false;
+	}
+
+	// Re-evaluates which audio source to use against the current
+	// preferences, e.g. after use_system_audio changes, without
+	// requiring a shader recompile to trigger it. Must run on the GL
+	// thread, like configure().
+	void refreshCaptureSource() {
+		unregisterListener();
+		openListenerIfNeeded();
+	}
+
 	void release() {
 		spectrumTextureBinding = null;
 		unregisterListener();

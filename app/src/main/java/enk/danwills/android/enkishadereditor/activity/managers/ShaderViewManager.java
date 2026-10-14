@@ -2,6 +2,7 @@ package enk.danwills.android.enkishadereditor.activity.managers;
 
 import android.app.Activity;
 import android.media.projection.MediaProjection;
+import android.opengl.GLSurfaceView;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -39,6 +40,7 @@ public class ShaderViewManager {
 	private float[] qualityValues;
 	private float quality = 1f;
 	private boolean paused = false;
+	private boolean needsRealResume = false;
 
 	public ShaderViewManager(@NonNull Activity activity,
 			@NonNull ShaderView shaderView,
@@ -54,6 +56,13 @@ public class ShaderViewManager {
 
 	public void onPause() {
 		if (shaderView.getVisibility() == View.VISIBLE) {
+			// If we're already manually paused, the GL thread is only idling
+			// (see setPaused() below), not actually stopped, so this real
+			// pause needs a matching real onResume() to recover from later,
+			// even though setPaused(false) wouldn't otherwise ask for one.
+			if (paused) {
+				needsRealResume = true;
+			}
 			shaderView.onPause();
 		}
 	}
@@ -73,9 +82,14 @@ public class ShaderViewManager {
 
 	// Pausing freezes both compilation (new shader sources are
 	// dropped, see setFragmentShader()/setProjectSession() below)
-	// and execution (the GL render thread is stopped, so the last
-	// rendered frame stays on screen and uniforms like `time` stop
-	// advancing).
+	// and execution (the view switches to on-demand rendering, so the
+	// last rendered frame stays on screen and uniforms like `time` stop
+	// advancing). This deliberately avoids GLSurfaceView's own
+	// onPause()/onResume(), which would tear down and recreate the EGL
+	// context - and with it, force a full shader recompile - on every
+	// toggle. A real recompile still happens when the app is actually
+	// backgrounded and resumed (see onPause()/onResume() above), since
+	// that goes through the real GL lifecycle methods.
 	public void setPaused(boolean paused) {
 		if (this.paused == paused) {
 			return;
@@ -85,10 +99,27 @@ public class ShaderViewManager {
 			return;
 		}
 		if (paused) {
-			shaderView.onPause();
-		} else {
+			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+			shaderView.queueEvent(() -> {
+				ShaderRenderer renderer = shaderView.getRenderer();
+				// Re-stamp the clock's last-frame time so the gap while
+				// paused isn't counted as elapsed shader time on resume.
+				renderer.setRuntimeNanos(renderer.getRuntimeNanos());
+			});
+		} else if (needsRealResume) {
+			needsRealResume = false;
+			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 			shaderView.onResume();
+		} else {
+			shaderView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 		}
+	}
+
+	// Resets the shader's `time`/`runtime` uniforms back to zero without
+	// recompiling, so a "restart" action can rewind a running or paused
+	// shader to its initial state.
+	public void restartRuntime() {
+		shaderView.queueEvent(() -> shaderView.getRenderer().setRuntimeNanos(0));
 	}
 
 	public void setFragmentShader(@Nullable String src) {
@@ -131,6 +162,15 @@ public class ShaderViewManager {
 	public void setMediaProjection(@Nullable MediaProjection mediaProjection) {
 		shaderView.queueEvent(() ->
 				shaderView.getRenderer().setMediaProjection(mediaProjection));
+	}
+
+	// Call when the "use system playback audio" preference changes, so
+	// re-enabling it (after a prior denial, or after toggling it off and
+	// back on) is asked about again instead of silently staying on the
+	// microphone fallback forever.
+	public void refreshAudioCaptureSource() {
+		shaderView.getRenderer().resetAudioCaptureConsent();
+		shaderView.queueEvent(() -> shaderView.getRenderer().refreshAudioCaptureSource());
 	}
 
 	public void setCropBorderPixel(boolean cropBorderPixel) {

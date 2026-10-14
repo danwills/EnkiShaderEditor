@@ -23,9 +23,27 @@ import enk.danwills.android.enkishadereditor.R;
 // that requirement; the actual capture still happens via AudioRecord on
 // its own thread, not here.
 public class AudioCaptureForegroundService extends Service {
+	// Lets a caller find out once startForeground() has actually
+	// succeeded (or failed), since starting the service and it actually
+	// reaching that point are two different events in time -
+	// MediaProjectionManager.getMediaProjection() requires the latter to
+	// have already happened on API 34+, or it throws SecurityException.
+	public interface Listener {
+		void onForegroundServiceStarted();
+
+		void onForegroundServiceFailed();
+	}
+
 	private static final String TAG = "AudioCapture";
 	private static final String CHANNEL_ID = "audio_capture";
 	private static final int NOTIFICATION_ID = 1;
+
+	@Nullable
+	private static volatile Listener listener;
+
+	public static void setListener(@Nullable Listener listener) {
+		AudioCaptureForegroundService.listener = listener;
+	}
 
 	@Override
 	public void onCreate() {
@@ -59,12 +77,20 @@ public class AudioCaptureForegroundService extends Service {
 			} else {
 				startForeground(NOTIFICATION_ID, notification);
 			}
+			Listener currentListener = listener;
+			if (currentListener != null) {
+				currentListener.onForegroundServiceStarted();
+			}
 		} catch (RuntimeException e) {
 			// e.g. ForegroundServiceStartNotAllowedException (API 31+) if
 			// Android doesn't consider the app sufficiently foreground at
 			// this exact moment. Stop ourselves rather than let this crash
 			// the whole app; the caller falls back to the microphone.
 			Log.e(TAG, "startForeground failed", e);
+			Listener currentListener = listener;
+			if (currentListener != null) {
+				currentListener.onForegroundServiceFailed();
+			}
 			stopSelf();
 		}
 		return START_NOT_STICKY;

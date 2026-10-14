@@ -25,6 +25,7 @@
 	<string name="set_as_wallpaper">Set as wallpaper</string>
 	<string name="pause_shader">Pause shader</string>
 	<string name="resume_shader">Resume shader</string>
+	<string name="restart_shader">Restart shader</string>
 	<string name="faq">FAQ</string>
 	<string name="show_extra_keys">Show Extra Keys</string>
 	<string name="fullscreen">Fullscreen</string>

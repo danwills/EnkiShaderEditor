@@ -25,6 +25,7 @@
 	<string name="set_as_wallpaper">Встановити як шпалери</string>
 	<string name="pause_shader">Призупинити шейдер</string>
 	<string name="resume_shader">Продовжити шейдер</string>
+	<string name="restart_shader">Перезапустити шейдер</string>
 	<string name="faq">FAQ</string>
 	<string name="show_extra_keys">Показати додаткові клавіші</string>
 	<string name="fullscreen">Повноекранний режим</string>

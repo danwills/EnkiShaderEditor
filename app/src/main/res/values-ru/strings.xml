@@ -25,6 +25,7 @@
 	<string name="set_as_wallpaper">Установить новую обою</string>
 	<string name="pause_shader">Приостановить шейдер</string>
 	<string name="resume_shader">Продолжить шейдер</string>
+	<string name="restart_shader">Перезапустить шейдер</string>
 	<string name="faq">ЧаВо</string>
 	<string name="show_extra_keys">Дополнительные клавиши</string>
 	<string name="fullscreen">Полноэкранный режим</string>
