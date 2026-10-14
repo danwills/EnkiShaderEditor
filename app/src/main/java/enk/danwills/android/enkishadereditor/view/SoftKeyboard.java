@@ -14,4 +14,15 @@ public class SoftKeyboard {
 			}
 		}
 	}
+
+	public static void show(Context context, View view) {
+		if (context != null && view != null) {
+			view.requestFocus();
+			InputMethodManager imm = ((InputMethodManager) context.getSystemService(
+					Context.INPUT_METHOD_SERVICE));
+			if (imm != null) {
+				imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT);
+			}
+		}
+	}
 }

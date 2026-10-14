@@ -57,9 +57,21 @@ public class AudioSpectrumListener {
 	private final float[] smoothedSpectrum = new float[TEXTURE_WIDTH];
 	private final Object intervalLock = new Object();
 
+	// Below this, two reads are considered "no meaningful change" - real
+	// audio signal has some noise floor jitter even when ostensibly
+	// silent, and this avoids false positives from quantization noise.
+	private static final short CHANGE_EPSILON = 24;
+	// How recently both a nonzero sample and a change from the previous
+	// read need to have been seen for isReceivingAudio() to consider the
+	// capture healthy.
+	private static final long HEALTH_WINDOW_NANOS = 1_500_000_000L;
+
 	private short[] intervalSamples = new short[4096];
 	private int intervalLength = 0;
 	private boolean fullInterval = false;
+	private short[] lastHealthSnapshot = new short[0];
+	private volatile long lastNonZeroNanos = Long.MIN_VALUE;
+	private volatile long lastChangeNanos = Long.MIN_VALUE;
 	@Nullable
 	private AudioRecord audioRecord;
 	@Nullable
@@ -156,6 +168,45 @@ public class AudioSpectrumListener {
 		return running;
 	}
 
+	// True if real signal has actually been flowing through recently -
+	// nonzero samples that are also changing, not just a technically-
+	// running AudioRecord that's gone silently dead (e.g. the system
+	// revoked the projection without the onStop() callback firing).
+	// Safe to call from any thread: the two timestamps it reads are
+	// volatile, written only from the dedicated recording thread.
+	public boolean isReceivingAudio() {
+		long now = System.nanoTime();
+		return running
+				&& now - lastNonZeroNanos < HEALTH_WINDOW_NANOS
+				&& now - lastChangeNanos < HEALTH_WINDOW_NANOS;
+	}
+
+	private void updateHealthSignal(@NonNull short[] buffer, int count) {
+		boolean nonZero = false;
+		boolean changed = count != lastHealthSnapshot.length;
+		int compareLength = Math.min(count, lastHealthSnapshot.length);
+		for (int i = 0; i < count; ++i) {
+			if (buffer[i] != 0) {
+				nonZero = true;
+			}
+			if (!changed && i < compareLength &&
+					Math.abs(buffer[i] - lastHealthSnapshot[i]) > CHANGE_EPSILON) {
+				changed = true;
+			}
+		}
+		long now = System.nanoTime();
+		if (nonZero) {
+			lastNonZeroNanos = now;
+		}
+		if (changed) {
+			lastChangeNanos = now;
+		}
+		if (lastHealthSnapshot.length != count) {
+			lastHealthSnapshot = new short[count];
+		}
+		System.arraycopy(buffer, 0, lastHealthSnapshot, 0, count);
+	}
+
 	public void unregister() {
 		running = false;
 		if (recordingThread != null) {
@@ -215,6 +266,7 @@ public class AudioSpectrumListener {
 				if (read <= 0) {
 					continue;
 				}
+				updateHealthSignal(readBuffer, read);
 				if (fullInterval) {
 					appendIntervalSamples(readBuffer, read);
 					continue;

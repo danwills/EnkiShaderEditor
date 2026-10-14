@@ -6,6 +6,8 @@ import android.os.Looper;
 import android.view.View;
 import android.widget.TextView;
 
+import java.util.function.Consumer;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBarDrawerToggle;
@@ -40,6 +42,8 @@ public class UIManager {
 	private final TextView shaderNameOverlay;
 	@Nullable
 	private View pauseShaderNavButton;
+	@Nullable
+	private Consumer<Boolean> onCodeVisibilityChanged;
 	private final Handler overlayHandler = new Handler(Looper.getMainLooper());
 	private final Runnable hideOverlayRunnable = this::fadeOutShaderNameOverlay;
 
@@ -130,6 +134,12 @@ public class UIManager {
 		fullscreen.setOnClickListener(fullscreenClickListener);
 	}
 
+	public void setupAudioNavRow(View.OnClickListener reacquireClickListener) {
+		View reacquire = activity.findViewById(R.id.reacquire_audio);
+		ViewCompat.setTooltipText(reacquire, activity.getText(R.string.reacquire_audio));
+		reacquire.setOnClickListener(reacquireClickListener);
+	}
+
 	// Keeps the extra-keys-bar pause button and this always-visible
 	// toolbar one in sync, since either can be used to toggle pause.
 	public void setPauseButtonState(boolean paused) {
@@ -156,6 +166,8 @@ public class UIManager {
 				!ShaderEditorApp.preferences.doesRunOnChange()
 						? View.VISIBLE
 						: View.GONE);
+		activity.findViewById(R.id.audio_nav_row).setVisibility(
+				ShaderEditorApp.preferences.useSystemAudio() ? View.VISIBLE : View.GONE);
 		extraKeysManager.updateVisibility();
 		editorFragment.setShowLineNumbers(
 				ShaderEditorApp.preferences.showLineNumbers());
@@ -164,19 +176,27 @@ public class UIManager {
 	}
 
 	public void toggleCodeVisibility() {
-		boolean isVisible = editorFragment.toggleCode();
-		drawerLayout.setTouchThru(isVisible);
-		extraKeysManager.setVisible(!isVisible &&
+		boolean wasVisible = editorFragment.toggleCode();
+		boolean nowVisible = !wasVisible;
+		drawerLayout.setTouchThru(wasVisible);
+		extraKeysManager.setVisible(!wasVisible &&
 				ShaderEditorApp.preferences.showExtraKeys());
+		if (onCodeVisibilityChanged != null) {
+			onCodeVisibilityChanged.accept(nowVisible);
+		}
+	}
+
+	// Called whenever the code editor's visibility actually changes -
+	// via the toolbar's toggle button, state restoration, or being
+	// forced visible by updateUiToPreferences() below - so a listener
+	// never misses a transition regardless of what triggered it.
+	public void setOnCodeVisibilityChangedListener(@Nullable Consumer<Boolean> listener) {
+		onCodeVisibilityChanged = listener;
 	}
 
 	public void setToolbarTitle(String name) {
 		toolbar.setTitle(name);
 		toolbar.setSubtitle(null);
-	}
-
-	public void closeDrawers() {
-		drawerLayout.closeDrawers();
 	}
 
 	public void setToolbarSubtitle(String subtitle) {
@@ -242,6 +262,27 @@ public class UIManager {
 				.withEndAction(() ->
 						overlayHandler.postDelayed(hideOverlayRunnable, 1200))
 				.start();
+	}
+
+	// The fullscreen-exit gesture's "about to exit" cue - reuses the
+	// shader-name overlay rather than its own view, but doesn't schedule
+	// the auto-hide: it stays up for as long as the gesture is armed,
+	// how ever long that turns out to be, and is dismissed explicitly
+	// via hideFullscreenExitHint() instead.
+	public void showFullscreenExitHint() {
+		if (shaderNameOverlay == null) {
+			return;
+		}
+		overlayHandler.removeCallbacks(hideOverlayRunnable);
+		shaderNameOverlay.animate().cancel();
+		shaderNameOverlay.setText(R.string.release_to_exit_fullscreen);
+		shaderNameOverlay.setVisibility(View.VISIBLE);
+		shaderNameOverlay.setAlpha(0f);
+		shaderNameOverlay.animate().alpha(1f).setDuration(150).start();
+	}
+
+	public void hideFullscreenExitHint() {
+		fadeOutShaderNameOverlay();
 	}
 
 	private void fadeOutShaderNameOverlay() {

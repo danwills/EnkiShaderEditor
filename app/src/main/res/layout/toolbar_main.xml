@@ -146,4 +146,24 @@
 			app:icon="@drawable/ic_undo"
 			app:iconSize="24dp" />
 	</LinearLayout>
+
+	<LinearLayout
+		android:id="@+id/audio_nav_row"
+		android:layout_width="match_parent"
+		android:layout_height="48dp"
+		android:background="@color/primary_translucent"
+		android:orientation="horizontal"
+		android:gravity="center_vertical"
+		android:visibility="gone">
+
+		<Button
+			android:id="@+id/reacquire_audio"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:contentDescription="@string/reacquire_audio"
+			app:icon="@drawable/ic_audio_reacquire"
+			app:iconSize="24dp" />
+	</LinearLayout>
 </LinearLayout>

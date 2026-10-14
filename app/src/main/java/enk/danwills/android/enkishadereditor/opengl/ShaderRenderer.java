@@ -6,6 +6,7 @@ import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.view.Display;
@@ -105,6 +106,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile float refreshRate = DEFAULT_REFRESH_RATE;
 	private volatile long lastCompileNanos = -1;
 	private volatile boolean lastCompileSucceeded = false;
+	private volatile long lastProgramBinaryBytes = -1;
+	private int glVersion = 2;
 
 	public ShaderRenderer(Context context) {
 		this.context = context;
@@ -112,6 +115,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	public void setVersion(int version) {
+		glVersion = version;
 		programManager.setVersion(version);
 	}
 
@@ -165,6 +169,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		return lastCompileSucceeded;
 	}
 
+	// Size in bytes of the linked main program's GPU binary, queried
+	// via GLES30's glGetProgramBinary machinery, or -1 if unavailable -
+	// either because the context is GLES2-only, or (common on many
+	// GPU drivers) the device reports zero supported binary formats,
+	// meaning program binary retrieval simply isn't supported here.
+	// The size itself is a vendor/driver-specific blob, not a portable
+	// or comparable metric across devices.
+	public long getLastProgramBinaryBytes() {
+		return lastProgramBinaryBytes;
+	}
+
 	public int getLastFps() {
 		return lastFps;
 	}
@@ -200,6 +215,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.releaseMediaProjection();
 	}
 
+	// See AudioSpectrumListener.isReceivingAudio().
+	public boolean isReceivingAudio() {
+		return builtinUniforms.isReceivingAudio();
+	}
+
 	public void setCropBorderPixel(boolean cropBorderPixel) {
 		renderPipeline.setCropBorderPixel(cropBorderPixel);
 	}
@@ -227,6 +247,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			submitErrors(reloadResult.textureErrors());
 			if (reloadResult.succeeded()) {
 				submitErrors(Collections.emptyList());
+				lastProgramBinaryBytes = queryProgramBinaryBytes(programManager.getMainProgram());
 				builtinUniforms.configure(
 						device,
 						programManager.getMainProgram(),
@@ -238,6 +259,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 			} else if (!reloadResult.programErrors().isEmpty()) {
 				submitErrors(reloadResult.programErrors());
+				lastProgramBinaryBytes = -1;
 			}
 		}
 	}
@@ -351,6 +373,26 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.clearConfiguration();
 		renderPipeline.discardContextResources();
 		programManager.discardContextResources();
+	}
+
+	// GL_NUM_PROGRAM_BINARY_FORMATS / GL_PROGRAM_BINARY_LENGTH are
+	// GLES30 core pnames; querying them needs an ES3 context and a
+	// driver that actually reports at least one supported binary
+	// format (plenty of GPUs report zero, meaning the entry points
+	// exist but retrieval isn't really supported).
+	private long queryProgramBinaryBytes(@NonNull GlProgram program) {
+		if (glVersion < 3 || !program.isValid()) {
+			return -1;
+		}
+		int[] numFormats = new int[1];
+		GLES30.glGetIntegerv(GLES30.GL_NUM_PROGRAM_BINARY_FORMATS, numFormats, 0);
+		if (numFormats[0] <= 0) {
+			return -1;
+		}
+		int[] length = new int[1];
+		GLES30.glGetProgramiv(
+				program.getId(), GLES30.GL_PROGRAM_BINARY_LENGTH, length, 0);
+		return length[0] > 0 ? length[0] : -1;
 	}
 
 	private void captureThumbnail() {

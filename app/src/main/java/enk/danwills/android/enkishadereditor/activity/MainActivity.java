@@ -46,6 +46,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -145,6 +146,9 @@ public class MainActivity extends AppCompatActivity {
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
 	private String textAtPauseTime = "";
+	private boolean keyboardVisibleBeforeFullscreen = false;
+	private int selectionStartBeforeFullscreen = -1;
+	private int selectionEndBeforeFullscreen = -1;
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
 	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
 	// Backs out of fullscreen and/or the hidden-toolbar mode, in that
@@ -205,6 +209,7 @@ public class MainActivity extends AppCompatActivity {
 				editorFragment,
 				extraKeysManager,
 				shaderViewManager);
+		uiManager.setOnCodeVisibilityChangedListener(this::updatePauseForEditingVisibility);
 		shaderListManager = new ShaderListManager(this,
 				findViewById(R.id.shaders),
 				dataSource,
@@ -235,6 +240,7 @@ public class MainActivity extends AppCompatActivity {
 				v -> togglePauseShader(),
 				v -> restartShader(),
 				v -> setFullscreen(!uiManager.isFullscreen()));
+		uiManager.setupAudioNavRow(v -> shaderViewManager.reacquireSystemAudio());
 
 		shaderManager.handleSendText(getIntent());
 
@@ -282,7 +288,22 @@ public class MainActivity extends AppCompatActivity {
 		super.onResume();
 		uiManager.updateUiToPreferences();
 		shaderListManager.loadShadersAsync();
+		// Must run before updatePauseForEditingVisibility() below: this
+		// restarts the real GL thread after a real background/foreground
+		// cycle (e.g. returning from Settings). If the editing-visibility
+		// pause ran first and set paused=true for the first time here,
+		// ShaderViewManager.onResume()'s own "if (paused) return;" guard
+		// would skip restarting the GL thread entirely - permanently, since
+		// nothing else ever calls the real resume - leaving the view stuck
+		// black. See the "Run when not editing" bug.
 		shaderViewManager.onResume();
+		// Covers the case where the "Run when not editing" mode was
+		// just turned on (or off) from Settings while code visibility
+		// itself didn't change - updateUiToPreferences() above only
+		// reconciles the other run-mode axis (background rendering),
+		// and toggleCodeVisibility()'s own listener only fires on an
+		// actual visibility change.
+		updatePauseForEditingVisibility(editorFragment.isCodeVisible());
 	}
 
 	@Override
@@ -350,7 +371,12 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onAddShaderToNameGroup() {
-				showPickParentShaderDialog();
+				showPickParentShaderDialog(shaderManager.getSelectedShaderId(), false);
+			}
+
+			@Override
+			public void onReparentShader(long id) {
+				showPickParentShaderDialog(id, true);
 			}
 
 			@Override
@@ -432,6 +458,23 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onRequestAudioCapture() {
 				runOnUiThread(MainActivity.this::requestAudioCapture);
+			}
+
+			// Touch dispatch (unlike rendering) already runs on the UI
+			// thread, so these two - unlike the GL-thread-sourced
+			// callbacks above - need no runOnUiThread() wrapping.
+			@Override
+			public void onFullscreenExitArmedChanged(boolean armed) {
+				if (armed) {
+					uiManager.showFullscreenExitHint();
+				} else {
+					uiManager.hideFullscreenExitHint();
+				}
+			}
+
+			@Override
+			public void onFullscreenExitGesture() {
+				setFullscreen(false);
 			}
 
 			private void showError(String error) {
@@ -846,7 +889,6 @@ public class MainActivity extends AppCompatActivity {
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
 		}
-		uiManager.closeDrawers();
 		shaderManager.selectShader(id);
 	}
 
@@ -873,7 +915,7 @@ public class MainActivity extends AppCompatActivity {
 	// intermediate group node of its name tree, as the prefix to rename
 	// the current shader under. Unnamed (timestamp-titled) shaders are
 	// excluded since they have nothing meaningful to group under.
-	private void showPickParentShaderDialog() {
+	private void showPickParentShaderDialog(long targetId, boolean confirmIfAlreadyNamed) {
 		List<DataRecords.ShaderInfo> namedShaders = new ArrayList<>();
 		for (var shader : shaderListManager.getAllShaders()) {
 			if (shader.name() != null && !shader.name().isEmpty()) {
@@ -883,10 +925,26 @@ public class MainActivity extends AppCompatActivity {
 
 		View view = getLayoutInflater().inflate(R.layout.dialog_pick_parent_shader, null);
 		EditText filterView = view.findViewById(R.id.filter);
+		CheckBox sortBySimilarityBox = view.findViewById(R.id.sort_by_similarity);
 		ListView parentListView = view.findViewById(R.id.parent_list);
 		ShaderTreeAdapter pickerAdapter = new ShaderTreeAdapter(this);
 		pickerAdapter.setData(namedShaders);
 		parentListView.setAdapter(pickerAdapter);
+
+		// Ranks branches by the best code/name similarity match they
+		// contain against the shader being reparented, so the most
+		// relevant groups surface at the top instead of needing to be
+		// found alphabetically.
+		sortBySimilarityBox.setOnCheckedChangeListener((box, checked) -> {
+			if (checked) {
+				ShaderSimilarity similarity = new ShaderSimilarity();
+				similarity.rebuild(shaderListManager.getAllShaders(),
+						dataSource.shader.getAllShaderSources());
+				pickerAdapter.setSimilarityScores(similarity.scoreAll(targetId, namedShaders));
+			} else {
+				pickerAdapter.setSimilarityScores(null);
+			}
+		});
 
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.add_shader_to_name_group)
@@ -929,11 +987,12 @@ public class MainActivity extends AppCompatActivity {
 			// name prefix this node stands for.
 			String parentName = pickerAdapter.getRow(position).path().replace("/", "");
 			dialog.dismiss();
-			showNameGroupPostfixDialog(parentName);
+			showNameGroupPostfixDialog(targetId, parentName, confirmIfAlreadyNamed);
 		});
 	}
 
-	private void showNameGroupPostfixDialog(@NonNull String parentName) {
+	private void showNameGroupPostfixDialog(
+			long targetId, @NonNull String parentName, boolean confirmIfAlreadyNamed) {
 		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
 		TextView prefixLabel = view.findViewById(R.id.prefix_label);
 		EditText postfixView = view.findViewById(R.id.postfix);
@@ -945,7 +1004,7 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String postfix = postfixView.getText().toString().trim();
 					if (!postfix.isEmpty()) {
-						applyNameGroupRename(parentName, postfix);
+						applyNameGroupRename(targetId, parentName, postfix, confirmIfAlreadyNamed);
 					}
 				})
 				.setNegativeButton(android.R.string.cancel, null)
@@ -953,15 +1012,35 @@ public class MainActivity extends AppCompatActivity {
 				.show();
 	}
 
-	private void applyNameGroupRename(@NonNull String parentName, @NonNull String postfix) {
+	private void applyNameGroupRename(long targetId, @NonNull String parentName,
+			@NonNull String postfix, boolean confirmIfAlreadyNamed) {
 		String newName = parentName + postfix;
-		long currentId = shaderManager.getSelectedShaderId();
-		if (currentId < 1) {
+		if (targetId < 1) {
 			return;
 		}
+		String currentName = null;
+		for (var shader : shaderListManager.getAllShaders()) {
+			if (shader.id() == targetId) {
+				currentName = shader.name();
+				break;
+			}
+		}
+		if (confirmIfAlreadyNamed && currentName != null && !currentName.isEmpty()) {
+			new MaterialAlertDialogBuilder(this)
+					.setMessage(getString(R.string.sure_reparent_named_shader, currentName, newName))
+					.setPositiveButton(android.R.string.ok,
+							(dialog, which) -> checkConflictAndRename(targetId, newName))
+					.setNegativeButton(android.R.string.cancel, null)
+					.show();
+		} else {
+			checkConflictAndRename(targetId, newName);
+		}
+	}
+
+	private void checkConflictAndRename(long targetId, @NonNull String newName) {
 		boolean conflict = false;
 		for (var shader : shaderListManager.getAllShaders()) {
-			if (shader.id() != currentId && newName.equalsIgnoreCase(shader.getTitle())) {
+			if (shader.id() != targetId && newName.equalsIgnoreCase(shader.getTitle())) {
 				conflict = true;
 				break;
 			}
@@ -970,11 +1049,11 @@ public class MainActivity extends AppCompatActivity {
 			new MaterialAlertDialogBuilder(this)
 					.setMessage(getString(R.string.name_already_exists, newName))
 					.setPositiveButton(android.R.string.ok,
-							(dialog, which) -> doNameGroupRename(currentId, newName))
+							(dialog, which) -> doNameGroupRename(targetId, newName))
 					.setNegativeButton(android.R.string.cancel, null)
 					.show();
 		} else {
-			doNameGroupRename(currentId, newName);
+			doNameGroupRename(targetId, newName);
 		}
 	}
 
@@ -993,6 +1072,11 @@ public class MainActivity extends AppCompatActivity {
 		StringBuilder message = new StringBuilder(
 				getString(R.string.stats_lines_chars, lineCount, charCount));
 		message.append('\n').append(getString(R.string.stats_size_bytes, byteCount));
+
+		long binaryBytes = shaderViewManager.getLastProgramBinaryBytes();
+		message.append('\n').append(binaryBytes >= 0
+				? getString(R.string.stats_compiled_size_bytes, binaryBytes)
+				: getString(R.string.stats_compiled_size_unavailable));
 		message.append('\n').append(getString(
 				R.string.stats_define_count, findDefineLines(text).size()));
 		message.append('\n').append(getString(
@@ -1127,39 +1211,29 @@ public class MainActivity extends AppCompatActivity {
 		View resultRow = view.findViewById(R.id.result_row);
 		ImageView resultIcon = view.findViewById(R.id.result_icon);
 		TextView resultTitle = view.findViewById(R.id.result_title);
+		TextView resultPosition = view.findViewById(R.id.result_position);
 		Button resultLoad = view.findViewById(R.id.result_load);
+		View navRow = view.findViewById(R.id.find_nav_row);
+		View previousButton = view.findViewById(R.id.find_previous);
+		View randomButton = view.findViewById(R.id.find_random);
+		View nextButton = view.findViewById(R.id.find_next_match);
 		ShaderSearchState state = new ShaderSearchState();
+		Random random = new Random();
 
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.find_shader)
 				.setView(view)
-				.setPositiveButton(R.string.find_next, null)
 				.setNegativeButton(android.R.string.cancel, null)
 				.setOnDismissListener(d -> SoftKeyboard.hide(this, queryView))
 				.show();
 
-		Runnable findNext = () -> {
-			String query = queryView.getText().toString();
-			if (query.isEmpty()) {
-				return;
-			}
-			boolean searchSource = searchSourceBox.isChecked();
-			boolean fuzzy = fuzzyBox.isChecked();
-			String key = query + ' ' + searchSource + ' ' + fuzzy;
-			if (!key.equals(state.key)) {
-				state.matches = shaderListManager.findMatches(query, searchSource, fuzzy);
-				state.index = -1;
-				state.key = key;
-			}
-			if (state.matches.isEmpty()) {
-				resultRow.setVisibility(View.GONE);
-				Toast.makeText(this, R.string.no_matches_found, Toast.LENGTH_SHORT).show();
-				return;
-			}
-			state.index = (state.index + 1) % state.matches.size();
+		Runnable showCurrentMatch = () -> {
 			DataRecords.ShaderInfo match = state.matches.get(state.index);
 			resultRow.setVisibility(View.VISIBLE);
+			navRow.setVisibility(View.VISIBLE);
 			resultTitle.setText(match.getTitle());
+			resultPosition.setText(getString(R.string.match_position_format,
+					state.index + 1, state.matches.size()));
 			byte[] thumb = match.thumb();
 			if (thumb != null && thumb.length > 0) {
 				resultIcon.setImageBitmap(BitmapFactory.decodeByteArray(thumb, 0, thumb.length));
@@ -1171,7 +1245,69 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 			});
 		};
-		dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> findNext.run());
+		// Re-runs the search if the query/options changed since the last
+		// match was shown. Returns false (and hides the result UI) when
+		// there's nothing to show, so callers can bail out early.
+		java.util.function.BooleanSupplier ensureMatches = () -> {
+			String query = queryView.getText().toString();
+			if (query.isEmpty()) {
+				return false;
+			}
+			boolean searchSource = searchSourceBox.isChecked();
+			boolean fuzzy = fuzzyBox.isChecked();
+			String key = query + ' ' + searchSource + ' ' + fuzzy;
+			if (!key.equals(state.key)) {
+				state.matches = shaderListManager.findMatches(query, searchSource, fuzzy);
+				state.index = -1;
+				state.key = key;
+			}
+			if (state.matches.isEmpty()) {
+				resultRow.setVisibility(View.GONE);
+				navRow.setVisibility(View.GONE);
+				Toast.makeText(this, R.string.no_matches_found, Toast.LENGTH_SHORT).show();
+				return false;
+			}
+			return true;
+		};
+
+		Runnable findNext = () -> {
+			if (!ensureMatches.getAsBoolean()) {
+				return;
+			}
+			state.index = (state.index + 1) % state.matches.size();
+			showCurrentMatch.run();
+		};
+		Runnable findPrevious = () -> {
+			if (!ensureMatches.getAsBoolean()) {
+				return;
+			}
+			int size = state.matches.size();
+			int from = Math.max(state.index, 0);
+			state.index = Math.floorMod(from - 1, size);
+			showCurrentMatch.run();
+		};
+		Runnable findRandom = () -> {
+			if (!ensureMatches.getAsBoolean()) {
+				return;
+			}
+			int size = state.matches.size();
+			int from = Math.max(state.index, 0);
+			if (size > 1) {
+				// A signed jump averaging about half the match list's
+				// length - likely to land somewhere nearby, occasionally
+				// far enough that two lucky jumps could cross the whole
+				// list.
+				int range = size - 1;
+				int offset = random.nextInt(2 * range + 1) - range;
+				state.index = Math.floorMod(from + offset, size);
+			} else {
+				state.index = 0;
+			}
+			showCurrentMatch.run();
+		};
+		previousButton.setOnClickListener(v -> findPrevious.run());
+		randomButton.setOnClickListener(v -> findRandom.run());
+		nextButton.setOnClickListener(v -> findNext.run());
 		queryView.setOnEditorActionListener((v, actionId, event) -> {
 			findNext.run();
 			return true;
@@ -1179,9 +1315,52 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void setFullscreen(boolean fullscreen) {
+		if (fullscreen) {
+			View focused = getCurrentFocus();
+			keyboardVisibleBeforeFullscreen = focused != null && isKeyboardVisible(focused);
+			selectionStartBeforeFullscreen = editorFragment.getSelectionStart();
+			selectionEndBeforeFullscreen = editorFragment.getSelectionEnd();
+			if (focused != null) {
+				SoftKeyboard.hide(this, focused);
+			}
+		}
 		uiManager.setFullscreen(fullscreen);
 		shaderViewManager.setCropBorderPixel(fullscreen);
+		// Only meaningful in fullscreen, where there's no toolbar back
+		// button to tap - see FullscreenExitGestureDetector.
+		shaderViewManager.setFullscreenExitGestureEnabled(fullscreen);
+		if (!fullscreen) {
+			uiManager.hideFullscreenExitHint();
+		}
 		updateSpecialModeBackCallback();
+		// Fullscreen hides the whole editor (and everything else) from
+		// view regardless of the code editor's own visibility flag, so
+		// it counts as "not editing" for "Run when not editing" too -
+		// otherwise a shader left paused because the editor happened to
+		// be toggled visible underneath would stay frozen the whole time
+		// fullscreen is up, even though nothing editable is on screen.
+		updatePauseForEditingVisibility(editorFragment.isCodeVisible());
+		// The keyboard needs explicit handling since IME visibility isn't
+		// tied to View visibility and the editor doesn't regain focus on
+		// its own. Selection is restored explicitly too, defensively -
+		// re-focusing an EditText after it lost window focus can otherwise
+		// leave the cursor wherever the IME/focus dance last put it.
+		if (!fullscreen) {
+			if (keyboardVisibleBeforeFullscreen) {
+				keyboardVisibleBeforeFullscreen = false;
+				editorFragment.showKeyboard();
+			}
+			if (selectionStartBeforeFullscreen >= 0) {
+				editorFragment.setSelection(selectionStartBeforeFullscreen, selectionEndBeforeFullscreen);
+				selectionStartBeforeFullscreen = -1;
+				selectionEndBeforeFullscreen = -1;
+			}
+		}
+	}
+
+	private static boolean isKeyboardVisible(@NonNull View view) {
+		WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(view);
+		return insets != null && insets.isVisible(WindowInsetsCompat.Type.ime());
 	}
 
 	private void setToolbarHidden(boolean hidden) {
@@ -1195,7 +1374,17 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void togglePauseShader() {
-		boolean paused = !shaderViewManager.isPaused();
+		setShaderPaused(!shaderViewManager.isPaused());
+	}
+
+	// Explicit-target version of togglePauseShader(), so code other
+	// than the pause button itself (e.g. the "Run when not editing"
+	// mode below) can drive pause state without needing to know the
+	// current state first. No-ops if already at the target state.
+	private void setShaderPaused(boolean paused) {
+		if (shaderViewManager.isPaused() == paused) {
+			return;
+		}
 		if (paused) {
 			textAtPauseTime = editorFragment.getText();
 		}
@@ -1206,6 +1395,21 @@ public class MainActivity extends AppCompatActivity {
 					shaderManager.getEditedProjectSession(editorFragment.getText()));
 		}
 		uiManager.setPauseButtonState(paused);
+	}
+
+	// Drives the "Run when not editing" mode: pauses the shader while
+	// the code editor is visible, and unpauses it (picking up any
+	// edits) once it's hidden again. The user can still manually
+	// unpause via the pause button while the editor stays visible -
+	// this only forces pausing back on the next time visibility
+	// actually changes (or on returning from Settings), not
+	// continuously, so a manual unpause while editing sticks until then.
+	private void updatePauseForEditingVisibility(boolean codeVisible) {
+		if (ShaderEditorApp.preferences.doesPauseWhileEditing()) {
+			// Fullscreen hides the editor regardless of its own visibility
+			// flag, so it always counts as "not editing" - see setFullscreen().
+			setShaderPaused(codeVisible && !uiManager.isFullscreen());
+		}
 	}
 
 	private void restartShader() {

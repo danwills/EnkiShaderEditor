@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import enk.danwills.android.enkishadereditor.R;
@@ -47,9 +48,21 @@ public class ShaderTreeAdapter extends BaseAdapter {
 
 	private final String unnamedGroupLabel;
 
+	// Branches whose best contained match is at least this good get
+	// auto-expanded when similarity sorting turns on, so the user doesn't
+	// have to manually dig into every top-ranked group to see why it
+	// ranked there.
+	private static final double AUTO_EXPAND_THRESHOLD = 0.8;
+
 	private ShaderNameNode root = new ShaderNameNode("");
 	private List<Row> visibleRows = Collections.emptyList();
 	private long selectedShaderId = 0;
+	// When set, children at every level are ordered by the best
+	// similarity score found anywhere in their subtree (descending)
+	// instead of alphabetically, and branches containing a very good
+	// match are auto-expanded.
+	@Nullable
+	private Map<Long, Double> similarityScores;
 
 	public ShaderTreeAdapter(Context context) {
 		textColorSelected = ContextCompat.getColor(context, R.color.accent);
@@ -71,6 +84,48 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	public void setSelectedId(long id) {
 		selectedShaderId = id;
 		notifyDataSetChanged();
+	}
+
+	// Pass null to go back to plain alphabetical order. Scores are keyed
+	// by shader id, as returned by ShaderSimilarity.scoreAll(); shaders
+	// with no entry are treated as having no match.
+	public void setSimilarityScores(@Nullable Map<Long, Double> scores) {
+		similarityScores = scores;
+		expandedPaths.clear();
+		if (scores != null) {
+			autoExpandBestMatches(root, "");
+		}
+		rebuildVisibleRows();
+		notifyDataSetChanged();
+	}
+
+	private void autoExpandBestMatches(@NonNull ShaderNameNode node, @NonNull String path) {
+		for (ShaderNameNode child : node.children.values()) {
+			String childPath = path.isEmpty() ? child.token : path + "/" + child.token;
+			if (!child.children.isEmpty()) {
+				if (bestScore(child) >= AUTO_EXPAND_THRESHOLD) {
+					expandedPaths.add(childPath);
+				}
+				autoExpandBestMatches(child, childPath);
+			}
+		}
+	}
+
+	// The best similarity score found anywhere in this node's subtree
+	// (including the node itself, if it's a leaf), or -1 if none of its
+	// descendants have a score at all.
+	private double bestScore(@NonNull ShaderNameNode node) {
+		double best = -1;
+		if (node.shader != null && similarityScores != null) {
+			Double score = similarityScores.get(node.shader.id());
+			if (score != null) {
+				best = score;
+			}
+		}
+		for (ShaderNameNode child : node.children.values()) {
+			best = Math.max(best, bestScore(child));
+		}
+		return best;
 	}
 
 	@NonNull
@@ -172,7 +227,11 @@ public class ShaderTreeAdapter extends BaseAdapter {
 
 	private void flatten(@NonNull ShaderNameNode node, int depth, @NonNull String path,
 			@NonNull List<Row> out) {
-		for (ShaderNameNode child : node.children.values()) {
+		List<ShaderNameNode> children = new ArrayList<>(node.children.values());
+		if (similarityScores != null) {
+			children.sort((a, b) -> Double.compare(bestScore(b), bestScore(a)));
+		}
+		for (ShaderNameNode child : children) {
 			String childPath = path.isEmpty() ? child.token : path + "/" + child.token;
 			boolean hasChildren = !child.children.isEmpty();
 			out.add(new Row(child, depth, childPath, hasChildren));

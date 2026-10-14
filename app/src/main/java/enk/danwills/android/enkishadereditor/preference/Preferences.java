@@ -55,6 +55,7 @@ public class Preferences {
 	private static final int RUN_MANUALLY = 2;
 	private static final int RUN_MANUALLY_EXTRA = 3;
 	private static final int RUN_MANUALLY_EXTRA_NEW = 4;
+	private static final int RUN_PAUSE_WHILE_EDITING = 5;
 	private static final Map<String, Integer> fontNameToResId = new HashMap<>();
 
 	static {
@@ -273,6 +274,10 @@ public class Preferences {
 
 	public boolean doesRunInNewTask() {
 		return runMode == RUN_MANUALLY_EXTRA_NEW;
+	}
+
+	public boolean doesPauseWhileEditing() {
+		return runMode == RUN_PAUSE_WHILE_EDITING;
 	}
 
 	public int getUpdateDelay() {

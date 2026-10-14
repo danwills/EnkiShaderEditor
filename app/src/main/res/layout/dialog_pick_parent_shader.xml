@@ -14,6 +14,11 @@
 		android:hint="@string/pick_parent_shader"
 		android:inputType="text"
 		android:importantForAutofill="no"/>
+	<CheckBox
+		android:id="@+id/sort_by_similarity"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:text="@string/sort_by_similarity"/>
 	<ListView
 		android:id="@+id/parent_list"
 		android:layout_width="match_parent"

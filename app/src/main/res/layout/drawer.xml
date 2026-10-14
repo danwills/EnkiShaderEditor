@@ -57,6 +57,34 @@
 				app:iconSize="20dp" />
 		</LinearLayout>
 
+		<LinearLayout
+			android:id="@+id/shader_filter_row"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="horizontal"
+			android:gravity="center_vertical"
+			android:paddingStart="4dp"
+			android:paddingEnd="8dp">
+
+			<CheckBox
+				android:id="@+id/filter_shaders_enabled"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:contentDescription="@string/filter_shaders"/>
+
+			<EditText
+				android:id="@+id/filter_shaders_query"
+				style="@android:style/Widget.EditText"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:hint="@string/filter_shaders"
+				android:inputType="text"
+				android:maxLines="1"
+				android:importantForAutofill="no"
+				android:enabled="false"/>
+		</LinearLayout>
+
 		<ListView
 			android:id="@+id/shaders"
 			android:choiceMode="singleChoice"

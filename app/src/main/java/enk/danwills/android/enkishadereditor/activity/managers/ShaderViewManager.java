@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.activity.managers;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.media.projection.MediaProjection;
 import android.opengl.GLSurfaceView;
@@ -7,6 +8,7 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -17,6 +19,7 @@ import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
+import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
 
 public class ShaderViewManager {
@@ -28,14 +31,26 @@ public class ShaderViewManager {
 		void onQualityChanged(float quality);
 
 		void onRequestAudioCapture();
+
+		// Fired as the fullscreen-exit gesture arms/disarms (3+ fingers
+		// down, then back to exactly 1 held) and when it actually
+		// triggers (that last finger released while armed). See
+		// FullscreenExitGestureDetector.
+		void onFullscreenExitArmedChanged(boolean armed);
+
+		void onFullscreenExitGesture();
 	}
 
+	@NonNull
+	private final Activity activity;
 	@NonNull
 	private final ShaderView shaderView;
 	@NonNull
 	private final Spinner qualitySpinner;
 	@NonNull
 	private final Listener listener;
+	@NonNull
+	private final FullscreenExitGestureDetector fullscreenExitGestureDetector;
 	@NonNull
 	private float[] qualityValues;
 	private float quality = 1f;
@@ -46,12 +61,31 @@ public class ShaderViewManager {
 			@NonNull ShaderView shaderView,
 			@NonNull Spinner qualitySpinner,
 			@NonNull Listener listener) {
+		this.activity = activity;
 		this.shaderView = shaderView;
 		this.qualitySpinner = qualitySpinner;
 		this.listener = listener;
+		this.fullscreenExitGestureDetector = new FullscreenExitGestureDetector(
+				new FullscreenExitGestureDetector.Listener() {
+					@Override
+					public void onArmedChanged(boolean armed) {
+						listener.onFullscreenExitArmedChanged(armed);
+					}
+
+					@Override
+					public void onExitTriggered() {
+						listener.onFullscreenExitGesture();
+					}
+				});
 
 		initQualitySpinner(activity);
 		initShaderView();
+	}
+
+	// Only meaningful while in fullscreen, where there's no toolbar back
+	// button to tap - see FullscreenExitGestureDetector.
+	public void setFullscreenExitGestureEnabled(boolean enabled) {
+		fullscreenExitGestureDetector.setEnabled(enabled);
 	}
 
 	// Called from MainActivity.onDestroy(). Not queued onto the GL
@@ -162,6 +196,10 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().wasLastCompileSuccessful();
 	}
 
+	public long getLastProgramBinaryBytes() {
+		return shaderView.getRenderer().getLastProgramBinaryBytes();
+	}
+
 	public int getLastFps() {
 		return shaderView.getRenderer().getLastFps();
 	}
@@ -180,6 +218,28 @@ public class ShaderViewManager {
 		shaderView.queueEvent(() -> shaderView.getRenderer().refreshAudioCaptureSource());
 	}
 
+	// Forces a fresh MediaProjection consent prompt even if an existing
+	// grant is still technically held, for a quick manual recovery when
+	// system audio capture has silently died (e.g. the system revoked
+	// the projection) - refreshAudioCaptureSource() alone wouldn't
+	// re-prompt in that case, since it only asks again when the held
+	// MediaProjection reference is null. First checks whether capture is
+	// demonstrably still working (see ShaderRenderer.isReceivingAudio())
+	// and skips the whole disruptive dance if so.
+	public void reacquireSystemAudio() {
+		shaderView.queueEvent(() -> {
+			ShaderRenderer renderer = shaderView.getRenderer();
+			if (renderer.isReceivingAudio()) {
+				activity.runOnUiThread(() -> Toast.makeText(activity,
+						R.string.audio_capture_already_working, Toast.LENGTH_SHORT).show());
+				return;
+			}
+			renderer.releaseMediaProjection();
+			renderer.resetAudioCaptureConsent();
+			renderer.refreshAudioCaptureSource();
+		});
+	}
+
 	public void setCropBorderPixel(boolean cropBorderPixel) {
 		shaderView.queueEvent(() ->
 				shaderView.getRenderer().setCropBorderPixel(cropBorderPixel));
@@ -195,7 +255,12 @@ public class ShaderViewManager {
 		}
 	}
 
+	@SuppressLint("ClickableViewAccessibility")
 	private void initShaderView() {
+		// Always returns false from the listener, so this never affects
+		// ShaderView.onTouchEvent()'s own handling (e.g. touch-reactive
+		// shader uniforms) - it only observes events alongside it.
+		shaderView.setOnTouchListener((v, event) -> fullscreenExitGestureDetector.onTouch(event));
 		shaderView.getRenderer().setOnRendererListener(new ShaderRenderer.OnRendererListener() {
 			@Override
 			public void onFramesPerSecond(int fps) {

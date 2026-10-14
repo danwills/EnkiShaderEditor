@@ -77,6 +77,28 @@ public final class ShaderSimilarity {
 		return sorted;
 	}
 
+	// Like findSimilar(), but returns every candidate's raw score keyed
+	// by id, unfiltered by any threshold - for ranking uses (e.g. sorting
+	// a picker by best match) rather than "is this a match at all".
+	@NonNull
+	public Map<Long, Double> scoreAll(long referenceId, @NonNull List<ShaderInfo> candidates) {
+		Map<Long, Double> scores = new HashMap<>();
+		Set<String> reference = tokensByShaderId.get(referenceId);
+		if (reference == null || reference.isEmpty()) {
+			return scores;
+		}
+		for (ShaderInfo candidate : candidates) {
+			if (candidate.id() == referenceId) {
+				continue;
+			}
+			Set<String> tokens = tokensByShaderId.get(candidate.id());
+			if (tokens != null && !tokens.isEmpty()) {
+				scores.put(candidate.id(), jaccard(reference, tokens));
+			}
+		}
+		return scores;
+	}
+
 	private static double jaccard(@NonNull Set<String> a, @NonNull Set<String> b) {
 		Set<String> smaller = a.size() <= b.size() ? a : b;
 		Set<String> larger = a.size() <= b.size() ? b : a;

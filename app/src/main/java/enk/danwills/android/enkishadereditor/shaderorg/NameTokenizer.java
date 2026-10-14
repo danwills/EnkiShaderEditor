@@ -7,13 +7,18 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 // Splits a camelCase/PascalCase shader name into its sub-tokens, e.g.
-// "ExampleTastyC" -> ["Example", "Tasty", "C"].
+// "ExampleTastyC" -> ["Example", "Tasty", "C"]. Runs of capitals-or-numerals
+// are kept as a single token - e.g. "thingABCFancy" -> ["thing", "ABC",
+// "Fancy"], "scene3DView" -> ["scene", "3D", "View"] - except the run's
+// last character splits off onto the next token when a lowercase letter
+// immediately follows it, since that's almost always the start of a new
+// word rather than part of an acronym/number. Whitespace also splits
+// tokens and is elided entirely rather than kept as its own token.
 public final class NameTokenizer {
 	private static final Pattern CAMEL_BOUNDARY = Pattern.compile(
-			"(?<=[a-z0-9])(?=[A-Z])" +
-					"|(?<=[A-Z])(?=[A-Z][a-z])" +
-					"|(?<=[A-Za-z])(?=[0-9])" +
-					"|(?<=[0-9])(?=[A-Za-z])");
+			"\\s+" +
+					"|(?<=[a-z])(?=[A-Z0-9])" +
+					"|(?<=[A-Z0-9])(?=[A-Z0-9][a-z])");
 
 	private NameTokenizer() {
 	}

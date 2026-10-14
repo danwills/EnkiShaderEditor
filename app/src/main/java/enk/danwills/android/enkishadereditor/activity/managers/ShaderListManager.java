@@ -4,8 +4,11 @@ import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
@@ -48,6 +51,12 @@ public class ShaderListManager {
 
 		void onAddShaderToNameGroup();
 
+		// Like onAddShaderToNameGroup(), but for a specific shader rather
+		// than whichever one is currently open - triggered from the
+		// long-press rename dialog's "Reparent" button, which may target
+		// a shader other than the selected one.
+		void onReparentShader(long id);
+
 		void onConfigureSimilarShaders();
 
 		void onFindShader();
@@ -77,6 +86,9 @@ public class ShaderListManager {
 	private long selectedShaderId = 0;
 	private long similarityReferenceId = 0;
 	private double similarityThreshold = ShaderSimilarity.DEFAULT_THRESHOLD;
+	private boolean textFilterEnabled = false;
+	@NonNull
+	private String textFilterQuery = "";
 
 	// Use an ExecutorService for background tasks and a Handler for the main thread.
 	private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -155,6 +167,33 @@ public class ShaderListManager {
 		Button findShaderButton = activity.findViewById(R.id.find_shader);
 		if (findShaderButton != null) {
 			findShaderButton.setOnClickListener(v -> listener.onFindShader());
+		}
+
+		CheckBox filterEnabledBox = activity.findViewById(R.id.filter_shaders_enabled);
+		EditText filterQueryView = activity.findViewById(R.id.filter_shaders_query);
+		if (filterEnabledBox != null && filterQueryView != null) {
+			filterEnabledBox.setOnCheckedChangeListener((box, checked) -> {
+				textFilterEnabled = checked;
+				filterQueryView.setEnabled(checked);
+				refreshDisplayedAdapters();
+			});
+			filterQueryView.addTextChangedListener(new TextWatcher() {
+				@Override
+				public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+				}
+
+				@Override
+				public void onTextChanged(CharSequence s, int start, int before, int count) {
+					textFilterQuery = s.toString().trim().toLowerCase(Locale.ROOT);
+					if (textFilterEnabled) {
+						refreshDisplayedAdapters();
+					}
+				}
+
+				@Override
+				public void afterTextChanged(Editable s) {
+				}
+			});
 		}
 	}
 
@@ -257,6 +296,16 @@ public class ShaderListManager {
 			if (data.isEmpty() && !lastLoadedShaders.isEmpty()) {
 				Toast.makeText(activity, R.string.no_similar_shaders, Toast.LENGTH_SHORT).show();
 			}
+		}
+		if (textFilterEnabled && !textFilterQuery.isEmpty()) {
+			List<ShaderInfo> filtered = new ArrayList<>();
+			for (ShaderInfo shader : data) {
+				String title = shader.getTitle();
+				if (title != null && title.toLowerCase(Locale.ROOT).contains(textFilterQuery)) {
+					filtered.add(shader);
+				}
+			}
+			data = filtered;
 		}
 		shaderAdapter.setData(data);
 		shaderTreeAdapter.setData(data);
@@ -414,9 +463,33 @@ public class ShaderListManager {
 				.setView(view)
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String newName = nameView.getText().toString();
-					renameShader(id, newName);
 					SoftKeyboard.hide(activity, nameView);
+					renameWithPrefixCheck(id, newName);
 				})
+				.setNeutralButton(R.string.reparent_shader, (dialog, which) -> {
+					SoftKeyboard.hide(activity, nameView);
+					listener.onReparentShader(id);
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	// NameTokenizer/the tree view assume PascalCase, so a name that
+	// doesn't start with a capital letter (including starting with a
+	// digit) won't group the way the user probably expects - catch that
+	// here rather than silently accepting it.
+	private void renameWithPrefixCheck(long id, @NonNull String newName) {
+		if (newName.isEmpty() || Character.isUpperCase(newName.charAt(0))) {
+			renameShader(id, newName);
+			return;
+		}
+		new MaterialAlertDialogBuilder(activity)
+				.setMessage(activity.getString(R.string.name_prefix_warning, newName))
+				.setPositiveButton(R.string.capitalize_name, (dialog, which) ->
+						renameShader(id, Character.toUpperCase(newName.charAt(0)) +
+								newName.substring(1)))
+				.setNeutralButton(R.string.add_underscore_prefix, (dialog, which) ->
+						renameShader(id, "_" + newName))
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
 	}

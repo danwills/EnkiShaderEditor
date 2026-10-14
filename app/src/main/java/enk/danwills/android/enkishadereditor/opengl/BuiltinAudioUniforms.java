@@ -138,6 +138,14 @@ final class BuiltinAudioUniforms {
 		}
 	}
 
+	// See AudioSpectrumListener.isReceivingAudio() - lets a manual
+	// "reacquire" action skip the teardown/re-prompt dance when capture
+	// is demonstrably still working.
+	boolean isReceivingAudio() {
+		var listener = audioSpectrumListener;
+		return listener != null && listener.isReceivingAudio();
+	}
+
 	private void openListenerIfNeeded() {
 		if (spectrumTextureBinding == null || audioSpectrumListener != null) {
 			return;

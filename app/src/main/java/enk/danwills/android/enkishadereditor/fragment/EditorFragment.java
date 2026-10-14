@@ -176,6 +176,29 @@ public class EditorFragment extends Fragment {
 		return visible;
 	}
 
+	// Re-focuses the editor and reopens the keyboard, e.g. after
+	// exiting fullscreen if it was showing beforehand.
+	public void showKeyboard() {
+		SoftKeyboard.show(getActivity(), shaderEditor);
+	}
+
+	public int getSelectionStart() {
+		return shaderEditor.getSelectionStart();
+	}
+
+	public int getSelectionEnd() {
+		return shaderEditor.getSelectionEnd();
+	}
+
+	// Clamped to the current text length since this may be called after
+	// restoring selection captured against a since-recompiled/edited shader.
+	public void setSelection(int start, int end) {
+		int length = shaderEditor.length();
+		start = Math.max(0, Math.min(start, length));
+		end = Math.max(0, Math.min(end, length));
+		shaderEditor.setSelection(start, end);
+	}
+
 	private void updateToPreferences() {
 		Preferences preferences = ShaderEditorApp.preferences;
 		shaderEditor.setUpdateDelay(preferences.getUpdateDelay());
