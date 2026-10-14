@@ -59,6 +59,14 @@
 			app:icon="@drawable/ic_content_paste" />
 
 		<Button
+			android:id="@+id/paste_over_shader"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/paste_over_shader"
+			app:icon="@drawable/ic_content_paste" />
+
+		<Button
 			android:id="@+id/save_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
@@ -109,12 +117,13 @@
 			app:icon="@drawable/ic_content_copy" />
 
 		<Button
-			android:id="@+id/pause_shader"
+			android:id="@+id/copy_defines"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/pause_shader"
-			app:icon="@drawable/ic_pause" />
+			android:gravity="center|start"
+			android:text="@string/copy_defines"
+			app:icon="@drawable/ic_content_copy" />
 
 		<com.google.android.material.divider.MaterialDivider
 			android:layout_width="match_parent"

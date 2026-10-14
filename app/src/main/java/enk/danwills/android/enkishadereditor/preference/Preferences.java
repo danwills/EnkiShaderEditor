@@ -25,6 +25,8 @@ public class Preferences {
 	public static final String SENSOR_DELAY = "sensor_delay";
 	public static final String USE_MICROPHONE_AUDIO = "use_microphone_audio";
 	public static final String USE_SYSTEM_AUDIO = "use_system_audio";
+	public static final String AUDIO_SPECTRUM_SHADERTOY_COMPATIBLE =
+			"audio_spectrum_shadertoy_compatible";
 	public static final String TEXT_SIZE = "text_size";
 	public static final String FONT = "font";
 	public static final String USE_LIGATURES = "use_ligatures";
@@ -72,6 +74,7 @@ public class Preferences {
 	private int sensorDelay = SensorManager.SENSOR_DELAY_NORMAL;
 	private boolean useMicrophoneAudio = true;
 	private boolean useSystemAudio = false;
+	private boolean audioSpectrumShaderToyCompatible = false;
 	private int textSize = 12;
 	private @NonNull Typeface font = Typeface.MONOSPACE;
 	private boolean useLigatures = false;
@@ -141,6 +144,9 @@ public class Preferences {
 		useSystemAudio = preferences.getBoolean(
 				USE_SYSTEM_AUDIO,
 				useSystemAudio);
+		audioSpectrumShaderToyCompatible = preferences.getBoolean(
+				AUDIO_SPECTRUM_SHADERTOY_COMPATIBLE,
+				audioSpectrumShaderToyCompatible);
 		textSize = parseInt(
 				preferences.getString(TEXT_SIZE, null),
 				textSize);
@@ -283,6 +289,10 @@ public class Preferences {
 
 	public boolean useSystemAudio() {
 		return useSystemAudio;
+	}
+
+	public boolean audioSpectrumShaderToyCompatible() {
+		return audioSpectrumShaderToyCompatible;
 	}
 
 	public int getTextSize() {

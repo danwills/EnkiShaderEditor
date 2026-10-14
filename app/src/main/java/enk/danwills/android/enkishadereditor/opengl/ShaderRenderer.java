@@ -131,9 +131,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	// Restarts every time-based uniform (`time`, `runtime`, `frame`,
-	// `startRandom`), not just `runtime` - see BuiltinUniforms.restart().
+	// `startRandom`), not just `runtime` - see BuiltinUniforms.restart() -
+	// and clears the backbuffer ping-pong targets to black, so a
+	// feedback shader's accumulated image is discarded too.
 	public void restartTime() {
 		builtinUniforms.restart(System.nanoTime());
+		renderPipeline.clearTargets();
 	}
 
 	public void pauseClock() {
@@ -190,6 +193,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (builtinUniforms.consumeNeedsAudioCaptureConsent() && onRendererListener != null) {
 			onRendererListener.onRequestAudioCapture();
 		}
+	}
+
+	// See BuiltinAudioUniforms.releaseMediaProjection().
+	public void releaseMediaProjection() {
+		builtinUniforms.releaseMediaProjection();
 	}
 
 	public void setCropBorderPixel(boolean cropBorderPixel) {

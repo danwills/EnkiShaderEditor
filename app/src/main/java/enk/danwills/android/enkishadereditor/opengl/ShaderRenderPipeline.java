@@ -91,6 +91,20 @@ final class ShaderRenderPipeline {
 		return framebuffers[0] != null && targetTextures[0] != null;
 	}
 
+	// Clears both ping-pong render targets to black, so a "restart"
+	// action can discard whatever a feedback shader had accumulated
+	// into the backbuffer, not just reset the time-based uniforms.
+	void clearTargets() {
+		for (GlFramebuffer framebuffer : framebuffers) {
+			if (framebuffer == null) {
+				continue;
+			}
+			device.bindFramebuffer(framebuffer);
+			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+		}
+		device.bindFramebuffer(null);
+	}
+
 	@NonNull
 	List<ShaderError> ensureTargets(
 			@NonNull Context context,

@@ -133,6 +133,12 @@
 			android:summary="@string/use_system_audio_summary"
 			android:checked="false"
 			android:defaultValue="false"/>
+		<androidx.preference.SwitchPreferenceCompat
+			android:key="audio_spectrum_shadertoy_compatible"
+			android:title="@string/audio_spectrum_shadertoy_compatible"
+			android:summary="@string/audio_spectrum_shadertoy_compatible_summary"
+			android:checked="false"
+			android:defaultValue="false"/>
 	</PreferenceCategory>
 	<PreferenceCategory
 			android:key="import_export"

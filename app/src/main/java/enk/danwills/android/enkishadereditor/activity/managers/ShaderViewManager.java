@@ -54,6 +54,17 @@ public class ShaderViewManager {
 		initShaderView();
 	}
 
+	// Called from MainActivity.onDestroy(). Not queued onto the GL
+	// thread like the other MediaProjection-related calls above: by the
+	// time the Activity is actually being destroyed, the GL thread has
+	// already been stopped by the preceding onPause() in the normal
+	// case, and if a crash skipped that, this needs to run regardless
+	// of whether the GL thread ever wakes up again - see
+	// BuiltinAudioUniforms.releaseMediaProjection().
+	public void destroy() {
+		shaderView.getRenderer().releaseMediaProjection();
+	}
+
 	public void onPause() {
 		if (shaderView.getVisibility() == View.VISIBLE) {
 			// If we're already manually paused, the GL thread is only idling

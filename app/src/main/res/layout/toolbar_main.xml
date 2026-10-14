@@ -108,20 +108,10 @@
 			android:layout_weight="1" />
 
 		<Button
-			android:id="@+id/undo_nav"
-			style="@style/IconButton"
-			android:layout_width="48dp"
-			android:layout_height="48dp"
-			android:contentDescription="@string/undo"
-			app:icon="@drawable/ic_undo"
-			app:iconSize="24dp" />
-
-		<Button
 			android:id="@+id/restart_shader_nav"
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginStart="4dp"
 			android:contentDescription="@string/restart_shader"
 			app:icon="@drawable/ic_restart"
 			app:iconSize="24dp" />
@@ -132,7 +122,6 @@
 			android:layout_width="48dp"
 			android:layout_height="48dp"
 			android:layout_marginStart="4dp"
-			android:layout_marginEnd="4dp"
 			android:contentDescription="@string/pause_shader"
 			app:icon="@drawable/ic_pause"
 			app:iconSize="24dp" />
@@ -142,8 +131,19 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
 			android:contentDescription="@string/fullscreen"
 			app:icon="@drawable/ic_fullscreen"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/undo_nav"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="4dp"
+			android:contentDescription="@string/undo"
+			app:icon="@drawable/ic_undo"
 			app:iconSize="24dp" />
 	</LinearLayout>
 </LinearLayout>

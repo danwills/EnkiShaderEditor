@@ -14,8 +14,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-import com.google.android.material.button.MaterialButton;
-
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 
@@ -39,6 +37,8 @@ public class MainMenuManager {
 
 		void onPasteAsNewShader();
 
+		void onPasteOverShader();
+
 		void onSaveShader();
 
 		void onDuplicateShader();
@@ -49,13 +49,11 @@ public class MainMenuManager {
 
 		void onCopyShader();
 
+		void onCopyDefines();
+
 		void onUpdateWallpaper();
 
 		void onToggleExtraKeys();
-
-		void onTogglePauseShader();
-
-		boolean isShaderPaused();
 
 		long getSelectedShaderId();
 	}
@@ -117,15 +115,13 @@ public class MainMenuManager {
 		}, false);
 		setClickListener(R.id.add_shader, shaderActions::onAddShader);
 		setClickListener(R.id.paste_as_new_shader, shaderActions::onPasteAsNewShader);
+		setClickListener(R.id.paste_over_shader, shaderActions::onPasteOverShader);
 		setClickListener(R.id.save_shader, shaderActions::onSaveShader);
 		setClickListener(R.id.duplicate_shader, shaderActions::onDuplicateShader);
 		setClickListener(R.id.delete_shader, shaderActions::onDeleteShader);
 		setClickListener(R.id.share_shader, shaderActions::onShareShader);
 		setClickListener(R.id.copy_shader, shaderActions::onCopyShader);
-		setClickListener(R.id.pause_shader, () -> {
-			shaderActions.onTogglePauseShader();
-			updatePauseShaderButton(popupWindow.getContentView());
-		}, false);
+		setClickListener(R.id.copy_defines, shaderActions::onCopyDefines);
 		setClickListener(R.id.settings, navigationActions::onShowSettings);
 		setClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
@@ -191,7 +187,6 @@ public class MainMenuManager {
 	private void prepareMenu() {
 		View menuView = popupWindow.getContentView();
 		updateUndoRedoMenu(menuView);
-		updatePauseShaderButton(menuView);
 	}
 
 	private void prepareMoreOptionsMenu() {
@@ -204,13 +199,6 @@ public class MainMenuManager {
 
 		updateExtraKeysToggle(menuView.findViewById(R.id.show_extra_keys_box),
 				ShaderEditorApp.preferences.showExtraKeys());
-	}
-
-	private void updatePauseShaderButton(@NonNull View menuView) {
-		MaterialButton button = menuView.findViewById(R.id.pause_shader);
-		boolean paused = shaderActions.isShaderPaused();
-		button.setText(paused ? R.string.resume_shader : R.string.pause_shader);
-		button.setIconResource(paused ? R.drawable.ic_play_arrow : R.drawable.ic_pause);
 	}
 
 	public void updateExtraKeysToggle(@NonNull CompoundButton extraKeysToggle,

@@ -14,9 +14,7 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -44,10 +42,13 @@ import com.google.android.material.snackbar.Snackbar;
 
 import org.jetbrains.annotations.Contract;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.activity.managers.ExtraKeysManager;
@@ -64,6 +65,7 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
@@ -78,6 +80,60 @@ public class MainActivity extends AppCompatActivity {
 			// Shader Editor disabled this shader because it caused a crash while loading.
 			// Fix the shader and remove the #if 0 wrapper to re-enable it.
 			""";
+	// Every builtin uniform a shader could declare, for the "Shader
+	// stats" dialog to report which ones this particular shader
+	// actually uses. Deliberately excludes ShaderRenderer.UNIFORM_POSITION,
+	// which names a vertex attribute, not a fragment uniform.
+	private static final String[] BUILTIN_UNIFORM_NAMES = {
+			ShaderRenderer.UNIFORM_TIME,
+			ShaderRenderer.UNIFORM_RUNTIME,
+			ShaderRenderer.UNIFORM_RESOLUTION,
+			ShaderRenderer.UNIFORM_MOUSE,
+			ShaderRenderer.UNIFORM_TOUCH,
+			ShaderRenderer.UNIFORM_TOUCH_START,
+			ShaderRenderer.UNIFORM_POINTERS,
+			ShaderRenderer.UNIFORM_POINTER_COUNT,
+			ShaderRenderer.UNIFORM_OFFSET,
+			ShaderRenderer.UNIFORM_FRAME_NUMBER,
+			ShaderRenderer.UNIFORM_FTIME,
+			ShaderRenderer.UNIFORM_SECOND,
+			ShaderRenderer.UNIFORM_SUB_SECOND,
+			ShaderRenderer.UNIFORM_START_RANDOM,
+			ShaderRenderer.UNIFORM_BACKBUFFER,
+			ShaderRenderer.UNIFORM_AUDIO_SPECTRUM,
+			ShaderRenderer.UNIFORM_MEDIA_VOLUME,
+			ShaderRenderer.UNIFORM_MIC_AMPLITUDE,
+			ShaderRenderer.UNIFORM_CAMERA_FRONT,
+			ShaderRenderer.UNIFORM_CAMERA_BACK,
+			ShaderRenderer.UNIFORM_CAMERA_ADDENT,
+			ShaderRenderer.UNIFORM_CAMERA_ORIENTATION,
+			ShaderRenderer.UNIFORM_BATTERY,
+			ShaderRenderer.UNIFORM_POWER_CONNECTED,
+			ShaderRenderer.UNIFORM_DATE,
+			ShaderRenderer.UNIFORM_DAYTIME,
+			ShaderRenderer.UNIFORM_NIGHT_MODE,
+			ShaderRenderer.UNIFORM_NOTIFICATION_COUNT,
+			ShaderRenderer.UNIFORM_LAST_NOTIFICATION_TIME,
+			ShaderRenderer.UNIFORM_ORIENTATION,
+			ShaderRenderer.UNIFORM_GRAVITY,
+			ShaderRenderer.UNIFORM_LINEAR,
+			ShaderRenderer.UNIFORM_MAGNETIC,
+			ShaderRenderer.UNIFORM_GYROSCOPE,
+			ShaderRenderer.UNIFORM_ROTATION_VECTOR,
+			ShaderRenderer.UNIFORM_ROTATION_MATRIX,
+			ShaderRenderer.UNIFORM_INCLINATION,
+			ShaderRenderer.UNIFORM_INCLINATION_MATRIX,
+			ShaderRenderer.UNIFORM_PRESSURE,
+			ShaderRenderer.UNIFORM_PROXIMITY,
+			ShaderRenderer.UNIFORM_LIGHT,
+	};
+	// Sampler-typed builtin uniforms, excluded when counting a shader's
+	// *custom* texture declarations in the stats dialog.
+	private static final Set<String> BUILTIN_SAMPLER_NAMES = Set.of(
+			ShaderRenderer.UNIFORM_AUDIO_SPECTRUM,
+			ShaderRenderer.UNIFORM_BACKBUFFER,
+			ShaderRenderer.UNIFORM_CAMERA_FRONT,
+			ShaderRenderer.UNIFORM_CAMERA_BACK);
 
 	private EditorFragment editorFragment;
 	private UIManager uiManager;
@@ -245,6 +301,9 @@ public class MainActivity extends AppCompatActivity {
 		if (shaderListManager != null) {
 			shaderListManager.destroy();
 		}
+		if (shaderViewManager != null) {
+			shaderViewManager.destroy();
+		}
 		if (audioPreferenceListener != null) {
 			ShaderEditorApp.preferences.getSharedPreferences()
 					.unregisterOnSharedPreferenceChangeListener(audioPreferenceListener);
@@ -376,41 +435,12 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			private void showError(String error) {
-				Snackbar snackbar = Snackbar.make(mainCoordinator,
+				Snackbar.make(mainCoordinator,
 								error,
 								Snackbar.LENGTH_LONG)
 						.setAction(R.string.details,
-								v -> editorFragment.showErrors());
-				moveSnackBarOverActionBar(snackbar.getView());
-				snackbar.show();
-			}
-
-			private void moveSnackBarOverActionBar(View snackbarView) {
-				if (snackbarView == null) {
-					return;
-				}
-
-				ViewGroup.LayoutParams layoutParams =
-						snackbarView.getLayoutParams();
-				if (!(layoutParams instanceof
-						CoordinatorLayout.LayoutParams params)) {
-					return;
-				}
-
-				params.gravity = Gravity.TOP;
-
-				int topInset = 0;
-				WindowInsetsCompat rootInsets =
-						ViewCompat.getRootWindowInsets(mainCoordinator);
-				if (rootInsets != null) {
-					topInset = rootInsets.getInsets(
-							WindowInsetsCompat.Type.systemBars()).top;
-				}
-				if (topInset == 0 && toolbar != null) {
-					topInset = toolbar.getPaddingTop();
-				}
-				params.topMargin = topInset;
-				snackbarView.setLayoutParams(params);
+								v -> editorFragment.showErrors())
+						.show();
 			}
 		};
 	}
@@ -473,6 +503,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onPasteOverShader() {
+				pasteOverCurrentShader();
+			}
+
+			@Override
 			public void onSaveShader() {
 				shaderManager.saveShader(true);
 			}
@@ -515,6 +550,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onCopyDefines() {
+				copyDefinesToClipboard();
+			}
+
+			@Override
 			public void onUpdateWallpaper() {
 				updateWallpaper();
 			}
@@ -522,16 +562,6 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onToggleExtraKeys() {
 				extraKeysManager.setVisible(ShaderEditorApp.preferences.toggleShowExtraKeys());
-			}
-
-			@Override
-			public void onTogglePauseShader() {
-				togglePauseShader();
-			}
-
-			@Override
-			public boolean isShaderPaused() {
-				return shaderViewManager.isPaused();
 			}
 
 			@Override
@@ -623,6 +653,29 @@ public class MainActivity extends AppCompatActivity {
 		showQualityPickerDialog(text.toString());
 	}
 
+	private void pasteOverCurrentShader() {
+		ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+		ClipData clip = clipboard != null ? clipboard.getPrimaryClip() : null;
+		CharSequence text = clip != null && clip.getItemCount() > 0
+				? clip.getItemAt(0).coerceToText(this)
+				: null;
+		if (text == null || text.toString().isBlank()) {
+			Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		String pastedSource = text.toString();
+		new MaterialAlertDialogBuilder(this)
+				.setIcon(R.drawable.ic_warning)
+				.setTitle(R.string.paste_over_warning_title)
+				.setMessage(R.string.sure_paste_over_shader)
+				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+					editorFragment.setText(pastedSource);
+					shaderManager.saveShader(true);
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
 	private void showQualityPickerDialog(@NonNull String shaderSource) {
 		String[] qualityNames = getResources().getStringArray(R.array.quality_names);
 		String[] qualityValues = getResources().getStringArray(R.array.quality_values);
@@ -643,7 +696,7 @@ public class MainActivity extends AppCompatActivity {
 					long newId = dataSource.shader.insertShader(
 							shaderSource, null, null, quality);
 					shaderManager.selectShader(newId);
-					shaderListManager.loadShadersAsync();
+					shaderManager.saveShader(true);
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
@@ -732,6 +785,32 @@ public class MainActivity extends AppCompatActivity {
 		}
 		clipboard.setPrimaryClip(ClipData.newPlainText(
 				getString(R.string.app_name), editorFragment.getText()));
+	}
+
+	private void copyDefinesToClipboard() {
+		List<String> defines = findDefineLines(editorFragment.getText());
+		if (defines.isEmpty()) {
+			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+		if (clipboard == null) {
+			return;
+		}
+		clipboard.setPrimaryClip(ClipData.newPlainText(
+				getString(R.string.app_name), String.join("\n", defines)));
+	}
+
+	@NonNull
+	private static List<String> findDefineLines(@NonNull String text) {
+		List<String> defines = new ArrayList<>();
+		for (String line : text.split("\n", -1)) {
+			String trimmed = line.strip();
+			if (trimmed.startsWith("#define")) {
+				defines.add(trimmed);
+			}
+		}
+		return defines;
 	}
 
 	private void showFindInShaderDialog() {
@@ -909,14 +988,28 @@ public class MainActivity extends AppCompatActivity {
 		String text = editorFragment.getText();
 		int lineCount = text.isEmpty() ? 1 : text.split("\n", -1).length;
 		int charCount = text.length();
+		int byteCount = text.getBytes(StandardCharsets.UTF_8).length;
 
 		StringBuilder message = new StringBuilder(
 				getString(R.string.stats_lines_chars, lineCount, charCount));
+		message.append('\n').append(getString(R.string.stats_size_bytes, byteCount));
+		message.append('\n').append(getString(
+				R.string.stats_define_count, findDefineLines(text).size()));
+		message.append('\n').append(getString(
+				R.string.stats_custom_textures, countCustomTextures(text)));
+
+		String usedUniforms = findUsedBuiltinUniforms(text);
+		message.append('\n').append(usedUniforms.isEmpty()
+				? getString(R.string.stats_no_builtin_uniforms)
+				: getString(R.string.stats_builtin_uniforms, usedUniforms));
+
+		message.append('\n').append(getString(
+				R.string.stats_quality, Math.round(shaderManager.getQuality() * 100)));
 
 		long compileNanos = shaderViewManager.getLastCompileNanos();
 		message.append('\n');
 		if (compileNanos >= 0) {
-			long compileMillis = compileNanos / 1_000_000;
+			double compileMillis = compileNanos / 1_000_000.0;
 			message.append(getString(
 					shaderViewManager.wasLastCompileSuccessful()
 							? R.string.stats_compile_ms_ok
@@ -931,11 +1024,56 @@ public class MainActivity extends AppCompatActivity {
 				? getString(R.string.stats_fps, fps)
 				: getString(R.string.stats_fps_unknown));
 
+		long selectedShaderId = shaderManager.getSelectedShaderId();
+		if (selectedShaderId > 0) {
+			message.append('\n').append(getString(R.string.stats_shader_id, selectedShaderId));
+			DataRecords.Shader shader = dataSource.shader.getShader(selectedShaderId);
+			if (shader != null && shader.modified() != null) {
+				message.append('\n').append(
+						getString(R.string.stats_last_modified, shader.modified()));
+			}
+		} else {
+			message.append('\n').append(getString(R.string.stats_not_saved));
+		}
+
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.shader_stats)
 				.setMessage(message.toString())
 				.setPositiveButton(android.R.string.ok, null)
 				.show();
+	}
+
+	// Counts uniform sampler2D/samplerCube declarations that aren't one
+	// of the builtin sampler uniforms (audioSpectrum, backbuffer,
+	// cameraFront, cameraBack) - i.e. textures the shader binds itself.
+	private static int countCustomTextures(@NonNull String text) {
+		Pattern pattern = Pattern.compile("\\buniform\\s+(?:sampler2D|samplerCube)\\s+(\\w+)");
+		var matcher = pattern.matcher(text);
+		int count = 0;
+		while (matcher.find()) {
+			if (!BUILTIN_SAMPLER_NAMES.contains(matcher.group(1))) {
+				++count;
+			}
+		}
+		return count;
+	}
+
+	// Scans for `uniform <type> <name>` declarations matching any of the
+	// known builtin uniform names, in BUILTIN_UNIFORM_NAMES's order, and
+	// returns them as a comma-separated list for the stats dialog.
+	@NonNull
+	private static String findUsedBuiltinUniforms(@NonNull String text) {
+		StringBuilder result = new StringBuilder();
+		for (String name : BUILTIN_UNIFORM_NAMES) {
+			Pattern pattern = Pattern.compile("\\buniform\\s+\\w+\\s+" + Pattern.quote(name) + "\\b");
+			if (pattern.matcher(text).find()) {
+				if (!result.isEmpty()) {
+					result.append(", ");
+				}
+				result.append(name);
+			}
+		}
+		return result.toString();
 	}
 
 	private void showSimilarShadersConfigDialog() {

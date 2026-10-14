@@ -130,6 +130,10 @@ final class BuiltinUniforms {
 		audioUniforms.refreshCaptureSource();
 	}
 
+	void releaseMediaProjection() {
+		audioUniforms.releaseMediaProjection();
+	}
+
 	boolean consumeNeedsAudioCaptureConsent() {
 		return audioUniforms.consumeNeedsAudioCaptureConsent();
 	}

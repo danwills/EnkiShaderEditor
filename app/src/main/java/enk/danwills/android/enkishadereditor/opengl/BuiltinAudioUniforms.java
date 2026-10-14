@@ -120,6 +120,24 @@ final class BuiltinAudioUniforms {
 		unregisterListener();
 	}
 
+	// Called when the Activity is being destroyed for good, to fully end
+	// the MediaProjection session rather than just unregistering our
+	// listener from it. Registering a MediaProjection.Callback makes the
+	// system hold a Binder-side reference to an internal wrapper that
+	// keeps this MediaProjection (and the Activity Context it was
+	// created with) alive until either unregisterCallback() or stop()
+	// runs; unregisterListener() alone (via unregisterCallback()) covers
+	// the ordinary pause/resume case, but if the Activity is destroyed
+	// without a clean pause first (e.g. recovering from a crash),
+	// nothing else ever calls stop() and the whole chain leaks.
+	void releaseMediaProjection() {
+		unregisterListener();
+		if (mediaProjection != null) {
+			mediaProjection.stop();
+			mediaProjection = null;
+		}
+	}
+
 	private void openListenerIfNeeded() {
 		if (spectrumTextureBinding == null || audioSpectrumListener != null) {
 			return;
@@ -142,9 +160,12 @@ final class BuiltinAudioUniforms {
 			return;
 		}
 
+		boolean fullInterval = !ShaderEditorApp.preferences.audioSpectrumShaderToyCompatible();
+
 		if (wantsSystemAudio) {
 			if (mediaProjection != null) {
 				var listener = new AudioSpectrumListener();
+				listener.setFullIntervalMode(fullInterval);
 				if (listener.registerPlayback(mediaProjection)) {
 					audioSpectrumListener = listener;
 					return;
@@ -168,6 +189,7 @@ final class BuiltinAudioUniforms {
 
 		if (wantsMicrophone) {
 			var listener = new AudioSpectrumListener();
+			listener.setFullIntervalMode(fullInterval);
 			if (listener.registerMicrophone(context)) {
 				audioSpectrumListener = listener;
 			}
