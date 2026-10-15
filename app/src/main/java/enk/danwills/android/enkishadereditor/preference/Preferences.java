@@ -42,12 +42,15 @@ public class Preferences {
 	public static final String EXPORT_TO_DIRECTORY = "export_to_directory";
 	public static final String IMPORT_DATABASE = "import_database";
 	public static final String EXPORT_DATABASE = "export_database";
+	public static final String COMPILE_ALL_SHADERS = "compile_all_shaders";
 	public static final String SHOW_LINE_NUMBERS = "show_line_numbers";
 	public static final String SHOW_EXTRA_KEYS = "show_extra_keys";
 	public static final String AUTO_HIDE_EXTRA_KEYS = "auto_hide_extra_keys";
 	public static final String HIDE_NATIVE_SUGGESTIONS = "hide_native_suggestions";
 	public static final String LAST_OPENED_SHADER = "last_opened_shader";
 	public static final String PENDING_CRASH_SHADER = "pending_crash_shader";
+	public static final String ICON_SIZE = "icon_size";
+	public static final String HIDE_STATUS_BAR = "hide_status_bar";
 
 	private static final String WALLPAPER_RUNTIME = "wallpaper_runtime_";
 
@@ -56,6 +59,14 @@ public class Preferences {
 	private static final int RUN_MANUALLY_EXTRA = 3;
 	private static final int RUN_MANUALLY_EXTRA_NEW = 4;
 	private static final int RUN_PAUSE_WHILE_EDITING = 5;
+
+	// Button-size/icon-glyph-size dp pairs for each ICON_SIZE_* level -
+	// the button is always exactly double the glyph, consistent with the
+	// original 48dp button / 24dp icon ("Normal") proportions.
+	private static final int ICON_SIZE_VERY_SMALL = 1;
+	private static final int ICON_SIZE_SMALL = 2;
+	private static final int ICON_SIZE_NORMAL = 3;
+	private static final int ICON_SIZE_LARGE = 4;
 	private static final Map<String, Integer> fontNameToResId = new HashMap<>();
 
 	static {
@@ -97,6 +108,8 @@ public class Preferences {
 	private boolean hideNativeSuggestions = true;
 	private String defaultFont;
 	private long pendingCrashShaderId = 0;
+	private int iconSize = ICON_SIZE_NORMAL;
+	private boolean hideStatusBar = true;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -197,6 +210,12 @@ public class Preferences {
 		pendingCrashShaderId = preferences.getLong(
 				PENDING_CRASH_SHADER,
 				pendingCrashShaderId);
+		iconSize = parseInt(
+				preferences.getString(ICON_SIZE, null),
+				iconSize);
+		hideStatusBar = preferences.getBoolean(
+				HIDE_STATUS_BAR,
+				hideStatusBar);
 	}
 
 	public boolean autoHideExtraKeys() {
@@ -216,6 +235,23 @@ public class Preferences {
 		preferences.edit()
 				.putLong(PENDING_CRASH_SHADER, shaderId)
 				.apply();
+	}
+
+	public int getIconButtonSizeDp() {
+		return getIconGlyphSizeDp() * 2;
+	}
+
+	public boolean hideStatusBar() {
+		return hideStatusBar;
+	}
+
+	public int getIconGlyphSizeDp() {
+		return switch (iconSize) {
+			case ICON_SIZE_VERY_SMALL -> 16;
+			case ICON_SIZE_SMALL -> 20;
+			case ICON_SIZE_LARGE -> 28;
+			default -> 24;
+		};
 	}
 
 	private @NonNull Typeface loadFont(

@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.graphics.Bitmap;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
+import android.opengl.GLES30;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -345,6 +346,67 @@ final class GlDevice {
 		}
 
 		return GlProgramBuildResult.success(new GlProgram(programId));
+	}
+
+	// Attempts to reconstitute a previously-compiled program straight
+	// from a cached binary, skipping glCompileShader/glLinkProgram
+	// entirely. A rejected binary (wrong/stale driver despite a
+	// matching signature, a format the driver no longer accepts, etc.)
+	// is reported as an ordinary build failure, never thrown - callers
+	// should treat it as a cache miss and fall back to createProgram().
+	@NonNull
+	GlProgramBuildResult createProgramFromBinary(int format, @NonNull byte[] binary) {
+		int programId = GLES20.glCreateProgram();
+		if (programId == 0) {
+			return GlProgramBuildResult.failure(
+					List.of(ShaderError.createGeneral("Cannot create program")));
+		}
+
+		ByteBuffer buffer = ByteBuffer.allocateDirect(binary.length);
+		buffer.put(binary).position(0);
+		GLES30.glProgramBinary(programId, format, buffer, binary.length);
+
+		int[] linkStatus = new int[1];
+		GLES20.glGetProgramiv(programId, GLES20.GL_LINK_STATUS, linkStatus, 0);
+		if (linkStatus[0] != GLES20.GL_TRUE) {
+			GLES20.glDeleteProgram(programId);
+			return GlProgramBuildResult.failure(List.of());
+		}
+
+		return GlProgramBuildResult.success(new GlProgram(programId));
+	}
+
+	// null if binary retrieval isn't supported here (GLES2-only context,
+	// or - common on many GPU drivers - zero reported binary formats:
+	// the entry points exist but retrieval isn't really implemented).
+	@Nullable
+	ProgramBinary getProgramBinary(@NonNull GlProgram program) {
+		if (!program.isValid()) {
+			return null;
+		}
+		int[] numFormats = new int[1];
+		GLES30.glGetIntegerv(GLES30.GL_NUM_PROGRAM_BINARY_FORMATS, numFormats, 0);
+		if (numFormats[0] <= 0) {
+			return null;
+		}
+		int[] length = new int[1];
+		GLES30.glGetProgramiv(program.getId(), GLES30.GL_PROGRAM_BINARY_LENGTH, length, 0);
+		if (length[0] <= 0) {
+			return null;
+		}
+
+		ByteBuffer buffer = ByteBuffer.allocateDirect(length[0]);
+		int[] writtenLength = new int[1];
+		int[] format = new int[1];
+		GLES30.glGetProgramBinary(
+				program.getId(), length[0], writtenLength, 0, format, 0, buffer);
+		if (writtenLength[0] <= 0) {
+			return null;
+		}
+		byte[] bytes = new byte[writtenLength[0]];
+		buffer.position(0);
+		buffer.get(bytes);
+		return new ProgramBinary(format[0], bytes);
 	}
 
 	void deleteProgram(@Nullable GlProgram program) {

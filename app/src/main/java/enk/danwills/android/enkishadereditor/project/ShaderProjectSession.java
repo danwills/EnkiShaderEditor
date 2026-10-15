@@ -11,14 +11,27 @@ public final class ShaderProjectSession implements Serializable {
 	@NonNull
 	private final String activeFilePath;
 	private final float quality;
+	// The backing shaders._id row, or 0 for a session with none (a loose
+	// imported file, a scratch/unsaved project) - used to key the
+	// compiled-program cache, which such sessions simply don't
+	// participate in. See ShaderRenderer/RendererProgramManager.
+	private final long shaderId;
 
 	public ShaderProjectSession(@NonNull ShaderProject project,
 			@NonNull String activeFilePath,
 			float quality) {
+		this(project, activeFilePath, quality, 0);
+	}
+
+	public ShaderProjectSession(@NonNull ShaderProject project,
+			@NonNull String activeFilePath,
+			float quality,
+			long shaderId) {
 		this.project = Objects.requireNonNull(project);
 		this.activeFilePath = ShaderProjectPaths.normalize(activeFilePath);
 		this.project.requireFile(this.activeFilePath);
 		this.quality = quality;
+		this.shaderId = shaderId;
 	}
 
 	@NonNull
@@ -50,14 +63,23 @@ public final class ShaderProjectSession implements Serializable {
 		return quality;
 	}
 
+	public long getShaderId() {
+		return shaderId;
+	}
+
 	@NonNull
 	public ShaderProjectSession withActiveFile(@NonNull String path) {
-		return new ShaderProjectSession(project, path, quality);
+		return new ShaderProjectSession(project, path, quality, shaderId);
 	}
 
 	@NonNull
 	public ShaderProjectSession withQuality(float quality) {
-		return new ShaderProjectSession(project, activeFilePath, quality);
+		return new ShaderProjectSession(project, activeFilePath, quality, shaderId);
+	}
+
+	@NonNull
+	public ShaderProjectSession withShaderId(long shaderId) {
+		return new ShaderProjectSession(project, activeFilePath, quality, shaderId);
 	}
 
 	@NonNull
@@ -65,7 +87,8 @@ public final class ShaderProjectSession implements Serializable {
 		return new ShaderProjectSession(
 				project.withFileSource(project.getEntryFilePath(), source),
 				activeFilePath,
-				quality);
+				quality,
+				shaderId);
 	}
 
 	@NonNull
@@ -77,6 +100,7 @@ public final class ShaderProjectSession implements Serializable {
 				activeFilePath.equals(normalizedPath)
 						? normalizedPath
 						: activeFilePath,
-				quality);
+				quality,
+				shaderId);
 	}
 }

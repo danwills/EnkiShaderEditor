@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.Build;
+import android.os.Parcelable;
 import android.text.Editable;
 import android.text.InputFilter;
 import android.text.InputType;
@@ -130,6 +131,18 @@ public class ShaderEditor extends LineNumberEditText {
 	private int selectionGestureAnchorStart = 0;
 	private int selectionGestureAnchorEnd = 0;
 
+	// EditText freezes (saves) its full text by default on a config
+	// change, which for a large shader source can push the saved-state
+	// Bundle past Android's ~1MB Binder transaction limit and crash the
+	// app with TransactionTooLargeException on rotation. Caching it here
+	// instead sidesteps that entirely: a plain static field survives the
+	// Activity recreate for free (the process itself isn't killed), with
+	// no Binder size limit to worry about.
+	@Nullable
+	private static String pendingRestoreText;
+	private static int pendingRestoreSelStart = -1;
+	private static int pendingRestoreSelEnd = -1;
+
 	public ShaderEditor(Context context) {
 		super(context);
 		init(context);
@@ -140,6 +153,38 @@ public class ShaderEditor extends LineNumberEditText {
 			@Nullable AttributeSet attrs) {
 		super(context, attrs);
 		init(context);
+	}
+
+	@Nullable
+	@Override
+	public Parcelable onSaveInstanceState() {
+		pendingRestoreText = getText() != null ? getText().toString() : null;
+		pendingRestoreSelStart = getSelectionStart();
+		pendingRestoreSelEnd = getSelectionEnd();
+		// Keeps the Parcelable itself tiny (selection only, no text) by
+		// turning off EditText's own text-freezing just for this call -
+		// the text above takes its place for restoration instead.
+		boolean wasFreezingText = getFreezesText();
+		setFreezesText(false);
+		Parcelable state = super.onSaveInstanceState();
+		setFreezesText(wasFreezingText);
+		return state;
+	}
+
+	@Override
+	public void onRestoreInstanceState(Parcelable state) {
+		super.onRestoreInstanceState(state);
+		if (pendingRestoreText != null) {
+			// setTextHighlighted() resets the selection, so it has to be
+			// re-applied afterward rather than relying on the Parcelable's
+			// own (now text-less) selection restoration above.
+			setTextHighlighted(pendingRestoreText);
+			int length = pendingRestoreText.length();
+			setSelection(
+					Math.max(0, Math.min(pendingRestoreSelStart, length)),
+					Math.max(0, Math.min(pendingRestoreSelEnd, length)));
+			pendingRestoreText = null;
+		}
 	}
 
 	private static <T> void clearSpans(Spannable e,

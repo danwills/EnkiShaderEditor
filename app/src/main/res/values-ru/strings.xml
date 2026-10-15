@@ -144,6 +144,10 @@
 	<string name="import_database_summary">Импортировать ранее использованную SQLite базу данных</string>
 	<string name="export_database">Экспорт базы данных</string>
 	<string name="export_database_summary">Экспортировать все шейдеры в SQLite базу данных</string>
+	<string name="compile_all_shaders">Скомпилировать все шейдеры</string>
+	<string name="compile_all_shaders_summary">Предварительно компилирует все шейдеры библиотеки, чтобы их просмотр был мгновенным; пропускает уже скомпилированные для этого устройства. Выполняется в фоновом режиме и может занять некоторое время для большой библиотеки.</string>
+	<string name="compile_all_shaders_started">Компиляция шейдеров в фоновом режиме…</string>
+	<string name="compile_all_progress">%1$d из %2$d скомпилировано</string>
 	<string name="show_line_numbers">Показывать номера строк</string>
 	<string name="show_line_numbers_summary">Показывать номер строки в начале каждой строки.</string>
 	<string name="enable_notification_listener">Для использования переменных "notificationCount" и "lastNotificationTime" требуется включить прослушивание уведомлений в настройках.</string>
@@ -171,6 +175,11 @@
 	<string name="small">Малый</string>
 	<string name="medium">Средний</string>
 	<string name="big">Большой</string>
+	<string name="very_small">Очень малый</string>
+	<string name="large">Крупный</string>
+	<string name="icon_size">Размер значков</string>
+	<string name="hide_status_bar">Скрыть строку состояния</string>
+	<string name="hide_status_bar_summary">Скрывает строку с часами/батареей вверху экрана; проведите вниз от верхнего края, чтобы показать её временно</string>
 
 	<!-- WallpaperService -->
 	<string name="wallpaper_description">Напишите собственные живые обои.</string>

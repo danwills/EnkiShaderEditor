@@ -25,6 +25,7 @@ import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DatabaseContract;
 import enk.danwills.android.enkishadereditor.database.DatabaseTable;
+import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 import enk.danwills.android.enkishadereditor.resource.Resources;
 
 public class ShaderDao {
@@ -43,7 +44,7 @@ public class ShaderDao {
 	public DataRecords.Shader getShader(long id) {
 		String query =
 				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.FRAGMENT_SHADER + "," + DatabaseContract.ShaderColumns.NAME + "," +
-						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " WHERE " + DatabaseContract.ShaderColumns._ID + " = ?";
+						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " WHERE " + DatabaseContract.ShaderColumns._ID + " = ?";
 
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
 		try (var cursor = db.rawQuery(query, new String[]{String.valueOf(id)})) {
@@ -54,6 +55,8 @@ public class ShaderDao {
 								DatabaseContract.ShaderColumns.FRAGMENT_SHADER),
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.NAME),
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.MODIFIED),
+						CursorHelpers.getString(cursor,
+								DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
 						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY));
 			}
 		}
@@ -63,9 +66,11 @@ public class ShaderDao {
 	public List<DataRecords.ShaderInfo> getShaders(boolean sortByLastModification) {
 		List<DataRecords.ShaderInfo> shaders = new ArrayList<>();
 		String query =
-				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.THUMB + "," + DatabaseContract.ShaderColumns.NAME + "," + DatabaseContract.ShaderColumns.MODIFIED +
+				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.THUMB + "," + DatabaseContract.ShaderColumns.NAME + "," + DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED +
 						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " ORDER BY " + (sortByLastModification ?
-						DatabaseContract.ShaderColumns.MODIFIED + " DESC" :
+						// Sorts by actual code changes, not any save
+						// (autosave can bump MODIFIED with no source edit).
+						DatabaseContract.ShaderColumns.SOURCE_MODIFIED + " DESC" :
 						DatabaseContract.ShaderColumns._ID + " DESC");
 
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -77,6 +82,8 @@ public class ShaderDao {
 							CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.NAME),
 							CursorHelpers.getString(cursor,
 									DatabaseContract.ShaderColumns.MODIFIED),
+							CursorHelpers.getString(cursor,
+									DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
 							CursorHelpers.getBlob(cursor, DatabaseContract.ShaderColumns.THUMB)));
 				} while (cursor.moveToNext());
 			}
@@ -111,7 +118,7 @@ public class ShaderDao {
 	public DataRecords.Shader getRandomShader() {
 		String query =
 				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.FRAGMENT_SHADER + "," + DatabaseContract.ShaderColumns.NAME + "," +
-						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
 						" ORDER BY RANDOM() LIMIT 1";
 
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -123,6 +130,8 @@ public class ShaderDao {
 								DatabaseContract.ShaderColumns.FRAGMENT_SHADER),
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.NAME),
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.MODIFIED),
+						CursorHelpers.getString(cursor,
+								DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
 						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY));
 			}
 		}
@@ -194,6 +203,14 @@ public class ShaderDao {
 		cv.put(DatabaseContract.ShaderColumns.QUALITY, quality);
 		if (shader != null) {
 			cv.put(DatabaseContract.ShaderColumns.FRAGMENT_SHADER, shader);
+			// SOURCE_MODIFIED only bumps when the GLSL text actually
+			// changed, unlike MODIFIED above - a save triggered by
+			// something else (autosave on pause, a thumbnail refresh,
+			// a quality tweak) shouldn't make the shader look like it
+			// was just edited.
+			if (!shader.equals(getStoredSource(db, id))) {
+				cv.put(DatabaseContract.ShaderColumns.SOURCE_MODIFIED, currentTime());
+			}
 		}
 		if (thumbnail != null) {
 			cv.put(DatabaseContract.ShaderColumns.THUMB, thumbnail);
@@ -203,10 +220,73 @@ public class ShaderDao {
 				new String[]{String.valueOf(id)});
 	}
 
+	@Nullable
+	private static String getStoredSource(@NonNull SQLiteDatabase db, long id) {
+		try (var cursor = db.query(
+				DatabaseContract.ShaderColumns.TABLE_NAME,
+				new String[]{DatabaseContract.ShaderColumns.FRAGMENT_SHADER},
+				DatabaseContract.ShaderColumns._ID + " = ?",
+				new String[]{String.valueOf(id)},
+				null, null, null)) {
+			if (cursor.moveToFirst()) {
+				return CursorHelpers.getString(
+						cursor, DatabaseContract.ShaderColumns.FRAGMENT_SHADER);
+			}
+		}
+		return null;
+	}
+
 	public void updateShaderName(long id, @NonNull String name) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		var cv = new ContentValues();
 		cv.put(DatabaseContract.ShaderColumns.NAME, name);
+		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
+				DatabaseContract.ShaderColumns._ID + " = ?",
+				new String[]{String.valueOf(id)});
+	}
+
+	// Null unless this exact combination of shaderId+sourceHash+
+	// driverSignature was previously saveCompiledBinary()'d - a mismatch
+	// on any of the three (the source changed, or the GPU driver did) is
+	// treated as a plain cache miss, not an error. See ProgramBinaryCache.
+	@Nullable
+	public ProgramBinary getCompiledBinary(long id, @NonNull String sourceHash,
+			@NonNull String driverSignature) {
+		SQLiteDatabase db = dbHelper.getReadableDatabase();
+		try (var cursor = db.query(
+				DatabaseContract.ShaderColumns.TABLE_NAME,
+				new String[]{
+						DatabaseContract.ShaderColumns.COMPILED_BINARY,
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT},
+				DatabaseContract.ShaderColumns._ID + " = ? AND " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " = ? AND " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " = ?",
+				new String[]{String.valueOf(id), sourceHash, driverSignature},
+				null, null, null)) {
+			if (cursor.moveToFirst()) {
+				byte[] bytes = CursorHelpers.getBlob(
+						cursor, DatabaseContract.ShaderColumns.COMPILED_BINARY);
+				if (bytes != null && bytes.length > 0) {
+					return new ProgramBinary(
+							CursorHelpers.getInt(
+									cursor, DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT),
+							bytes);
+				}
+			}
+		}
+		return null;
+	}
+
+	// Pure cache metadata - deliberately doesn't touch MODIFIED or
+	// SOURCE_MODIFIED.
+	public void saveCompiledBinary(long id, @NonNull ProgramBinary binary,
+			@NonNull String sourceHash, @NonNull String driverSignature) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		var cv = new ContentValues();
+		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY, binary.bytes());
+		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT, binary.format());
+		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH, sourceHash);
+		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG, driverSignature);
 		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
 				DatabaseContract.ShaderColumns._ID + " = ?",
 				new String[]{String.valueOf(id)});
@@ -232,16 +312,21 @@ public class ShaderDao {
 		cv.put(DatabaseContract.ShaderColumns.NAME, name);
 		cv.put(DatabaseContract.ShaderColumns.CREATED, now);
 		cv.put(DatabaseContract.ShaderColumns.MODIFIED, now);
+		cv.put(DatabaseContract.ShaderColumns.SOURCE_MODIFIED, now);
 		cv.put(DatabaseContract.ShaderColumns.QUALITY, quality);
 		return db.insert(DatabaseContract.ShaderColumns.TABLE_NAME, null, cv);
 	}
 
+	// sourceModified is a separate parameter (rather than always equal to
+	// modified) so database import can carry over the imported row's own
+	// value instead of regenerating it - see importShaders().
 	public static long insertShader(
 			@NonNull SQLiteDatabase db,
 			@NonNull String shader,
 			@Nullable String name,
 			@NonNull String created,
 			@NonNull String modified,
+			@NonNull String sourceModified,
 			@Nullable byte[] thumbnail,
 			float quality) {
 		ContentValues cv = new ContentValues();
@@ -250,6 +335,7 @@ public class ShaderDao {
 		cv.put(DatabaseContract.ShaderColumns.NAME, name);
 		cv.put(DatabaseContract.ShaderColumns.CREATED, created);
 		cv.put(DatabaseContract.ShaderColumns.MODIFIED, modified);
+		cv.put(DatabaseContract.ShaderColumns.SOURCE_MODIFIED, sourceModified);
 		cv.put(DatabaseContract.ShaderColumns.QUALITY, quality);
 		return db.insert(DatabaseContract.ShaderColumns.TABLE_NAME, null, cv);
 	}
@@ -262,6 +348,22 @@ public class ShaderDao {
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.QUALITY + " REAL;");
 		db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " + DatabaseContract.ShaderColumns.QUALITY + " = " +
 				"1;");
+	}
+
+	// SOURCE_MODIFIED: backfilled from the existing MODIFIED value so
+	// existing rows get a sane initial date rather than null - see
+	// updateShader() for how it diverges from MODIFIED going forward.
+	// The COMPILED_BINARY_* columns are pure cache metadata (compiled
+	// program binary, its format, and the source/driver signature it's
+	// valid for) with nothing to backfill - they start empty and get
+	// populated the next time each shader is compiled.
+	private static void addSourceModifiedAndCompiledBinaryCache(@NonNull SQLiteDatabase db) {
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + " DATETIME;");
+		db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + " = " + DatabaseContract.ShaderColumns.MODIFIED + ";");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY + " BLOB;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT + " INTEGER;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " TEXT;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT;");
 	}
 	// endregion
 
@@ -289,6 +391,9 @@ public class ShaderDao {
 				if (oldVersion < 5) {
 					addShaderNames(db);
 				}
+				if (oldVersion < 7) {
+					addSourceModifiedAndCompiledBinaryCache(db);
+				}
 			}
 
 			@Override
@@ -306,7 +411,12 @@ public class ShaderDao {
 						DatabaseContract.ShaderColumns.NAME + " TEXT," +
 						DatabaseContract.ShaderColumns.CREATED + " DATETIME," +
 						DatabaseContract.ShaderColumns.MODIFIED + " DATETIME," +
-						DatabaseContract.ShaderColumns.QUALITY + " REAL);");
+						DatabaseContract.ShaderColumns.SOURCE_MODIFIED + " DATETIME," +
+						DatabaseContract.ShaderColumns.QUALITY + " REAL," +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY + " BLOB," +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT + " INTEGER," +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " TEXT," +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT);");
 				insertInitialShaders(db);
 			}
 
@@ -356,11 +466,20 @@ public class ShaderDao {
 							shaderExists(dst, createdDate, modifiedDate)) {
 						continue;
 					}
+					// Falls back to modifiedDate when importing a backup
+					// made before SOURCE_MODIFIED existed (an empty,
+					// rather than missing, string - see CursorHelpers).
+					String sourceModifiedDate = CursorHelpers.getString(cursor,
+							DatabaseContract.ShaderColumns.SOURCE_MODIFIED);
+					if (sourceModifiedDate == null || sourceModifiedDate.isEmpty()) {
+						sourceModifiedDate = modifiedDate;
+					}
 					long shaderId = insertShader(dst,
 							cursor.getString(shaderIndex),
 							cursor.getString(nameIndex),
 							createdDate,
 							modifiedDate,
+							sourceModifiedDate,
 							cursor.getBlob(thumbIndex),
 							cursor.getFloat(qualityIndex));
 					if (shaderId < 1) {

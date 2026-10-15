@@ -141,6 +141,10 @@
 	<string name="import_database_summary">匯入先前備份的 SQLite 資料庫</string>
 	<string name="export_database">匯出資料庫</string>
 	<string name="export_database_summary">將所有著色器匯出至 SQLite 資料庫</string>
+	<string name="compile_all_shaders">編譯所有著色器</string>
+	<string name="compile_all_shaders_summary">預先編譯程式庫中的每個著色器,讓之後瀏覽時立即顯示;已針對此裝置編譯過的著色器會略過。會在背景執行,較大的程式庫可能需要一些時間。</string>
+	<string name="compile_all_shaders_started">正在背景編譯著色器…</string>
+	<string name="compile_all_progress">已編譯 %1$d / %2$d</string>
 	<string name="show_line_numbers">顯示行號</string>
 	<string name="show_line_numbers_summary">在每行程式碼開頭顯示行號</string>
 	<string name="enable_notification_listener">若要使用 notificationCount 或 lastNotificationTime 變數，請在設定中啟用「通知接聽服務」。</string>
@@ -167,6 +171,11 @@
 	<string name="small">小號</string>
 	<string name="medium">中號</string>
 	<string name="big">大號</string>
+	<string name="very_small">極小</string>
+	<string name="large">特大號</string>
+	<string name="icon_size">圖示大小</string>
+	<string name="hide_status_bar">隱藏狀態列</string>
+	<string name="hide_status_bar_summary">隱藏螢幕頂部的時鐘/電池列；從頂部下滑可暫時顯示</string>
 
 	<string name="wallpaper_description">編寫您專屬的動態桌布</string>
 

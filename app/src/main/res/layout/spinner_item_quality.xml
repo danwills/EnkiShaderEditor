@@ -1,0 +1,19 @@
+<!-- A tight-fitting stand-in for android.R.layout.simple_spinner_item,
+     used only for the quality spinner's closed (trigger) state. The
+     stock layout's built-in min-width (platform touch-target sizing)
+     is what made the spinner reserve ~140dp of mostly-empty space once
+     it sat mid-flow instead of alone at the end of a full-width
+     toolbar row - this drops that, so wrap_content actually wraps
+     tightly to the "N/N" quality labels (@array/quality_names). -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+	android:id="@android:id/text1"
+	android:layout_width="wrap_content"
+	android:layout_height="wrap_content"
+	android:minWidth="0dp"
+	android:minHeight="0dp"
+	android:paddingStart="4dp"
+	android:paddingEnd="4dp"
+	android:gravity="center_vertical"
+	android:singleLine="true"
+	android:textColor="@color/drawer_text"
+	android:textSize="14sp" />

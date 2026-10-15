@@ -10,13 +10,16 @@ public final class DataRecords {
 		@Nullable
 		String name();
 
+		// The fallback title (and list sort order) deliberately uses the
+		// source-only timestamp rather than the general "anything
+		// changed" one, so it reflects actual code edits.
 		@Nullable
-		String modified();
+		String sourceModified();
 
 		@Nullable
 		default String getTitle() {
 			var name = name();
-			return name == null || name.isEmpty() ? modified() : name;
+			return name == null || name.isEmpty() ? sourceModified() : name;
 		}
 	}
 
@@ -29,6 +32,8 @@ public final class DataRecords {
 			String name,
 			@Nullable
 			String modified,
+			@Nullable
+			String sourceModified,
 			@Nullable
 			byte[] thumb
 	) implements WithTitle {
@@ -44,6 +49,8 @@ public final class DataRecords {
 			String name,
 			@Nullable
 			String modified,
+			@Nullable
+			String sourceModified,
 			float quality
 	) implements WithTitle {
 	}

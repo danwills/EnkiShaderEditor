@@ -144,6 +144,10 @@
 	<string name="import_database_summary">Import a previously exported SQLite database</string>
 	<string name="export_database">Export database</string>
 	<string name="export_database_summary">Export all shaders into a SQLite database</string>
+	<string name="compile_all_shaders">Compile All Shaders</string>
+	<string name="compile_all_shaders_summary">Pre-compiles every shader in the library so browsing them later is instant; skips shaders already compiled for this device. Runs in the background and can take a while for a large library.</string>
+	<string name="compile_all_shaders_started">Compiling shaders in the background…</string>
+	<string name="compile_all_progress">%1$d of %2$d compiled</string>
 	<string name="show_line_numbers">Show Line Numbers</string>
 	<string name="show_line_numbers_summary">Show Line Numbers at the start of each line.</string>
 	<string name="enable_notification_listener">To use the notificationCount or lastNotificationTime uniform, please enable the Notification Listener in Settings.</string>
@@ -171,6 +175,11 @@
 	<string name="small">Small</string>
 	<string name="medium">Medium</string>
 	<string name="big">Big</string>
+	<string name="very_small">Very Small</string>
+	<string name="large">Large</string>
+	<string name="icon_size">Icon Size</string>
+	<string name="hide_status_bar">Hide Status Bar</string>
+	<string name="hide_status_bar_summary">Hides the clock/battery bar at the top of the screen; swipe down from the top to reveal it temporarily</string>
 
 	<!-- WallpaperService -->
 	<string name="wallpaper_description">Write your own live wallpaper</string>

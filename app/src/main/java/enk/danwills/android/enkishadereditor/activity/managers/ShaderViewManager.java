@@ -14,8 +14,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 import enk.danwills.android.enkishadereditor.R;
+import enk.danwills.android.enkishadereditor.database.DataSource;
+import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
+import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
@@ -32,11 +38,11 @@ public class ShaderViewManager {
 
 		void onRequestAudioCapture();
 
-		// Fired as the fullscreen-exit gesture arms/disarms (3+ fingers
-		// down, then back to exactly 1 held) and when it actually
-		// triggers (that last finger released while armed). See
-		// FullscreenExitGestureDetector.
-		void onFullscreenExitArmedChanged(boolean armed);
+		// Fired as the fullscreen-exit gesture changes phase (3+ fingers
+		// down, then back to exactly 1 held and PENDING, then ARMED once
+		// held long enough) and when it actually triggers (that last
+		// finger released while ARMED). See FullscreenExitGestureDetector.
+		void onFullscreenExitPhaseChanged(@NonNull FullscreenExitGestureDetector.Phase phase);
 
 		void onFullscreenExitGesture();
 	}
@@ -56,10 +62,18 @@ public class ShaderViewManager {
 	private float quality = 1f;
 	private boolean paused = false;
 	private boolean needsRealResume = false;
+	// Persists compiled program binaries so re-selecting a shader (or
+	// relaunching the app) can skip straight to glProgramBinary() instead
+	// of a full source recompile - see ProgramBinaryCache. A single
+	// background thread is enough: writes are infrequent (once per
+	// shader per driver version) and ordering doesn't matter between
+	// different shaders' cache entries.
+	private final ExecutorService binaryCacheExecutor = Executors.newSingleThreadExecutor();
 
 	public ShaderViewManager(@NonNull Activity activity,
 			@NonNull ShaderView shaderView,
 			@NonNull Spinner qualitySpinner,
+			@NonNull DataSource dataSource,
 			@NonNull Listener listener) {
 		this.activity = activity;
 		this.shaderView = shaderView;
@@ -68,8 +82,8 @@ public class ShaderViewManager {
 		this.fullscreenExitGestureDetector = new FullscreenExitGestureDetector(
 				new FullscreenExitGestureDetector.Listener() {
 					@Override
-					public void onArmedChanged(boolean armed) {
-						listener.onFullscreenExitArmedChanged(armed);
+					public void onPhaseChanged(@NonNull FullscreenExitGestureDetector.Phase phase) {
+						listener.onFullscreenExitPhaseChanged(phase);
 					}
 
 					@Override
@@ -80,6 +94,26 @@ public class ShaderViewManager {
 
 		initQualitySpinner(activity);
 		initShaderView();
+		shaderView.getRenderer().setProgramBinaryCache(new ProgramBinaryCache() {
+			@Override
+			@Nullable
+			public ProgramBinary get(long shaderId, @NonNull String sourceHash,
+					@NonNull String driverSignature) {
+				return dataSource.shader.getCompiledBinary(shaderId, sourceHash, driverSignature);
+			}
+
+			@Override
+			public void put(long shaderId, @NonNull ProgramBinary binary,
+					@NonNull String sourceHash, @NonNull String driverSignature) {
+				try {
+					binaryCacheExecutor.execute(() -> dataSource.shader.saveCompiledBinary(
+							shaderId, binary, sourceHash, driverSignature));
+				} catch (RejectedExecutionException e) {
+					// The executor was already shut down (destroy() ran) -
+					// nothing worth caching for at this point.
+				}
+			}
+		});
 	}
 
 	// Only meaningful while in fullscreen, where there's no toolbar back
@@ -97,6 +131,7 @@ public class ShaderViewManager {
 	// BuiltinAudioUniforms.releaseMediaProjection().
 	public void destroy() {
 		shaderView.getRenderer().releaseMediaProjection();
+		binaryCacheExecutor.shutdownNow();
 	}
 
 	public void onPause() {
@@ -167,7 +202,7 @@ public class ShaderViewManager {
 		if (paused) {
 			return;
 		}
-		shaderView.setFragmentShader(src, quality);
+		shaderView.setFragmentShader(src, quality, 0);
 	}
 
 	public void setProjectSession(@NonNull ShaderProjectSession projectSession) {
@@ -177,7 +212,8 @@ public class ShaderViewManager {
 		setQuality(projectSession.getQuality());
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
-				projectSession.getQuality());
+				projectSession.getQuality(),
+				projectSession.getShaderId());
 	}
 
 	public void setVisibility(boolean visible) {
@@ -290,7 +326,7 @@ public class ShaderViewManager {
 		ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
 				activity,
 				R.array.quality_names,
-				android.R.layout.simple_spinner_item);
+				R.layout.spinner_item_quality);
 		adapter.setDropDownViewResource(
 				android.R.layout.simple_spinner_dropdown_item);
 		qualitySpinner.setAdapter(adapter);

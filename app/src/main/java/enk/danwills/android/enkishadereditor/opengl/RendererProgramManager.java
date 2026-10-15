@@ -11,10 +11,16 @@ final class RendererProgramManager {
 	record ReloadResult(
 			@NonNull List<ShaderError> textureErrors,
 			@NonNull List<ShaderError> programErrors,
-			boolean succeeded) {
+			boolean succeeded,
+			// Non-null only when the main program was freshly compiled
+			// from source this time (as opposed to loaded from a cache
+			// hit) - the caller can persist it so next time's load can
+			// skip straight to createProgramFromBinary().
+			@Nullable ProgramBinary freshBinary) {
 		@NonNull
-		static ReloadResult success(@NonNull List<ShaderError> textureErrors) {
-			return new ReloadResult(List.copyOf(textureErrors), List.of(), true);
+		static ReloadResult success(@NonNull List<ShaderError> textureErrors,
+				@Nullable ProgramBinary freshBinary) {
+			return new ReloadResult(List.copyOf(textureErrors), List.of(), true, freshBinary);
 		}
 
 		@NonNull
@@ -24,17 +30,20 @@ final class RendererProgramManager {
 			return new ReloadResult(
 					List.copyOf(textureErrors),
 					List.copyOf(programErrors),
-					false);
+					false,
+					null);
 		}
 	}
 
-	private static final String FULL_SCREEN_VERTEX_SHADER = """
+	// Package-private: also used by HeadlessShaderCompiler, which needs
+	// the exact same vertex source to produce cache-compatible binaries.
+	static final String FULL_SCREEN_VERTEX_SHADER = """
 			attribute vec2 position;
 			void main() {
 				gl_Position = vec4(position, 0., 1.);
 			}
 			""";
-	private static final String FULL_SCREEN_VERTEX_SHADER_3 = """
+	static final String FULL_SCREEN_VERTEX_SHADER_3 = """
 			in vec2 position;
 			void main() {
 				gl_Position = vec4(position, 0., 1.);
@@ -96,7 +105,8 @@ final class RendererProgramManager {
 	}
 
 	@NonNull
-	ReloadResult reload(@NonNull Context context, @NonNull GlDevice device) {
+	ReloadResult reload(@NonNull Context context, @NonNull GlDevice device,
+			@Nullable ProgramBinary cachedMainBinary) {
 		clearPrograms();
 
 		var textureErrors = textureResources.load(context, device);
@@ -114,13 +124,30 @@ final class RendererProgramManager {
 			return ReloadResult.failure(textureErrors, List.of());
 		}
 
-		var mainResult = device.createProgram(
-				preparedShaderSource.getVertexShader(
-						FULL_SCREEN_VERTEX_SHADER,
-						FULL_SCREEN_VERTEX_SHADER_3,
-						version),
-				fragmentShader.getSource(),
-				fragmentShader.getLineMapping());
+		// Only the main (user shader) program is worth caching - try a
+		// cache hit first, skipping glCompileShader/glLinkProgram
+		// entirely. A rejected/missing cache falls straight through to
+		// the normal source compile below, exactly as if there were no
+		// cache at all.
+		GlProgramBuildResult mainResult = null;
+		boolean fromCache = false;
+		if (cachedMainBinary != null) {
+			var binaryResult = device.createProgramFromBinary(
+					cachedMainBinary.format(), cachedMainBinary.bytes());
+			if (binaryResult.succeeded()) {
+				mainResult = binaryResult;
+				fromCache = true;
+			}
+		}
+		if (mainResult == null) {
+			mainResult = device.createProgram(
+					preparedShaderSource.getVertexShader(
+							FULL_SCREEN_VERTEX_SHADER,
+							FULL_SCREEN_VERTEX_SHADER_3,
+							version),
+					fragmentShader.getSource(),
+					fragmentShader.getLineMapping());
+		}
 		if (!mainResult.succeeded() || mainResult.getProgram() == null) {
 			device.deleteProgram(surfaceResult.getProgram());
 			return ReloadResult.failure(textureErrors, mainResult.getInfoLog());
@@ -129,7 +156,16 @@ final class RendererProgramManager {
 		surfaceProgram = surfaceResult.getProgram();
 		mainProgram = mainResult.getProgram();
 		surfaceBindings = new ProgramBindings(surfaceProgram);
-		return ReloadResult.success(textureErrors);
+		ProgramBinary freshBinary = fromCache ? null : device.getProgramBinary(mainProgram);
+		return ReloadResult.success(textureErrors, freshBinary);
+	}
+
+	// The exact source text (already cleaned up, see ShaderView) that
+	// prepareShaderSource() was last called with - used to compute the
+	// program-binary cache key. null if none has been set yet.
+	@Nullable
+	String getSourceText() {
+		return sourceText;
 	}
 
 	void discardContextResources() {

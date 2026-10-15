@@ -45,14 +45,14 @@ public class ShaderView extends GLSurfaceView {
 		return true;
 	}
 
-	public void setFragmentShader(String src, float quality) {
+	public void setFragmentShader(String src, float quality, long shaderId) {
 		onPause();
 		// When pasting text from other apps, e.g. Gmail, the
 		// text is sometimes tainted with useless non-ascii
 		// characters that can raise an exception in the shader
 		// compiler. To still allow UTF-8 characters in comments,
 		// the source is cleaned up here.
-		renderer.setFragmentShader(removeNonAscii(src), quality);
+		renderer.setFragmentShader(removeNonAscii(src), quality, shaderId);
 		onResume();
 	}
 

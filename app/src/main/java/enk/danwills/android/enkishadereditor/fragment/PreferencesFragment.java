@@ -28,6 +28,7 @@ import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
+import enk.danwills.android.enkishadereditor.io.CompileAllShadersRunner;
 import enk.danwills.android.enkishadereditor.io.DatabaseExporter;
 import enk.danwills.android.enkishadereditor.io.DatabaseImporter;
 import enk.danwills.android.enkishadereditor.io.ImportExportAsFiles;
@@ -255,6 +256,19 @@ public class PreferencesFragment
 					Toast.makeText(context,
 							DatabaseExporter.exportDatabase(context),
 							Toast.LENGTH_LONG).show();
+				}
+				return true;
+			});
+		}
+		Preference compileAllShaders = findPreference(Preferences.COMPILE_ALL_SHADERS);
+		if (compileAllShaders != null) {
+			compileAllShaders.setOnPreferenceClickListener(preference -> {
+				Context context = getContext();
+				if (context != null) {
+					CompileAllShadersRunner.start(context, dataSource);
+					Toast.makeText(context,
+							R.string.compile_all_shaders_started,
+							Toast.LENGTH_SHORT).show();
 				}
 				return true;
 			});

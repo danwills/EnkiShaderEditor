@@ -51,8 +51,11 @@ public class SystemBarMetrics {
 
 		View mainLayout = activity.findViewById(R.id.main_layout);
 		if (mainLayout != null) {
+			// R.id.toolbar is now a zero-size, invisible view (kept only
+			// to drive ActionBarDrawerToggle - see toolbar_main.xml) and
+			// no longer the visible top bar; that's action_buttons_row.
 			setWindowInsets(mainLayout,
-					activity.findViewById(R.id.toolbar),
+					activity.findViewById(R.id.action_buttons_row),
 					navbar,
 					insets);
 		}
@@ -80,8 +83,14 @@ public class SystemBarMetrics {
 			if (toolbar != null &&
 					toolbar.getPaddingTop() == 0 &&
 					top > 0) {
-				toolbar.setPadding(0, top, 0, 0);
-				toolbar.getLayoutParams().height += top;
+				toolbar.setPadding(toolbar.getPaddingLeft(), top,
+						toolbar.getPaddingRight(), toolbar.getPaddingBottom());
+				// A wrap_content (or match_parent) height already grows on
+				// its own to fit the extra padding just added above - only
+				// a fixed pixel height needs manually extending to match.
+				if (toolbar.getLayoutParams().height > 0) {
+					toolbar.getLayoutParams().height += top;
+				}
 			}
 
 			if (bottom > 0) {

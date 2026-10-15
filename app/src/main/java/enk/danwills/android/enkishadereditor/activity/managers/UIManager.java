@@ -3,7 +3,9 @@ package enk.danwills.android.enkishadereditor.activity.managers;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import java.util.function.Consumer;
@@ -13,6 +15,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -23,6 +26,8 @@ import com.google.android.material.button.MaterialButton;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.widget.FlowLayout;
+import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.TouchThruDrawerLayout;
 
 public class UIManager {
@@ -40,6 +45,12 @@ public class UIManager {
 	private final View toolbarContainer;
 	@Nullable
 	private final TextView shaderNameOverlay;
+	@Nullable
+	private final TextView fullscreenExitHint;
+	@NonNull
+	private final FlowLayout actionButtonsRow;
+	@NonNull
+	private final TextView fpsLabel;
 	@Nullable
 	private View pauseShaderNavButton;
 	@Nullable
@@ -61,6 +72,8 @@ public class UIManager {
 		this.extraKeysManager = extraKeysManager;
 		this.shaderViewManager = shaderViewManager;
 
+		// Zero-size and invisible (see toolbar_main.xml) - kept only so
+		// ActionBarDrawerToggle below has a real Toolbar to drive.
 		toolbar = activity.findViewById(R.id.toolbar);
 		activity.setSupportActionBar(toolbar);
 
@@ -75,25 +88,48 @@ public class UIManager {
 		navbar = activity.findViewById(R.id.navbar);
 		toolbarContainer = activity.findViewById(R.id.toolbar_container);
 		shaderNameOverlay = activity.findViewById(R.id.shader_name_overlay);
+		fullscreenExitHint = activity.findViewById(R.id.fullscreen_exit_hint);
+		actionButtonsRow = activity.findViewById(R.id.action_buttons_row);
+		fpsLabel = activity.findViewById(R.id.fps_label);
+
+		// The real, user-visible drawer button: flows as an ordinary
+		// member of actionButtonsRow instead of living inside the hidden
+		// toolbar above. Uses a plain static icon (set in XML) rather
+		// than ActionBarDrawerToggle's animated hamburger<->arrow
+		// Drawable - that Drawable is also being driven by the hidden,
+		// zero-size toolbar above, and sharing one Drawable instance
+		// between two differently-sized Views fighting over its bounds
+		// each layout pass produced visibly corrupted icon rendering.
+		// Clicks are handled directly since this button isn't wired
+		// through the toolbar's own navigation-icon click path.
+		View drawerToggleBtn = activity.findViewById(R.id.drawer_toggle_btn);
+		ViewCompat.setTooltipText(drawerToggleBtn, activity.getText(R.string.drawer_open));
+		drawerToggleBtn.setOnClickListener(v -> {
+			if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
+				drawerLayout.closeDrawer(GravityCompat.START);
+			} else {
+				drawerLayout.openDrawer(GravityCompat.START);
+			}
+		});
 	}
 
 	public void setupToolbar(View.OnClickListener menuClickListener,
 			View.OnClickListener runClickListener,
 			View.OnClickListener toggleCodeClickListener,
 			View.OnClickListener showErrorClickListener) {
-		View menuBtn = toolbar.findViewById(R.id.menu_btn);
+		View menuBtn = activity.findViewById(R.id.menu_btn);
 		ViewCompat.setTooltipText(menuBtn, activity.getText(R.string.menu_btn));
 		menuBtn.setOnClickListener(menuClickListener);
 
-		View runCode = toolbar.findViewById(R.id.run_code);
+		View runCode = activity.findViewById(R.id.run_code);
 		ViewCompat.setTooltipText(runCode, activity.getText(R.string.run_code));
 		runCode.setOnClickListener(runClickListener);
 
-		View toggleCode = toolbar.findViewById(R.id.toggle_code);
+		View toggleCode = activity.findViewById(R.id.toggle_code);
 		ViewCompat.setTooltipText(toggleCode, activity.getText(R.string.toggle_code));
 		toggleCode.setOnClickListener(toggleCodeClickListener);
 
-		View showErrors = toolbar.findViewById(R.id.show_errors);
+		View showErrors = activity.findViewById(R.id.show_errors);
 		ViewCompat.setTooltipText(showErrors, activity.getText(R.string.show_errors));
 		showErrors.setOnClickListener(showErrorClickListener);
 	}
@@ -154,25 +190,55 @@ public class UIManager {
 	}
 
 	public void updateUiToPreferences() {
+		applyStatusBarVisibility();
 		boolean runInBackground =
 				ShaderEditorApp.preferences.doesRunInBackground();
 		shaderViewManager.setVisibility(runInBackground);
-		toolbar.findViewById(R.id.toggle_code).setVisibility(
+		activity.findViewById(R.id.toggle_code).setVisibility(
 				runInBackground ? View.VISIBLE : View.GONE);
 		if (!runInBackground && !editorFragment.isCodeVisible()) {
 			toggleCodeVisibility();
 		}
-		toolbar.findViewById(R.id.run_code).setVisibility(
+		activity.findViewById(R.id.run_code).setVisibility(
 				!ShaderEditorApp.preferences.doesRunOnChange()
 						? View.VISIBLE
 						: View.GONE);
-		activity.findViewById(R.id.audio_nav_row).setVisibility(
+		activity.findViewById(R.id.reacquire_audio).setVisibility(
 				ShaderEditorApp.preferences.useSystemAudio() ? View.VISIBLE : View.GONE);
+		applyIconSize();
 		extraKeysManager.updateVisibility();
 		editorFragment.setShowLineNumbers(
 				ShaderEditorApp.preferences.showLineNumbers());
 		editorFragment.updateHighlighting();
 		activity.invalidateOptionsMenu();
+	}
+
+	// Resizes every button (and the quality spinner's height) in the
+	// action-buttons flow row to the "Icon Size" preference. Generic
+	// over whatever children the row happens to contain, rather than a
+	// hardcoded id list, so it keeps working if buttons are added or
+	// removed there later.
+	private void applyIconSize() {
+		var preferences = ShaderEditorApp.preferences;
+		int buttonSizePx = dpToPx(preferences.getIconButtonSizeDp());
+		int iconSizePx = dpToPx(preferences.getIconGlyphSizeDp());
+		for (int i = 0; i < actionButtonsRow.getChildCount(); i++) {
+			View child = actionButtonsRow.getChildAt(i);
+			ViewGroup.LayoutParams lp = child.getLayoutParams();
+			if (child instanceof MaterialButton button) {
+				lp.width = buttonSizePx;
+				lp.height = buttonSizePx;
+				button.setIconSize(iconSizePx);
+			} else {
+				lp.height = buttonSizePx;
+			}
+			child.setLayoutParams(lp);
+		}
+	}
+
+	private int dpToPx(int dp) {
+		return Math.round(TypedValue.applyDimension(
+				TypedValue.COMPLEX_UNIT_DIP, dp, activity.getResources().getDisplayMetrics()));
 	}
 
 	public void toggleCodeVisibility() {
@@ -194,13 +260,16 @@ public class UIManager {
 		onCodeVisibilityChanged = listener;
 	}
 
+	// The title itself is intentionally not shown (dropped in favor of a
+	// future tappable app icon in that spot) - this still takes the
+	// current shader's name so the fps label can be reset for it,
+	// clearing out whatever the previously-selected shader last reported.
 	public void setToolbarTitle(String name) {
-		toolbar.setTitle(name);
-		toolbar.setSubtitle(null);
+		fpsLabel.setText(null);
 	}
 
 	public void setToolbarSubtitle(String subtitle) {
-		toolbar.post(() -> toolbar.setSubtitle(subtitle));
+		fpsLabel.post(() -> fpsLabel.setText(subtitle));
 	}
 
 	public boolean isFullscreen() {
@@ -230,7 +299,31 @@ public class UIManager {
 					WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 			controller.hide(WindowInsetsCompat.Type.systemBars());
 		} else {
-			controller.show(WindowInsetsCompat.Type.systemBars());
+			// Only the nav bar is unconditionally restored here - the
+			// status bar instead defers to the "Hide Status Bar"
+			// preference, same as it would on any other (non-fullscreen)
+			// screen in the app.
+			controller.show(WindowInsetsCompat.Type.navigationBars());
+			applyStatusBarVisibility();
+		}
+	}
+
+	// Hides (or shows) just the status bar per the "Hide Status Bar"
+	// preference - independent of setFullscreen(), which already hides
+	// every system bar outright while active. Swiping from the top edge
+	// still reveals a hidden status bar transiently either way.
+	public void applyStatusBarVisibility() {
+		if (fullscreen) {
+			return;
+		}
+		WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
+				activity.getWindow(), activity.getWindow().getDecorView());
+		if (ShaderEditorApp.preferences.hideStatusBar()) {
+			controller.setSystemBarsBehavior(
+					WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+			controller.hide(WindowInsetsCompat.Type.statusBars());
+		} else {
+			controller.show(WindowInsetsCompat.Type.statusBars());
 		}
 	}
 
@@ -264,25 +357,46 @@ public class UIManager {
 				.start();
 	}
 
-	// The fullscreen-exit gesture's "about to exit" cue - reuses the
-	// shader-name overlay rather than its own view, but doesn't schedule
-	// the auto-hide: it stays up for as long as the gesture is armed,
-	// how ever long that turns out to be, and is dismissed explicitly
-	// via hideFullscreenExitHint() instead.
-	public void showFullscreenExitHint() {
-		if (shaderNameOverlay == null) {
+	// The fullscreen-exit gesture's "about to exit" cue, in its PENDING
+	// phase: fades in over FullscreenExitGestureDetector.ARM_DELAY_MS,
+	// the same duration the gesture needs to hold before arming, so
+	// release only starts counting as an exit once this finishes
+	// appearing. Stays up for as long as the gesture is pending/armed,
+	// however long that turns out to be - dismissed explicitly via
+	// hideFullscreenExitHint() instead of any auto-hide.
+	public void showFullscreenExitHintPending() {
+		if (fullscreenExitHint == null) {
 			return;
 		}
-		overlayHandler.removeCallbacks(hideOverlayRunnable);
-		shaderNameOverlay.animate().cancel();
-		shaderNameOverlay.setText(R.string.release_to_exit_fullscreen);
-		shaderNameOverlay.setVisibility(View.VISIBLE);
-		shaderNameOverlay.setAlpha(0f);
-		shaderNameOverlay.animate().alpha(1f).setDuration(150).start();
+		fullscreenExitHint.animate().cancel();
+		fullscreenExitHint.setBackgroundResource(R.drawable.background_menu);
+		fullscreenExitHint.setVisibility(View.VISIBLE);
+		fullscreenExitHint.setAlpha(0f);
+		fullscreenExitHint.animate()
+				.alpha(1f)
+				.setDuration(FullscreenExitGestureDetector.ARM_DELAY_MS)
+				.start();
+	}
+
+	// The gesture's ARMED phase: releasing now actually exits
+	// fullscreen, marked with a yellow outline on the already-visible
+	// hint from showFullscreenExitHintPending().
+	public void armFullscreenExitHint() {
+		if (fullscreenExitHint == null) {
+			return;
+		}
+		fullscreenExitHint.setBackgroundResource(R.drawable.background_fullscreen_exit_armed);
 	}
 
 	public void hideFullscreenExitHint() {
-		fadeOutShaderNameOverlay();
+		if (fullscreenExitHint == null) {
+			return;
+		}
+		fullscreenExitHint.animate()
+				.alpha(0f)
+				.setDuration(150)
+				.withEndAction(() -> fullscreenExitHint.setVisibility(View.GONE))
+				.start();
 	}
 
 	private void fadeOutShaderNameOverlay() {

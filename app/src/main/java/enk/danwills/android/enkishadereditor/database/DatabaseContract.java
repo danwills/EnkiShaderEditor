@@ -26,7 +26,16 @@ public final class DatabaseContract {
 		String NAME = "name";
 		String CREATED = "created";
 		String MODIFIED = "modified";
+		// Unlike MODIFIED (bumped on every save, including ones that only
+		// touch the thumbnail/quality), this only changes when the GLSL
+		// source itself actually differs from what's stored - see
+		// ShaderDao.updateShader().
+		String SOURCE_MODIFIED = "source_modified";
 		String QUALITY = "quality";
+		String COMPILED_BINARY = "compiled_binary";
+		String COMPILED_BINARY_FORMAT = "compiled_binary_format";
+		String COMPILED_BINARY_SOURCE_HASH = "compiled_binary_source_hash";
+		String COMPILED_BINARY_DRIVER_SIG = "compiled_binary_driver_sig";
 	}
 
 	/**

@@ -1,0 +1,14 @@
+<resources>
+	<string-array name="icon_size_names">
+		<item>@string/very_small</item>
+		<item>@string/small</item>
+		<item>@string/normal</item>
+		<item>@string/large</item>
+	</string-array>
+	<string-array name="icon_size_values">
+		<item>1</item>
+		<item>2</item>
+		<item>3</item>
+		<item>4</item>
+	</string-array>
+</resources>

@@ -43,7 +43,8 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 		return new ShaderProjectSession(
 				project,
 				project.getEntryFilePath(),
-				shader.quality());
+				shader.quality(),
+				shader.id());
 	}
 
 	@NonNull

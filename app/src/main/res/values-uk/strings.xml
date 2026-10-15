@@ -144,6 +144,10 @@
 	<string name="import_database_summary">Імпорт попередньо експортованої бази даних SQLite</string>
 	<string name="export_database">Експорт бази даних</string>
 	<string name="export_database_summary">Експорт усіх шейдерів у базу даних SQLite</string>
+	<string name="compile_all_shaders">Скомпілювати всі шейдери</string>
+	<string name="compile_all_shaders_summary">Попередньо компілює всі шейдери бібліотеки, щоб їх перегляд був миттєвим; пропускає вже скомпільовані для цього пристрою. Виконується у фоновому режимі та може зайняти деякий час для великої бібліотеки.</string>
+	<string name="compile_all_shaders_started">Компіляція шейдерів у фоновому режимі…</string>
+	<string name="compile_all_progress">%1$d з %2$d скомпільовано</string>
 	<string name="show_line_numbers">Показувати номери рядків</string>
 	<string name="show_line_numbers_summary">Показувати номери рядків на початку кожного рядка.</string>
 	<string name="enable_notification_listener">Щоб використати форму NotificationCount або LastNotificationTime, увімкніть прослуховувач сповіщень у налаштуваннях.</string>
@@ -171,6 +175,11 @@
 	<string name="small">Малий</string>
 	<string name="medium">Середній</string>
 	<string name="big">Великий</string>
+	<string name="very_small">Дуже малий</string>
+	<string name="large">Крупний</string>
+	<string name="icon_size">Розмір значків</string>
+	<string name="hide_status_bar">Приховати рядок стану</string>
+	<string name="hide_status_bar_summary">Приховує рядок з годинником/батареєю вгорі екрана; проведіть вниз від верхнього краю, щоб показати його тимчасово</string>
 
 	<!-- WallpaperService -->
 	<string name="wallpaper_description">Напишіть власні живі шпалери</string>

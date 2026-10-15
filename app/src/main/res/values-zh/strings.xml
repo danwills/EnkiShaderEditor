@@ -141,6 +141,10 @@
 	<string name="import_database_summary">导入之前备份的 SQLite 数据库</string>
 	<string name="export_database">导出数据库</string>
 	<string name="export_database_summary">将所有着色器导出到 SQLite 数据库</string>
+	<string name="compile_all_shaders">编译所有着色器</string>
+	<string name="compile_all_shaders_summary">预先编译库中的每个着色器,以便之后浏览时即时显示;已为本设备编译过的着色器会被跳过。在后台运行,较大的库可能需要一些时间。</string>
+	<string name="compile_all_shaders_started">正在后台编译着色器…</string>
+	<string name="compile_all_progress">已编译 %1$d / %2$d</string>
 	<string name="show_line_numbers">显示行号</string>
 	<string name="show_line_numbers_summary">在编辑器左侧显示每行代码的编号</string>
 	<string name="enable_notification_listener">使用 \"notificationCount\" 和 \"lastNotificationTime\" 变量前，请在设置中开启通知监听权限。</string>
@@ -167,6 +171,11 @@
 	<string name="small">小号</string>
 	<string name="medium">中号</string>
 	<string name="big">大号</string>
+	<string name="very_small">极小</string>
+	<string name="large">特大号</string>
+	<string name="icon_size">图标大小</string>
+	<string name="hide_status_bar">隐藏状态栏</string>
+	<string name="hide_status_bar_summary">隐藏屏幕顶部的时钟/电池栏；从顶部下滑可临时显示</string>
 
 	<string name="wallpaper_description">编写你自己的动态壁纸。</string>
 

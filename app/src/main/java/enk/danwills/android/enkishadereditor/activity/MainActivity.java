@@ -73,6 +73,7 @@ import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
+import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 
 public class MainActivity extends AppCompatActivity {
 	private static final String CODE_VISIBLE = "code_visible";
@@ -193,6 +194,7 @@ public class MainActivity extends AppCompatActivity {
 		shaderViewManager = new ShaderViewManager(this,
 				findViewById(R.id.preview),
 				findViewById(R.id.quality),
+				dataSource,
 				createShaderViewListener());
 		audioPreferenceListener = (preferences, key) -> {
 			if (Preferences.USE_SYSTEM_AUDIO.equals(key)) {
@@ -308,10 +310,22 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onPause() {
-		ShaderEditorApp.preferences.setPendingCrashShaderId(0);
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
 		}
+		// Must run after the autosave above, not before: saveShader()
+		// re-arms the pending-crash watchdog via updatePendingCrashShaderId()
+		// whenever the shader was modified, since it has no way to tell a
+		// routine pause apart from a fresh shader selection. Clearing the
+		// flag last is what actually marks this as a clean exit - doing it
+		// first (the previous order) let the autosave immediately re-arm
+		// it, so any ordinary pause of a modified, running shader (not
+		// just a screen rotation recreating the Activity, but simply
+		// backgrounding the app) left the flag wrongly armed. The next
+		// onCreate() - immediate on rotation, or the next cold launch
+		// otherwise - would then see it, assume this shader had crashed,
+		// and disable it, even though nothing crashed.
+		ShaderEditorApp.preferences.setPendingCrashShaderId(0);
 		super.onPause();
 		shaderViewManager.onPause();
 	}
@@ -464,11 +478,19 @@ public class MainActivity extends AppCompatActivity {
 			// thread, so these two - unlike the GL-thread-sourced
 			// callbacks above - need no runOnUiThread() wrapping.
 			@Override
-			public void onFullscreenExitArmedChanged(boolean armed) {
-				if (armed) {
-					uiManager.showFullscreenExitHint();
-				} else {
-					uiManager.hideFullscreenExitHint();
+			public void onFullscreenExitPhaseChanged(
+					@NonNull FullscreenExitGestureDetector.Phase phase) {
+				switch (phase) {
+					case PENDING:
+						uiManager.showFullscreenExitHintPending();
+						break;
+					case ARMED:
+						uiManager.armFullscreenExitHint();
+						break;
+					case IDLE:
+					default:
+						uiManager.hideFullscreenExitHint();
+						break;
 				}
 			}
 
@@ -1112,9 +1134,9 @@ public class MainActivity extends AppCompatActivity {
 		if (selectedShaderId > 0) {
 			message.append('\n').append(getString(R.string.stats_shader_id, selectedShaderId));
 			DataRecords.Shader shader = dataSource.shader.getShader(selectedShaderId);
-			if (shader != null && shader.modified() != null) {
+			if (shader != null && shader.sourceModified() != null) {
 				message.append('\n').append(
-						getString(R.string.stats_last_modified, shader.modified()));
+						getString(R.string.stats_last_modified, shader.sourceModified()));
 			}
 		} else {
 			message.append('\n').append(getString(R.string.stats_not_saved));

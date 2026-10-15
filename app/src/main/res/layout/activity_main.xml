@@ -66,5 +66,22 @@
 			android:visibility="gone"
 			android:alpha="0"/>
 
+		<!-- Fullscreen-exit gesture's "release to exit" cue -->
+		<TextView
+			android:id="@+id/fullscreen_exit_hint"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="bottom|center_horizontal"
+			android:layout_marginBottom="64dp"
+			android:background="@drawable/background_menu"
+			android:paddingHorizontal="16dp"
+			android:paddingVertical="8dp"
+			android:text="@string/release_to_exit_fullscreen"
+			android:textColor="@color/drawer_text"
+			android:textSize="13sp"
+			android:elevation="8dp"
+			android:visibility="gone"
+			android:alpha="0"/>
+
 	</androidx.coordinatorlayout.widget.CoordinatorLayout>
 </merge>

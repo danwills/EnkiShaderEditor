@@ -6,7 +6,6 @@ import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
-import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.view.Display;
@@ -108,6 +107,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile boolean lastCompileSucceeded = false;
 	private volatile long lastProgramBinaryBytes = -1;
 	private int glVersion = 2;
+	// 0 means "no backing DB row" - see ShaderProjectSession.getShaderId().
+	// Caching is simply skipped for such sessions (nothing stable to key
+	// the cache on).
+	private volatile long shaderId = 0;
+	@Nullable
+	private ProgramBinaryCache programBinaryCache;
 
 	public ShaderRenderer(Context context) {
 		this.context = context;
@@ -119,11 +124,19 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		programManager.setVersion(version);
 	}
 
-	public void setFragmentShader(String source, float quality) {
+	public void setFragmentShader(String source, float quality, long shaderId) {
 		builtinUniforms.setRuntimeNanos(0);
 		setQuality(quality);
+		this.shaderId = shaderId;
 		programManager.setFragmentShader(source);
 		resetFps();
+	}
+
+	// Supplies the persisted compiled-program cache - see
+	// ProgramBinaryCache. Not required; caching is simply skipped if
+	// this is never called (or passed null).
+	public void setProgramBinaryCache(@Nullable ProgramBinaryCache cache) {
+		programBinaryCache = cache;
 	}
 
 	public long getRuntimeNanos() {
@@ -240,14 +253,41 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 		if (programManager.hasPreparedShader()) {
 			resetFps();
+
+			ProgramBinary cachedBinary = null;
+			String sourceHash = null;
+			String driverSignature = null;
+			if (shaderId > 0 && programBinaryCache != null && glVersion >= 3) {
+				String sourceText = programManager.getSourceText();
+				if (sourceText != null) {
+					sourceHash = ProgramBinaryKey.sourceHash(sourceText, glVersion);
+					driverSignature = ProgramBinaryKey.driverSignature();
+					cachedBinary = programBinaryCache.get(shaderId, sourceHash, driverSignature);
+				}
+			}
+
 			long compileStart = System.nanoTime();
-			var reloadResult = programManager.reload(context, device);
+			var reloadResult = programManager.reload(context, device, cachedBinary);
 			lastCompileNanos = System.nanoTime() - compileStart;
 			lastCompileSucceeded = reloadResult.succeeded();
 			submitErrors(reloadResult.textureErrors());
 			if (reloadResult.succeeded()) {
 				submitErrors(Collections.emptyList());
-				lastProgramBinaryBytes = queryProgramBinaryBytes(programManager.getMainProgram());
+				ProgramBinary freshBinary = reloadResult.freshBinary();
+				if (freshBinary != null) {
+					lastProgramBinaryBytes = freshBinary.bytes().length;
+					if (programBinaryCache != null &&
+							sourceHash != null && driverSignature != null) {
+						programBinaryCache.put(shaderId, freshBinary, sourceHash, driverSignature);
+					}
+				} else {
+					// Either this came from a cache hit (nothing fresh to
+					// report/persist) or caching wasn't attempted above
+					// (no shaderId/cache, e.g. an unsaved scratch session) -
+					// either way, still worth querying directly for the
+					// stats display.
+					lastProgramBinaryBytes = queryProgramBinaryBytes(programManager.getMainProgram());
+				}
 				builtinUniforms.configure(
 						device,
 						programManager.getMainProgram(),
@@ -375,24 +415,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		programManager.discardContextResources();
 	}
 
-	// GL_NUM_PROGRAM_BINARY_FORMATS / GL_PROGRAM_BINARY_LENGTH are
-	// GLES30 core pnames; querying them needs an ES3 context and a
-	// driver that actually reports at least one supported binary
+	// -1 if binary retrieval isn't supported here: needs an ES3 context
+	// and a driver that actually reports at least one supported binary
 	// format (plenty of GPUs report zero, meaning the entry points
-	// exist but retrieval isn't really supported).
+	// exist but retrieval isn't really supported) - see
+	// GlDevice.getProgramBinary().
 	private long queryProgramBinaryBytes(@NonNull GlProgram program) {
-		if (glVersion < 3 || !program.isValid()) {
+		if (glVersion < 3) {
 			return -1;
 		}
-		int[] numFormats = new int[1];
-		GLES30.glGetIntegerv(GLES30.GL_NUM_PROGRAM_BINARY_FORMATS, numFormats, 0);
-		if (numFormats[0] <= 0) {
-			return -1;
-		}
-		int[] length = new int[1];
-		GLES30.glGetProgramiv(
-				program.getId(), GLES30.GL_PROGRAM_BINARY_LENGTH, length, 0);
-		return length[0] > 0 ? length[0] : -1;
+		ProgramBinary binary = device.getProgramBinary(program);
+		return binary != null ? binary.bytes().length : -1;
 	}
 
 	private void captureThumbnail() {

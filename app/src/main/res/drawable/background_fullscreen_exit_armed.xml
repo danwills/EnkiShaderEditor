@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Same pill as background_menu, plus a yellow stroke marking the
+     fullscreen-exit gesture as armed (release now actually exits). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+	<solid android:color="?attr/colorSurfaceContainerLow"/>
+	<corners android:radius="10dp"/>
+	<stroke android:width="2dp" android:color="#FFD600"/>
+	<padding android:left="0dp" android:top="0dp" android:right="0dp" android:bottom="0dp" />
+</shape>
