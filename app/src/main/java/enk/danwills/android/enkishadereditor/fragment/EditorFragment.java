@@ -29,6 +29,7 @@ public class EditorFragment extends Fragment {
 	private View editorContainer;
 	private ShaderEditor shaderEditor;
 	private UndoRedo undoRedo;
+	private int pendingTopInsetPx = 0;
 
 	@Nullable
 	private ShaderEditor.OnEditPausedListener editPausedListener;
@@ -60,8 +61,30 @@ public class EditorFragment extends Fragment {
 		});
 		setShowLineNumbers(ShaderEditorApp.preferences.showLineNumbers());
 		undoRedo = new UndoRedo(shaderEditor, ShaderEditorApp.editHistory);
+		applyTopInset();
 
 		return view;
+	}
+
+	// Top margin (in px) reserved above the editor so it starts below
+	// the persistent shader-name label instead of underneath it -
+	// driven by UIManager, which measures that label's actual (name
+	// length/wrapping-dependent) height. Safe to call before the
+	// fragment's view exists; applied once it does.
+	public void setTopInset(int px) {
+		pendingTopInsetPx = px;
+		applyTopInset();
+	}
+
+	private void applyTopInset() {
+		if (editorContainer == null) {
+			return;
+		}
+		var lp = (ViewGroup.MarginLayoutParams) editorContainer.getLayoutParams();
+		if (lp.topMargin != pendingTopInsetPx) {
+			lp.topMargin = pendingTopInsetPx;
+			editorContainer.setLayoutParams(lp);
+		}
 	}
 
 	public void setOnTextModifiedListener(@Nullable ShaderEditor.OnTextModifiedListener listener) {

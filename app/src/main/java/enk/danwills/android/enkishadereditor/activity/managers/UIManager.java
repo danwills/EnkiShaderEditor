@@ -108,6 +108,11 @@ public class UIManager {
 				}
 			});
 		}
+		// Pushes the editor down by exactly shaderTitleLabel's own
+		// (variable - name length/wrapping can change it) height, so a
+		// long wrapped name can never overlap the code below it.
+		shaderTitleLabel.getViewTreeObserver().addOnGlobalLayoutListener(() ->
+				editorFragment.setTopInset(shaderTitleLabel.getHeight()));
 		// Matches editorContainer's default XML visibility (visible) -
 		// toggleCodeVisibility() keeps this in sync from here on.
 		applyShaderTitleLabelBackground(true);
@@ -273,12 +278,12 @@ public class UIManager {
 		}
 	}
 
-	// codeVisible: darken shaderTitleLabel's background so it stays
-	// readable over the editor's code text; !codeVisible (the shader
-	// preview showing through instead): no background needed.
+	// codeVisible: an edge-to-edge darkened bar so shaderTitleLabel
+	// stays readable over the editor's code text; !codeVisible (the
+	// shader preview showing through instead): no background needed.
 	private void applyShaderTitleLabelBackground(boolean codeVisible) {
 		shaderTitleLabel.setBackgroundResource(
-				codeVisible ? R.drawable.background_menu : 0);
+				codeVisible ? R.drawable.background_title_bar : 0);
 	}
 
 	// Called whenever the code editor's visibility actually changes -
