@@ -234,6 +234,14 @@ public class MainActivity extends AppCompatActivity {
 				v -> this.runShader(),
 				v -> uiManager.toggleCodeVisibility(),
 				v -> editorFragment.showErrors());
+		uiManager.setupShaderTitleLabel(v -> {
+			long id = shaderManager.getSelectedShaderId();
+			if (id > 0) {
+				var shader = dataSource.shader.getShader(id);
+				String title = shader != null ? shader.getTitle() : null;
+				shaderListManager.editShaderName(id, title != null ? title : "");
+			}
+		});
 		uiManager.setupShaderNavRow(
 				v -> navigateShader(-1),
 				v -> navigateShader(1),

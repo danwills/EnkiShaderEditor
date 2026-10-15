@@ -62,6 +62,7 @@
 	<string name="paste_over_warning_title">覆蓋著色器？</string>
 	<string name="sure_paste_over_shader">警告：此操作將用剪貼簿內容永久覆蓋此著色器的目前程式碼並立即儲存。先前的程式碼將無法復原。是否繼續？</string>
 	<string name="rename_shader">重新命名著色器</string>
+	<string name="rename_shader_tooltip">重新命名著色器</string>
 	<string name="reparent_shader">變更父級</string>
 	<string name="name_prefix_warning">「%1$s」不是以大寫字母開頭，這可能會影響樹狀視圖中的分組方式。</string>
 	<string name="capitalize_name">改為大寫</string>

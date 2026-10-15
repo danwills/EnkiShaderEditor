@@ -452,7 +452,7 @@ public class ShaderListManager {
 		return qi == query.length();
 	}
 
-	private void editShaderName(final long id, @NonNull String name) {
+	public void editShaderName(final long id, @NonNull String name) {
 		View view = activity.getLayoutInflater().inflate(
 				R.layout.dialog_rename_shader, null);
 		final EditText nameView = view.findViewById(R.id.name);

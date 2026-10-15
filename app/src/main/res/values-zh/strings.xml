@@ -62,6 +62,7 @@
 	<string name="paste_over_warning_title">覆盖着色器？</string>
 	<string name="sure_paste_over_shader">警告：此操作将用剪贴板内容永久覆盖此着色器的当前代码并立即保存。之前的代码将无法恢复。是否继续？</string>
 	<string name="rename_shader">重命名</string>
+	<string name="rename_shader_tooltip">重命名着色器</string>
 	<string name="reparent_shader">更改父级</string>
 	<string name="name_prefix_warning">\"%1$s\"不是以大写字母开头，这可能会影响树状视图中的分组方式。</string>
 	<string name="capitalize_name">改为大写</string>

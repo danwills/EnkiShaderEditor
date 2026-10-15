@@ -159,6 +159,15 @@ public class UIManager {
 		showErrors.setOnClickListener(showErrorClickListener);
 	}
 
+	// Tapping the shader-name label opens the same rename dialog as
+	// long-pressing the shader in the sidebar; long-pressing the label
+	// itself just shows the tooltip, same as every other toolbar button.
+	public void setupShaderTitleLabel(View.OnClickListener renameClickListener) {
+		ViewCompat.setTooltipText(shaderTitleLabel,
+				activity.getText(R.string.rename_shader_tooltip));
+		shaderTitleLabel.setOnClickListener(renameClickListener);
+	}
+
 	public void setupShaderNavRow(View.OnClickListener previousClickListener,
 			View.OnClickListener nextClickListener,
 			View.OnClickListener randomClickListener,

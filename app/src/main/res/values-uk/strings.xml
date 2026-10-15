@@ -63,6 +63,7 @@
 	<string name="paste_over_warning_title">Перезаписати шейдер?</string>
 	<string name="sure_paste_over_shader">Увага: це назавжди замінить поточний код цього шейдера вмістом буфера обміну та негайно збереже його. Попередній код відновити не вдасться. Продовжити?</string>
 	<string name="rename_shader">Перейменувати шейдер</string>
+	<string name="rename_shader_tooltip">Перейменувати шейдер</string>
 	<string name="reparent_shader">Змінити батьківський</string>
 	<string name="name_prefix_warning">\"%1$s\" не починається з великої літери, що може вплинути на групування в дереві.</string>
 	<string name="capitalize_name">Зробити великою</string>

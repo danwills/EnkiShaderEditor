@@ -63,6 +63,7 @@
 	<string name="paste_over_warning_title">Overwrite shader?</string>
 	<string name="sure_paste_over_shader">Warning: this will permanently overwrite this shader\'s current code with the clipboard contents and save immediately. The prior code cannot be recovered. Continue?</string>
 	<string name="rename_shader">Rename shader</string>
+	<string name="rename_shader_tooltip">Rename the shader</string>
 	<string name="reparent_shader">Reparent</string>
 	<string name="name_prefix_warning">\"%1$s\" doesn\'t start with a capital letter, which may affect how it\'s grouped in the tree view.</string>
 	<string name="capitalize_name">Capitalize</string>
