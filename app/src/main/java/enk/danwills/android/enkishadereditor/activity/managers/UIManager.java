@@ -51,6 +51,8 @@ public class UIManager {
 	private final FlowLayout actionButtonsRow;
 	@NonNull
 	private final TextView fpsLabel;
+	@NonNull
+	private final TextView shaderTitleLabel;
 	@Nullable
 	private View pauseShaderNavButton;
 	@Nullable
@@ -91,6 +93,24 @@ public class UIManager {
 		fullscreenExitHint = activity.findViewById(R.id.fullscreen_exit_hint);
 		actionButtonsRow = activity.findViewById(R.id.action_buttons_row);
 		fpsLabel = activity.findViewById(R.id.fps_label);
+		shaderTitleLabel = activity.findViewById(R.id.shader_title_label);
+
+		// Keeps shaderTitleLabel pinned just below the toolbar no matter
+		// how many rows it's currently wrapped to (icon size, rotation,
+		// or being hidden entirely all change its height at runtime).
+		if (toolbarContainer != null) {
+			toolbarContainer.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+				int toolbarHeight = toolbarContainer.getHeight();
+				var lp = (ViewGroup.MarginLayoutParams) shaderTitleLabel.getLayoutParams();
+				if (lp.topMargin != toolbarHeight) {
+					lp.topMargin = toolbarHeight;
+					shaderTitleLabel.setLayoutParams(lp);
+				}
+			});
+		}
+		// Matches editorContainer's default XML visibility (visible) -
+		// toggleCodeVisibility() keeps this in sync from here on.
+		applyShaderTitleLabelBackground(true);
 
 		// The real, user-visible drawer button: flows as an ordinary
 		// member of actionButtonsRow instead of living inside the hidden
@@ -247,9 +267,18 @@ public class UIManager {
 		drawerLayout.setTouchThru(wasVisible);
 		extraKeysManager.setVisible(!wasVisible &&
 				ShaderEditorApp.preferences.showExtraKeys());
+		applyShaderTitleLabelBackground(nowVisible);
 		if (onCodeVisibilityChanged != null) {
 			onCodeVisibilityChanged.accept(nowVisible);
 		}
+	}
+
+	// codeVisible: darken shaderTitleLabel's background so it stays
+	// readable over the editor's code text; !codeVisible (the shader
+	// preview showing through instead): no background needed.
+	private void applyShaderTitleLabelBackground(boolean codeVisible) {
+		shaderTitleLabel.setBackgroundResource(
+				codeVisible ? R.drawable.background_menu : 0);
 	}
 
 	// Called whenever the code editor's visibility actually changes -
@@ -260,12 +289,11 @@ public class UIManager {
 		onCodeVisibilityChanged = listener;
 	}
 
-	// The title itself is intentionally not shown (dropped in favor of a
-	// future tappable app icon in that spot) - this still takes the
-	// current shader's name so the fps label can be reset for it,
-	// clearing out whatever the previously-selected shader last reported.
+	// Also resets the fps label so it doesn't keep showing a stale
+	// reading from whatever shader was previously selected.
 	public void setToolbarTitle(String name) {
 		fpsLabel.setText(null);
+		shaderTitleLabel.setText(name);
 	}
 
 	public void setToolbarSubtitle(String subtitle) {

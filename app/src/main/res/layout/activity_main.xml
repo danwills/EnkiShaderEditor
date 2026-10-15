@@ -51,6 +51,25 @@
 		<!-- Nav bar background for SDK35+ -->
 		<include layout="@layout/navbar"/>
 
+		<!-- Persistent label below the toolbar: the current shader's
+		     name, or its date if unnamed. Plain when the code editor is
+		     hidden (the shader preview is behind it); given a darkened
+		     background by UIManager when the editor is showing, so it
+		     stays readable over code text. -->
+		<TextView
+			android:id="@+id/shader_title_label"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="top|center_horizontal"
+			android:gravity="center"
+			android:paddingHorizontal="12dp"
+			android:paddingVertical="4dp"
+			android:textColor="@color/drawer_text"
+			android:textSize="14sp"
+			android:maxLines="1"
+			android:ellipsize="end"
+			android:elevation="8dp"/>
+
 		<!-- Transient overlay naming the shader after prev/next/random -->
 		<TextView
 			android:id="@+id/shader_name_overlay"

@@ -372,7 +372,12 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onShaderRenamed(long id, @NonNull String name) {
 				if (id == shaderManager.getSelectedShaderId()) {
-					uiManager.setToolbarTitle(name);
+					// Re-fetch rather than using name directly - renaming
+					// to blank is valid and should fall back to the
+					// shader's date, same as everywhere else getTitle()
+					// is used, not show a blank label.
+					var shader = dataSource.shader.getShader(id);
+					uiManager.setToolbarTitle(shader != null ? shader.getTitle() : name);
 				}
 				shaderListManager.loadShadersAsync();
 			}
