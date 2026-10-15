@@ -50,7 +50,6 @@ public class Preferences {
 	public static final String LAST_OPENED_SHADER = "last_opened_shader";
 	public static final String PENDING_CRASH_SHADER = "pending_crash_shader";
 	public static final String ICON_SIZE = "icon_size";
-	public static final String HIDE_STATUS_BAR = "hide_status_bar";
 
 	private static final String WALLPAPER_RUNTIME = "wallpaper_runtime_";
 
@@ -109,7 +108,6 @@ public class Preferences {
 	private String defaultFont;
 	private long pendingCrashShaderId = 0;
 	private int iconSize = ICON_SIZE_NORMAL;
-	private boolean hideStatusBar = true;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -213,9 +211,6 @@ public class Preferences {
 		iconSize = parseInt(
 				preferences.getString(ICON_SIZE, null),
 				iconSize);
-		hideStatusBar = preferences.getBoolean(
-				HIDE_STATUS_BAR,
-				hideStatusBar);
 	}
 
 	public boolean autoHideExtraKeys() {
@@ -239,10 +234,6 @@ public class Preferences {
 
 	public int getIconButtonSizeDp() {
 		return getIconGlyphSizeDp() * 2;
-	}
-
-	public boolean hideStatusBar() {
-		return hideStatusBar;
 	}
 
 	public int getIconGlyphSizeDp() {

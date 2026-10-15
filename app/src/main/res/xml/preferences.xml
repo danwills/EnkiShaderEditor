@@ -33,12 +33,6 @@
 			android:entries="@array/update_delay_names"
 			android:entryValues="@array/update_delay_values"
 			android:defaultValue="1000"/>
-		<androidx.preference.SwitchPreferenceCompat
-			android:key="hide_status_bar"
-			android:title="@string/hide_status_bar"
-			android:summary="@string/hide_status_bar_summary"
-			android:checked="true"
-			android:defaultValue="true"/>
 		<ListPreference
 			android:key="icon_size"
 			android:title="@string/icon_size"

@@ -69,7 +69,7 @@
 			android:paddingHorizontal="16dp"
 			android:paddingVertical="8dp"
 			android:textColor="@color/drawer_text"
-			android:textSize="26sp"
+			android:textSize="22sp"
 			android:elevation="8dp"/>
 
 		<!-- Transient overlay naming the shader after prev/next/random -->

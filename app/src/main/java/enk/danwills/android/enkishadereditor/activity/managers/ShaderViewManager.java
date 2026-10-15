@@ -224,6 +224,12 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getThumbnail();
 	}
 
+	// Blocks until the next frame renders - call off the main thread.
+	@Nullable
+	public byte[] takeScreenshot() {
+		return shaderView.getRenderer().captureFullScreenshot();
+	}
+
 	public long getLastCompileNanos() {
 		return shaderView.getRenderer().getLastCompileNanos();
 	}

@@ -189,22 +189,28 @@ final class ShaderRenderPipeline {
 				surfaceProgram,
 				false);
 
-		final int pixels = THUMBNAIL_WIDTH * THUMBNAIL_HEIGHT;
+		byte[] png = readPixelsAsPng(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+		device.bindFramebuffer(null);
+		return png;
+	}
+
+	// Reads back whatever's currently bound (caller's responsibility -
+	// the on-screen framebuffer for a full-resolution screenshot, a
+	// dedicated target for the thumbnail) and PNG-encodes it. GL's
+	// bottom-up row order is flipped to the top-down order Bitmap/PNG
+	// expect, and BGRA/RGBA channel order is swapped to Bitmap's ARGB.
+	@Nullable
+	byte[] readPixelsAsPng(int width, int height) {
+		final int pixels = width * height;
 		final int[] rgba = new int[pixels];
 		final IntBuffer buffer = IntBuffer.wrap(rgba);
-		device.readPixels(
-				0,
-				0,
-				THUMBNAIL_WIDTH,
-				THUMBNAIL_HEIGHT,
-				buffer);
-		device.bindFramebuffer(null);
+		device.readPixels(0, 0, width, height, buffer);
 
 		int[] argb = new int[pixels];
-		for (int y = 0; y < THUMBNAIL_HEIGHT; ++y) {
-			for (int x = 0; x < THUMBNAIL_WIDTH; ++x) {
-				int srcIdx = y * THUMBNAIL_WIDTH + x;
-				int destIdx = (THUMBNAIL_HEIGHT - y - 1) * THUMBNAIL_WIDTH + x;
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				int srcIdx = y * width + x;
+				int destIdx = (height - y - 1) * width + x;
 				int pixel = rgba[srcIdx];
 				argb[destIdx] = 0xff000000
 						| ((pixel << 16) & 0x00ff0000)
@@ -216,8 +222,8 @@ final class ShaderRenderPipeline {
 		try (var out = new ByteArrayOutputStream()) {
 			Bitmap.createBitmap(
 					argb,
-					THUMBNAIL_WIDTH,
-					THUMBNAIL_HEIGHT,
+					width,
+					height,
 					Bitmap.Config.ARGB_8888).compress(
 					Bitmap.CompressFormat.PNG,
 					100,

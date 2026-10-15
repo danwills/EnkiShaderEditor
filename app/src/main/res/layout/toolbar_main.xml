@@ -159,6 +159,17 @@
 			app:iconSize="24dp" />
 
 		<Button
+			android:id="@+id/screenshot_nav"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginEnd="4dp"
+			android:layout_marginBottom="4dp"
+			android:contentDescription="@string/save_screenshot"
+			app:icon="@drawable/ic_camera"
+			app:iconSize="24dp" />
+
+		<Button
 			android:id="@+id/undo_nav"
 			style="@style/IconButton"
 			android:layout_width="48dp"

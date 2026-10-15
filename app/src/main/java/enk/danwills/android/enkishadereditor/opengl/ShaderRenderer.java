@@ -89,6 +89,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private final BuiltinUniforms builtinUniforms;
 	private final Context context;
 	private final Object thumbnailLock = new Object();
+	private final Object fullImageLock = new Object();
 
 	@Nullable
 	private OnRendererListener onRendererListener;
@@ -98,6 +99,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private long lastRender;
 	private byte[] thumbnail = new byte[1];
 	private boolean captureThumbnail;
+	@Nullable
+	private byte[] fullImage;
+	private boolean captureFullImage;
 	private volatile long nextFpsUpdate;
 	private volatile float sum;
 	private volatile float samples;
@@ -328,6 +332,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT |
 					GLES20.GL_DEPTH_BUFFER_BIT);
 			cancelCaptureThumbnail();
+			cancelCaptureFullImage();
 			return;
 		}
 
@@ -342,6 +347,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			}
 			if (!renderPipeline.hasTargets()) {
 				cancelCaptureThumbnail();
+				cancelCaptureFullImage();
 				return;
 			}
 		}
@@ -351,6 +357,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT |
 					GLES20.GL_DEPTH_BUFFER_BIT);
 			cancelCaptureThumbnail();
+			cancelCaptureFullImage();
 			return;
 		}
 
@@ -360,6 +367,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				surfaceProgram,
 				frame.surfaceWidth(),
 				frame.surfaceHeight());
+		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
 		renderPipeline.swapTargets();
 		captureThumbnail();
 
@@ -393,6 +401,26 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return null;
 			}
 			return thumbnail;
+		}
+	}
+
+	// Blocks (off the GL thread - callers should invoke this from a
+	// background thread) until the next frame renders, then returns a
+	// full-resolution PNG of exactly what's on screen - no toolbar,
+	// editor, or other app UI, since it reads straight from the
+	// GLSurfaceView's own framebuffer. Null on timeout/failure.
+	@Nullable
+	public byte[] captureFullScreenshot() {
+		synchronized (fullImageLock) {
+			captureFullImage = true;
+			try {
+				fullImageLock.wait(3000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				captureFullImage = false;
+				return null;
+			}
+			return fullImage;
 		}
 	}
 
@@ -449,6 +477,28 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (captureThumbnail) {
 				captureThumbnail = false;
 				thumbnailLock.notifyAll();
+			}
+		}
+	}
+
+	// width/height: the surface's actual current size, matching what
+	// renderSurfacePass() just drew into the on-screen framebuffer -
+	// still bound at this point, so the read captures that exact frame.
+	private void captureFullImage(int width, int height) {
+		synchronized (fullImageLock) {
+			if (captureFullImage) {
+				fullImage = renderPipeline.readPixelsAsPng(width, height);
+				captureFullImage = false;
+				fullImageLock.notifyAll();
+			}
+		}
+	}
+
+	private void cancelCaptureFullImage() {
+		synchronized (fullImageLock) {
+			if (captureFullImage) {
+				captureFullImage = false;
+				fullImageLock.notifyAll();
 			}
 		}
 	}

@@ -32,6 +32,9 @@
 	<string name="show_extra_keys">顯示擴展按鍵</string>
 	<string name="fullscreen">全螢幕</string>
 	<string name="release_to_exit_fullscreen">放開以退出全螢幕</string>
+	<string name="save_screenshot">儲存螢幕截圖</string>
+	<string name="screenshot_saved">已儲存至 Pictures/Enki Shader Editor/%1$s</string>
+	<string name="screenshot_save_failed">螢幕截圖儲存失敗</string>
 	<string name="reacquire_audio">重新取得系統音訊</string>
 	<string name="audio_capture_already_working">系統音訊擷取已在正常運作</string>
 	<string name="hide_toolbar">隱藏頂部選單</string>
@@ -176,8 +179,6 @@
 	<string name="very_small">極小</string>
 	<string name="large">特大號</string>
 	<string name="icon_size">圖示大小</string>
-	<string name="hide_status_bar">隱藏狀態列</string>
-	<string name="hide_status_bar_summary">隱藏螢幕頂部的時鐘/電池列；從頂部下滑可暫時顯示</string>
 
 	<string name="wallpaper_description">編寫您專屬的動態桌布</string>
 

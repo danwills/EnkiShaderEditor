@@ -15,6 +15,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -26,6 +27,7 @@ import com.google.android.material.button.MaterialButton;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.widget.FlowLayout;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.TouchThruDrawerLayout;
@@ -64,6 +66,7 @@ public class UIManager {
 
 	private boolean fullscreen = false;
 	private boolean toolbarHidden = false;
+	private boolean drawerOpen = false;
 
 	public UIManager(@NonNull AppCompatActivity activity,
 			@NonNull EditorFragment editorFragment,
@@ -85,6 +88,22 @@ public class UIManager {
 				R.string.drawer_open, R.string.drawer_close);
 		drawerToggle.setDrawerIndicatorEnabled(true);
 		drawerLayout.addDrawerListener(drawerToggle);
+		// The sidebar's own top buttons sit right where shaderTitleLabel
+		// floats, so hide the label whenever the drawer is open rather
+		// than let it cover them.
+		drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+			@Override
+			public void onDrawerOpened(@NonNull View drawerView) {
+				drawerOpen = true;
+				updateShaderTitleLabelVisibility();
+			}
+
+			@Override
+			public void onDrawerClosed(@NonNull View drawerView) {
+				drawerOpen = false;
+				updateShaderTitleLabelVisibility();
+			}
+		});
 
 		mainLayout = activity.findViewById(R.id.main_layout);
 		navbar = activity.findViewById(R.id.navbar);
@@ -166,6 +185,19 @@ public class UIManager {
 		ViewCompat.setTooltipText(shaderTitleLabel,
 				activity.getText(R.string.rename_shader_tooltip));
 		shaderTitleLabel.setOnClickListener(renameClickListener);
+	}
+
+	// Hidden outright on API <29, where ScreenshotSaver can't write to
+	// the gallery (see its own doc comment) - a dead button would be
+	// worse than no button there.
+	public void setupScreenshotButton(View.OnClickListener screenshotClickListener) {
+		View screenshotBtn = activity.findViewById(R.id.screenshot_nav);
+		if (!ScreenshotSaver.isSupported()) {
+			screenshotBtn.setVisibility(View.GONE);
+			return;
+		}
+		ViewCompat.setTooltipText(screenshotBtn, activity.getText(R.string.save_screenshot));
+		screenshotBtn.setOnClickListener(screenshotClickListener);
 	}
 
 	public void setupShaderNavRow(View.OnClickListener previousClickListener,
@@ -282,6 +314,7 @@ public class UIManager {
 		extraKeysManager.setVisible(!wasVisible &&
 				ShaderEditorApp.preferences.showExtraKeys());
 		applyShaderTitleLabelBackground(nowVisible);
+		applyStatusBarVisibility();
 		if (onCodeVisibilityChanged != null) {
 			onCodeVisibilityChanged.accept(nowVisible);
 		}
@@ -293,6 +326,17 @@ public class UIManager {
 	private void applyShaderTitleLabelBackground(boolean codeVisible) {
 		shaderTitleLabel.setBackgroundResource(
 				codeVisible ? R.drawable.background_title_bar : 0);
+	}
+
+	// shaderTitleLabel lives outside mainLayout (so it can float over the
+	// code editor without being clipped by it), so neither fullscreen
+	// mode nor the drawer opening automatically hides it the way the
+	// rest of the UI does - hide it explicitly whenever either is true,
+	// since it'd otherwise cover the fullscreen shader or the sidebar's
+	// own top buttons.
+	private void updateShaderTitleLabelVisibility() {
+		shaderTitleLabel.setVisibility(
+				fullscreen || drawerOpen ? View.GONE : View.VISIBLE);
 	}
 
 	// Called whenever the code editor's visibility actually changes -
@@ -328,10 +372,7 @@ public class UIManager {
 		if (mainLayout != null) {
 			mainLayout.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
 		}
-		// shaderTitleLabel lives outside mainLayout (so it can float over
-		// the code editor without being clipped by it) - hide it
-		// separately, or it'd keep floating over the fullscreen shader.
-		shaderTitleLabel.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
+		updateShaderTitleLabelVisibility();
 		if (navbar != null) {
 			boolean showNavbarOverlay = !fullscreen &&
 					Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM;
@@ -346,30 +387,32 @@ public class UIManager {
 			controller.hide(WindowInsetsCompat.Type.systemBars());
 		} else {
 			// Only the nav bar is unconditionally restored here - the
-			// status bar instead defers to the "Hide Status Bar"
-			// preference, same as it would on any other (non-fullscreen)
+			// status bar instead defers to whether the code editor is
+			// visible, same as it would on any other (non-fullscreen)
 			// screen in the app.
 			controller.show(WindowInsetsCompat.Type.navigationBars());
 			applyStatusBarVisibility();
 		}
 	}
 
-	// Hides (or shows) just the status bar per the "Hide Status Bar"
-	// preference - independent of setFullscreen(), which already hides
-	// every system bar outright while active. Swiping from the top edge
-	// still reveals a hidden status bar transiently either way.
+	// Shows the status bar while the code editor is visible (so the
+	// clock/notifications stay reachable during a long edit) and hides
+	// it otherwise, maximizing the shader preview - independent of
+	// setFullscreen(), which already hides every system bar outright
+	// while active. Swiping from the top edge still reveals a hidden
+	// status bar transiently either way.
 	public void applyStatusBarVisibility() {
 		if (fullscreen) {
 			return;
 		}
 		WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
 				activity.getWindow(), activity.getWindow().getDecorView());
-		if (ShaderEditorApp.preferences.hideStatusBar()) {
+		if (editorFragment.isCodeVisible()) {
+			controller.show(WindowInsetsCompat.Type.statusBars());
+		} else {
 			controller.setSystemBarsBehavior(
 					WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 			controller.hide(WindowInsetsCompat.Type.statusBars());
-		} else {
-			controller.show(WindowInsetsCompat.Type.statusBars());
 		}
 	}
 

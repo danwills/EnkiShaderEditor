@@ -33,6 +33,9 @@
 	<string name="show_extra_keys">Show Extra Keys</string>
 	<string name="fullscreen">Fullscreen</string>
 	<string name="release_to_exit_fullscreen">Release to exit fullscreen</string>
+	<string name="save_screenshot">Save screenshot</string>
+	<string name="screenshot_saved">Saved to Pictures/Enki Shader Editor/%1$s</string>
+	<string name="screenshot_save_failed">Couldn\'t save screenshot</string>
 	<string name="reacquire_audio">Reacquire system audio</string>
 	<string name="audio_capture_already_working">System audio capture is already working</string>
 	<string name="hide_toolbar">Hide top menu</string>
@@ -180,8 +183,6 @@
 	<string name="very_small">Very Small</string>
 	<string name="large">Large</string>
 	<string name="icon_size">Icon Size</string>
-	<string name="hide_status_bar">Hide Status Bar</string>
-	<string name="hide_status_bar_summary">Hides the clock/battery bar at the top of the screen; swipe down from the top to reveal it temporarily</string>
 
 	<!-- WallpaperService -->
 	<string name="wallpaper_description">Write your own live wallpaper</string>

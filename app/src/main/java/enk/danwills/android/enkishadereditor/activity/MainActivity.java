@@ -65,6 +65,7 @@ import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
@@ -250,6 +251,7 @@ public class MainActivity extends AppCompatActivity {
 				v -> togglePauseShader(),
 				v -> restartShader(),
 				v -> setFullscreen(!uiManager.isFullscreen()));
+		uiManager.setupScreenshotButton(v -> takeScreenshot());
 		uiManager.setupAudioNavRow(v -> shaderViewManager.reacquireSystemAudio());
 
 		shaderManager.handleSendText(getIntent());
@@ -935,6 +937,26 @@ public class MainActivity extends AppCompatActivity {
 			uiManager.showShaderNameOverlay(shader.getTitle());
 			shaderListManager.revealShader(shader.id());
 		}
+	}
+
+	// Reads straight from the GLSurfaceView's own framebuffer (see
+	// ShaderRenderer.captureFullScreenshot()), so the saved image never
+	// has any toolbar/editor/dialog chrome in it even if some happens to
+	// be on screen when this is tapped. Runs off the main thread since
+	// the capture blocks for up to a frame or two, and the gallery write
+	// is file I/O.
+	private void takeScreenshot() {
+		new Thread(() -> {
+			byte[] png = shaderViewManager.takeScreenshot();
+			String filename = png != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+					? ScreenshotSaver.save(this, png)
+					: null;
+			runOnUiThread(() -> Toast.makeText(this,
+					filename != null
+							? getString(R.string.screenshot_saved, filename)
+							: getString(R.string.screenshot_save_failed),
+					filename != null ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show());
+		}, "ScreenshotSave").start();
 	}
 
 	private void randomShader() {

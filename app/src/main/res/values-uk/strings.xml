@@ -33,6 +33,9 @@
 	<string name="show_extra_keys">Показати додаткові клавіші</string>
 	<string name="fullscreen">Повноекранний режим</string>
 	<string name="release_to_exit_fullscreen">Відпустіть, щоб вийти з повноекранного режиму</string>
+	<string name="save_screenshot">Зберегти знімок екрана</string>
+	<string name="screenshot_saved">Збережено в Pictures/Enki Shader Editor/%1$s</string>
+	<string name="screenshot_save_failed">Не вдалося зберегти знімок екрана</string>
 	<string name="reacquire_audio">Повторне захоплення системного звуку</string>
 	<string name="audio_capture_already_working">Захоплення системного звуку вже працює</string>
 	<string name="hide_toolbar">Сховати верхнє меню</string>
@@ -180,8 +183,6 @@
 	<string name="very_small">Дуже малий</string>
 	<string name="large">Крупний</string>
 	<string name="icon_size">Розмір значків</string>
-	<string name="hide_status_bar">Приховати рядок стану</string>
-	<string name="hide_status_bar_summary">Приховує рядок з годинником/батареєю вгорі екрана; проведіть вниз від верхнього краю, щоб показати його тимчасово</string>
 
 	<!-- WallpaperService -->
 	<string name="wallpaper_description">Напишіть власні живі шпалери</string>
