@@ -328,6 +328,10 @@ public class UIManager {
 		if (mainLayout != null) {
 			mainLayout.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
 		}
+		// shaderTitleLabel lives outside mainLayout (so it can float over
+		// the code editor without being clipped by it) - hide it
+		// separately, or it'd keep floating over the fullscreen shader.
+		shaderTitleLabel.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
 		if (navbar != null) {
 			boolean showNavbarOverlay = !fullscreen &&
 					Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM;
