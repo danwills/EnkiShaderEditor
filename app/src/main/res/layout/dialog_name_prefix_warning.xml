@@ -1,0 +1,52 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="24dp">
+
+	<TextView
+		android:id="@+id/message"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="16dp"
+		android:textAppearance="?attr/textAppearanceBody2"
+		android:textColor="?attr/colorOnSurfaceVariant"/>
+
+	<Button
+		android:id="@+id/capitalize"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@string/capitalize_name"/>
+
+	<Button
+		android:id="@+id/add_underscore"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@string/add_underscore_prefix"/>
+
+	<Button
+		android:id="@+id/do_it_anyway"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@string/do_it_anyway"/>
+
+	<Button
+		android:id="@+id/cancel"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@android:string/cancel"/>
+
+</LinearLayout>

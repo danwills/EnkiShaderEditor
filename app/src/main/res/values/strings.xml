@@ -67,7 +67,8 @@
 	<string name="reparent_shader">Reparent</string>
 	<string name="name_prefix_warning">\"%1$s\" doesn\'t start with a capital letter, which may affect how it\'s grouped in the tree view.</string>
 	<string name="capitalize_name">Capitalize</string>
-	<string name="add_underscore_prefix">Add underscore</string>
+	<string name="add_underscore_prefix">Add Underscore</string>
+	<string name="do_it_anyway">Do it Anyway</string>
 	<string name="enter_name">Enter a name</string>
 	<string name="wallpaper_set">Wallpaper set</string>
 	<string name="cannot_set_wallpaper">Cannot set a wallpaper</string>

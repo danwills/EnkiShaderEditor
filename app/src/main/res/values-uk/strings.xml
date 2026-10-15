@@ -68,6 +68,7 @@
 	<string name="name_prefix_warning">\"%1$s\" не починається з великої літери, що може вплинути на групування в дереві.</string>
 	<string name="capitalize_name">Зробити великою</string>
 	<string name="add_underscore_prefix">Додати підкреслення</string>
+	<string name="do_it_anyway">Все одно</string>
 	<string name="enter_name">Введіть назву</string>
 	<string name="wallpaper_set">Шпалери встановлено</string>
 	<string name="cannot_set_wallpaper">Неможливо встановити шпалери</string>

@@ -68,6 +68,7 @@
 	<string name="name_prefix_warning">\"%1$s\" не начинается с заглавной буквы, что может повлиять на группировку в древовидном виде.</string>
 	<string name="capitalize_name">Сделать заглавной</string>
 	<string name="add_underscore_prefix">Добавить подчёркивание</string>
+	<string name="do_it_anyway">Всё равно</string>
 	<string name="enter_name">Введите имя</string>
 	<string name="wallpaper_set">Обоя обновлена</string>
 	<string name="cannot_set_wallpaper">Не удалось обновить обою</string>

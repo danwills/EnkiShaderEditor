@@ -1039,7 +1039,9 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String postfix = postfixView.getText().toString().trim();
 					if (!postfix.isEmpty()) {
-						applyNameGroupRename(targetId, parentName, postfix, confirmIfAlreadyNamed);
+						shaderListManager.checkNamePrefixAndThen(postfix, fixedPostfix ->
+								applyNameGroupRename(
+										targetId, parentName, fixedPostfix, confirmIfAlreadyNamed));
 					}
 				})
 				.setNegativeButton(android.R.string.cancel, null)

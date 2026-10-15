@@ -67,6 +67,7 @@
 	<string name="name_prefix_warning">「%1$s」不是以大寫字母開頭，這可能會影響樹狀視圖中的分組方式。</string>
 	<string name="capitalize_name">改為大寫</string>
 	<string name="add_underscore_prefix">新增底線</string>
+	<string name="do_it_anyway">仍然重新命名</string>
 	<string name="enter_name">請輸入名稱</string>
 	<string name="wallpaper_set">桌布已設置</string>
 	<string name="cannot_set_wallpaper">無法設置桌布</string>

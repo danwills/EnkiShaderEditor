@@ -11,10 +11,12 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 
 import com.google.android.material.button.MaterialButton;
@@ -29,6 +31,7 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Consumer;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.adapter.ShaderAdapter;
@@ -464,7 +467,7 @@ public class ShaderListManager {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String newName = nameView.getText().toString();
 					SoftKeyboard.hide(activity, nameView);
-					renameWithPrefixCheck(id, newName);
+					renameShader(id, newName);
 				})
 				.setNeutralButton(R.string.reparent_shader, (dialog, which) -> {
 					SoftKeyboard.hide(activity, nameView);
@@ -474,23 +477,42 @@ public class ShaderListManager {
 				.show();
 	}
 
-	// NameTokenizer/the tree view assume PascalCase, so a name that
+	// NameTokenizer/the tree view assume PascalCase, so text that
 	// doesn't start with a capital letter (including starting with a
 	// digit) won't group the way the user probably expects - catch that
-	// here rather than silently accepting it.
-	private void renameWithPrefixCheck(long id, @NonNull String newName) {
-		if (newName.isEmpty() || Character.isUpperCase(newName.charAt(0))) {
-			renameShader(id, newName);
+	// here rather than silently accepting it. onAccepted is invoked with
+	// the final text to use - immediately (synchronously) if no warning
+	// was needed, otherwise once the user picks a way to resolve it (not
+	// at all if they cancel). Shared by the plain rename dialog (checked
+	// against the whole name) and the reparent flow (checked against
+	// just the postfix, since the parent half is guaranteed capitalized
+	// already).
+	public void checkNamePrefixAndThen(
+			@NonNull String candidate, @NonNull Consumer<String> onAccepted) {
+		if (candidate.isEmpty() || Character.isUpperCase(candidate.charAt(0))) {
+			onAccepted.accept(candidate);
 			return;
 		}
-		new MaterialAlertDialogBuilder(activity)
-				.setMessage(activity.getString(R.string.name_prefix_warning, newName))
-				.setPositiveButton(R.string.capitalize_name, (dialog, which) ->
-						renameShader(id, Character.toUpperCase(newName.charAt(0)) +
-								newName.substring(1)))
-				.setNeutralButton(R.string.add_underscore_prefix, (dialog, which) ->
-						renameShader(id, "_" + newName))
-				.setNegativeButton(android.R.string.cancel, null)
+		View view = activity.getLayoutInflater().inflate(
+				R.layout.dialog_name_prefix_warning, null);
+		((TextView) view.findViewById(R.id.message)).setText(
+				activity.getString(R.string.name_prefix_warning, candidate));
+
+		AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
+				.setView(view)
 				.show();
+		view.findViewById(R.id.capitalize).setOnClickListener(v -> {
+			dialog.dismiss();
+			onAccepted.accept(Character.toUpperCase(candidate.charAt(0)) + candidate.substring(1));
+		});
+		view.findViewById(R.id.add_underscore).setOnClickListener(v -> {
+			dialog.dismiss();
+			onAccepted.accept("_" + candidate);
+		});
+		view.findViewById(R.id.do_it_anyway).setOnClickListener(v -> {
+			dialog.dismiss();
+			onAccepted.accept(candidate);
+		});
+		view.findViewById(R.id.cancel).setOnClickListener(v -> dialog.dismiss());
 	}
 }
