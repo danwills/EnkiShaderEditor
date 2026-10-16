@@ -35,6 +35,11 @@
 	<string name="save_screenshot">保存截图</string>
 	<string name="screenshot_saved">已保存到 Pictures/Enki Shader Editor/%1$s</string>
 	<string name="screenshot_save_failed">截图保存失败</string>
+	<string name="screenshot_copy_to_clipboard">复制到剪贴板</string>
+	<string name="screenshot_just_save">仅保存</string>
+	<string name="screenshot_save_and_open">保存并打开</string>
+	<string name="screenshot_copied">截图已复制到剪贴板</string>
+	<string name="no_app_to_open_image">未找到可打开图片的应用</string>
 	<string name="reacquire_audio">重新获取系统音频</string>
 	<string name="audio_capture_already_working">系统音频捕获已在正常工作</string>
 	<string name="hide_toolbar">隐藏顶部菜单</string>
@@ -139,6 +144,8 @@
 	<string name="disable_highlighting_summary">为大型着色器文件关闭高亮以提高性能</string>
 	<string name="auto_save">自动保存</string>
 	<string name="auto_save_summary">自动保存着色器更改</string>
+	<string name="warn_slow_compile">编译缓慢时提醒</string>
+	<string name="warn_slow_compile_summary">在编译上次较慢的着色器之前，显示上次用时，并询问是否继续</string>
 	<string name="auto_hide_extra_keys">自动隐藏扩展按键</string>
 	<string name="auto_hide_extra_keys_summary">自动隐藏键盘上方的额外按键行</string>
 	<string name="default_new_shader">默认新着色器模板</string>
@@ -154,6 +161,8 @@
 	<string name="compile_all_shaders">编译所有着色器</string>
 	<string name="compile_all_shaders_summary">预先编译库中的每个着色器,以便之后浏览时即时显示;已为本设备编译过的着色器会被跳过。在后台运行,较大的库可能需要一些时间。</string>
 	<string name="compile_all_shaders_started">正在后台编译着色器…</string>
+	<string name="compile_all_shaders_confirm">如果库较大可能需要一些时间，将在后台运行。是否继续？</string>
+	<string name="force_recompile">强制重新编译所有内容，包括已缓存的着色器（开发者选项）</string>
 	<string name="compile_all_progress">已编译 %1$d / %2$d</string>
 	<string name="show_line_numbers">显示行号</string>
 	<string name="show_line_numbers_summary">在编辑器左侧显示每行代码的编号</string>

@@ -344,19 +344,22 @@ public class ShaderListManager {
 	}
 
 	// Scrolls the sidebar to the given shader, expanding tree ancestors
-	// as needed so it's actually visible.
+	// as needed so it's actually visible. Jumps straight there
+	// (setSelection) rather than smoothScrollToPosition()'s animated
+	// scroll, which crawls one row at a time and can take a very long
+	// time to cross a large library.
 	public void revealShader(long id) {
 		if (treeMode) {
 			int position = shaderTreeAdapter.revealShader(id);
 			if (position >= 0) {
-				listView.smoothScrollToPosition(position);
+				listView.setSelection(position);
 			}
 			return;
 		}
 		List<ShaderInfo> shaders = shaderAdapter.getShaders();
 		for (int i = 0; i < shaders.size(); ++i) {
 			if (shaders.get(i).id() == id) {
-				listView.smoothScrollToPosition(i);
+				listView.setSelection(i);
 				return;
 			}
 		}

@@ -156,8 +156,8 @@ public class UIManager {
 		View drawerToggleBtn = activity.findViewById(R.id.drawer_toggle_btn);
 		ViewCompat.setTooltipText(drawerToggleBtn, activity.getText(R.string.drawer_open));
 		drawerToggleBtn.setOnClickListener(v -> {
-			if (drawerLayout.isDrawerOpen(GravityCompat.START)) {
-				drawerLayout.closeDrawer(GravityCompat.START);
+			if (isDrawerOpen()) {
+				closeDrawer();
 			} else {
 				drawerLayout.openDrawer(GravityCompat.START);
 			}
@@ -444,6 +444,14 @@ public class UIManager {
 		if (mainLayout != null) {
 			ViewCompat.requestApplyInsets(mainLayout);
 		}
+	}
+
+	public boolean isDrawerOpen() {
+		return drawerLayout.isDrawerOpen(GravityCompat.START);
+	}
+
+	public void closeDrawer() {
+		drawerLayout.closeDrawer(GravityCompat.START);
 	}
 
 	public boolean isToolbarHidden() {

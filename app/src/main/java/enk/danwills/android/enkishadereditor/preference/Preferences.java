@@ -50,6 +50,7 @@ public class Preferences {
 	public static final String LAST_OPENED_SHADER = "last_opened_shader";
 	public static final String PENDING_CRASH_SHADER = "pending_crash_shader";
 	public static final String ICON_SIZE = "icon_size";
+	public static final String WARN_SLOW_COMPILE = "warn_slow_compile";
 
 	private static final String WALLPAPER_RUNTIME = "wallpaper_runtime_";
 
@@ -101,6 +102,7 @@ public class Preferences {
 	private long lastOpenedShaderId = 0;
 	private boolean disableHighlighting = false;
 	private boolean autoSave = true;
+	private boolean warnSlowCompile = true;
 	private boolean showLineNumbers = true;
 	private boolean showExtraKeys = true;
 	private boolean autoHideExtraKeys = true;
@@ -187,6 +189,9 @@ public class Preferences {
 		autoSave = preferences.getBoolean(
 				AUTO_SAVE,
 				autoSave);
+		warnSlowCompile = preferences.getBoolean(
+				WARN_SLOW_COMPILE,
+				warnSlowCompile);
 		defaultNewShaderId = parseLong(
 				preferences.getString(DEFAULT_NEW_SHADER, null),
 				defaultNewShaderId);
@@ -420,6 +425,10 @@ public class Preferences {
 
 	public boolean autoSave() {
 		return autoSave;
+	}
+
+	public boolean warnSlowCompile() {
+		return warnSlowCompile;
 	}
 
 	public int getSystemBarColor() {

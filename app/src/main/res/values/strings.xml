@@ -36,6 +36,11 @@
 	<string name="save_screenshot">Save screenshot</string>
 	<string name="screenshot_saved">Saved to Pictures/Enki Shader Editor/%1$s</string>
 	<string name="screenshot_save_failed">Couldn\'t save screenshot</string>
+	<string name="screenshot_copy_to_clipboard">Copy to Clipboard</string>
+	<string name="screenshot_just_save">Just Save</string>
+	<string name="screenshot_save_and_open">Save and Open</string>
+	<string name="screenshot_copied">Screenshot copied to clipboard</string>
+	<string name="no_app_to_open_image">No app found to open the image</string>
 	<string name="reacquire_audio">Reacquire system audio</string>
 	<string name="audio_capture_already_working">System audio capture is already working</string>
 	<string name="hide_toolbar">Hide top menu</string>
@@ -142,6 +147,8 @@
 	<string name="disable_highlighting_summary">Disable highlighting for big shaders</string>
 	<string name="auto_save">Auto save</string>
 	<string name="auto_save_summary">Save shader automatically</string>
+	<string name="warn_slow_compile">Warn About Slow Compiles</string>
+	<string name="warn_slow_compile_summary">Before compiling a shader that was slow last time, show how long it took and ask first if it\'ll likely take a while again</string>
 	<string name="auto_hide_extra_keys">Auto hide extra keys</string>
 	<string name="auto_hide_extra_keys_summary">Automatically hide the extra keys row above the soft keyboard</string>
 	<string name="default_new_shader">Default new shader</string>
@@ -157,6 +164,8 @@
 	<string name="compile_all_shaders">Compile All Shaders</string>
 	<string name="compile_all_shaders_summary">Pre-compiles every shader in the library so browsing them later is instant; skips shaders already compiled for this device. Runs in the background and can take a while for a large library.</string>
 	<string name="compile_all_shaders_started">Compiling shaders in the background…</string>
+	<string name="compile_all_shaders_confirm">This can take a while for a large library and runs in the background. Continue?</string>
+	<string name="force_recompile">Force recompile everything, even shaders already cached (developer option)</string>
 	<string name="compile_all_progress">%1$d of %2$d compiled</string>
 	<string name="show_line_numbers">Show Line Numbers</string>
 	<string name="show_line_numbers_summary">Show Line Numbers at the start of each line.</string>

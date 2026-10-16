@@ -47,12 +47,16 @@ public final class HeadlessShaderCompiler {
 
 	// Blocks for the whole run. onProgress is invoked (on the calling
 	// thread) after every shader, compiled or not, with the number done
-	// so far.
+	// so far. forceRecompile: skip the "already cached" check entirely
+	// and recompile every shader regardless - a developer/debugging
+	// option (e.g. after a change to ShaderSourcePreparer that doesn't
+	// show up in the source hash) rather than something most users need.
 	@NonNull
 	public Result compileAll(
 			@NonNull Iterable<? extends ShaderSource> shaders,
 			int total,
 			@NonNull ProgramBinaryCache cache,
+			boolean forceRecompile,
 			@NonNull IntConsumer onProgress) {
 		EglSession egl = EglSession.create();
 		if (egl == null) {
@@ -72,7 +76,8 @@ public final class HeadlessShaderCompiler {
 					break;
 				}
 				String sourceHash = ProgramBinaryKey.sourceHash(shader.source(), egl.version);
-				if (cache.get(shader.id(), sourceHash, driverSignature) != null) {
+				if (!forceRecompile &&
+						cache.get(shader.id(), sourceHash, driverSignature) != null) {
 					++skipped;
 				} else if (compileOne(device, shader.id(), shader.source(), egl.version,
 						sourceHash, driverSignature, cache)) {

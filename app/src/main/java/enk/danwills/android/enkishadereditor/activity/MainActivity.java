@@ -1,6 +1,7 @@
 package enk.danwills.android.enkishadereditor.activity;
 
 import android.app.WallpaperManager;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
@@ -49,7 +50,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Random;
 import java.util.Locale;
 import java.util.Set;
@@ -161,17 +161,32 @@ public class MainActivity extends AppCompatActivity {
 	private final ShaderSearchState findShaderState = new ShaderSearchState();
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
 	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
-	// Backs out of fullscreen and/or the hidden-toolbar mode, in that
-	// order, instead of the normal back action. Enabled only while at
-	// least one of those is active.
+	// Steps back through the UI one layer at a time instead of the
+	// normal "exit the app" back action: closes the sidebar if it's
+	// open, then hides the code editor, then the toolbar/menu, then
+	// finally goes fullscreen - at most 4 taps from the fully-open
+	// state, fewer from anywhere already partway there. Always enabled
+	// (not conditional on some special state already being active),
+	// since even the ordinary starting state has somewhere for this to
+	// take it. Exiting fullscreen is the one case that isn't another
+	// step in the same direction - it jumps straight back to showing
+	// the toolbar too, on the theory that anyone who reached fullscreen
+	// via this progression got there specifically by hiding it.
 	private final OnBackPressedCallback specialModeBackCallback =
-			new OnBackPressedCallback(false) {
+			new OnBackPressedCallback(true) {
 				@Override
 				public void handleOnBackPressed() {
 					if (uiManager.isFullscreen()) {
 						setFullscreen(false);
-					} else if (uiManager.isToolbarHidden()) {
 						setToolbarHidden(false);
+					} else if (uiManager.isDrawerOpen()) {
+						uiManager.closeDrawer();
+					} else if (editorFragment.isCodeVisible()) {
+						uiManager.toggleCodeVisibility();
+					} else if (!uiManager.isToolbarHidden()) {
+						setToolbarHidden(true);
+					} else {
+						setFullscreen(true);
 					}
 				}
 			};
@@ -1102,36 +1117,50 @@ public class MainActivity extends AppCompatActivity {
 			shaderManager.saveShader();
 		}
 		DataRecords.Shader target = id > 0 ? dataSource.shader.getShader(id) : null;
-		if (shouldWarnAboutSlowCompile(target)) {
-			confirmSlowCompile(target, () -> shaderManager.selectShader(id));
+		if (target != null && maybeWarnAboutSlowCompile(
+				target, target.fragmentShader(), () -> shaderManager.selectShader(id))) {
 			return;
 		}
 		shaderManager.selectShader(id);
 	}
 
-	// False whenever the source hasn't changed since the last timed
-	// compile - the binary cache should then still hit, so no slow
-	// compile is actually about to happen regardless of how slow the
-	// source compile was once, and warning here would just be noise on
-	// every ordinary revisit of a shader that merely happens to be big.
-	private boolean shouldWarnAboutSlowCompile(@Nullable DataRecords.Shader shader) {
-		return shader != null &&
-				shader.compileTimeMs() != null &&
-				shader.compileTimeMs() >= SLOW_COMPILE_WARN_MS &&
-				!Objects.equals(shader.sourceModified(), shader.compileTimeSourceModified());
+	// Checks whether `candidateSource` (about to actually be compiled -
+	// the target shader's stored source when switching shaders, or the
+	// currently-edited text when running the one already open) is likely
+	// to trigger a slow fresh compile per `shader`'s last timed one, and
+	// if so shows a dialog before calling onProceed. Returns true if a
+	// dialog is now showing (caller must not proceed itself - onProceed
+	// will if/when the user agrees); false if nothing's wrong and the
+	// caller should just proceed immediately.
+	private boolean maybeWarnAboutSlowCompile(@NonNull DataRecords.Shader shader,
+			@NonNull String candidateSource, @NonNull Runnable onProceed) {
+		if (!ShaderEditorApp.preferences.warnSlowCompile() ||
+				shader.compileTimeMs() == null ||
+				shader.compileTimeMs() < SLOW_COMPILE_WARN_MS) {
+			return false;
+		}
+		Integer lastLength = shader.compileTimeSourceLength();
+		if (lastLength != null && lastLength == candidateSource.length()) {
+			// Nothing detectably changed since that timing was taken -
+			// the binary cache should still hit, so no slow compile is
+			// actually imminent regardless of how slow it was once.
+			return false;
+		}
+		confirmSlowCompile(shader, candidateSource.length(), onProceed);
+		return true;
 	}
 
 	// Informational-only below SLOW_COMPILE_CONFIRM_MS (a single
 	// dismiss-and-proceed button); at or above it, an explicit
 	// confirmation - onProceed only runs if the user agrees, per
-	// shouldWarnAboutSlowCompile() above already having ruled out the
+	// maybeWarnAboutSlowCompile() above already having ruled out the
 	// "will probably hit the cache anyway" case.
-	private void confirmSlowCompile(@NonNull DataRecords.Shader shader, @NonNull Runnable onProceed) {
+	private void confirmSlowCompile(
+			@NonNull DataRecords.Shader shader, int currentLength, @NonNull Runnable onProceed) {
 		long lastMs = shader.compileTimeMs();
 		int lastLength = shader.compileTimeSourceLength() != null
 				? shader.compileTimeSourceLength()
-				: shader.fragmentShader().length();
-		int currentLength = shader.fragmentShader().length();
+				: currentLength;
 
 		String message;
 		if (lastLength <= 0 || currentLength == lastLength) {
@@ -1164,23 +1193,95 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
-	// Reads straight from the GLSurfaceView's own framebuffer (see
-	// ShaderRenderer.captureFullScreenshot()), so the saved image never
-	// has any toolbar/editor/dialog chrome in it even if some happens to
-	// be on screen when this is tapped. Runs off the main thread since
-	// the capture blocks for up to a frame or two, and the gallery write
-	// is file I/O.
+	// Pauses first - reads straight from the GLSurfaceView's own
+	// framebuffer (see ShaderRenderer.captureFullScreenshot()), so the
+	// saved image never has any toolbar/editor/dialog chrome in it, but
+	// an un-paused shader would otherwise keep animating underneath the
+	// action dialog while the user is still deciding what to do with a
+	// frame they've already seen and chosen. Resumed (if it wasn't
+	// already paused) once the dialog closes, however it closes.
 	private void takeScreenshot() {
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
 		new Thread(() -> {
 			byte[] png = shaderViewManager.takeScreenshot();
-			String filename = png != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-					? ScreenshotSaver.save(this, png)
-					: null;
-			runOnUiThread(() -> Toast.makeText(this,
-					filename != null
-							? getString(R.string.screenshot_saved, filename)
-							: getString(R.string.screenshot_save_failed),
-					filename != null ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show());
+			runOnUiThread(() -> {
+				if (png == null) {
+					Toast.makeText(this, R.string.screenshot_save_failed, Toast.LENGTH_SHORT).show();
+					setShaderPaused(wasPaused);
+					return;
+				}
+				showScreenshotActionsDialog(png, wasPaused);
+			});
+		}, "ScreenshotCapture").start();
+	}
+
+	private enum ScreenshotAction {COPY, SAVE, SAVE_AND_OPEN}
+
+	private void showScreenshotActionsDialog(@NonNull byte[] png, boolean wasPaused) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_screenshot_actions, null);
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.save_screenshot)
+				.setView(view)
+				.setOnDismissListener(d -> setShaderPaused(wasPaused))
+				.show();
+		view.findViewById(R.id.screenshot_copy).setOnClickListener(v -> {
+			dialog.dismiss();
+			handleScreenshotAction(png, ScreenshotAction.COPY);
+		});
+		view.findViewById(R.id.screenshot_save).setOnClickListener(v -> {
+			dialog.dismiss();
+			handleScreenshotAction(png, ScreenshotAction.SAVE);
+		});
+		view.findViewById(R.id.screenshot_save_and_open).setOnClickListener(v -> {
+			dialog.dismiss();
+			handleScreenshotAction(png, ScreenshotAction.SAVE_AND_OPEN);
+		});
+		view.findViewById(R.id.screenshot_cancel).setOnClickListener(v -> dialog.dismiss());
+	}
+
+	// Every action saves (even "Copy to Clipboard" - the clipboard needs
+	// a content:// URI some other app's process can still read from
+	// later, and a MediaStore-backed one already is exactly that,
+	// without needing a separate FileProvider/cache-file setup just for
+	// the copy-only case).
+	private void handleScreenshotAction(@NonNull byte[] png, @NonNull ScreenshotAction action) {
+		new Thread(() -> {
+			ScreenshotSaver.SavedScreenshot saved =
+					Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+							? ScreenshotSaver.save(this, png)
+							: null;
+			runOnUiThread(() -> {
+				if (saved == null) {
+					Toast.makeText(this, R.string.screenshot_save_failed, Toast.LENGTH_SHORT).show();
+					return;
+				}
+				switch (action) {
+					case COPY -> {
+						var clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+						clipboard.setPrimaryClip(ClipData.newUri(
+								getContentResolver(), getString(R.string.save_screenshot), saved.uri()));
+						Toast.makeText(this, R.string.screenshot_copied, Toast.LENGTH_SHORT).show();
+					}
+					case SAVE -> Toast.makeText(this,
+							getString(R.string.screenshot_saved, saved.filename()),
+							Toast.LENGTH_LONG).show();
+					case SAVE_AND_OPEN -> {
+						Toast.makeText(this,
+								getString(R.string.screenshot_saved, saved.filename()),
+								Toast.LENGTH_SHORT).show();
+						Intent viewIntent = new Intent(Intent.ACTION_VIEW)
+								.setDataAndType(saved.uri(), "image/png")
+								.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+						try {
+							startActivity(viewIntent);
+						} catch (ActivityNotFoundException e) {
+							Toast.makeText(this, R.string.no_app_to_open_image,
+									Toast.LENGTH_SHORT).show();
+						}
+					}
+				}
+			});
 		}, "ScreenshotSave").start();
 	}
 
@@ -1714,7 +1815,6 @@ public class MainActivity extends AppCompatActivity {
 		if (!fullscreen) {
 			uiManager.hideFullscreenExitHint();
 		}
-		updateSpecialModeBackCallback();
 		// Fullscreen hides the whole editor (and everything else) from
 		// view regardless of the code editor's own visibility flag, so
 		// it counts as "not editing" for "Run when not editing" too -
@@ -1747,12 +1847,6 @@ public class MainActivity extends AppCompatActivity {
 
 	private void setToolbarHidden(boolean hidden) {
 		uiManager.setToolbarHidden(hidden);
-		updateSpecialModeBackCallback();
-	}
-
-	private void updateSpecialModeBackCallback() {
-		specialModeBackCallback.setEnabled(
-				uiManager.isFullscreen() || uiManager.isToolbarHidden());
 	}
 
 	private void togglePauseShader() {
@@ -1802,8 +1896,22 @@ public class MainActivity extends AppCompatActivity {
 		shaderViewManager.restartRuntime();
 	}
 
+	// Explicit "Run" only - deliberately not wired into the
+	// auto-run-on-change path (setOnEditPausedListener below), which
+	// fires silently and repeatedly while the user is still mid-edit;
+	// a confirmation dialog popping up there would fight typing itself,
+	// not just warn before a deliberate action.
 	private void runShader() {
 		String src = editorFragment.getText();
+		long selectedId = shaderManager.getSelectedShaderId();
+		DataRecords.Shader current = selectedId > 0 ? dataSource.shader.getShader(selectedId) : null;
+		if (current != null && maybeWarnAboutSlowCompile(current, src, () -> doRunShader(src))) {
+			return;
+		}
+		doRunShader(src);
+	}
+
+	private void doRunShader(@NonNull String src) {
 		var projectSession = shaderManager.getEditedProjectSession(src);
 		editorFragment.clearError();
 		if (ShaderEditorApp.preferences.doesSaveOnRun()) {

@@ -36,6 +36,11 @@
 	<string name="save_screenshot">Зберегти знімок екрана</string>
 	<string name="screenshot_saved">Збережено в Pictures/Enki Shader Editor/%1$s</string>
 	<string name="screenshot_save_failed">Не вдалося зберегти знімок екрана</string>
+	<string name="screenshot_copy_to_clipboard">Копіювати в буфер обміну</string>
+	<string name="screenshot_just_save">Просто зберегти</string>
+	<string name="screenshot_save_and_open">Зберегти й відкрити</string>
+	<string name="screenshot_copied">Знімок екрана скопійовано в буфер обміну</string>
+	<string name="no_app_to_open_image">Не знайдено застосунку для відкриття зображення</string>
 	<string name="reacquire_audio">Повторне захоплення системного звуку</string>
 	<string name="audio_capture_already_working">Захоплення системного звуку вже працює</string>
 	<string name="hide_toolbar">Сховати верхнє меню</string>
@@ -142,6 +147,8 @@
 	<string name="disable_highlighting_summary">Вимкнути підсвічування для великих шейдерів</string>
 	<string name="auto_save">Автоматичне збереження</string>
 	<string name="auto_save_summary">Зберігати шейдер автоматично</string>
+	<string name="warn_slow_compile">Попереджати про повільну компіляцію</string>
+	<string name="warn_slow_compile_summary">Перед компіляцією шейдера, який минулого разу компілювався повільно, показувати, скільки це зайняло часу, і запитувати підтвердження, якщо це може повторитися</string>
 	<string name="auto_hide_extra_keys">Автоматично приховувати додаткові клавіші</string>
 	<string name="auto_hide_extra_keys_summary">Автоматично приховувати рядок додаткових клавіш над програмною клавіатурою</string>
 	<string name="default_new_shader">Стандартний новий шейдер</string>
@@ -157,6 +164,8 @@
 	<string name="compile_all_shaders">Скомпілювати всі шейдери</string>
 	<string name="compile_all_shaders_summary">Попередньо компілює всі шейдери бібліотеки, щоб їх перегляд був миттєвим; пропускає вже скомпільовані для цього пристрою. Виконується у фоновому режимі та може зайняти деякий час для великої бібліотеки.</string>
 	<string name="compile_all_shaders_started">Компіляція шейдерів у фоновому режимі…</string>
+	<string name="compile_all_shaders_confirm">Це може зайняти деякий час для великої бібліотеки і виконується у фоновому режимі. Продовжити?</string>
+	<string name="force_recompile">Примусово перекомпілювати все, навіть уже закешовані шейдери (для розробників)</string>
 	<string name="compile_all_progress">%1$d з %2$d скомпільовано</string>
 	<string name="show_line_numbers">Показувати номери рядків</string>
 	<string name="show_line_numbers_summary">Показувати номери рядків на початку кожного рядка.</string>

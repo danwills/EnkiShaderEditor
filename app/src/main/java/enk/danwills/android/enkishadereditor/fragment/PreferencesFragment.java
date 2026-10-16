@@ -8,6 +8,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.CheckBox;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -22,6 +25,8 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceGroup;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
@@ -264,12 +269,24 @@ public class PreferencesFragment
 		if (compileAllShaders != null) {
 			compileAllShaders.setOnPreferenceClickListener(preference -> {
 				Context context = getContext();
-				if (context != null) {
-					CompileAllShadersRunner.start(context, dataSource);
-					Toast.makeText(context,
-							R.string.compile_all_shaders_started,
-							Toast.LENGTH_SHORT).show();
+				if (context == null) {
+					return true;
 				}
+				View view = LayoutInflater.from(context).inflate(
+						R.layout.dialog_compile_all_shaders, null);
+				CheckBox forceRecompileBox = view.findViewById(R.id.force_recompile);
+				new MaterialAlertDialogBuilder(context)
+						.setTitle(R.string.compile_all_shaders)
+						.setView(view)
+						.setPositiveButton(R.string.compile_all_shaders, (d, w) -> {
+							CompileAllShadersRunner.start(
+									context, dataSource, forceRecompileBox.isChecked());
+							Toast.makeText(context,
+									R.string.compile_all_shaders_started,
+									Toast.LENGTH_SHORT).show();
+						})
+						.setNegativeButton(android.R.string.cancel, null)
+						.show();
 				return true;
 			});
 		}

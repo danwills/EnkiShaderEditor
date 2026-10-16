@@ -41,7 +41,8 @@ public final class CompileAllShadersRunner {
 	private CompileAllShadersRunner() {
 	}
 
-	public static void start(@NonNull Context context, @NonNull DataSource dataSource) {
+	public static void start(@NonNull Context context, @NonNull DataSource dataSource,
+			boolean forceRecompile) {
 		if (running) {
 			return;
 		}
@@ -90,7 +91,7 @@ public final class CompileAllShadersRunner {
 							shaderId, binary, sourceHash, driverSignature, compileTimeMs);
 				}
 			};
-			compiler.compileAll(shaders, total, cache,
+			compiler.compileAll(shaders, total, cache, forceRecompile,
 					done -> showProgress(appContext, done, total, true));
 			running = false;
 			dismiss(appContext);

@@ -276,11 +276,23 @@ public class ShaderEditor extends LineNumberEditText {
 		}
 	}
 
+	// Its own BackgroundColorSpan subclass, distinct from the plain
+	// BackgroundColorSpan highlightMatch() below uses, so clearError()'s
+	// sweep (run on every syntax-highlight pass - far more often than an
+	// actual error state change) only ever touches error highlighting,
+	// never a search match that's supposed to stick around until the
+	// next edit.
+	private static final class ErrorBackgroundSpan extends BackgroundColorSpan {
+		ErrorBackgroundSpan(int color) {
+			super(color);
+		}
+	}
+
 	private void clearError(@Nullable Spannable e) {
 		if (e == null) {
 			return;
 		}
-		clearSpans(e, 0, e.length(), BackgroundColorSpan.class);
+		clearSpans(e, 0, e.length(), ErrorBackgroundSpan.class);
 	}
 
 	private void highlightErrors(List<ShaderError> shaderErrors) {
@@ -296,7 +308,7 @@ public class ShaderEditor extends LineNumberEditText {
 				continue;
 			}
 			e.setSpan(
-					new BackgroundColorSpan(colorError),
+					new ErrorBackgroundSpan(colorError),
 					layout.getLineStart(line),
 					layout.getLineEnd(line),
 					Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);

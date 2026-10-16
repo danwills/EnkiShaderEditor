@@ -105,6 +105,12 @@
 			android:checked="false"
 			android:defaultValue="true"/>
 		<androidx.preference.SwitchPreferenceCompat
+			android:key="warn_slow_compile"
+			android:title="@string/warn_slow_compile"
+			android:summary="@string/warn_slow_compile_summary"
+			android:checked="true"
+			android:defaultValue="true"/>
+		<androidx.preference.SwitchPreferenceCompat
 			android:key="auto_hide_extra_keys"
 			android:title="@string/auto_hide_extra_keys"
 			android:summary="@string/auto_hide_extra_keys_summary"
