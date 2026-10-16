@@ -12,6 +12,8 @@ public interface ProgramBinaryCache {
 	@Nullable
 	ProgramBinary get(long shaderId, @NonNull String sourceHash, @NonNull String driverSignature);
 
+	// compileTimeMs: how long the fresh compile that produced `binary`
+	// actually took - never a cache-hit's near-instant load time.
 	void put(long shaderId, @NonNull ProgramBinary binary,
-			@NonNull String sourceHash, @NonNull String driverSignature);
+			@NonNull String sourceHash, @NonNull String driverSignature, long compileTimeMs);
 }

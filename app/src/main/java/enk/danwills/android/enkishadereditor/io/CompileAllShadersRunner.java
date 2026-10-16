@@ -84,9 +84,10 @@ public final class CompileAllShadersRunner {
 
 				@Override
 				public void put(long shaderId, @NonNull ProgramBinary binary,
-						@NonNull String sourceHash, @NonNull String driverSignature) {
+						@NonNull String sourceHash, @NonNull String driverSignature,
+						long compileTimeMs) {
 					dataSource.shader.saveCompiledBinary(
-							shaderId, binary, sourceHash, driverSignature);
+							shaderId, binary, sourceHash, driverSignature, compileTimeMs);
 				}
 			};
 			compiler.compileAll(shaders, total, cache,

@@ -6,17 +6,18 @@
 	android:layout_height="wrap_content"
 	android:orientation="vertical">
 
-	<!-- The drawer toggle, fps label, and every toolbar action button
-	     plus the quality spinner, as a single left-justified flow: it
-	     wraps to however many rows it needs instead of a fixed row
-	     count, so landscape (or a smaller icon size) settles into fewer
-	     rows automatically. -->
+	<!-- The drawer toggle and every toolbar action button plus the
+	     quality spinner, as a single left-justified flow: it wraps to
+	     however many rows it needs instead of a fixed row count, so
+	     landscape (or a smaller icon size) settles into fewer rows
+	     automatically. Tight horizontal spacing (2dp, not 4dp) so more
+	     of them fit per row before wrapping. -->
 	<enk.danwills.android.enkishadereditor.widget.FlowLayout
 		android:id="@+id/action_buttons_row"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:background="@color/primary_translucent"
-		android:paddingStart="4dp"
+		android:paddingStart="2dp"
 		android:paddingTop="4dp"
 		android:paddingBottom="4dp">
 
@@ -25,37 +26,17 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			app:icon="@drawable/ic_menu"
 			app:iconSize="24dp" />
-
-		<Button
-			android:id="@+id/menu_btn"
-			style="@style/IconButton"
-			android:layout_width="48dp"
-			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
-			android:layout_marginBottom="4dp"
-			app:icon="@drawable/ic_more_vert"
-			app:iconSize="24dp" />
-
-		<TextView
-			android:id="@+id/fps_label"
-			android:layout_width="wrap_content"
-			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
-			android:layout_marginBottom="4dp"
-			android:gravity="center_vertical"
-			android:textAppearance="@style/Subtitle"
-			android:textColor="@color/drawer_text" />
 
 		<Button
 			android:id="@+id/toggle_code"
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			app:icon="@drawable/ic_edit"
 			app:iconSize="24dp" />
@@ -65,7 +46,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			app:icon="@drawable/ic_play_arrow"
 			app:iconSize="24dp" />
@@ -75,7 +56,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			app:icon="@drawable/ic_error"
 			app:iconSize="24dp" />
@@ -89,7 +70,7 @@
 			android:id="@+id/quality"
 			android:layout_width="wrap_content"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp" />
 
 		<Button
@@ -97,7 +78,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/previous_shader"
 			app:icon="@drawable/ic_previous"
@@ -108,7 +89,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/next_shader"
 			app:icon="@drawable/ic_next"
@@ -119,7 +100,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/random_shader"
 			app:icon="@drawable/ic_dice"
@@ -130,7 +111,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/restart_shader"
 			app:icon="@drawable/ic_restart"
@@ -141,7 +122,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/pause_shader"
 			app:icon="@drawable/ic_pause"
@@ -152,7 +133,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/fullscreen"
 			app:icon="@drawable/ic_fullscreen"
@@ -163,7 +144,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/save_screenshot"
 			app:icon="@drawable/ic_camera"
@@ -174,7 +155,7 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/undo"
 			app:icon="@drawable/ic_undo"
@@ -185,11 +166,21 @@
 			style="@style/IconButton"
 			android:layout_width="48dp"
 			android:layout_height="48dp"
-			android:layout_marginEnd="4dp"
+			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
 			android:contentDescription="@string/reacquire_audio"
 			android:visibility="gone"
 			app:icon="@drawable/ic_audio_reacquire"
+			app:iconSize="24dp" />
+
+		<Button
+			android:id="@+id/menu_btn"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginEnd="2dp"
+			android:layout_marginBottom="4dp"
+			app:icon="@drawable/ic_more_vert"
 			app:iconSize="24dp" />
 
 	</enk.danwills.android.enkishadereditor.widget.FlowLayout>

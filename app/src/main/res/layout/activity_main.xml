@@ -51,25 +51,57 @@
 		<!-- Nav bar background for SDK35+ -->
 		<include layout="@layout/navbar"/>
 
-		<!-- Persistent label below the toolbar: the current shader's
-		     name, or its date if unnamed. Full-width so long names wrap
-		     instead of being clipped. Plain when the code editor is
-		     hidden (the shader preview is behind it); given a darkened,
-		     edge-to-edge background by UIManager when the editor is
-		     showing, so it stays readable over code - the editor's own
-		     top margin is then pushed down by exactly this view's
-		     height (see UIManager/EditorFragment), so the two never
-		     overlap. -->
-		<TextView
-			android:id="@+id/shader_title_label"
+		<!-- Persistent row below the toolbar: the current shader's name
+		     (or its date if unnamed), with the live fps reading just
+		     after it - moved here from the icon toolbar, where it was a
+		     wide, unclickable passenger squeezed in among buttons that
+		     actually do something when tapped. Full-width so a long
+		     name still wraps instead of being clipped. Plain when the
+		     code editor is hidden (the shader preview is behind it);
+		     given a darkened, edge-to-edge background by UIManager when
+		     the editor is showing, so it stays readable over code - the
+		     editor's own top margin is then pushed down by exactly this
+		     row's height (see UIManager/EditorFragment), so the two
+		     never overlap. -->
+		<LinearLayout
+			android:id="@+id/shader_title_row"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:layout_gravity="top"
+			android:orientation="horizontal"
 			android:gravity="center"
 			android:paddingHorizontal="16dp"
 			android:paddingVertical="8dp"
-			android:textColor="@color/drawer_text"
-			android:textSize="22sp"
+			android:elevation="8dp">
+
+			<TextView
+				android:id="@+id/shader_title_label"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:textColor="@color/drawer_text"
+				android:textSize="22sp"/>
+
+			<TextView
+				android:id="@+id/fps_label"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="8dp"
+				android:gravity="center_vertical"
+				android:textColor="@color/drawer_text"
+				android:textSize="15sp"/>
+
+		</LinearLayout>
+
+		<!-- Transient "found it" ring drawn around a Find-in-Shader match -
+		     positioned, sized and animated at runtime from the matched
+		     text's on-screen bounds, see UIManager.flashSearchMatch(). -->
+		<View
+			android:id="@+id/search_match_indicator"
+			android:layout_width="0dp"
+			android:layout_height="0dp"
+			android:background="@drawable/search_match_ring"
+			android:visibility="gone"
 			android:elevation="8dp"/>
 
 		<!-- Transient overlay naming the shader after prev/next/random -->

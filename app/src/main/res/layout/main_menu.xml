@@ -141,20 +141,12 @@
 			app:icon="@drawable/ic_settings" />
 
 		<Button
-			android:id="@+id/hide_toolbar"
+			android:id="@+id/find_in_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"
 			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/hide_toolbar"
-			app:icon="@drawable/ic_bottom_panel_close" />
-
-		<Button
-			android:id="@+id/shader_stats"
-			style="@style/MenuItem"
-			android:layout_width="match_parent"
-			android:layout_height="@dimen/menu_item_height"
-			android:text="@string/shader_stats"
-			app:icon="@drawable/ic_stats" />
+			android:text="@string/find_in_shader"
+			app:icon="@drawable/ic_search" />
 
 		<com.google.android.material.divider.MaterialDivider
 			android:layout_width="match_parent"

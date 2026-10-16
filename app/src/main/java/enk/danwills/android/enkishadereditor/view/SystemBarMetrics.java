@@ -80,16 +80,32 @@ public class SystemBarMetrics {
 				windowInsets.set(left, top, right, bottom);
 			}
 
-			if (toolbar != null &&
-					toolbar.getPaddingTop() == 0 &&
-					top > 0) {
-				toolbar.setPadding(toolbar.getPaddingLeft(), top,
-						toolbar.getPaddingRight(), toolbar.getPaddingBottom());
-				// A wrap_content (or match_parent) height already grows on
-				// its own to fit the extra padding just added above - only
-				// a fixed pixel height needs manually extending to match.
-				if (toolbar.getLayoutParams().height > 0) {
-					toolbar.getLayoutParams().height += top;
+			if (toolbar != null) {
+				// Tracked via tag rather than re-deriving from the
+				// current padding (as a one-shot "only if padding is
+				// still 0" check used to) - that missed every later
+				// change, including the status bar toggling on/off as
+				// code-editor visibility changes: an insets dispatch
+				// landing while the status bar was transiently hidden
+				// (top == 0) would latch the padding at 0 forever, since
+				// a later dispatch with the real height would then see
+				// a nonzero getPaddingTop() and skip re-applying.
+				Object tag = toolbar.getTag();
+				int previousTop = tag instanceof Integer ? (Integer) tag : 0;
+				if (top != previousTop) {
+					toolbar.setPadding(toolbar.getPaddingLeft(), top,
+							toolbar.getPaddingRight(), toolbar.getPaddingBottom());
+					// A wrap_content (or match_parent) height already
+					// grows on its own to fit the extra padding just
+					// added above - only a fixed pixel height needs
+					// manually extending to match, by the delta from
+					// whatever was last applied (not the full new value,
+					// since past deltas are already baked into the
+					// current height).
+					if (toolbar.getLayoutParams().height > 0) {
+						toolbar.getLayoutParams().height += (top - previousTop);
+					}
+					toolbar.setTag(top);
 				}
 			}
 

@@ -22,12 +22,15 @@ import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 public class ShaderAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
+	private final int highlightColor;
 	private final List<ShaderInfo> shaders = new ArrayList<>();
 	private long selectedShaderId = 0;
+	private long highlightedShaderId = 0;
 
 	public ShaderAdapter(Context context) {
 		this.textColorSelected = ContextCompat.getColor(context, R.color.accent);
 		this.textColorUnselected = ContextCompat.getColor(context, R.color.drawer_text_unselected);
+		this.highlightColor = ContextCompat.getColor(context, R.color.search_match);
 	}
 
 	@Override
@@ -67,6 +70,15 @@ public class ShaderAdapter extends BaseAdapter {
 		notifyDataSetChanged();
 	}
 
+	// Briefly tints the given row's background to mark it as a
+	// Find-Shader match being browsed - distinct from (and
+	// independent of) selectedShaderId, since the match being looked
+	// at isn't necessarily the currently-open shader.
+	public void setHighlightedId(long id) {
+		highlightedShaderId = id;
+		notifyDataSetChanged();
+	}
+
 	@NonNull
 	public List<ShaderInfo> getShaders() {
 		return shaders;
@@ -81,10 +93,12 @@ public class ShaderAdapter extends BaseAdapter {
 	}
 
 	private class ViewHolder {
+		private final View root;
 		private final ImageView icon;
 		private final TextView title;
 
 		ViewHolder(@NonNull View itemView) {
+			root = itemView;
 			icon = itemView.findViewById(R.id.shader_icon);
 			title = itemView.findViewById(R.id.shader_title);
 		}
@@ -100,6 +114,11 @@ public class ShaderAdapter extends BaseAdapter {
 			title.setText(shader.getTitle());
 			title.setTextColor(shader.id() == selectedShaderId ? textColorSelected :
 					textColorUnselected);
+			if (shader.id() == highlightedShaderId) {
+				root.setBackgroundColor(highlightColor);
+			} else {
+				root.setBackgroundResource(R.drawable.drawer_item_selector);
+			}
 		}
 	}
 }

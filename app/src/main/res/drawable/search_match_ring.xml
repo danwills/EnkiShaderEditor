@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A brief "found it" ring drawn around a Find-in-Shader match - same
+     attention-yellow as background_fullscreen_exit_armed's armed
+     outline, for visual consistency. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+	<stroke android:width="3dp" android:color="#FFD600"/>
+	<corners android:radius="6dp"/>
+	<solid android:color="@android:color/transparent"/>
+</shape>

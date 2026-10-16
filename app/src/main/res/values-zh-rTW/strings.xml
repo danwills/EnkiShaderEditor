@@ -51,6 +51,11 @@
 	<string name="stats_quality">渲染品質：%1$d%%</string>
 	<string name="stats_shader_id">著色器 ID：%1$d</string>
 	<string name="stats_last_modified">最後修改：%1$s</string>
+	<string name="stats_stored_compile_time">已記錄編譯時間：%1$.2f 秒（用於預警緩慢的重新編譯）</string>
+	<string name="slow_compile_title">著色器編譯較慢</string>
+	<string name="slow_compile_warning_same_size">這個著色器上次編譯用了 %1$.1f 秒，大小看起來沒有明顯變化，這次編譯預計耗時相近。</string>
+	<string name="slow_compile_warning_size_changed">這個著色器上次編譯用了 %1$.1f 秒。此後大小變化了 %2$+d%%，這次編譯預計耗時約 %3$.1f 秒。</string>
+	<string name="slow_compile_continue">編譯</string>
 	<string name="stats_not_saved">尚未儲存</string>
 	<string name="stats_compile_ms_ok">上次編譯：%1$.2f 毫秒（成功）</string>
 	<string name="stats_compile_ms_failed">上次編譯：%1$.2f 毫秒（失敗）</string>
@@ -294,6 +299,9 @@
 	<string name="find_previous">尋找上一個</string>
 	<string name="find_random">尋找隨機</string>
 	<string name="match_position_format">%1$d / %2$d</string>
+	<plurals name="match_count">
+		<item quantity="other">找到 %1$d 個相符項目</item>
+	</plurals>
 	<string name="no_matches_found">找不到符合項目</string>
 	<string name="sample_battery_name">電池電量</string>
 	<string name="sample_battery_rationale">水平電池電量指示器</string>

@@ -52,6 +52,11 @@
 	<string name="stats_quality">Качество рендеринга: %1$d%%</string>
 	<string name="stats_shader_id">ID шейдера: %1$d</string>
 	<string name="stats_last_modified">Последнее изменение: %1$s</string>
+	<string name="stats_stored_compile_time">Сохранённое время компиляции: %1$.2fс (для предупреждения о медленной компиляции)</string>
+	<string name="slow_compile_title">Медленный шейдер</string>
+	<string name="slow_compile_warning_same_size">Этот шейдер компилировался %1$.1fс в прошлый раз, а его размер почти не изменился, поэтому компиляция, скорее всего, займёт похожее время.</string>
+	<string name="slow_compile_warning_size_changed">Этот шейдер компилировался %1$.1fс в прошлый раз. Его размер изменился на %2$+d%%, поэтому компиляция, скорее всего, займёт около %3$.1fс.</string>
+	<string name="slow_compile_continue">Скомпилировать</string>
 	<string name="stats_not_saved">Ещё не сохранён</string>
 	<string name="stats_compile_ms_ok">Последняя компиляция: %1$.2f мс (успешно)</string>
 	<string name="stats_compile_ms_failed">Последняя компиляция: %1$.2f мс (ошибка)</string>
@@ -311,6 +316,12 @@
 	<string name="find_previous">Найти предыдущий</string>
 	<string name="find_random">Найти случайный</string>
 	<string name="match_position_format">%1$d / %2$d</string>
+	<plurals name="match_count">
+		<item quantity="one">%1$d совпадение</item>
+		<item quantity="few">%1$d совпадения</item>
+		<item quantity="many">%1$d совпадений</item>
+		<item quantity="other">%1$d совпадения</item>
+	</plurals>
 	<string name="no_matches_found">Совпадений не найдено</string>
 	<string name="sample_battery_name">Баттарея</string>
 	<string name="sample_battery_rationale">Горизонтальный показатель заряда аккамулятора</string>

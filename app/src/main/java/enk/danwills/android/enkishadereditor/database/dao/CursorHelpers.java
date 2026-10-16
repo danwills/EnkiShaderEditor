@@ -16,6 +16,21 @@ public class CursorHelpers {
 		return i > -1 ? c.getLong(i) : 0L;
 	}
 
+	// Unlike getLong()/getInt() above, distinguishes "column is NULL"
+	// (no value ever recorded) from a genuine 0 - needed for columns
+	// where that distinction matters, like COMPILE_TIME_MS.
+	@Nullable
+	public static Long getLongOrNull(@NonNull Cursor c, @NonNull String col) {
+		int i = c.getColumnIndex(col);
+		return (i > -1 && !c.isNull(i)) ? c.getLong(i) : null;
+	}
+
+	@Nullable
+	public static Integer getIntOrNull(@NonNull Cursor c, @NonNull String col) {
+		int i = c.getColumnIndex(col);
+		return (i > -1 && !c.isNull(i)) ? c.getInt(i) : null;
+	}
+
 	public static float getFloat(@NonNull Cursor c, @NonNull String col) {
 		int i = c.getColumnIndex(col);
 		return i > -1 ? c.getFloat(i) : 0f;

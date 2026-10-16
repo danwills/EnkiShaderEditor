@@ -282,7 +282,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					lastProgramBinaryBytes = freshBinary.bytes().length;
 					if (programBinaryCache != null &&
 							sourceHash != null && driverSignature != null) {
-						programBinaryCache.put(shaderId, freshBinary, sourceHash, driverSignature);
+						programBinaryCache.put(shaderId, freshBinary, sourceHash, driverSignature,
+								lastCompileNanos / 1_000_000);
 					}
 				} else {
 					// Either this came from a cache hit (nothing fresh to

@@ -27,6 +27,19 @@
 		android:layout_height="wrap_content"
 		android:text="@string/fuzzy_matching"/>
 
+	<!-- Live total, updated as the query/options change - shown only
+	     before a specific match has been picked, since result_row's own
+	     result_position below covers "x of y" once one has. -->
+	<TextView
+		android:id="@+id/match_count"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="12dp"
+		android:gravity="center"
+		android:textSize="13sp"
+		android:alpha="0.7"
+		android:visibility="gone"/>
+
 	<LinearLayout
 		android:id="@+id/result_row"
 		android:layout_width="match_parent"

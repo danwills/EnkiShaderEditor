@@ -51,7 +51,21 @@ public final class DataRecords {
 			String modified,
 			@Nullable
 			String sourceModified,
-			float quality
+			float quality,
+			// The three below are null until a genuine fresh compile (not
+			// a cache hit) has ever been timed for this shader - see
+			// ShaderDao.saveCompiledBinary(). compileTimeSourceLength/
+			// compileTimeSourceModified are a snapshot of fragmentShader's
+			// length and sourceModified as they were at that moment, so a
+			// caller can tell whether/how much the source has grown since
+			// without needing GL/driver access to re-derive the binary
+			// cache's own prepared-source hash.
+			@Nullable
+			Long compileTimeMs,
+			@Nullable
+			Integer compileTimeSourceLength,
+			@Nullable
+			String compileTimeSourceModified
 	) implements WithTitle {
 	}
 

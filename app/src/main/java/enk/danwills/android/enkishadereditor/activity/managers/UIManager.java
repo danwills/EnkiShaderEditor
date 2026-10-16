@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.activity.managers;
 
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -49,12 +50,16 @@ public class UIManager {
 	private final TextView shaderNameOverlay;
 	@Nullable
 	private final TextView fullscreenExitHint;
+	@Nullable
+	private final View searchMatchIndicator;
 	@NonNull
 	private final FlowLayout actionButtonsRow;
 	@NonNull
 	private final TextView fpsLabel;
 	@NonNull
 	private final TextView shaderTitleLabel;
+	@NonNull
+	private final View shaderTitleRow;
 	@Nullable
 	private View pauseShaderNavButton;
 	@Nullable
@@ -110,31 +115,33 @@ public class UIManager {
 		toolbarContainer = activity.findViewById(R.id.toolbar_container);
 		shaderNameOverlay = activity.findViewById(R.id.shader_name_overlay);
 		fullscreenExitHint = activity.findViewById(R.id.fullscreen_exit_hint);
+		searchMatchIndicator = activity.findViewById(R.id.search_match_indicator);
 		actionButtonsRow = activity.findViewById(R.id.action_buttons_row);
 		fpsLabel = activity.findViewById(R.id.fps_label);
 		shaderTitleLabel = activity.findViewById(R.id.shader_title_label);
+		shaderTitleRow = activity.findViewById(R.id.shader_title_row);
 
-		// Keeps shaderTitleLabel pinned just below the toolbar no matter
+		// Keeps shaderTitleRow pinned just below the toolbar no matter
 		// how many rows it's currently wrapped to (icon size, rotation,
 		// or being hidden entirely all change its height at runtime).
 		if (toolbarContainer != null) {
 			toolbarContainer.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
 				int toolbarHeight = toolbarContainer.getHeight();
-				var lp = (ViewGroup.MarginLayoutParams) shaderTitleLabel.getLayoutParams();
+				var lp = (ViewGroup.MarginLayoutParams) shaderTitleRow.getLayoutParams();
 				if (lp.topMargin != toolbarHeight) {
 					lp.topMargin = toolbarHeight;
-					shaderTitleLabel.setLayoutParams(lp);
+					shaderTitleRow.setLayoutParams(lp);
 				}
 			});
 		}
-		// Pushes the editor down by exactly shaderTitleLabel's own
+		// Pushes the editor down by exactly shaderTitleRow's own
 		// (variable - name length/wrapping can change it) height, so a
 		// long wrapped name can never overlap the code below it.
-		shaderTitleLabel.getViewTreeObserver().addOnGlobalLayoutListener(() ->
-				editorFragment.setTopInset(shaderTitleLabel.getHeight()));
+		shaderTitleRow.getViewTreeObserver().addOnGlobalLayoutListener(() ->
+				editorFragment.setTopInset(shaderTitleRow.getHeight()));
 		// Matches editorContainer's default XML visibility (visible) -
 		// toggleCodeVisibility() keeps this in sync from here on.
-		applyShaderTitleLabelBackground(true);
+		applyShaderTitleRowBackground(true);
 
 		// The real, user-visible drawer button: flows as an ordinary
 		// member of actionButtonsRow instead of living inside the hidden
@@ -313,29 +320,43 @@ public class UIManager {
 		drawerLayout.setTouchThru(wasVisible);
 		extraKeysManager.setVisible(!wasVisible &&
 				ShaderEditorApp.preferences.showExtraKeys());
-		applyShaderTitleLabelBackground(nowVisible);
+		applyShaderTitleRowBackground(nowVisible);
 		applyStatusBarVisibility();
 		if (onCodeVisibilityChanged != null) {
 			onCodeVisibilityChanged.accept(nowVisible);
 		}
 	}
 
-	// codeVisible: an edge-to-edge darkened bar so shaderTitleLabel
-	// stays readable over the editor's code text; !codeVisible (the
-	// shader preview showing through instead): no background needed.
-	private void applyShaderTitleLabelBackground(boolean codeVisible) {
-		shaderTitleLabel.setBackgroundResource(
-				codeVisible ? R.drawable.background_title_bar : 0);
+	// codeVisible: an edge-to-edge darkened bar so shaderTitleRow (the
+	// name, and the fps reading beside it) stays readable over the
+	// editor's code text - at 75% opacity rather than fully opaque, so
+	// the shader is still faintly visible through it instead of fully
+	// hidden behind a solid strip; !codeVisible (the shader preview
+	// showing through instead): no background needed. Built from the
+	// theme color in code, not an XML drawable resource, since baking a
+	// fixed alpha into XML would fight the color's own light/dark theme
+	// resolution - resolving the attribute here keeps that automatic.
+	private void applyShaderTitleRowBackground(boolean codeVisible) {
+		if (!codeVisible) {
+			shaderTitleRow.setBackground(null);
+			return;
+		}
+		TypedValue typedValue = new TypedValue();
+		activity.getTheme().resolveAttribute(
+				com.google.android.material.R.attr.colorSurfaceContainerLow, typedValue, true);
+		int opaque = typedValue.data;
+		int translucent = (opaque & 0x00FFFFFF) | (Math.round(0.75f * 255) << 24);
+		shaderTitleRow.setBackgroundColor(translucent);
 	}
 
-	// shaderTitleLabel lives outside mainLayout (so it can float over the
+	// shaderTitleRow lives outside mainLayout (so it can float over the
 	// code editor without being clipped by it), so neither fullscreen
 	// mode nor the drawer opening automatically hides it the way the
 	// rest of the UI does - hide it explicitly whenever either is true,
 	// since it'd otherwise cover the fullscreen shader or the sidebar's
 	// own top buttons.
 	private void updateShaderTitleLabelVisibility() {
-		shaderTitleLabel.setVisibility(
+		shaderTitleRow.setVisibility(
 				fullscreen || drawerOpen ? View.GONE : View.VISIBLE);
 	}
 
@@ -414,6 +435,15 @@ public class UIManager {
 					WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
 			controller.hide(WindowInsetsCompat.Type.statusBars());
 		}
+		// Some OEM skins don't reliably redeliver onApplyWindowInsets()
+		// off the back of a show()/hide() call above on their own -
+		// without this, action_buttons_row's top padding (set in
+		// SystemBarMetrics, compensating for exactly this bar) can go
+		// stale and the toolbar ends up drawn partly underneath the
+		// now-visible status bar.
+		if (mainLayout != null) {
+			ViewCompat.requestApplyInsets(mainLayout);
+		}
 	}
 
 	public boolean isToolbarHidden() {
@@ -427,6 +457,47 @@ public class UIManager {
 		if (toolbarContainer != null) {
 			toolbarContainer.setVisibility(toolbarHidden ? View.GONE : View.VISIBLE);
 		}
+	}
+
+	// Briefly draws an animated ring around `screenRect` (absolute
+	// screen coordinates, e.g. from ShaderEditor.getMatchBoundsOnScreen())
+	// - pops in with a quick scale-down-to-size + fade-in, holds, then
+	// fades out on its own. Used to make a Find-in-Shader match obvious
+	// at a glance once the editor's scrolled it into view, not just
+	// technically selected.
+	public void flashSearchMatch(@NonNull Rect screenRect) {
+		if (searchMatchIndicator == null) {
+			return;
+		}
+		ViewGroup parent = (ViewGroup) searchMatchIndicator.getParent();
+		int[] parentLocation = new int[2];
+		parent.getLocationOnScreen(parentLocation);
+
+		int pad = dpToPx(6);
+		ViewGroup.LayoutParams lp = searchMatchIndicator.getLayoutParams();
+		lp.width = screenRect.width() + pad * 2;
+		lp.height = screenRect.height() + pad * 2;
+		searchMatchIndicator.setLayoutParams(lp);
+		searchMatchIndicator.setX(screenRect.left - parentLocation[0] - pad);
+		searchMatchIndicator.setY(screenRect.top - parentLocation[1] - pad);
+
+		searchMatchIndicator.animate().cancel();
+		searchMatchIndicator.setVisibility(View.VISIBLE);
+		searchMatchIndicator.setAlpha(0f);
+		searchMatchIndicator.setScaleX(1.6f);
+		searchMatchIndicator.setScaleY(1.6f);
+		searchMatchIndicator.animate()
+				.alpha(1f)
+				.scaleX(1f)
+				.scaleY(1f)
+				.setDuration(220)
+				.withEndAction(() -> searchMatchIndicator.animate()
+						.alpha(0f)
+						.setStartDelay(500)
+						.setDuration(300)
+						.withEndAction(() -> searchMatchIndicator.setVisibility(View.GONE))
+						.start())
+				.start();
 	}
 
 	public void showShaderNameOverlay(@Nullable String name) {

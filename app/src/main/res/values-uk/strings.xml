@@ -52,6 +52,11 @@
 	<string name="stats_quality">Якість рендерингу: %1$d%%</string>
 	<string name="stats_shader_id">ID шейдера: %1$d</string>
 	<string name="stats_last_modified">Востаннє змінено: %1$s</string>
+	<string name="stats_stored_compile_time">Збережений час компіляції: %1$.2fс (для попередження про повільну компіляцію)</string>
+	<string name="slow_compile_title">Повільний шейдер</string>
+	<string name="slow_compile_warning_same_size">Цей шейдер компілювався %1$.1fс минулого разу, а його розмір майже не змінився, тому компіляція, ймовірно, займе подібний час.</string>
+	<string name="slow_compile_warning_size_changed">Цей шейдер компілювався %1$.1fс минулого разу. Його розмір змінився на %2$+d%%, тому компіляція, ймовірно, займе близько %3$.1fс.</string>
+	<string name="slow_compile_continue">Скомпілювати</string>
 	<string name="stats_not_saved">Ще не збережено</string>
 	<string name="stats_compile_ms_ok">Остання компіляція: %1$.2f мс (успішно)</string>
 	<string name="stats_compile_ms_failed">Остання компіляція: %1$.2f мс (помилка)</string>
@@ -311,6 +316,12 @@
 	<string name="find_previous">Знайти попередній</string>
 	<string name="find_random">Знайти випадковий</string>
 	<string name="match_position_format">%1$d / %2$d</string>
+	<plurals name="match_count">
+		<item quantity="one">%1$d збіг</item>
+		<item quantity="few">%1$d збіги</item>
+		<item quantity="many">%1$d збігів</item>
+		<item quantity="other">%1$d збігу</item>
+	</plurals>
 	<string name="no_matches_found">Збігів не знайдено</string>
 	<string name="sample_battery_name">Батарея</string>
 	<string name="sample_battery_rationale">Горизонтальний датчик батареї</string>

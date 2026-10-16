@@ -40,6 +40,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
 	private final int textColorGroup;
+	private final int highlightColor;
 	private final int indentPx;
 
 	// Keyed by the token path ("Example/Tasty"), not node identity, so
@@ -57,6 +58,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private ShaderNameNode root = new ShaderNameNode("");
 	private List<Row> visibleRows = Collections.emptyList();
 	private long selectedShaderId = 0;
+	private long highlightedShaderId = 0;
 	// When set, children at every level are ordered by the best
 	// similarity score found anywhere in their subtree (descending)
 	// instead of alphabetically, and branches containing a very good
@@ -71,6 +73,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		// drawer background here is dark, so group labels need a light
 		// color like the other drawer text, just a bit dimmer.
 		textColorGroup = ContextCompat.getColor(context, R.color.drawer_text_unselected);
+		highlightColor = ContextCompat.getColor(context, R.color.search_match);
 		indentPx = (int) (16 * context.getResources().getDisplayMetrics().density);
 		unnamedGroupLabel = context.getString(R.string.unnamed_shaders_group);
 	}
@@ -83,6 +86,15 @@ public class ShaderTreeAdapter extends BaseAdapter {
 
 	public void setSelectedId(long id) {
 		selectedShaderId = id;
+		notifyDataSetChanged();
+	}
+
+	// Briefly tints the given row's background to mark it as a
+	// Find-Shader match being browsed - distinct from (and
+	// independent of) selectedShaderId, since the match being looked
+	// at isn't necessarily the currently-open shader.
+	public void setHighlightedId(long id) {
+		highlightedShaderId = id;
 		notifyDataSetChanged();
 	}
 
@@ -268,6 +280,10 @@ public class ShaderTreeAdapter extends BaseAdapter {
 			}
 
 			ShaderInfo shader = row.node().shader;
+			// Reset unconditionally - a recycled view previously bound
+			// to a highlighted leaf row would otherwise keep showing
+			// that highlight after being rebound to an unrelated row.
+			root.setBackgroundResource(R.drawable.drawer_item_selector);
 			if (shader != null) {
 				byte[] bytes = shader.thumb();
 				if (bytes != null && bytes.length > 0) {
@@ -276,6 +292,9 @@ public class ShaderTreeAdapter extends BaseAdapter {
 					icon.setImageResource(R.drawable.thumbnail_new_shader);
 				}
 				title.setText(row.node().token);
+				if (shader.id() == highlightedShaderId) {
+					root.setBackgroundColor(highlightColor);
+				}
 				title.setTextColor(shader.id() == selectedShaderId
 						? textColorSelected
 						: textColorUnselected);

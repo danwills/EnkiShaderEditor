@@ -14,6 +14,7 @@
 	<color name="editor_text">#fff</color>
 	<color name="editor_line_numbers">#8888</color>
 	<color name="syntax_error">#8800</color>
+	<color name="search_match">#59FFD600</color>
 	<color name="crop_bound">#8fff</color>
 	<color name="cube_face_selected">#ffff</color>
 	<color name="cube_face_text">#fff</color>

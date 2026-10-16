@@ -44,7 +44,9 @@ public class ShaderDao {
 	public DataRecords.Shader getShader(long id) {
 		String query =
 				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.FRAGMENT_SHADER + "," + DatabaseContract.ShaderColumns.NAME + "," +
-						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " WHERE " + DatabaseContract.ShaderColumns._ID + " = ?";
+						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + "," +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_MS + "," + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + "," + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED +
+						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " WHERE " + DatabaseContract.ShaderColumns._ID + " = ?";
 
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
 		try (var cursor = db.rawQuery(query, new String[]{String.valueOf(id)})) {
@@ -57,7 +59,13 @@ public class ShaderDao {
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.MODIFIED),
 						CursorHelpers.getString(cursor,
 								DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
-						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY));
+						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY),
+						CursorHelpers.getLongOrNull(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_MS),
+						CursorHelpers.getIntOrNull(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH),
+						CursorHelpers.getString(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED));
 			}
 		}
 		return null;
@@ -118,7 +126,9 @@ public class ShaderDao {
 	public DataRecords.Shader getRandomShader() {
 		String query =
 				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.FRAGMENT_SHADER + "," + DatabaseContract.ShaderColumns.NAME + "," +
-						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + " FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.QUALITY + "," +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_MS + "," + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + "," + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED +
+						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
 						" ORDER BY RANDOM() LIMIT 1";
 
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -132,7 +142,13 @@ public class ShaderDao {
 						CursorHelpers.getString(cursor, DatabaseContract.ShaderColumns.MODIFIED),
 						CursorHelpers.getString(cursor,
 								DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
-						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY));
+						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.QUALITY),
+						CursorHelpers.getLongOrNull(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_MS),
+						CursorHelpers.getIntOrNull(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH),
+						CursorHelpers.getString(cursor,
+								DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED));
 			}
 		}
 		return null;
@@ -278,18 +294,32 @@ public class ShaderDao {
 	}
 
 	// Pure cache metadata - deliberately doesn't touch MODIFIED or
-	// SOURCE_MODIFIED.
+	// SOURCE_MODIFIED. compileTimeMs should only ever be a genuinely
+	// freshly-measured compile duration, never a cache-hit's near-zero
+	// load time - see ShaderRenderer/HeadlessShaderCompiler. The two
+	// COMPILE_TIME_SOURCE_* columns are copied from this same row's
+	// current FRAGMENT_SHADER/SOURCE_MODIFIED via SQL expressions
+	// (ContentValues can't express that), letting a later caller judge
+	// how stale that timing is without needing GL access - see
+	// DataRecords.Shader's field comments.
 	public void saveCompiledBinary(long id, @NonNull ProgramBinary binary,
-			@NonNull String sourceHash, @NonNull String driverSignature) {
+			@NonNull String sourceHash, @NonNull String driverSignature,
+			long compileTimeMs) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
-		var cv = new ContentValues();
-		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY, binary.bytes());
-		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT, binary.format());
-		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH, sourceHash);
-		cv.put(DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG, driverSignature);
-		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
-				DatabaseContract.ShaderColumns._ID + " = ?",
-				new String[]{String.valueOf(id)});
+		db.execSQL(
+				"UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY + " = ?, " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT + " = ?, " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " = ?, " +
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " = ?, " +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_MS + " = ?, " +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " = LENGTH(" +
+						DatabaseContract.ShaderColumns.FRAGMENT_SHADER + "), " +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " = " +
+						DatabaseContract.ShaderColumns.SOURCE_MODIFIED +
+						" WHERE " + DatabaseContract.ShaderColumns._ID + " = ?",
+				new Object[]{binary.bytes(), binary.format(), sourceHash, driverSignature,
+						compileTimeMs, id});
 	}
 
 	public void removeShader(long id) {
@@ -365,6 +395,16 @@ public class ShaderDao {
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " TEXT;");
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT;");
 	}
+
+	// Nothing to backfill - these start empty (null) for every existing
+	// row and get populated the next time each shader is genuinely
+	// freshly compiled (not loaded from the binary cache) - see
+	// saveCompiledBinary().
+	private static void addCompileTimeTracking(@NonNull SQLiteDatabase db) {
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_MS + " INTEGER;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " INTEGER;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME;");
+	}
 	// endregion
 
 	// region Private helpers
@@ -394,6 +434,9 @@ public class ShaderDao {
 				if (oldVersion < 7) {
 					addSourceModifiedAndCompiledBinaryCache(db);
 				}
+				if (oldVersion < 8) {
+					addCompileTimeTracking(db);
+				}
 			}
 
 			@Override
@@ -416,7 +459,10 @@ public class ShaderDao {
 						DatabaseContract.ShaderColumns.COMPILED_BINARY + " BLOB," +
 						DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT + " INTEGER," +
 						DatabaseContract.ShaderColumns.COMPILED_BINARY_SOURCE_HASH + " TEXT," +
-						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT);");
+						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT," +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_MS + " INTEGER," +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " INTEGER," +
+						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME);");
 				insertInitialShaders(db);
 			}
 

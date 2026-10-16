@@ -104,10 +104,11 @@ public class ShaderViewManager {
 
 			@Override
 			public void put(long shaderId, @NonNull ProgramBinary binary,
-					@NonNull String sourceHash, @NonNull String driverSignature) {
+					@NonNull String sourceHash, @NonNull String driverSignature,
+					long compileTimeMs) {
 				try {
 					binaryCacheExecutor.execute(() -> dataSource.shader.saveCompiledBinary(
-							shaderId, binary, sourceHash, driverSignature));
+							shaderId, binary, sourceHash, driverSignature, compileTimeMs));
 				} catch (RejectedExecutionException e) {
 					// The executor was already shut down (destroy() ran) -
 					// nothing worth caching for at this point.

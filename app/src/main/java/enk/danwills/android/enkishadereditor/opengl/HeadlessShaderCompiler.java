@@ -98,6 +98,7 @@ public final class HeadlessShaderCompiler {
 		if (fragment == null) {
 			return false;
 		}
+		long compileStart = System.nanoTime();
 		var result = device.createProgram(
 				prepared.getVertexShader(
 						RendererProgramManager.FULL_SCREEN_VERTEX_SHADER,
@@ -105,6 +106,7 @@ public final class HeadlessShaderCompiler {
 						version),
 				fragment.getSource(),
 				fragment.getLineMapping());
+		long compileTimeMs = (System.nanoTime() - compileStart) / 1_000_000;
 		if (!result.succeeded() || result.getProgram() == null) {
 			return false;
 		}
@@ -113,7 +115,7 @@ public final class HeadlessShaderCompiler {
 			if (binary == null) {
 				return false;
 			}
-			cache.put(shaderId, binary, sourceHash, driverSignature);
+			cache.put(shaderId, binary, sourceHash, driverSignature, compileTimeMs);
 			return true;
 		} finally {
 			device.deleteProgram(result.getProgram());

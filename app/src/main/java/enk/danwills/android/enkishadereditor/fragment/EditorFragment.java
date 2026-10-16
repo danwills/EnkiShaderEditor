@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.fragment;
 
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -161,8 +162,41 @@ public class EditorFragment extends Fragment {
 		shaderEditor.navigateToLine(lineNumber);
 	}
 
-	public boolean findNext(@NonNull String query) {
-		return shaderEditor.findNext(query);
+	@NonNull
+	public List<Integer> findAllMatches(@NonNull String query) {
+		return shaderEditor.findAllMatches(query);
+	}
+
+	public void selectMatch(int start, int length) {
+		shaderEditor.selectMatch(start, length);
+	}
+
+	public void highlightMatch(int start, int length) {
+		shaderEditor.highlightMatch(start, length);
+	}
+
+	public void clearMatchHighlight() {
+		shaderEditor.clearMatchHighlight();
+	}
+
+	@Nullable
+	public Rect getMatchBoundsOnScreen(int start, int length) {
+		return shaderEditor.getMatchBoundsOnScreen(start, length);
+	}
+
+	// Scrolls (via the ScrollView wrapping the editor) so the match at
+	// [start, start + length) ends up with its top edge at
+	// `targetTopOnScreen` (absolute screen Y) instead of wherever a
+	// generic "bring into view" would leave it - e.g. just below a
+	// dialog sitting over the top of the screen, rather than fully or
+	// partially hidden underneath it.
+	public void scrollMatchToScreenY(int start, int length, int targetTopOnScreen) {
+		Rect bounds = getMatchBoundsOnScreen(start, length);
+		if (bounds == null) {
+			return;
+		}
+		int delta = bounds.top - targetTopOnScreen;
+		editorContainer.scrollBy(0, delta);
 	}
 
 

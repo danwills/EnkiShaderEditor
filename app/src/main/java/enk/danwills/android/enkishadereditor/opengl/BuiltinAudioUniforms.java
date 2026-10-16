@@ -43,7 +43,25 @@ final class BuiltinAudioUniforms {
 		this.context = context;
 	}
 
-	void configure(
+	// Every method below that touches mediaProjection/audioSpectrumListener/
+	// spectrumTextureBinding/needsAudioCaptureConsent is synchronized on
+	// this instance. Those fields are normally only ever touched from the
+	// GL thread (configure()/apply() run from ShaderRenderer's GL
+	// callbacks; setMediaProjection() and friends are explicitly queued
+	// there via GLSurfaceView.queueEvent() by ShaderViewManager) - except
+	// releaseMediaProjection(), which ShaderViewManager.destroy() calls
+	// directly from the main thread rather than queuing, specifically so
+	// it still runs even if the GL thread is dead/stuck (e.g. crash
+	// recovery). Without synchronization, that direct call could race a
+	// concurrently-running configure()/setMediaProjection() on the GL
+	// thread - e.g. destroy() reads/nulls a stale mediaProjection just
+	// before the GL thread finishes registering a fresh one, which then
+	// never gets released. This was the actual cause of an intermittent
+	// MediaProjection/Activity leak (LeakCanary: "Global variable in
+	// native code" retaining MediaProjection$MediaProjectionCallback ->
+	// MediaProjection -> the destroyed Activity's Context) - not a
+	// missing stop()/unregisterCallback() call, which already existed.
+	synchronized void configure(
 			@NonNull GlDevice device,
 			@NonNull GlProgram program,
 			@NonNull ShaderTextureResources textureResources) {
@@ -67,7 +85,7 @@ final class BuiltinAudioUniforms {
 		}
 	}
 
-	void apply(@NonNull GlDevice device) {
+	synchronized void apply(@NonNull GlDevice device) {
 		var binding = spectrumTextureBinding;
 		var listener = audioSpectrumListener;
 		if (binding == null || listener == null) {
@@ -82,7 +100,7 @@ final class BuiltinAudioUniforms {
 	// consumeNeedsAudioCaptureConsent()) has been answered by the user.
 	// A null projection means they declined, or the API level/activity
 	// didn't support asking; either way we keep running on the mic.
-	void setMediaProjection(@Nullable MediaProjection mediaProjection) {
+	synchronized void setMediaProjection(@Nullable MediaProjection mediaProjection) {
 		Log.i(TAG, "setMediaProjection: " + (mediaProjection != null ? "granted" : "null"));
 		this.mediaProjection = mediaProjection;
 		if (mediaProjection != null && ShaderEditorApp.preferences.useSystemAudio()) {
@@ -91,7 +109,7 @@ final class BuiltinAudioUniforms {
 		}
 	}
 
-	boolean consumeNeedsAudioCaptureConsent() {
+	synchronized boolean consumeNeedsAudioCaptureConsent() {
 		boolean needs = needsAudioCaptureConsent;
 		needsAudioCaptureConsent = false;
 		return needs;
@@ -110,12 +128,12 @@ final class BuiltinAudioUniforms {
 	// preferences, e.g. after use_system_audio changes, without
 	// requiring a shader recompile to trigger it. Must run on the GL
 	// thread, like configure().
-	void refreshCaptureSource() {
+	synchronized void refreshCaptureSource() {
 		unregisterListener();
 		openListenerIfNeeded();
 	}
 
-	void release() {
+	synchronized void release() {
 		spectrumTextureBinding = null;
 		unregisterListener();
 	}
@@ -130,7 +148,7 @@ final class BuiltinAudioUniforms {
 	// the ordinary pause/resume case, but if the Activity is destroyed
 	// without a clean pause first (e.g. recovering from a crash),
 	// nothing else ever calls stop() and the whole chain leaks.
-	void releaseMediaProjection() {
+	synchronized void releaseMediaProjection() {
 		unregisterListener();
 		if (mediaProjection != null) {
 			mediaProjection.stop();
@@ -141,7 +159,7 @@ final class BuiltinAudioUniforms {
 	// See AudioSpectrumListener.isReceivingAudio() - lets a manual
 	// "reacquire" action skip the teardown/re-prompt dance when capture
 	// is demonstrably still working.
-	boolean isReceivingAudio() {
+	synchronized boolean isReceivingAudio() {
 		var listener = audioSpectrumListener;
 		return listener != null && listener.isReceivingAudio();
 	}

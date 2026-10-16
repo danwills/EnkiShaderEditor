@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Parcelable;
 import android.text.Editable;
@@ -112,7 +113,10 @@ public class ShaderEditor extends LineNumberEditText {
 	private List<ShaderError> shaderErrors = Collections.emptyList();
 	private boolean isUserInteraction = true;
 	private int colorError;
+	private int colorSearchMatch;
 	private int textColor;
+	@Nullable
+	private Object searchMatchSpan;
 	private int tabWidthInCharacters = 0;
 	private int tabWidth = 0;
 	private List<Token> tokens = new ArrayList<>();
@@ -374,27 +378,104 @@ public class ShaderEditor extends LineNumberEditText {
 		setSelection(lineStart, lineStart);
 	}
 
-	// Searches forward from the end of the current selection for the
-	// next case-insensitive occurrence of `query`, wrapping around to
-	// the start of the text if nothing is found past the cursor.
-	public boolean findNext(@NonNull String query) {
+	// Every case-insensitive occurrence of `query`, as start offsets -
+	// lets a caller build its own previous/random/next navigation (and
+	// an "N of M" position indicator) over a stable list, the same
+	// pattern the shader-library find dialog already uses, rather than
+	// just stepping forward one match at a time.
+	@NonNull
+	public List<Integer> findAllMatches(@NonNull String query) {
+		List<Integer> matches = new ArrayList<>();
 		Editable text = getText();
 		if (text == null || query.isEmpty()) {
-			return false;
+			return matches;
 		}
 		String haystack = text.toString().toLowerCase(Locale.ROOT);
 		String needle = query.toLowerCase(Locale.ROOT);
-		int index = haystack.indexOf(needle, getSelectionEnd());
-		if (index < 0) {
-			index = haystack.indexOf(needle);
+		int from = 0;
+		int index;
+		while ((index = haystack.indexOf(needle, from)) >= 0) {
+			matches.add(index);
+			from = index + needle.length();
 		}
-		if (index < 0) {
-			return false;
-		}
+		return matches;
+	}
+
+	// Selects [start, start + length) without scrolling anything - the
+	// other half of findAllMatches() above. Deliberately doesn't call
+	// bringPointIntoView(): a caller that wants the match scrolled into
+	// view should do that itself, precisely, via scrollMatchToScreenY()
+	// against getMatchBoundsOnScreen() below - letting this also do a
+	// coarse default scroll risked fighting that second, more precise
+	// one for the final scroll position.
+	public void selectMatch(int start, int length) {
 		requestFocus();
-		setSelection(index, index + needle.length());
-		bringPointIntoView(index);
-		return true;
+		setSelection(start, start + length);
+	}
+
+	// Marks [start, start + length) with a highlight color distinct
+	// from the normal text-selection color, so a found match stays
+	// visually obvious even after the selection handles/cursor toolbar
+	// stop drawing attention to it. Replaces whatever was highlighted
+	// before; stays until the next call or clearMatchHighlight().
+	public void highlightMatch(int start, int length) {
+		Spannable text = getText();
+		if (text == null) {
+			return;
+		}
+		clearMatchHighlight();
+		Object span = new BackgroundColorSpan(colorSearchMatch);
+		text.setSpan(span, start, start + length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+		searchMatchSpan = span;
+	}
+
+	public void clearMatchHighlight() {
+		if (searchMatchSpan == null) {
+			return;
+		}
+		Spannable text = getText();
+		if (text != null) {
+			text.removeSpan(searchMatchSpan);
+		}
+		searchMatchSpan = null;
+	}
+
+	// [start, start + length)'s bounding box in absolute screen
+	// coordinates - lets a caller (which doesn't otherwise know
+	// anything about this view's internal Layout) draw an indicator
+	// over the match, or compute how to scroll some ancestor so the
+	// match ends up at a particular screen position (e.g. below a
+	// dialog covering the top of the screen). Null if there's no laid-
+	// out text yet, or the range falls outside it.
+	@Nullable
+	public Rect getMatchBoundsOnScreen(int start, int length) {
+		Layout layout = getLayout();
+		Editable text = getText();
+		if (layout == null || text == null ||
+				start < 0 || start + length > text.length()) {
+			return null;
+		}
+		int line = layout.getLineForOffset(start);
+		float left = layout.getPrimaryHorizontal(start);
+		float right = layout.getPrimaryHorizontal(start + length);
+		int top = layout.getLineTop(line);
+		int bottom = layout.getLineBottom(line);
+
+		int[] location = new int[2];
+		getLocationOnScreen(location);
+		// This view's own getScrollX/Y are normally 0 here - the
+		// HorizontalScrollView/ScrollView wrapping it scroll by moving
+		// the whole view instead, which getLocationOnScreen() already
+		// reflects - but included for correctness in case that ever
+		// changes.
+		int originX = location[0] + getTotalPaddingLeft() - getScrollX();
+		int originY = location[1] + getTotalPaddingTop() - getScrollY();
+
+		return new Rect(
+				originX + Math.round(Math.min(left, right)),
+				originY + top,
+				originX + Math.round(Math.max(left, right)),
+				originY + bottom);
 	}
 
 	public void addUniform(String statement) {
@@ -698,6 +779,9 @@ public class ShaderEditor extends LineNumberEditText {
 		colorError = ContextCompat.getColor(
 				context,
 				R.color.syntax_error);
+		colorSearchMatch = ContextCompat.getColor(
+				context,
+				R.color.search_match);
 	}
 
 	private void cancelUpdate() {

@@ -52,6 +52,11 @@
 	<string name="stats_quality">Render quality: %1$d%%</string>
 	<string name="stats_shader_id">Shader ID: %1$d</string>
 	<string name="stats_last_modified">Last modified: %1$s</string>
+	<string name="stats_stored_compile_time">Stored compile time: %1$.2fs (used to warn about slow recompiles)</string>
+	<string name="slow_compile_title">Slow Shader</string>
+	<string name="slow_compile_warning_same_size">This shader took %1$.1fs to compile last time, and its size looks about the same, so this compile will likely take a similar time.</string>
+	<string name="slow_compile_warning_size_changed">This shader took %1$.1fs to compile last time. Its size has changed %2$+d%% since then, so this compile will likely take around %3$.1fs.</string>
+	<string name="slow_compile_continue">Compile</string>
 	<string name="stats_not_saved">Not yet saved</string>
 	<string name="stats_compile_ms_ok">Last compile: %1$.2f ms (succeeded)</string>
 	<string name="stats_compile_ms_failed">Last compile: %1$.2f ms (failed)</string>
@@ -311,6 +316,10 @@
 	<string name="find_previous">Find previous</string>
 	<string name="find_random">Find random</string>
 	<string name="match_position_format">%1$d / %2$d</string>
+	<plurals name="match_count">
+		<item quantity="one">%1$d match</item>
+		<item quantity="other">%1$d matches</item>
+	</plurals>
 	<string name="no_matches_found">No matches found</string>
 	<string name="sample_battery_name">Battery</string>
 	<string name="sample_battery_rationale">Horizontal battery gauge</string>

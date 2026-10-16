@@ -1,5 +1,6 @@
 <LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
@@ -15,4 +16,50 @@
 		android:imeOptions="actionSearch"
 		android:inputType="text"
 		android:importantForAutofill="no"/>
+
+	<TextView
+		android:id="@+id/result_position"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="12dp"
+		android:gravity="center"
+		android:textSize="13sp"
+		android:alpha="0.7"
+		android:visibility="gone"/>
+
+	<LinearLayout
+		android:id="@+id/find_nav_row"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:orientation="horizontal"
+		android:gravity="center"
+		android:visibility="gone">
+		<Button
+			android:id="@+id/find_previous"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:contentDescription="@string/find_previous"
+			app:icon="@drawable/ic_previous"
+			app:iconSize="24dp"/>
+		<Button
+			android:id="@+id/find_random"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="12dp"
+			android:contentDescription="@string/find_random"
+			app:icon="@drawable/ic_dice"
+			app:iconSize="24dp"/>
+		<Button
+			android:id="@+id/find_next_match"
+			style="@style/IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_marginStart="12dp"
+			android:contentDescription="@string/find_next"
+			app:icon="@drawable/ic_next"
+			app:iconSize="24dp"/>
+	</LinearLayout>
 </LinearLayout>

@@ -362,6 +362,24 @@ public class ShaderListManager {
 		}
 	}
 
+	private final Handler matchHighlightHandler = new Handler(Looper.getMainLooper());
+	private final Runnable clearMatchHighlightRunnable = () -> setHighlightedShaderId(0);
+
+	// Scrolls to and briefly tints the given shader's row - the sidebar
+	// counterpart to the editor's own found-it ring, used while browsing
+	// Find Shader's results.
+	public void revealAndHighlightShader(long id) {
+		revealShader(id);
+		setHighlightedShaderId(id);
+		matchHighlightHandler.removeCallbacks(clearMatchHighlightRunnable);
+		matchHighlightHandler.postDelayed(clearMatchHighlightRunnable, 1200);
+	}
+
+	private void setHighlightedShaderId(long id) {
+		shaderAdapter.setHighlightedId(id);
+		shaderTreeAdapter.setHighlightedId(id);
+	}
+
 	// Steps by `direction` (-1 or +1) through the currently displayed
 	// shader list, wrapping around at either end. Follows whatever
 	// filtering (e.g. the similar-shaders view) is currently active.

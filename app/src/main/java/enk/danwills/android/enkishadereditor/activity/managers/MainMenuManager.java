@@ -123,8 +123,7 @@ public class MainMenuManager {
 		setClickListener(R.id.copy_shader, shaderActions::onCopyShader);
 		setClickListener(R.id.copy_defines, shaderActions::onCopyDefines);
 		setClickListener(R.id.settings, navigationActions::onShowSettings);
-		setClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
-		setClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
+		setClickListener(R.id.find_in_shader, editorActions::onFindInShader);
 		setClickListener(R.id.more_options, this::showMoreOptions, false);
 
 		// The less frequently used items live in a secondary popup,
@@ -145,7 +144,8 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.update_wallpaper, shaderActions::onUpdateWallpaper);
 		setMoreOptionsClickListener(R.id.add_uniform, navigationActions::onAddUniform);
 		setMoreOptionsClickListener(R.id.load_sample, navigationActions::onLoadSample);
-		setMoreOptionsClickListener(R.id.find_in_shader, editorActions::onFindInShader);
+		setMoreOptionsClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
+		setMoreOptionsClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 
 		CompoundButton extraKeysToggle = moreOptionsView.findViewById(

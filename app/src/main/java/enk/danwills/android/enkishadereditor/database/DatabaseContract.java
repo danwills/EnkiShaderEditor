@@ -36,6 +36,16 @@ public final class DatabaseContract {
 		String COMPILED_BINARY_FORMAT = "compiled_binary_format";
 		String COMPILED_BINARY_SOURCE_HASH = "compiled_binary_source_hash";
 		String COMPILED_BINARY_DRIVER_SIG = "compiled_binary_driver_sig";
+		// Set together, only on a genuine fresh compile (never on a cache
+		// hit) - see ShaderDao.saveCompiledBinary(). COMPILE_TIME_SOURCE_LENGTH/
+		// _MODIFIED are a snapshot of FRAGMENT_SHADER's length and
+		// SOURCE_MODIFIED at that moment, letting a later caller tell
+		// (without needing GL/driver access) whether the source has
+		// changed since - and if so, roughly how much - without re-deriving
+		// the prepared-source hash the binary cache itself keys on.
+		String COMPILE_TIME_MS = "compile_time_ms";
+		String COMPILE_TIME_SOURCE_LENGTH = "compile_time_source_length";
+		String COMPILE_TIME_SOURCE_MODIFIED = "compile_time_source_modified";
 	}
 
 	/**

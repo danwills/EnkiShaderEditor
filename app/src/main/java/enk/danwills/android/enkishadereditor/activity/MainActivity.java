@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.BitmapFactory;
+import android.graphics.Rect;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
@@ -14,7 +15,9 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -46,6 +49,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Locale;
 import java.util.Set;
@@ -151,6 +155,10 @@ public class MainActivity extends AppCompatActivity {
 	private boolean keyboardVisibleBeforeFullscreen = false;
 	private int selectionStartBeforeFullscreen = -1;
 	private int selectionEndBeforeFullscreen = -1;
+	// Remembered across dialog opens (not just within one open dialog)
+	// so repeated searches don't have to be re-typed from scratch.
+	private final EditorSearchState findInShaderState = new EditorSearchState();
+	private final ShaderSearchState findShaderState = new ShaderSearchState();
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
 	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
 	// Backs out of fullscreen and/or the hidden-toolbar mode, in that
@@ -275,7 +283,10 @@ public class MainActivity extends AppCompatActivity {
 						shaderManager.getEditedProjectSession(text));
 			}
 		});
-		editorFragment.setOnTextModifiedListener(() -> shaderManager.setModified(true));
+		editorFragment.setOnTextModifiedListener(() -> {
+			shaderManager.setModified(true);
+			editorFragment.clearMatchHighlight();
+		});
 		editorFragment.setCodeCompletionListener(extraKeysManager::setCompletions);
 	}
 
@@ -893,40 +904,254 @@ public class MainActivity extends AppCompatActivity {
 		return defines;
 	}
 
+	private int dpToPx(int dp) {
+		return Math.round(TypedValue.applyDimension(
+				TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics()));
+	}
+
+	// Material AlertDialogs in this theme are vertically centered, so
+	// this derives the bottom edge from just the dialog's own measured
+	// height - no need to ask the window for its actual position.
+	// Falls back to the middle of the screen if that height isn't
+	// available yet (called before the dialog has had a layout pass).
+	private int dialogBottomOnScreen(@NonNull AlertDialog dialog) {
+		int screenHeight = getResources().getDisplayMetrics().heightPixels;
+		Window window = dialog.getWindow();
+		int dialogHeight = window != null ? window.getDecorView().getHeight() : 0;
+		return dialogHeight > 0 ? (screenHeight + dialogHeight) / 2 : screenHeight / 2;
+	}
+
 	private void showFindInShaderDialog() {
 		View view = getLayoutInflater().inflate(R.layout.dialog_find_in_shader, null);
 		EditText queryView = view.findViewById(R.id.query);
+		TextView resultPosition = view.findViewById(R.id.result_position);
+		View navRow = view.findViewById(R.id.find_nav_row);
+		View previousButton = view.findViewById(R.id.find_previous);
+		View randomButton = view.findViewById(R.id.find_random);
+		View nextButton = view.findViewById(R.id.find_next_match);
+		EditorSearchState state = findInShaderState;
+		Random random = new Random();
+
+		queryView.setText(state.query);
+		// Pre-selected rather than just cursor-at-end, so typing a new
+		// search immediately replaces the old one instead of appending.
+		queryView.selectAll();
+		// Visible from the start (not just after a first successful
+		// search) so there's always an obvious, tappable way to
+		// actually run the search - not everyone has a keyboard with a
+		// visible search/enter key.
+		navRow.setVisibility(View.VISIBLE);
 
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.find_in_shader)
 				.setView(view)
-				.setPositiveButton(R.string.find_next, null)
 				.setNegativeButton(android.R.string.cancel, null)
-				.setOnDismissListener(d -> SoftKeyboard.hide(this, queryView))
+				.setOnDismissListener(d -> {
+					SoftKeyboard.hide(this, queryView);
+					state.query = queryView.getText().toString();
+					// Deliberately left highlighted - cleared on the next
+					// actual edit instead (see setOnTextModifiedListener),
+					// so it's still there to refer back to after closing
+					// the dialog to go look at the matched code.
+				})
 				.show();
 
-		Runnable findNext = () -> {
+		Runnable showCurrentMatch = () -> {
+			int start = state.matches.get(state.index);
+			int length = state.query.length();
+			// Scrolls the match to just below the dialog instead of
+			// wherever a generic "bring into view" would leave it -
+			// otherwise easy to miss since the dialog covers the top of
+			// the screen and a plain scroll-into-view is satisfied by
+			// the match landing anywhere on screen, dialog included.
+			editorFragment.scrollMatchToScreenY(
+					start, length, dialogBottomOnScreen(dialog) + dpToPx(16));
+			editorFragment.selectMatch(start, length);
+			editorFragment.highlightMatch(start, length);
+			Rect bounds = editorFragment.getMatchBoundsOnScreen(start, length);
+			if (bounds != null) {
+				uiManager.flashSearchMatch(bounds);
+			}
+			resultPosition.setText(getString(R.string.match_position_format,
+					state.index + 1, state.matches.size()));
+			resultPosition.setVisibility(View.VISIBLE);
+		};
+		// Re-runs the search if the query changed since the last match
+		// was shown. Returns false (and hides the result UI) when
+		// there's nothing to show, so callers can bail out early.
+		java.util.function.BooleanSupplier ensureMatches = () -> {
 			String query = queryView.getText().toString();
 			if (query.isEmpty()) {
+				return false;
+			}
+			state.query = query;
+			if (!query.equals(state.key)) {
+				state.matches = editorFragment.findAllMatches(query);
+				state.index = -1;
+				state.key = query;
+			}
+			if (state.matches.isEmpty()) {
+				resultPosition.setVisibility(View.GONE);
+				Toast.makeText(this, R.string.no_matches_found, Toast.LENGTH_SHORT).show();
+				return false;
+			}
+			return true;
+		};
+		// Live match count, updated on every keystroke - shown even
+		// before the user explicitly searches, and reverts to "N
+		// matches" (rather than the "x / y" position format) whenever
+		// the query changes underneath an already-shown match, since
+		// that match's position within the new result set is no longer
+		// meaningful.
+		queryView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				String query = s.toString();
+				state.query = query;
+				if (query.isEmpty()) {
+					state.matches = Collections.emptyList();
+					state.index = -1;
+					state.key = null;
+					resultPosition.setVisibility(View.GONE);
+					return;
+				}
+				if (!query.equals(state.key)) {
+					state.matches = editorFragment.findAllMatches(query);
+					state.index = -1;
+					state.key = query;
+				}
+				resultPosition.setVisibility(View.VISIBLE);
+				resultPosition.setText(state.matches.isEmpty()
+						? getString(R.string.no_matches_found)
+						: getResources().getQuantityString(R.plurals.match_count,
+								state.matches.size(), state.matches.size()));
+			}
+		});
+		// Shows the live count immediately for a query resumed from the
+		// last time this dialog was open, rather than waiting for the
+		// user to type something before it appears.
+		if (!state.query.isEmpty()) {
+			resultPosition.setVisibility(View.VISIBLE);
+			resultPosition.setText(getResources().getQuantityString(
+					R.plurals.match_count, state.matches.size(), state.matches.size()));
+		}
+
+		Runnable findNext = () -> {
+			if (!ensureMatches.getAsBoolean()) {
 				return;
 			}
-			if (!editorFragment.findNext(query)) {
-				Toast.makeText(this, R.string.no_matches_found, Toast.LENGTH_SHORT).show();
-			}
+			state.index = (state.index + 1) % state.matches.size();
+			showCurrentMatch.run();
 		};
-		dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> findNext.run());
+		Runnable findPrevious = () -> {
+			if (!ensureMatches.getAsBoolean()) {
+				return;
+			}
+			int size = state.matches.size();
+			int from = Math.max(state.index, 0);
+			state.index = Math.floorMod(from - 1, size);
+			showCurrentMatch.run();
+		};
+		Runnable findRandom = () -> {
+			if (!ensureMatches.getAsBoolean()) {
+				return;
+			}
+			int size = state.matches.size();
+			int from = Math.max(state.index, 0);
+			if (size > 1) {
+				// A signed jump averaging about half the match list's
+				// length - likely to land somewhere nearby, occasionally
+				// far enough that two lucky jumps could cross the whole
+				// list.
+				int range = size - 1;
+				int offset = random.nextInt(2 * range + 1) - range;
+				state.index = Math.floorMod(from + offset, size);
+			} else {
+				state.index = 0;
+			}
+			showCurrentMatch.run();
+		};
+		previousButton.setOnClickListener(v -> findPrevious.run());
+		randomButton.setOnClickListener(v -> findRandom.run());
+		nextButton.setOnClickListener(v -> findNext.run());
 		queryView.setOnEditorActionListener((v, actionId, event) -> {
 			findNext.run();
 			return true;
 		});
 	}
 
+	// Below this, no warning - a handful of seconds isn't worth
+	// interrupting navigation for.
+	private static final long SLOW_COMPILE_WARN_MS = 3000;
+	// At or above this, require an explicit "Compile" tap rather than
+	// just showing the heads-up and proceeding - long enough that
+	// blocking on an accidental tap is worse than asking first.
+	private static final long SLOW_COMPILE_CONFIRM_MS = 7000;
+
 	private void selectShader(long id) {
 		isInitialLoad = false;
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
 		}
+		DataRecords.Shader target = id > 0 ? dataSource.shader.getShader(id) : null;
+		if (shouldWarnAboutSlowCompile(target)) {
+			confirmSlowCompile(target, () -> shaderManager.selectShader(id));
+			return;
+		}
 		shaderManager.selectShader(id);
+	}
+
+	// False whenever the source hasn't changed since the last timed
+	// compile - the binary cache should then still hit, so no slow
+	// compile is actually about to happen regardless of how slow the
+	// source compile was once, and warning here would just be noise on
+	// every ordinary revisit of a shader that merely happens to be big.
+	private boolean shouldWarnAboutSlowCompile(@Nullable DataRecords.Shader shader) {
+		return shader != null &&
+				shader.compileTimeMs() != null &&
+				shader.compileTimeMs() >= SLOW_COMPILE_WARN_MS &&
+				!Objects.equals(shader.sourceModified(), shader.compileTimeSourceModified());
+	}
+
+	// Informational-only below SLOW_COMPILE_CONFIRM_MS (a single
+	// dismiss-and-proceed button); at or above it, an explicit
+	// confirmation - onProceed only runs if the user agrees, per
+	// shouldWarnAboutSlowCompile() above already having ruled out the
+	// "will probably hit the cache anyway" case.
+	private void confirmSlowCompile(@NonNull DataRecords.Shader shader, @NonNull Runnable onProceed) {
+		long lastMs = shader.compileTimeMs();
+		int lastLength = shader.compileTimeSourceLength() != null
+				? shader.compileTimeSourceLength()
+				: shader.fragmentShader().length();
+		int currentLength = shader.fragmentShader().length();
+
+		String message;
+		if (lastLength <= 0 || currentLength == lastLength) {
+			message = getString(R.string.slow_compile_warning_same_size, lastMs / 1000.0);
+		} else {
+			double ratio = (double) currentLength / lastLength;
+			long projectedMs = Math.round(lastMs * ratio);
+			int percentChange = Math.round((currentLength - lastLength) * 100f / lastLength);
+			message = getString(R.string.slow_compile_warning_size_changed,
+					lastMs / 1000.0, percentChange, projectedMs / 1000.0);
+		}
+
+		MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.slow_compile_title)
+				.setMessage(message)
+				.setPositiveButton(R.string.slow_compile_continue, (d, w) -> onProceed.run());
+		if (lastMs >= SLOW_COMPILE_CONFIRM_MS) {
+			builder.setNegativeButton(android.R.string.cancel, null);
+		}
+		builder.show();
 	}
 
 	private void navigateShader(int direction) {
@@ -1175,6 +1400,10 @@ public class MainActivity extends AppCompatActivity {
 				message.append('\n').append(
 						getString(R.string.stats_last_modified, shader.sourceModified()));
 			}
+			if (shader != null && shader.compileTimeMs() != null) {
+				message.append('\n').append(getString(R.string.stats_stored_compile_time,
+						shader.compileTimeMs() / 1000.0));
+			}
 		} else {
 			message.append('\n').append(getString(R.string.stats_not_saved));
 		}
@@ -1257,7 +1486,19 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private static final class ShaderSearchState {
+		String query = "";
+		boolean searchSource = false;
+		boolean fuzzy = false;
 		List<DataRecords.ShaderInfo> matches = Collections.emptyList();
+		int index = -1;
+		String key;
+	}
+
+	// Same shape as ShaderSearchState, but matches are offsets within
+	// the currently-edited shader's source rather than DB rows.
+	private static final class EditorSearchState {
+		String query = "";
+		List<Integer> matches = Collections.emptyList();
 		int index = -1;
 		String key;
 	}
@@ -1267,6 +1508,7 @@ public class MainActivity extends AppCompatActivity {
 		EditText queryView = view.findViewById(R.id.query);
 		CheckBox searchSourceBox = view.findViewById(R.id.search_source);
 		CheckBox fuzzyBox = view.findViewById(R.id.fuzzy_matching);
+		TextView matchCount = view.findViewById(R.id.match_count);
 		View resultRow = view.findViewById(R.id.result_row);
 		ImageView resultIcon = view.findViewById(R.id.result_icon);
 		TextView resultTitle = view.findViewById(R.id.result_title);
@@ -1276,20 +1518,41 @@ public class MainActivity extends AppCompatActivity {
 		View previousButton = view.findViewById(R.id.find_previous);
 		View randomButton = view.findViewById(R.id.find_random);
 		View nextButton = view.findViewById(R.id.find_next_match);
-		ShaderSearchState state = new ShaderSearchState();
+		ShaderSearchState state = findShaderState;
 		Random random = new Random();
+
+		// Picks up the query/options from the last time this dialog was
+		// open, since otherwise every search session has to be re-typed
+		// from scratch even when just continuing to browse the same
+		// results.
+		queryView.setText(state.query);
+		searchSourceBox.setChecked(state.searchSource);
+		fuzzyBox.setChecked(state.fuzzy);
+		// Pre-selected rather than just cursor-at-end, so typing a new
+		// search immediately replaces the old one instead of appending.
+		queryView.selectAll();
+		// Visible from the start (not just after a first successful
+		// search) so there's always an obvious, tappable way to
+		// actually run the search.
+		navRow.setVisibility(View.VISIBLE);
 
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.find_shader)
 				.setView(view)
 				.setNegativeButton(android.R.string.cancel, null)
-				.setOnDismissListener(d -> SoftKeyboard.hide(this, queryView))
+				.setOnDismissListener(d -> {
+					SoftKeyboard.hide(this, queryView);
+					state.query = queryView.getText().toString();
+					state.searchSource = searchSourceBox.isChecked();
+					state.fuzzy = fuzzyBox.isChecked();
+				})
 				.show();
 
 		Runnable showCurrentMatch = () -> {
 			DataRecords.ShaderInfo match = state.matches.get(state.index);
+			shaderListManager.revealAndHighlightShader(match.id());
+			matchCount.setVisibility(View.GONE);
 			resultRow.setVisibility(View.VISIBLE);
-			navRow.setVisibility(View.VISIBLE);
 			resultTitle.setText(match.getTitle());
 			resultPosition.setText(getString(R.string.match_position_format,
 					state.index + 1, state.matches.size()));
@@ -1322,11 +1585,40 @@ public class MainActivity extends AppCompatActivity {
 			}
 			if (state.matches.isEmpty()) {
 				resultRow.setVisibility(View.GONE);
-				navRow.setVisibility(View.GONE);
 				Toast.makeText(this, R.string.no_matches_found, Toast.LENGTH_SHORT).show();
 				return false;
 			}
 			return true;
+		};
+		// Live match count, updated as the query/options change - shown
+		// even before the user explicitly searches. Reverts from a
+		// shown result_row back to this whenever the query/options
+		// change underneath it, since the previously-shown match's
+		// position within the new result set is no longer meaningful.
+		Runnable updateLiveCount = () -> {
+			String query = queryView.getText().toString();
+			if (query.isEmpty()) {
+				state.matches = Collections.emptyList();
+				state.index = -1;
+				state.key = null;
+				matchCount.setVisibility(View.GONE);
+				resultRow.setVisibility(View.GONE);
+				return;
+			}
+			boolean searchSource = searchSourceBox.isChecked();
+			boolean fuzzy = fuzzyBox.isChecked();
+			String key = query + ' ' + searchSource + ' ' + fuzzy;
+			if (!key.equals(state.key)) {
+				state.matches = shaderListManager.findMatches(query, searchSource, fuzzy);
+				state.index = -1;
+				state.key = key;
+			}
+			resultRow.setVisibility(View.GONE);
+			matchCount.setVisibility(View.VISIBLE);
+			matchCount.setText(state.matches.isEmpty()
+					? getString(R.string.no_matches_found)
+					: getResources().getQuantityString(R.plurals.match_count,
+							state.matches.size(), state.matches.size()));
 		};
 
 		Runnable findNext = () -> {
@@ -1371,6 +1663,37 @@ public class MainActivity extends AppCompatActivity {
 			findNext.run();
 			return true;
 		});
+		queryView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				updateLiveCount.run();
+			}
+		});
+		searchSourceBox.setOnCheckedChangeListener((b, checked) -> updateLiveCount.run());
+		fuzzyBox.setOnCheckedChangeListener((b, checked) -> updateLiveCount.run());
+
+		updateLiveCount.run();
+		// Re-shows exactly the match that was on screen last time the
+		// dialog closed, rather than making the user press "next" again
+		// to get back to where they left off. Forces a fresh lookup
+		// (instead of trusting the possibly-stale cached list) in case
+		// shaders were renamed/added/removed since.
+		if (!state.query.isEmpty() && state.index >= 0) {
+			int resumeIndex = state.index;
+			state.key = null;
+			if (ensureMatches.getAsBoolean()) {
+				state.index = Math.floorMod(resumeIndex, state.matches.size());
+				showCurrentMatch.run();
+			}
+		}
 	}
 
 	private void setFullscreen(boolean fullscreen) {
