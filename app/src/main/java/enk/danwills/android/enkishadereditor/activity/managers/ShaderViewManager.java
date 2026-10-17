@@ -26,6 +26,8 @@ import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
+import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
+import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
@@ -65,6 +67,22 @@ public class ShaderViewManager {
 	private boolean paused = false;
 	private boolean needsRealResume = false;
 	private boolean backgroundCaptureActive = false;
+	// Set by destroy() below - checked by setMediaProjection() to avoid
+	// a real leak: queueEvent() silently drops anything queued once the
+	// GL thread it would have run on is gone for good, which a fresh
+	// MediaProjection arriving through the async consent+foreground-
+	// service-start dance (see MainActivity.onMediaProjectionResult())
+	// can easily outlive if the user leaves before it completes. A
+	// dropped handoff never reaches BuiltinAudioUniforms.
+	// setMediaProjection()'s own destroyed-flag check, so the
+	// MediaProjection's registerCallback() (if it ever got that far) or
+	// its underlying system-side session either way never gets
+	// release()/stop()'d - leaking the Activity Context the projection
+	// was created with via the system's own live-projection bookkeeping
+	// (confirmed via LeakCanary: "Global variable in native code"
+	// retaining MediaProjection$MediaProjectionCallback -> MediaProjection
+	// -> the destroyed Activity's Context).
+	private boolean destroyed = false;
 	// Persists compiled program binaries so re-selecting a shader (or
 	// relaunching the app) can skip straight to glProgramBinary() instead
 	// of a full source recompile - see ProgramBinaryCache. A single
@@ -134,6 +152,7 @@ public class ShaderViewManager {
 	// of whether the GL thread ever wakes up again - see
 	// BuiltinAudioUniforms.releaseMediaProjection().
 	public void destroy() {
+		destroyed = true;
 		shaderView.getRenderer().releaseMediaProjection();
 		binaryCacheExecutor.shutdownNow();
 	}
@@ -257,6 +276,26 @@ public class ShaderViewManager {
 		shaderView.queueEvent(() -> shaderView.getRenderer().resumeClock());
 	}
 
+	// Clears the view to solid black and holds there - see
+	// MainActivity.togglePauseShader(), which calls this right after
+	// setPaused(true) so the manual pause button doesn't leave the last
+	// live frame frozen on screen behind the code editor. Relies on
+	// setPaused(true) having already switched to RENDERMODE_WHEN_DIRTY
+	// (same ordering requirement as pauseClock() above) - requestRender()
+	// then forces exactly the one redraw needed to actually paint the
+	// black frame; without it nothing would trigger onDrawFrame() again
+	// until the next unrelated dirty event. Deliberately not called from
+	// setPaused() itself - other callers (capture flows, "run when not
+	// editing") still need the live frame to remain visible/capturable
+	// while paused.
+	public void blankScreen() {
+		if (shaderView.getVisibility() != View.VISIBLE) {
+			return;
+		}
+		shaderView.queueEvent(() -> shaderView.getRenderer().requestBlankFrame());
+		shaderView.requestRender();
+	}
+
 	// Restarts the shader's time-based uniforms (`time`, `runtime`,
 	// `frame`, `startRandom`) without recompiling, so a "restart" action
 	// can rewind a running or paused shader to its initial state.
@@ -312,8 +351,10 @@ public class ShaderViewManager {
 	// making no progress for 60s does.
 	@Nullable
 	public byte[] takeHighResScreenshot(int width, int height, int oversample,
-			boolean preserveBackbufferEdges,
-			@Nullable ShaderRenderer.HighResProgressListener progressListener) {
+			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder tileOrder,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener) {
 		Object lock = new Object();
 		byte[][] resultHolder = new byte[1][];
 		boolean[] doneHolder = new boolean[1];
@@ -328,8 +369,8 @@ public class ShaderViewManager {
 		};
 		shaderView.queueEvent(() -> {
 			byte[] result = shaderView.getRenderer()
-					.captureHighResScreenshot(
-						width, height, oversample, preserveBackbufferEdges, innerListener);
+					.captureHighResScreenshot(width, height, oversample, preserveBackbufferEdges,
+							bucketSize, tileOrder, innerListener, tilePreviewListener);
 			synchronized (lock) {
 				resultHolder[0] = result;
 				doneHolder[0] = true;
@@ -380,7 +421,9 @@ public class ShaderViewManager {
 	// frames succeeded before that).
 	public boolean takeHighResScreenshotSequence(int width, int height, int oversample,
 			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@NonNull TileBucketSize bucketSize, @NonNull ShaderRenderer.TileOrderSupplier tileOrderSupplier,
 			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener,
 			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
 			@NonNull ShaderRenderer.FrameListener frameListener) {
 		Object lock = new Object();
@@ -411,7 +454,8 @@ public class ShaderViewManager {
 		shaderView.queueEvent(() -> {
 			boolean success = shaderView.getRenderer().captureHighResScreenshotSequence(
 					width, height, oversample, preserveBackbufferEdges, skipFrames, numFrames, virtualFps,
-					innerTileListener, innerSequenceListener, innerFrameListener);
+					bucketSize, tileOrderSupplier, innerTileListener, tilePreviewListener,
+					innerSequenceListener, innerFrameListener);
 			synchronized (lock) {
 				successHolder[0] = success;
 				doneHolder[0] = true;
@@ -505,15 +549,18 @@ public class ShaderViewManager {
 	@Nullable
 	public byte[] takeHighResScreenshotOnSharedContext(@NonNull SharedCaptureContext sharedContext,
 			int width, int height, int oversample, boolean preserveBackbufferEdges,
-			@Nullable ShaderRenderer.HighResProgressListener progressListener) {
+			@NonNull TileBucketSize bucketSize, @NonNull TileRenderOrder tileOrder,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener) {
 		ShaderRenderer.HighResProgressListener innerListener = progressListener == null ? null :
 				(tilesDone, totalTiles) -> {
 					boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);
 					pacedProgressDelay();
 					return continueCapture;
 				};
-		return shaderView.getRenderer().captureHighResScreenshotOnSharedContext(
-				sharedContext, width, height, oversample, preserveBackbufferEdges, innerListener);
+		return shaderView.getRenderer().captureHighResScreenshotOnSharedContext(sharedContext, width,
+				height, oversample, preserveBackbufferEdges, bucketSize, tileOrder, innerListener,
+				tilePreviewListener);
 	}
 
 	// Sequence counterpart to takeHighResScreenshotOnSharedContext()
@@ -522,7 +569,9 @@ public class ShaderViewManager {
 	public boolean takeHighResScreenshotSequenceOnSharedContext(
 			@NonNull SharedCaptureContext sharedContext, int width, int height, int oversample,
 			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@NonNull TileBucketSize bucketSize, @NonNull ShaderRenderer.TileOrderSupplier tileOrderSupplier,
 			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener,
 			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
 			@NonNull ShaderRenderer.FrameListener frameListener) {
 		ShaderRenderer.HighResProgressListener innerTileListener = progressListener == null ? null :
@@ -533,7 +582,8 @@ public class ShaderViewManager {
 				};
 		return shaderView.getRenderer().captureHighResScreenshotSequenceOnSharedContext(
 				sharedContext, width, height, oversample, preserveBackbufferEdges, skipFrames,
-				numFrames, virtualFps, innerTileListener, sequenceProgressListener, frameListener);
+				numFrames, virtualFps, bucketSize, tileOrderSupplier, innerTileListener,
+				tilePreviewListener, sequenceProgressListener, frameListener);
 	}
 
 	// A 512px tile (chosen to dodge the GPU watchdog - see
@@ -562,6 +612,14 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getLastCompileNanos();
 	}
 
+	public int getRenderWidth() {
+		return shaderView.getRenderer().getRenderWidth();
+	}
+
+	public int getRenderHeight() {
+		return shaderView.getRenderer().getRenderHeight();
+	}
+
 	public boolean wasLastCompileSuccessful() {
 		return shaderView.getRenderer().wasLastCompileSuccessful();
 	}
@@ -575,6 +633,19 @@ public class ShaderViewManager {
 	}
 
 	public void setMediaProjection(@Nullable MediaProjection mediaProjection) {
+		if (destroyed) {
+			// queueEvent() below would silently drop this (the GL thread
+			// it'd run on is gone for good) - call the renderer directly
+			// instead, same as destroy() above already does for
+			// releaseMediaProjection(). BuiltinAudioUniforms.
+			// setMediaProjection() is synchronized and already checks
+			// its own destroyed flag, so this still ends up stopping
+			// mediaProjection immediately rather than actually trying to
+			// use it - see that method's own doc for why arriving late
+			// like this needs handling at all.
+			shaderView.getRenderer().setMediaProjection(mediaProjection);
+			return;
+		}
 		shaderView.queueEvent(() ->
 				shaderView.getRenderer().setMediaProjection(mediaProjection));
 	}

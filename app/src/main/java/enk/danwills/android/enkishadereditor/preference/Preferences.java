@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.hardware.SensorManager;
+import android.os.Process;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -51,6 +52,7 @@ public class Preferences {
 	public static final String PENDING_CRASH_SHADER = "pending_crash_shader";
 	public static final String ICON_SIZE = "icon_size";
 	public static final String WARN_SLOW_COMPILE = "warn_slow_compile";
+	public static final String CAPTURE_THREAD_PRIORITY = "capture_thread_priority";
 
 	private static final String WALLPAPER_RUNTIME = "wallpaper_runtime_";
 
@@ -67,6 +69,17 @@ public class Preferences {
 	private static final int ICON_SIZE_SMALL = 2;
 	private static final int ICON_SIZE_NORMAL = 3;
 	private static final int ICON_SIZE_LARGE = 4;
+
+	// Thread priority used by the frame-sequence capture thread (see
+	// MainActivity.runFrameSequenceCapture()) - NORMAL leaves other apps/
+	// the live renderer unaffected (the default for any new Thread),
+	// HIGH trades that courtesy away so an offline/backgrounded sequence
+	// render finishes faster. Public (unlike the other *_* level
+	// constants above) because HighResCaptureService's notification
+	// action buttons need to name these same two levels when changing
+	// this preference live, from outside Preferences itself.
+	public static final int CAPTURE_PRIORITY_NORMAL = 1;
+	public static final int CAPTURE_PRIORITY_HIGH = 2;
 	private static final Map<String, Integer> fontNameToResId = new HashMap<>();
 
 	static {
@@ -110,6 +123,7 @@ public class Preferences {
 	private String defaultFont;
 	private long pendingCrashShaderId = 0;
 	private int iconSize = ICON_SIZE_NORMAL;
+	private int captureThreadPriority = CAPTURE_PRIORITY_NORMAL;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -216,6 +230,9 @@ public class Preferences {
 		iconSize = parseInt(
 				preferences.getString(ICON_SIZE, null),
 				iconSize);
+		captureThreadPriority = parseInt(
+				preferences.getString(CAPTURE_THREAD_PRIORITY, null),
+				captureThreadPriority);
 	}
 
 	public boolean autoHideExtraKeys() {
@@ -248,6 +265,37 @@ public class Preferences {
 			case ICON_SIZE_LARGE -> 28;
 			default -> 24;
 		};
+	}
+
+	public int getCaptureThreadPriority() {
+		return switch (captureThreadPriority) {
+			case CAPTURE_PRIORITY_HIGH -> Process.THREAD_PRIORITY_MORE_FAVORABLE;
+			default -> Process.THREAD_PRIORITY_DEFAULT;
+		};
+	}
+
+	// The raw CAPTURE_PRIORITY_* level (as opposed to
+	// getCaptureThreadPriority()'s translated Process.THREAD_PRIORITY_*
+	// value) - for UI that needs to know/display which of the two levels
+	// is currently selected, e.g. HighResCaptureService's notification.
+	public int getCaptureThreadPriorityLevel() {
+		return captureThreadPriority;
+	}
+
+	// Lets HighResCaptureService's notification action buttons change
+	// this preference directly, from outside the normal Settings screen -
+	// same persisted key as the ListPreference there, so either one
+	// picking a level is immediately reflected in the other next time
+	// it's read/shown. Ignored if level isn't one of the two known
+	// constants.
+	public void setCaptureThreadPriorityLevel(int level) {
+		if (level != CAPTURE_PRIORITY_NORMAL && level != CAPTURE_PRIORITY_HIGH) {
+			return;
+		}
+		captureThreadPriority = level;
+		preferences.edit()
+				.putString(CAPTURE_THREAD_PRIORITY, String.valueOf(level))
+				.apply();
 	}
 
 	private @NonNull Typeface loadFont(

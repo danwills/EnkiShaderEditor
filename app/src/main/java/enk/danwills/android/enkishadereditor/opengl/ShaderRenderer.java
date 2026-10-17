@@ -47,6 +47,38 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		boolean onProgress(int tilesDone, int totalTiles);
 	}
 
+	// Reports one tile's actual rendered pixels as soon as it's read
+	// back - alongside (right after) HighResProgressListener's bare
+	// tile-count progress above, for a live pixel preview on a progress
+	// UI. argb is exactly what HighResScreenshotCapture already computed
+	// for this tile (top-down rows, local to this tile, not the whole
+	// image); contentX0/contentY0 are already in the *same* top-down,
+	// whole-image coordinate space as the final result Bitmap (i.e. (0,0)
+	// is the top-left of the whole targetWidth x targetHeight image) -
+	// callers can draw argb straight into a same-orientation destination
+	// at (contentX0, contentY0) with no further flipping. Purely
+	// additive/optional - unlike HighResProgressListener, has no return
+	// value and cannot cancel anything. Called synchronously on the GL
+	// thread, same hand-off expectations as every other listener here.
+	public interface TilePreviewListener {
+		void onTilePreview(int contentX0, int contentY0, int contentW, int contentH,
+				int targetWidth, int targetHeight, @NonNull int[] argb);
+	}
+
+	// Polled once per frame by captureHighResScreenshotSequence() below,
+	// right before that frame's own tiled capture starts - rather than
+	// taking a single fixed TileRenderOrder for the whole sequence, this
+	// lets a caller change the order live (e.g. a Spinner on the
+	// progress dialog) and have it take effect starting with the next
+	// frame, without disturbing whichever frame is already mid-render
+	// (same "finish what's in flight" spirit as interrupting a sequence -
+	// see MainActivity.runFrameSequenceCapture()). Called synchronously
+	// on the GL thread, same as every other listener here.
+	public interface TileOrderSupplier {
+		@NonNull
+		TileRenderOrder getTileOrder();
+	}
+
 	// Reports one completed frame of captureHighResScreenshotSequence()
 	// below - called synchronously on the GL thread, same as
 	// HighResProgressListener; implementations needing to touch UI or do
@@ -140,6 +172,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@Nullable
 	private byte[] fullImage;
 	private boolean captureFullImage;
+	private volatile boolean blankFrameRequested;
 	private volatile long nextFpsUpdate;
 	private volatile float sum;
 	private volatile float samples;
@@ -202,6 +235,19 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.pauseClock();
 	}
 
+	// Clears the view to solid black on the very next onDrawFrame() call
+	// and otherwise skips that frame entirely (no main/surface pass), so
+	// a manually-paused shader doesn't keep showing its last live frame
+	// frozen on screen - see ShaderViewManager.blankScreen() and
+	// MainActivity.togglePauseShader(). Set here (typically from a
+	// queueEvent() runnable, i.e. already on the GL thread, but callable
+	// from anywhere) and read back in onDrawFrame() - volatile is enough
+	// since it's a plain one-shot flag with no other state to keep in
+	// sync with it.
+	public void requestBlankFrame() {
+		blankFrameRequested = true;
+	}
+
 	public void resumeClock() {
 		builtinUniforms.resumeClock();
 	}
@@ -237,6 +283,21 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	public int getLastFps() {
 		return lastFps;
+	}
+
+	// The live render target's actual current size - the surface's own
+	// pixel dimensions (from the most recent onSurfaceChanged(), not
+	// necessarily DisplayMetrics' widthPixels/heightPixels, which can
+	// differ by system bar/inset pixels the GLSurfaceView itself never
+	// gets) scaled by this shader's own quality setting (see
+	// BuiltinUniforms.updateSurface()). 0 before the surface has been
+	// sized at all.
+	public int getRenderWidth() {
+		return surfaceState.renderWidth();
+	}
+
+	public int getRenderHeight() {
+		return surfaceState.renderHeight();
 	}
 
 	public void setMediaProjection(@Nullable MediaProjection mediaProjection) {
@@ -372,6 +433,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	@Override
 	public void onDrawFrame(GL10 gl) {
+		if (blankFrameRequested) {
+			blankFrameRequested = false;
+			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+			cancelCaptureThumbnail();
+			cancelCaptureFullImage();
+			return;
+		}
+
 		var surfaceProgram = programManager.getSurfaceProgram();
 		var mainProgram = programManager.getMainProgram();
 		var surfaceBindings = programManager.getSurfaceBindings();
@@ -486,9 +555,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// needs to be tiled rather than one single large render.
 	@Nullable
 	public byte[] captureHighResScreenshot(int width, int height, int oversample,
-			boolean preserveBackbufferEdges, @Nullable HighResProgressListener progressListener) {
-		return captureHighResScreenshot(
-				device, width, height, oversample, preserveBackbufferEdges, progressListener);
+			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder tileOrder, @Nullable HighResProgressListener progressListener,
+			@Nullable TilePreviewListener tilePreviewListener) {
+		return captureHighResScreenshot(device, width, height, oversample, preserveBackbufferEdges,
+				bucketSize, tileOrder, progressListener, tilePreviewListener);
 	}
 
 	// Same as above, but against a caller-supplied SharedCaptureContext
@@ -517,29 +588,57 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@Nullable
 	public byte[] captureHighResScreenshotOnSharedContext(@NonNull SharedCaptureContext sharedContext,
 			int width, int height, int oversample, boolean preserveBackbufferEdges,
-			@Nullable HighResProgressListener progressListener) {
+			@NonNull TileBucketSize bucketSize, @NonNull TileRenderOrder tileOrder,
+			@Nullable HighResProgressListener progressListener,
+			@Nullable TilePreviewListener tilePreviewListener) {
 		if (!sharedContext.makeCurrent()) {
 			return null;
 		}
 		device.resetState();
-		return captureHighResScreenshot(
-				device, width, height, oversample, preserveBackbufferEdges, progressListener);
+		return captureHighResScreenshot(device, width, height, oversample, preserveBackbufferEdges,
+				bucketSize, tileOrder, progressListener, tilePreviewListener);
 	}
 
 	@Nullable
 	private byte[] captureHighResScreenshot(@NonNull GlDevice useDevice, int width, int height,
-			int oversample, boolean preserveBackbufferEdges,
-			@Nullable HighResProgressListener progressListener) {
+			int oversample, boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder tileOrder, @Nullable HighResProgressListener progressListener,
+			@Nullable TilePreviewListener tilePreviewListener) {
+		return captureHighResScreenshot(useDevice, width, height, oversample, preserveBackbufferEdges,
+				bucketSize, tileOrder, progressListener, tilePreviewListener, null);
+	}
+
+	// Same as above, but for one frame of a sequence that's maintaining
+	// its own persistent SequenceFeedback across the whole sequence (see
+	// that class's own doc) - feedback is null for every other caller
+	// (the single-capture overload just above, which always passes
+	// null), in which case this behaves identically to before.
+	@Nullable
+	private byte[] captureHighResScreenshot(@NonNull GlDevice useDevice, int width, int height,
+			int oversample, boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder tileOrder, @Nullable HighResProgressListener progressListener,
+			@Nullable TilePreviewListener tilePreviewListener,
+			@Nullable HighResScreenshotCapture.SequenceFeedback feedback) {
 		if (!programManager.hasPreparedShader()) {
 			return null;
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
 				: progressListener::onProgress;
+		HighResScreenshotCapture.TilePreviewListener innerTilePreviewListener =
+				tilePreviewListener == null ? null : tilePreviewListener::onTilePreview;
+		// Single-pass eligibility (see TileBucketSize's own doc) is
+		// gated on oversample==1 specifically because oversampling
+		// renders at a size *larger* than the final image on purpose,
+		// for later box-downscaling (see boxDownscale() below) - that
+		// inflated render is exactly the kind of oversized single draw
+		// tiling exists to avoid, so it's never offered a shortcut
+		// around tiling regardless of bucket size.
 		var bitmap = HighResScreenshotCapture.capture(
 				useDevice, programManager, renderPipeline, builtinUniforms,
 				glVersion, width * oversample, height * oversample,
-				preserveBackbufferEdges, innerListener);
+				preserveBackbufferEdges, bucketSize, oversample == 1, tileOrder, innerListener,
+				innerTilePreviewListener, feedback);
 		if (bitmap == null) {
 			return null;
 		}
@@ -609,36 +708,62 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// if every frame succeeded.
 	public boolean captureHighResScreenshotSequence(int width, int height, int oversample,
 			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@NonNull TileBucketSize bucketSize, @NonNull TileOrderSupplier tileOrderSupplier,
 			@Nullable HighResProgressListener tileProgressListener,
+			@Nullable TilePreviewListener tilePreviewListener,
 			@Nullable SequenceProgressListener sequenceProgressListener,
 			@NonNull FrameListener frameListener) {
 		if (!programManager.hasPreparedShader()) {
 			return false;
 		}
-		float deltaSeconds = virtualFps > 0 ? 1f / virtualFps : 0f;
-		for (int i = 0; i < skipFrames; ++i) {
-			stepSimulationFrame(deltaSeconds);
-			if (sequenceProgressListener != null &&
-					!sequenceProgressListener.onSequenceProgress(true, i + 1, skipFrames)) {
-				return false;
-			}
-		}
-		for (int i = 0; i < numFrames; ++i) {
-			if (i > 0 || skipFrames > 0) {
+		// Bucket size (unlike tile order) isn't live-changeable mid-
+		// sequence, so singlePass eligibility is fixed for the whole
+		// run - safe to decide once, up front, whether a
+		// SequenceFeedback is worth allocating at all. Null either way
+		// this returns false (not eligible, so every frame would just
+		// ignore it anyway - see captureHighResScreenshot()'s own
+		// feedback-is-null behavior) or if allocation itself failed
+		// (e.g. OOM) - callers degrade gracefully to the pre-existing
+		// per-frame-from-the-live-backbuffer behavior either way, just
+		// without the persistent high-res feedback a healthy allocation
+		// would have given them.
+		HighResScreenshotCapture.SequenceFeedback feedback =
+				HighResScreenshotCapture.isSinglePassEligible(
+						device, width * oversample, height * oversample, bucketSize, oversample == 1)
+						? HighResScreenshotCapture.SequenceFeedback.create(
+								device, width * oversample, height * oversample)
+						: null;
+		try {
+			float deltaSeconds = virtualFps > 0 ? 1f / virtualFps : 0f;
+			for (int i = 0; i < skipFrames; ++i) {
 				stepSimulationFrame(deltaSeconds);
+				if (sequenceProgressListener != null &&
+						!sequenceProgressListener.onSequenceProgress(true, i + 1, skipFrames)) {
+					return false;
+				}
 			}
-			if (sequenceProgressListener != null &&
-					!sequenceProgressListener.onSequenceProgress(false, i + 1, numFrames)) {
-				return false;
+			for (int i = 0; i < numFrames; ++i) {
+				if (i > 0 || skipFrames > 0) {
+					stepSimulationFrame(deltaSeconds);
+				}
+				if (sequenceProgressListener != null &&
+						!sequenceProgressListener.onSequenceProgress(false, i + 1, numFrames)) {
+					return false;
+				}
+				byte[] png = captureHighResScreenshot(device, width, height, oversample,
+						preserveBackbufferEdges, bucketSize, tileOrderSupplier.getTileOrder(),
+						tileProgressListener, tilePreviewListener, feedback);
+				if (png == null) {
+					return false;
+				}
+				frameListener.onFrame(i, numFrames, png);
 			}
-			byte[] png = captureHighResScreenshot(
-					width, height, oversample, preserveBackbufferEdges, tileProgressListener);
-			if (png == null) {
-				return false;
+			return true;
+		} finally {
+			if (feedback != null) {
+				feedback.destroy(device);
 			}
-			frameListener.onFrame(i, numFrames, png);
 		}
-		return true;
 	}
 
 	// Same as above, but against a caller-supplied SharedCaptureContext -
@@ -664,7 +789,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public boolean captureHighResScreenshotSequenceOnSharedContext(
 			@NonNull SharedCaptureContext sharedContext, int width, int height, int oversample,
 			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@NonNull TileBucketSize bucketSize, @NonNull TileOrderSupplier tileOrderSupplier,
 			@Nullable HighResProgressListener tileProgressListener,
+			@Nullable TilePreviewListener tilePreviewListener,
 			@Nullable SequenceProgressListener sequenceProgressListener,
 			@NonNull FrameListener frameListener) {
 		if (!sharedContext.makeCurrent()) {
@@ -672,8 +799,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		device.resetState();
 		return captureHighResScreenshotSequence(width, height, oversample, preserveBackbufferEdges,
-				skipFrames, numFrames, virtualFps, tileProgressListener, sequenceProgressListener,
-				frameListener);
+				skipFrames, numFrames, virtualFps, bucketSize, tileOrderSupplier, tileProgressListener,
+				tilePreviewListener, sequenceProgressListener, frameListener);
 	}
 
 	private void resetFps() {

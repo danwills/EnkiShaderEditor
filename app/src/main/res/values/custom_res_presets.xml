@@ -4,9 +4,16 @@
 	     height fields exactly as they are. -->
 	<string-array name="custom_res_presets">
 		<item>Custom</item>
-		<item>0.5× screen</item>
-		<item>1× screen</item>
-		<item>2× screen</item>
+		<item>1/32× Current Mode</item>
+		<item>1/16× Current Mode</item>
+		<item>1/8× Current Mode</item>
+		<item>1/4× Current Mode</item>
+		<item>0.5× Current Mode</item>
+		<item>1× Current Mode</item>
+		<item>2× Current Mode</item>
+		<item>4× Current Mode</item>
+		<item>8× Current Mode</item>
+		<item>Square 256×256</item>
 		<item>Square 512×512</item>
 		<item>Square 1024×1024</item>
 		<item>Square 2048×2048</item>

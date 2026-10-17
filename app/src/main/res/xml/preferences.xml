@@ -13,6 +13,12 @@
 			android:summary="@string/save_battery_summary"
 			android:checked="true"
 			android:defaultValue="true"/>
+		<ListPreference
+			android:key="capture_thread_priority"
+			android:title="@string/capture_thread_priority"
+			android:entries="@array/capture_thread_priority_names"
+			android:entryValues="@array/capture_thread_priority_values"
+			android:defaultValue="1"/>
 	</PreferenceCategory>
 	<PreferenceCategory android:title="@string/editor">
 		<androidx.preference.SwitchPreferenceCompat

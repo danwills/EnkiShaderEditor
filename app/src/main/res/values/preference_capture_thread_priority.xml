@@ -1,0 +1,10 @@
+<resources>
+	<string-array name="capture_thread_priority_names">
+		<item>@string/capture_thread_priority_normal</item>
+		<item>@string/capture_thread_priority_high</item>
+	</string-array>
+	<string-array name="capture_thread_priority_values">
+		<item>1</item>
+		<item>2</item>
+	</string-array>
+</resources>

@@ -1,9 +1,16 @@
 <resources>
 	<string-array name="custom_res_presets">
 		<item>Довільне</item>
-		<item>0.5× екрана</item>
-		<item>1× екрана</item>
-		<item>2× екрана</item>
+		<item>1/32× поточного режиму</item>
+		<item>1/16× поточного режиму</item>
+		<item>1/8× поточного режиму</item>
+		<item>1/4× поточного режиму</item>
+		<item>0.5× поточного режиму</item>
+		<item>1× поточного режиму</item>
+		<item>2× поточного режиму</item>
+		<item>4× поточного режиму</item>
+		<item>8× поточного режиму</item>
+		<item>Квадрат 256×256</item>
 		<item>Квадрат 512×512</item>
 		<item>Квадрат 1024×1024</item>
 		<item>Квадрат 2048×2048</item>

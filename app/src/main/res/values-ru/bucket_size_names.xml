@@ -1,0 +1,8 @@
+<resources>
+	<string-array name="bucket_size_names">
+		<item>Маленький</item>
+		<item>Обычный</item>
+		<item>Большой</item>
+		<item>Максимум</item>
+	</string-array>
+</resources>

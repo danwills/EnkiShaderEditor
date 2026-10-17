@@ -1,0 +1,8 @@
+<resources>
+	<string-array name="tile_order_names">
+		<item>Построчно</item>
+		<item>Случайный порядок</item>
+		<item>От центра</item>
+		<item>Кривая Гильберта</item>
+	</string-array>
+</resources>

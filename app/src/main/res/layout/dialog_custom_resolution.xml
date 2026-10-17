@@ -48,15 +48,59 @@
 
 		</LinearLayout>
 
+		<!-- A persistent label, not just the EditText's own hint - the
+		     hint never actually shows since the field always starts
+		     pre-filled with "1", not blank (same issue as
+		     sequence_skip_frames below). -->
+		<TextView
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:text="@string/higher_res_oversample"
+			android:textAppearance="?attr/textAppearanceCaption" />
+
 		<EditText
 			android:id="@+id/custom_oversample"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_marginTop="12dp"
-			android:hint="@string/higher_res_oversample"
 			android:inputType="number"
 			android:maxLength="3"
 			android:text="1" />
+
+		<!-- Purely cosmetic - see TileRenderOrder's own doc - but a fun
+		     one to tweak before starting a capture, and (for a
+		     frame-sequence capture) also live-changeable from the
+		     progress dialog's own copy of this same Spinner. -->
+		<TextView
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:text="@string/higher_res_tile_order"
+			android:textAppearance="?attr/textAppearanceCaption" />
+
+		<Spinner
+			android:id="@+id/custom_tile_order"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:entries="@array/tile_order_names" />
+
+		<!-- How big each tile ("bucket") is - see TileBucketSize's own
+		     doc. Max, combined with 1x oversampling above, skips tiling
+		     entirely for a resolution that still fits in one texture -
+		     faster for a cheap/fast shader, but risky for an expensive
+		     one (see the same doc for why). -->
+		<TextView
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:text="@string/higher_res_bucket_size"
+			android:textAppearance="?attr/textAppearanceCaption" />
+
+		<Spinner
+			android:id="@+id/custom_bucket_size"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:entries="@array/bucket_size_names" />
 
 		<CheckBox
 			android:id="@+id/preserve_backbuffer_edges"
@@ -171,6 +215,24 @@
 					android:checked="true"
 					android:text="@string/higher_res_sequence_cleanup" />
 
+				<!-- A persistent label, not just the EditText's own hint -
+				     same issue as custom_oversample/sequence_skip_frames
+				     above. -->
+				<TextView
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="12dp"
+					android:text="@string/higher_res_sequence_video_scale"
+					android:textAppearance="?attr/textAppearanceCaption" />
+
+				<EditText
+					android:id="@+id/sequence_video_scale"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:inputType="number"
+					android:maxLength="2"
+					android:text="1" />
+
 			</LinearLayout>
 
 		</LinearLayout>
@@ -180,8 +242,11 @@
 			android:layout_height="wrap_content"
 			android:layout_marginVertical="12dp" />
 
-		<!-- Plain custom buttons, not AlertDialog's built-in slots - see
-		     dialog_higher_res_picker.xml for why. -->
+		<!-- Plain custom buttons, not AlertDialog's built-in positive/
+		     negative/neutral slots - those reorder depending on whether
+		     Android lays them out in a row or stacks them vertically
+		     (not reliably under our control), which made "highlight
+		     last used" unreliable via setPositiveButton/etc. alone. -->
 		<Button
 			android:id="@+id/custom_res_ok"
 			style="@style/BarButton"

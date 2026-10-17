@@ -1,6 +1,6 @@
 <resources>
 	<string-array name="tab_width_names">
-		<item>Do not style tab characters</item>
+		<item>Do Not Style Tab Characters</item>
 		<item>2 characters</item>
 		<item>3 characters</item>
 		<item>4 characters</item>

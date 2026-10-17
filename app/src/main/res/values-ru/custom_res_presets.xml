@@ -1,9 +1,16 @@
 <resources>
 	<string-array name="custom_res_presets">
 		<item>Произвольное</item>
-		<item>0.5× экрана</item>
-		<item>1× экрана</item>
-		<item>2× экрана</item>
+		<item>1/32× текущего режима</item>
+		<item>1/16× текущего режима</item>
+		<item>1/8× текущего режима</item>
+		<item>1/4× текущего режима</item>
+		<item>0.5× текущего режима</item>
+		<item>1× текущего режима</item>
+		<item>2× текущего режима</item>
+		<item>4× текущего режима</item>
+		<item>8× текущего режима</item>
+		<item>Квадрат 256×256</item>
 		<item>Квадрат 512×512</item>
 		<item>Квадрат 1024×1024</item>
 		<item>Квадрат 2048×2048</item>

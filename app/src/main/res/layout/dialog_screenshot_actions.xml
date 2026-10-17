@@ -21,7 +21,7 @@
 		android:layout_height="wrap_content"
 		android:layout_gravity="end"
 		android:gravity="end|center_vertical"
-		android:text="@string/screenshot_just_save"/>
+		android:text="@string/screenshot_save_current_frame"/>
 
 	<Button
 		android:id="@+id/screenshot_save_and_open"
@@ -39,7 +39,7 @@
 		android:layout_height="wrap_content"
 		android:layout_gravity="end"
 		android:gravity="end|center_vertical"
-		android:text="@string/save_at_higher_res"/>
+		android:text="@string/higher_res_custom"/>
 
 	<Button
 		android:id="@+id/screenshot_cancel"

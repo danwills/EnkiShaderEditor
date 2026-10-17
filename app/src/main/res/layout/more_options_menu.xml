@@ -44,6 +44,14 @@
 			app:icon="@drawable/ic_stats" />
 
 		<Button
+			android:id="@+id/play_recent_recordings"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/play_recent_recordings"
+			app:icon="@drawable/ic_play_arrow" />
+
+		<Button
 			android:id="@+id/hide_toolbar"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

@@ -68,6 +68,8 @@ public class MainMenuManager {
 		void onShowFaq();
 
 		void onShowShaderStats();
+
+		void onPlayRecentRecordings();
 	}
 
 	@NonNull
@@ -145,6 +147,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.add_uniform, navigationActions::onAddUniform);
 		setMoreOptionsClickListener(R.id.load_sample, navigationActions::onLoadSample);
 		setMoreOptionsClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
+		setMoreOptionsClickListener(R.id.play_recent_recordings, navigationActions::onPlayRecentRecordings);
 		setMoreOptionsClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 

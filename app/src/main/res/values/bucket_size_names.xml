@@ -1,0 +1,10 @@
+<resources>
+	<!-- Index-aligned with TileBucketSize's own enum ordinal order
+	     (SMALL, NORMAL, LARGE, MAX). -->
+	<string-array name="bucket_size_names">
+		<item>Small</item>
+		<item>Normal</item>
+		<item>Large</item>
+		<item>Max</item>
+	</string-array>
+</resources>

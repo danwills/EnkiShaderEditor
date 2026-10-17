@@ -7,8 +7,11 @@ import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -17,6 +20,9 @@ import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Process;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.DisplayMetrics;
@@ -69,6 +75,7 @@ import java.util.Random;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.R;
@@ -79,17 +86,21 @@ import enk.danwills.android.enkishadereditor.activity.managers.ShaderListManager
 import enk.danwills.android.enkishadereditor.activity.managers.ShaderManager;
 import enk.danwills.android.enkishadereditor.activity.managers.ShaderViewManager;
 import enk.danwills.android.enkishadereditor.activity.managers.UIManager;
+import enk.danwills.android.enkishadereditor.adapter.RecordingAdapter;
 import enk.danwills.android.enkishadereditor.adapter.ShaderTreeAdapter;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
+import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
+import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
@@ -183,6 +194,7 @@ public class MainActivity extends AppCompatActivity {
 	private boolean keyboardVisibleBeforeFullscreen = false;
 	private int selectionStartBeforeFullscreen = -1;
 	private int selectionEndBeforeFullscreen = -1;
+	private boolean pausedBeforeFullscreen = false;
 	// Remembered across dialog opens (not just within one open dialog)
 	// so repeated searches don't have to be re-typed from scratch.
 	private final EditorSearchState findInShaderState = new EditorSearchState();
@@ -784,6 +796,11 @@ public class MainActivity extends AppCompatActivity {
 			public void onShowShaderStats() {
 				showShaderStatsDialog();
 			}
+
+			@Override
+			public void onPlayRecentRecordings() {
+				showRecentRecordingsDialog();
+			}
 		};
 	}
 
@@ -871,15 +888,34 @@ public class MainActivity extends AppCompatActivity {
 				break;
 			}
 		}
-		int[] selected = {defaultIndex};
+
+		View view = getLayoutInflater().inflate(R.layout.dialog_paste_shader, null);
+		EditText nameView = view.findViewById(R.id.paste_shader_name);
+		RadioGroup qualityGroup = view.findViewById(R.id.paste_shader_quality_options);
+		for (int i = 0; i < qualityNames.length; ++i) {
+			RadioButton button = new RadioButton(this);
+			button.setId(View.generateViewId());
+			button.setText(qualityNames[i]);
+			qualityGroup.addView(button);
+			if (i == defaultIndex) {
+				button.setChecked(true);
+			}
+		}
+
 		new MaterialAlertDialogBuilder(this)
-				.setTitle(R.string.select_quality)
-				.setSingleChoiceItems(qualityNames, defaultIndex,
-						(dialog, which) -> selected[0] = which)
+				.setTitle(R.string.paste_shader_title)
+				.setView(view)
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-					float quality = Float.parseFloat(qualityValues[selected[0]]);
+					int selectedIndex = qualityGroup.indexOfChild(
+							qualityGroup.findViewById(qualityGroup.getCheckedRadioButtonId()));
+					float quality = Float.parseFloat(qualityValues[Math.max(0, selectedIndex)]);
+					// Blank stays unnamed (same fallback-to-last-modified
+					// behavior as any other unnamed shader - see
+					// DataRecords.ShaderInfo.getTitle()), rather than
+					// saving an empty-string name.
+					String name = nameView.getText().toString().trim();
 					long newId = dataSource.shader.insertShader(
-							shaderSource, null, null, quality);
+							shaderSource, name.isEmpty() ? null : name, null, quality);
 					shaderManager.selectShader(newId);
 					shaderManager.saveShader(true);
 				})
@@ -1303,32 +1339,18 @@ public class MainActivity extends AppCompatActivity {
 		}, "ScreenshotCapture").start();
 	}
 
-	// Multipliers of the device's own screen resolution offered by the
-	// picker below - only those whose final ARGB_8888 bitmap would stay
-	// within a conservative share of this app's heap budget are actually
-	// shown (larger multipliers only need *more* memory, so the first
-	// one that doesn't fit means none of the later, bigger ones would
-	// either).
-	// 1x deliberately omitted - that's just a plain screenshot, already
-	// covered by "Just Save"/"Save and Open" on the dialog this picker
-	// opens from.
-	private static final int[] HIGHER_RES_MULTIPLIERS = {2, 4, 6, 8};
-	// android:largeHeap is on specifically so this has real headroom to
-	// work with - getLargeMemoryClass() (not getMemoryClass()) reports
-	// what that's actually worth on this device.
-	private static final double HIGHER_RES_MAX_HEAP_FRACTION = 0.6;
-
-	// Remembers the last values used in the higher-res/custom-res/frame-
-	// sequence dialogs, written right before each dialog actually runs
-	// its action and read back the next time that dialog opens - plain
-	// SharedPreferences keys rather than anything added to the app's own
-	// Preferences class, since these are transient "what did I last type
-	// here" dialog state, not documented user-facing settings.
+	// Remembers the last values used in the custom-res/frame-sequence
+	// dialog, written right before it actually runs its action and read
+	// back the next time the dialog opens - plain SharedPreferences keys
+	// rather than anything added to the app's own Preferences class,
+	// since these are transient "what did I last type here" dialog
+	// state, not documented user-facing settings.
 	private static final String PREF_HIGHER_RES_PRESERVE_BACKBUFFER = "higher_res_preserve_backbuffer";
-	private static final String PREF_HIGHER_RES_MULTIPLIER = "higher_res_multiplier";
 	private static final String PREF_CUSTOM_RES_WIDTH = "custom_res_width";
 	private static final String PREF_CUSTOM_RES_HEIGHT = "custom_res_height";
 	private static final String PREF_CUSTOM_RES_OVERSAMPLE = "custom_res_oversample";
+	private static final String PREF_CUSTOM_RES_TILE_ORDER = "custom_res_tile_order";
+	private static final String PREF_CUSTOM_RES_BUCKET_SIZE = "custom_res_bucket_size";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_ENABLED = "custom_res_sequence_enabled";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_FRAMES = "custom_res_sequence_frames";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_FPS = "custom_res_sequence_fps";
@@ -1336,8 +1358,8 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_CREATE_VIDEO = "custom_res_create_video";
 	private static final String PREF_CUSTOM_RES_CLEANUP_IMAGES = "custom_res_cleanup_images";
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
+	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
 	private static final String PREF_LAST_SCREENSHOT_ACTION = "last_screenshot_action";
-	private static final String PREF_LAST_HIGHER_RES_ACTION = "last_higher_res_action";
 
 	@NonNull
 	private SharedPreferences dialogPrefs() {
@@ -1360,12 +1382,21 @@ public class MainActivity extends AppCompatActivity {
 
 	// Index-aligned with R.array.custom_res_presets, index 0 ("Custom")
 	// excepted - that one's a no-op handled separately, not a dimension
-	// pair. Indices 1-3 are multiples of the screen's own resolution
-	// (computed at selection time, not fixed here); 4+ are fixed pixel
-	// sizes, the HD/4K ones deliberately landscape per their usual
-	// meaning regardless of the device's own orientation.
-	private static final float[] CUSTOM_RES_SCREEN_MULTIPLIERS = {0.5f, 1f, 2f};
+	// pair. Indices 1..CUSTOM_RES_SCREEN_MULTIPLIERS.length are multiples
+	// of the *current mode's* resolution (the live quality-scaled render
+	// size, not necessarily the raw screen - see showCustomResolutionDialog()'s
+	// own currentModeWidth/currentModeHeight, computed at selection time,
+	// not fixed here) - this is also what used to be a separate "Save at
+	// Higher Res" picker's own fixed {2, 4, 6, 8} list before it got
+	// folded into this one dialog's preset dropdown, hence covering the
+	// same range (and well below/above it, for deliberately-tiny or
+	// deliberately-huge captures) here instead. Indices past that are
+	// fixed pixel sizes, the HD/4K ones deliberately landscape per their
+	// usual meaning regardless of the device's own orientation.
+	private static final float[] CUSTOM_RES_SCREEN_MULTIPLIERS =
+			{1 / 32f, 1 / 16f, 1 / 8f, 1 / 4f, 0.5f, 1f, 2f, 4f, 8f};
 	private static final int[][] CUSTOM_RES_FIXED_PRESETS = {
+			{256, 256},
 			{512, 512},
 			{1024, 1024},
 			{2048, 2048},
@@ -1374,153 +1405,44 @@ public class MainActivity extends AppCompatActivity {
 			{3840, 2160},
 	};
 
-	// wasPaused: the shader's pause state from *before* this whole Save
-	// At Higher Res flow started (threaded in from showScreenshotActionsDialog,
-	// which already paused it the same way the normal screenshot does) -
-	// kept paused continuously through this picker, the capture, and the
-	// save, only restored once everything's actually done (see
-	// runHighResCapture()'s onComplete callback) - not released early
-	// just because a dialog in the middle of the flow got dismissed.
-	private void showSaveAtHigherResDialog(boolean wasPaused) {
-		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		int screenWidth = metrics.widthPixels;
-		int screenHeight = metrics.heightPixels;
+	// Bundles the views of dialog_custom_resolution.xml's "render
+	// sequence / create video" options block, returned by
+	// wireSequenceOptions() below - split out from
+	// showCustomResolutionDialog() purely to keep that one (already
+	// long) method's own body shorter, not because anything else uses
+	// this block.
+	private static final class SequenceOptionsViews {
+		final CheckBox sequenceBox;
+		final EditText frameCountView;
+		final EditText fpsView;
+		final EditText skipFramesView;
+		final CheckBox createVideoBox;
+		final SeekBar qualitySeekBar;
+		final CheckBox cleanupImagesBox;
+		final EditText videoScaleView;
 
-		ActivityManager activityManager =
-				(ActivityManager) getSystemService(ACTIVITY_SERVICE);
-		long heapBudgetBytes =
-				(activityManager != null ? activityManager.getLargeMemoryClass() : 256)
-						* 1024L * 1024L;
-		long maxBitmapBytes = (long) (heapBudgetBytes * HIGHER_RES_MAX_HEAP_FRACTION);
-
-		List<Integer> multipliers = new ArrayList<>();
-		List<String> labels = new ArrayList<>();
-		for (int multiplier : HIGHER_RES_MULTIPLIERS) {
-			long width = (long) screenWidth * multiplier;
-			long height = (long) screenHeight * multiplier;
-			long bytes = width * height * 4;
-			if (bytes > maxBitmapBytes) {
-				break;
-			}
-			multipliers.add(multiplier);
-			labels.add(getString(R.string.higher_res_option,
-					multiplier, width, height, bytes / (1024 * 1024)));
+		SequenceOptionsViews(@NonNull CheckBox sequenceBox, @NonNull EditText frameCountView,
+				@NonNull EditText fpsView, @NonNull EditText skipFramesView,
+				@NonNull CheckBox createVideoBox, @NonNull SeekBar qualitySeekBar,
+				@NonNull CheckBox cleanupImagesBox, @NonNull EditText videoScaleView) {
+			this.sequenceBox = sequenceBox;
+			this.frameCountView = frameCountView;
+			this.fpsView = fpsView;
+			this.skipFramesView = skipFramesView;
+			this.createVideoBox = createVideoBox;
+			this.qualitySeekBar = qualitySeekBar;
+			this.cleanupImagesBox = cleanupImagesBox;
+			this.videoScaleView = videoScaleView;
 		}
-
-		View view = getLayoutInflater().inflate(R.layout.dialog_higher_res_picker, null);
-		RadioGroup optionsGroup = view.findViewById(R.id.resolution_options);
-		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
-		preserveBackbufferBox.setChecked(
-				dialogPrefs().getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
-		if (multipliers.isEmpty()) {
-			view.findViewById(R.id.no_options_message).setVisibility(View.VISIBLE);
-		} else {
-			// Pre-select whichever multiplier was used last time, falling
-			// back to the first (smallest) option if that one's no longer
-			// in this device's available list (e.g. memory got tighter).
-			int rememberedMultiplier = dialogPrefs().getInt(PREF_HIGHER_RES_MULTIPLIER, -1);
-			int selectIndex = Math.max(0, multipliers.indexOf(rememberedMultiplier));
-			for (int i = 0; i < labels.size(); ++i) {
-				RadioButton button = new RadioButton(this);
-				button.setId(View.generateViewId());
-				button.setText(labels.get(i));
-				optionsGroup.addView(button);
-				if (i == selectIndex) {
-					button.setChecked(true);
-				}
-			}
-		}
-
-		// Plain custom buttons at the bottom of the view (not AlertDialog's
-		// built-in slots) - those reorder depending on whether Android
-		// lays them out in a row or stacks them vertically, which isn't
-		// reliably under our control, making "Cancel last" unreliable
-		// via setPositiveButton/etc. alone.
-		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
-				.setTitle(R.string.save_at_higher_res)
-				.setView(view)
-				.setOnCancelListener(d -> setShaderPaused(wasPaused))
-				.show();
-		Button customButton = view.findViewById(R.id.higher_res_custom_button);
-		Button okButton = view.findViewById(R.id.higher_res_ok);
-		highlightLastUsedButton(PREF_LAST_HIGHER_RES_ACTION, customButton, okButton);
-		customButton.setOnClickListener(v -> {
-			rememberLastUsedButton(PREF_LAST_HIGHER_RES_ACTION, R.id.higher_res_custom_button);
-			dialog.dismiss();
-			showCustomResolutionDialog(wasPaused);
-		});
-		if (multipliers.isEmpty()) {
-			okButton.setVisibility(View.GONE);
-		} else {
-			okButton.setOnClickListener(v -> {
-				rememberLastUsedButton(PREF_LAST_HIGHER_RES_ACTION, R.id.higher_res_ok);
-				dialog.dismiss();
-				int checkedIndex = optionsGroup.indexOfChild(
-						optionsGroup.findViewById(optionsGroup.getCheckedRadioButtonId()));
-				int multiplier = multipliers.get(Math.max(0, checkedIndex));
-				dialogPrefs().edit()
-						.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
-						.putInt(PREF_HIGHER_RES_MULTIPLIER, multiplier)
-						.apply();
-				runHighResCapture(screenWidth * multiplier, screenHeight * multiplier, 1,
-						preserveBackbufferBox.isChecked(), wasPaused);
-			});
-		}
-		view.findViewById(R.id.higher_res_cancel).setOnClickListener(v -> {
-			dialog.dismiss();
-			setShaderPaused(wasPaused);
-		});
 	}
 
-	// Any resolution, not just a multiplier of the screen - still tiled
-	// the same way, so there's no upper bound beyond what the device's
-	// memory can actually hold (see HighResScreenshotCapture).
-	private void showCustomResolutionDialog(boolean wasPaused) {
-		View view = getLayoutInflater().inflate(R.layout.dialog_custom_resolution, null);
+	// Finds and wires up every view in showCustomResolutionDialog()'s
+	// "render sequence" options block (initial state from the
+	// PREF_CUSTOM_RES_SEQUENCE_* prefs, visibility toggles, the live
+	// duration estimate, the quality seekbar's label).
+	@NonNull
+	private SequenceOptionsViews wireSequenceOptions(@NonNull View view) {
 		SharedPreferences prefs = dialogPrefs();
-		EditText widthView = view.findViewById(R.id.custom_width);
-		EditText heightView = view.findViewById(R.id.custom_height);
-		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		// A remembered value (from last time this dialog was actually
-		// used) always wins over the device-resolution default - that
-		// default only applies the very first time, before anything's
-		// been remembered yet.
-		widthView.setText(String.valueOf(
-				prefs.getInt(PREF_CUSTOM_RES_WIDTH, metrics.widthPixels)));
-		heightView.setText(String.valueOf(
-				prefs.getInt(PREF_CUSTOM_RES_HEIGHT, metrics.heightPixels)));
-		Spinner presetSpinner = view.findViewById(R.id.custom_res_preset);
-		presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-			@Override
-			public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-				if (position == 0) {
-					return;
-				}
-				int presetWidth;
-				int presetHeight;
-				if (position <= CUSTOM_RES_SCREEN_MULTIPLIERS.length) {
-					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
-					presetWidth = Math.round(metrics.widthPixels * multiplier);
-					presetHeight = Math.round(metrics.heightPixels * multiplier);
-				} else {
-					int[] fixed = CUSTOM_RES_FIXED_PRESETS[
-							position - 1 - CUSTOM_RES_SCREEN_MULTIPLIERS.length];
-					presetWidth = fixed[0];
-					presetHeight = fixed[1];
-				}
-				widthView.setText(String.valueOf(presetWidth));
-				heightView.setText(String.valueOf(presetHeight));
-			}
-
-			@Override
-			public void onNothingSelected(AdapterView<?> parent) {
-			}
-		});
-		EditText oversampleView = view.findViewById(R.id.custom_oversample);
-		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
-		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
-		preserveBackbufferBox.setChecked(
-				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
 		CheckBox sequenceBox = view.findViewById(R.id.render_sequence);
 		View sequenceOptions = view.findViewById(R.id.sequence_options);
 		EditText frameCountView = view.findViewById(R.id.sequence_frame_count);
@@ -1532,6 +1454,8 @@ public class MainActivity extends AppCompatActivity {
 		TextView qualityLabelView = view.findViewById(R.id.sequence_video_quality_label);
 		SeekBar qualitySeekBar = view.findViewById(R.id.sequence_video_quality);
 		CheckBox cleanupImagesBox = view.findViewById(R.id.sequence_cleanup_images);
+		EditText videoScaleView = view.findViewById(R.id.sequence_video_scale);
+
 		sequenceBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, false));
 		sequenceOptions.setVisibility(sequenceBox.isChecked() ? View.VISIBLE : View.GONE);
 		frameCountView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_SEQUENCE_FRAMES, 30)));
@@ -1550,6 +1474,8 @@ public class MainActivity extends AppCompatActivity {
 		qualitySeekBar.setProgress(initialQuality);
 		qualityLabelView.setText(getString(R.string.higher_res_sequence_video_quality, initialQuality));
 		cleanupImagesBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_CLEANUP_IMAGES, true));
+		videoScaleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_VIDEO_SCALE, 1)));
+
 		sequenceBox.setOnCheckedChangeListener((button, checked) ->
 				sequenceOptions.setVisibility(checked ? View.VISIBLE : View.GONE));
 		createVideoBox.setOnCheckedChangeListener((button, checked) ->
@@ -1598,6 +1524,92 @@ public class MainActivity extends AppCompatActivity {
 		fpsView.addTextChangedListener(durationWatcher);
 		durationWatcher.afterTextChanged(null);
 
+		return new SequenceOptionsViews(sequenceBox, frameCountView, fpsView, skipFramesView,
+				createVideoBox, qualitySeekBar, cleanupImagesBox, videoScaleView);
+	}
+
+	// Any resolution, not just a multiplier of the screen - still tiled
+	// the same way, so there's no upper bound beyond what the device's
+	// memory can actually hold (see HighResScreenshotCapture).
+	private void showCustomResolutionDialog(boolean wasPaused) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_custom_resolution, null);
+		SharedPreferences prefs = dialogPrefs();
+		EditText widthView = view.findViewById(R.id.custom_width);
+		EditText heightView = view.findViewById(R.id.custom_height);
+		DisplayMetrics metrics = getResources().getDisplayMetrics();
+		// "1x Current Mode" below means "whatever's actually rendering
+		// right now" - read directly from the renderer's own live
+		// surface size rather than re-derived from DisplayMetrics *
+		// quality, since the GLSurfaceView's actual onSurfaceChanged()
+		// dimensions (what quality really scales - see
+		// BuiltinUniforms.updateSurface()) can differ from
+		// DisplayMetrics.widthPixels/heightPixels by however many
+		// pixels system bars/insets eat into, however small - and this
+		// is exactly the resolution a same-size capture needs to match
+		// *exactly* for HighResScreenshotCapture's 1:1 backbuffer-seed
+		// fast path to actually trigger. Falls back to the
+		// DisplayMetrics approximation only if no frame has ever sized
+		// the surface yet (getRenderWidth() still 0).
+		int liveRenderWidth = shaderViewManager.getRenderWidth();
+		int liveRenderHeight = shaderViewManager.getRenderHeight();
+		final int currentModeWidth;
+		final int currentModeHeight;
+		if (liveRenderWidth > 0 && liveRenderHeight > 0) {
+			currentModeWidth = liveRenderWidth;
+			currentModeHeight = liveRenderHeight;
+		} else {
+			float quality = shaderManager.getQuality();
+			currentModeWidth = Math.max(1, Math.round(metrics.widthPixels * quality));
+			currentModeHeight = Math.max(1, Math.round(metrics.heightPixels * quality));
+		}
+		// A remembered value (from last time this dialog was actually
+		// used) always wins over the current-mode-resolution default -
+		// that default only applies the very first time, before
+		// anything's been remembered yet.
+		widthView.setText(String.valueOf(
+				prefs.getInt(PREF_CUSTOM_RES_WIDTH, currentModeWidth)));
+		heightView.setText(String.valueOf(
+				prefs.getInt(PREF_CUSTOM_RES_HEIGHT, currentModeHeight)));
+		Spinner presetSpinner = view.findViewById(R.id.custom_res_preset);
+		presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+				if (position == 0) {
+					return;
+				}
+				int presetWidth;
+				int presetHeight;
+				if (position <= CUSTOM_RES_SCREEN_MULTIPLIERS.length) {
+					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
+					presetWidth = Math.round(currentModeWidth * multiplier);
+					presetHeight = Math.round(currentModeHeight * multiplier);
+				} else {
+					int[] fixed = CUSTOM_RES_FIXED_PRESETS[
+							position - 1 - CUSTOM_RES_SCREEN_MULTIPLIERS.length];
+					presetWidth = fixed[0];
+					presetHeight = fixed[1];
+				}
+				widthView.setText(String.valueOf(presetWidth));
+				heightView.setText(String.valueOf(presetHeight));
+			}
+
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+			}
+		});
+		EditText oversampleView = view.findViewById(R.id.custom_oversample);
+		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
+		Spinner tileOrderSpinner = view.findViewById(R.id.custom_tile_order);
+		tileOrderSpinner.setSelection(prefs.getInt(
+				PREF_CUSTOM_RES_TILE_ORDER, TileRenderOrder.HILBERT.ordinal()));
+		Spinner bucketSizeSpinner = view.findViewById(R.id.custom_bucket_size);
+		bucketSizeSpinner.setSelection(prefs.getInt(
+				PREF_CUSTOM_RES_BUCKET_SIZE, TileBucketSize.NORMAL.ordinal()));
+		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
+		preserveBackbufferBox.setChecked(
+				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
+		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
+
 		// Select-all on focus for every field, so tabbing/tapping in
 		// immediately lets typing replace the old value instead of
 		// appending to it.
@@ -1636,7 +1648,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 		});
 
-		// Plain custom buttons - see showSaveAtHigherResDialog().
+		// Plain custom buttons (not AlertDialog's built-in positive/
+		// negative/neutral slots) - those reorder depending on whether
+		// Android lays them out in a row or stacks them vertically (not
+		// reliably under our control), which made "highlight last used"
+		// unreliable via setPositiveButton/etc. alone.
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.higher_res_custom)
 				.setView(view)
@@ -1646,6 +1662,8 @@ public class MainActivity extends AppCompatActivity {
 			int width = parsePositiveInt(widthView.getText().toString());
 			int height = parsePositiveInt(heightView.getText().toString());
 			int oversample = Math.max(1, parsePositiveInt(oversampleView.getText().toString()));
+			TileRenderOrder tileOrder = TileRenderOrder.values()[tileOrderSpinner.getSelectedItemPosition()];
+			TileBucketSize bucketSize = TileBucketSize.values()[bucketSizeSpinner.getSelectedItemPosition()];
 			if (width <= 0 || height <= 0) {
 				Toast.makeText(this, R.string.higher_res_custom_invalid, Toast.LENGTH_SHORT).show();
 				setShaderPaused(wasPaused);
@@ -1656,35 +1674,44 @@ public class MainActivity extends AppCompatActivity {
 					.putInt(PREF_CUSTOM_RES_WIDTH, width)
 					.putInt(PREF_CUSTOM_RES_HEIGHT, height)
 					.putInt(PREF_CUSTOM_RES_OVERSAMPLE, oversample)
+					.putInt(PREF_CUSTOM_RES_TILE_ORDER, tileOrder.ordinal())
+					.putInt(PREF_CUSTOM_RES_BUCKET_SIZE, bucketSize.ordinal())
 					.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
-					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceBox.isChecked());
-			if (sequenceBox.isChecked()) {
-				int frameCount = parsePositiveInt(frameCountView.getText().toString());
-				float fps = parsePositiveFloat(fpsView.getText().toString());
-				int skipFrames = Math.max(0, parsePositiveInt(skipFramesView.getText().toString()));
+					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
+			if (sequenceViews.sequenceBox.isChecked()) {
+				int frameCount = parsePositiveInt(sequenceViews.frameCountView.getText().toString());
+				float fps = parsePositiveFloat(sequenceViews.fpsView.getText().toString());
+				int skipFrames = Math.max(0,
+						parsePositiveInt(sequenceViews.skipFramesView.getText().toString()));
 				if (frameCount <= 0 || fps <= 0) {
 					Toast.makeText(this, R.string.higher_res_sequence_invalid, Toast.LENGTH_SHORT).show();
 					setShaderPaused(wasPaused);
 					dialog.dismiss();
 					return;
 				}
-				int videoQuality = qualitySeekBar.getProgress();
+				int videoQuality = sequenceViews.qualitySeekBar.getProgress();
+				int videoScale = Math.max(1,
+						parsePositiveInt(sequenceViews.videoScaleView.getText().toString()));
 				prefsEditor.putInt(PREF_CUSTOM_RES_SEQUENCE_FRAMES, frameCount)
 						.putFloat(PREF_CUSTOM_RES_SEQUENCE_FPS, fps)
 						.putInt(PREF_CUSTOM_RES_SEQUENCE_SKIP, skipFrames)
-						.putBoolean(PREF_CUSTOM_RES_CREATE_VIDEO, createVideoBox.isChecked())
+						.putBoolean(PREF_CUSTOM_RES_CREATE_VIDEO, sequenceViews.createVideoBox.isChecked())
 						.putInt(PREF_CUSTOM_RES_VIDEO_QUALITY, videoQuality)
-						.putBoolean(PREF_CUSTOM_RES_CLEANUP_IMAGES, cleanupImagesBox.isChecked())
+						.putInt(PREF_CUSTOM_RES_VIDEO_SCALE, videoScale)
+						.putBoolean(PREF_CUSTOM_RES_CLEANUP_IMAGES,
+								sequenceViews.cleanupImagesBox.isChecked())
 						.apply();
 				dialog.dismiss();
 				runFrameSequenceCapture(width, height, oversample, preserveBackbufferBox.isChecked(),
-						skipFrames, frameCount, fps, createVideoBox.isChecked(), videoQuality,
-						cleanupImagesBox.isChecked(), wasPaused);
+						bucketSize, tileOrder, skipFrames, frameCount, fps,
+						sequenceViews.createVideoBox.isChecked(), videoQuality, videoScale,
+						sequenceViews.cleanupImagesBox.isChecked(), wasPaused);
 				return;
 			}
 			prefsEditor.apply();
 			dialog.dismiss();
-			runHighResCapture(width, height, oversample, preserveBackbufferBox.isChecked(), wasPaused);
+			runHighResCapture(width, height, oversample, preserveBackbufferBox.isChecked(), bucketSize,
+					tileOrder, wasPaused);
 		});
 		view.findViewById(R.id.custom_res_cancel).setOnClickListener(v -> {
 			dialog.dismiss();
@@ -1726,12 +1753,175 @@ public class MainActivity extends AppCompatActivity {
 	// cheapest part of the whole job.
 	private static final int PROGRESS_COMPILE_UNITS = 10;
 
+	// Longest edge of the live tile-preview Bitmap on the progress
+	// dialog (R.id.tile_preview) - small on purpose, since every tile's
+	// contribution gets downsampled into it, and a bigger one would mean
+	// more pixels to touch per tile for a preview nobody's examining
+	// pixel-by-pixel anyway.
+	private static final int TILE_PREVIEW_MAX_DIMENSION = 256;
+
+	// Updated after every sequence+video capture's real encoding phase
+	// (see the videoProgress listener in runFrameSequenceCapture())
+	// finishes at least one frame - reused as the best available
+	// estimate of "how long will encoding take per frame" for *future*
+	// captures' render-phase ETA, which otherwise has no way to know
+	// that before encoding has actually started even once. -1 means
+	// nothing's been measured yet this process (first-ever sequence
+	// capture), in which case ESTIMATED_ENCODE_SECONDS_PER_FRAME_FALLBACK
+	// is used instead - a rough guess, not a measurement.
+	private static volatile double lastKnownEncodeSecondsPerFrame = -1;
+	private static final double ESTIMATED_ENCODE_SECONDS_PER_FRAME_FALLBACK = 0.3;
+
 	private final Random random = new Random();
 
 	@NonNull
 	private String pickRandomStatus(int arrayResId) {
 		String[] variants = getResources().getStringArray(arrayResId);
 		return variants[random.nextInt(variants.length)];
+	}
+
+	// Mirrors overallBar's progress into HighResCaptureService's
+	// notification, so someone who's backgrounded the app mid-capture can
+	// tell how far along it is without reopening it - only while that
+	// service is actually running (serviceActive[0], set true by the
+	// capture thread once it knows a SharedCaptureContext was available),
+	// and only when the integer percentage actually changed
+	// (lastNotifiedPercent[0]) so a notify() isn't issued for every single
+	// tile. Called from the UI thread, same as the progress bar update it
+	// always follows.
+	private void notifyCaptureProgress(
+			@NonNull boolean[] serviceActive, @NonNull int[] lastNotifiedPercent,
+			@NonNull ProgressBar overallBar) {
+		if (!serviceActive[0] || overallBar.getMax() <= 0) {
+			return;
+		}
+		int percent = (int) (100L * overallBar.getProgress() / overallBar.getMax());
+		if (percent != lastNotifiedPercent[0]) {
+			lastNotifiedPercent[0] = percent;
+			HighResCaptureService.updateProgress(this, percent);
+		}
+	}
+
+	// Shows "Avg <seconds>s/<tile-or-frame> · ETA <mm:ss>" on timingView,
+	// averaged over every completed unit (tile, for a single capture;
+	// frame, for a sequence - formatResId picks the right noun) since
+	// startNanos. No-op (stays hidden) until at least one unit has
+	// completed, since there's nothing to average yet before that.
+	private void updateTimingEstimate(@NonNull TextView timingView, int formatResId,
+			long startNanos, int completedUnits, int remainingUnits) {
+		if (completedUnits <= 0) {
+			return;
+		}
+		double avgSeconds = (System.nanoTime() - startNanos) / 1e9 / completedUnits;
+		long etaSeconds = Math.round(avgSeconds * remainingUnits);
+		timingView.setVisibility(View.VISIBLE);
+		timingView.setText(getString(formatResId, avgSeconds, formatEtaDuration(etaSeconds)));
+	}
+
+	@NonNull
+	private static String formatEtaDuration(long totalSeconds) {
+		long minutes = totalSeconds / 60;
+		long seconds = totalSeconds % 60;
+		return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
+	}
+
+	// Fits width x height within TILE_PREVIEW_MAX_DIMENSION on its longer
+	// edge, preserving aspect ratio - the size to allocate the progress
+	// dialog's tile_preview Bitmap at.
+	@NonNull
+	private static int[] computeTilePreviewSize(int width, int height) {
+		if (width <= 0 || height <= 0) {
+			return new int[]{1, 1};
+		}
+		float scale = Math.min(1f, (float) TILE_PREVIEW_MAX_DIMENSION / Math.max(width, height));
+		return new int[]{
+				Math.max(1, Math.round(width * scale)),
+				Math.max(1, Math.round(height * scale))};
+	}
+
+	// A fresh Bitmap defaults to fully transparent, which can blend
+	// invisibly into the dialog's own background until enough tiles have
+	// painted over it - erasing to a neutral opaque color first means
+	// every tile's arrival is visible as a distinct patch regardless of
+	// what colors the shader itself happens to render.
+	@NonNull
+	private static Bitmap createTilePreviewBitmap(int width, int height) {
+		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		bitmap.eraseColor(0xff202020);
+		return bitmap;
+	}
+
+	// Builds a TilePreviewListener that nearest-neighbor-downsamples each
+	// tile's own pixels straight into the matching sub-rect of
+	// previewBitmap and shows/invalidates previewView - shared by both
+	// runHighResCapture() and runFrameSequenceCapture() (a sequence just
+	// keeps overwriting the same bitmap, frame after frame). The
+	// downsample loop itself is bounded by the destination sub-rect's
+	// size (a small fraction of previewBitmap's already-small area, not
+	// the tile's own up-to-512x512 size), so this stays cheap regardless
+	// of how big the real capture is; only the final Bitmap.setPixels()
+	// + invalidate() needs the UI thread.
+	@NonNull
+	private ShaderRenderer.TilePreviewListener createTilePreviewListener(
+			@NonNull ImageView previewView, @NonNull Bitmap previewBitmap,
+			@NonNull ImageView lastTileView, boolean singlePass) {
+		int previewWidth = previewBitmap.getWidth();
+		int previewHeight = previewBitmap.getHeight();
+		return (contentX0, contentY0, contentW, contentH, targetWidth, targetHeight, argb) -> {
+			if (targetWidth <= 0 || targetHeight <= 0) {
+				return;
+			}
+			// Nothing to "fill in" with only one tile (the whole image)
+			// - skip the small zoomed-out overview entirely (it stays
+			// at its default "gone", which also lets lastTileView below
+			// expand to the full row width instead of sharing it) and
+			// just show that one tile, i.e. the whole image, full
+			// resolution, centered.
+			if (singlePass) {
+				Bitmap wholeImageBitmap =
+						Bitmap.createBitmap(argb, contentW, contentH, Bitmap.Config.ARGB_8888);
+				runOnUiThread(() -> {
+					lastTileView.setVisibility(View.VISIBLE);
+					lastTileView.setImageBitmap(wholeImageBitmap);
+				});
+				return;
+			}
+			int dstX0 = contentX0 * previewWidth / targetWidth;
+			int dstY0 = contentY0 * previewHeight / targetHeight;
+			int dstX1 = Math.min(previewWidth,
+					Math.max(dstX0 + 1, (contentX0 + contentW) * previewWidth / targetWidth));
+			int dstY1 = Math.min(previewHeight,
+					Math.max(dstY0 + 1, (contentY0 + contentH) * previewHeight / targetHeight));
+			int dstW = dstX1 - dstX0;
+			int dstH = dstY1 - dstY0;
+			if (dstW <= 0 || dstH <= 0) {
+				return;
+			}
+			int[] previewPixels = new int[dstW * dstH];
+			for (int dy = 0; dy < dstH; ++dy) {
+				int srcY = Math.min(contentH - 1, dy * contentH / dstH);
+				for (int dx = 0; dx < dstW; ++dx) {
+					int srcX = Math.min(contentW - 1, dx * contentW / dstW);
+					previewPixels[dy * dstW + dx] = argb[srcY * contentW + srcX];
+				}
+			}
+			// argb is already exactly contentW x contentH, top-down,
+			// ARGB_8888-ordered - the same shape Bitmap.createBitmap()'s
+			// int[] constructor wants, so the tile's own pixels need no
+			// further processing for this close-up view (unlike
+			// previewPixels above, which deliberately downsamples).
+			// Rebuilt fresh each tile (not mutated in place like
+			// previewBitmap) since tile size itself varies at the
+			// right/bottom edges.
+			Bitmap lastTileBitmap = Bitmap.createBitmap(argb, contentW, contentH, Bitmap.Config.ARGB_8888);
+			runOnUiThread(() -> {
+				previewBitmap.setPixels(previewPixels, 0, dstW, dstX0, dstY0, dstW, dstH);
+				previewView.setVisibility(View.VISIBLE);
+				previewView.invalidate();
+				lastTileView.setVisibility(View.VISIBLE);
+				lastTileView.setImageBitmap(lastTileBitmap);
+			});
+		};
 	}
 
 	// Compiling the capture-only (tile-offset-injected) program has no
@@ -1769,7 +1959,7 @@ public class MainActivity extends AppCompatActivity {
 		return animator;
 	}
 
-	// wasPaused: see showSaveAtHigherResDialog() - the pause state from
+	// wasPaused: see showCustomResolutionDialog() - the pause state from
 	// before the whole flow started, restored only once the capture AND
 	// the save (and whatever the chosen action does after - here always
 	// Save and Open) have both finished, so the shader stays still for
@@ -1779,13 +1969,29 @@ public class MainActivity extends AppCompatActivity {
 	// progress dialog switches from indeterminate to a tile-count
 	// progress bar as soon as the first progress callback arrives.
 	private void runHighResCapture(int width, int height, int oversample,
-			boolean preserveBackbufferEdges, boolean wasPaused) {
+			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder tileOrder, boolean wasPaused) {
 		setShaderPaused(true);
 		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
 		TextView statusMessage = progressView.findViewById(R.id.status_message);
+		TextView timingView = progressView.findViewById(R.id.progress_timing);
 		ProgressBar overallBar = progressView.findViewById(R.id.progress_overall);
 		ProgressBar subtaskBar = progressView.findViewById(R.id.progress_subtask);
+		ImageView tilePreviewView = progressView.findViewById(R.id.tile_preview);
+		ImageView lastTileView = progressView.findViewById(R.id.last_tile_preview);
 		Button cancelButton = progressView.findViewById(R.id.progress_cancel);
+		int[] previewSize = computeTilePreviewSize(width, height);
+		Bitmap previewBitmap = createTilePreviewBitmap(previewSize[0], previewSize[1]);
+		tilePreviewView.setImageBitmap(previewBitmap);
+		// Approximates ShaderRenderer's own singlePass eligibility check
+		// (it also requires the resolution to fit in one GL texture,
+		// which only the GL thread can confirm) - close enough for
+		// deciding how to lay out the preview; the rare case where the
+		// GL thread falls back to tiling anyway just means this ends up
+		// showing the untiled layout for a tiled capture, not a crash.
+		boolean singlePass = bucketSize == TileBucketSize.MAX && oversample == 1;
+		ShaderRenderer.TilePreviewListener tilePreviewListener =
+				createTilePreviewListener(tilePreviewView, previewBitmap, lastTileView, singlePass);
 		AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
 				.setView(progressView)
 				.setCancelable(false)
@@ -1818,6 +2024,17 @@ public class MainActivity extends AppCompatActivity {
 		// toward in the first place.
 		boolean[] tileInfoKnown = {false};
 		String[] tileVariant = {null};
+		// Set once the capture thread below knows whether
+		// HighResCaptureService is actually running for this capture -
+		// progressListener is built before that's known, so it reads this
+		// flag (and throttles via lastNotifiedPercent) each callback
+		// rather than capturing a value.
+		boolean[] serviceActive = {false};
+		int[] lastNotifiedPercent = {-1};
+		// Marked the moment the total tile count becomes known (the
+		// first tile), so the average below is over actual tile-render
+		// time only, not however long compiling took first.
+		long[] captureStartNanos = {0};
 		ShaderRenderer.HighResProgressListener progressListener = (tilesDone, totalTiles) -> {
 			runOnUiThread(() -> {
 				if (compileAnim[0] != null) {
@@ -1830,11 +2047,15 @@ public class MainActivity extends AppCompatActivity {
 					subtaskBar.setVisibility(View.VISIBLE);
 					subtaskBar.setMax(totalTiles);
 					tileVariant[0] = pickRandomStatus(R.array.status_tile_single);
+					captureStartNanos[0] = System.nanoTime();
 				}
 				overallBar.setProgress(PROGRESS_COMPILE_UNITS + tilesDone);
 				subtaskBar.setProgress(tilesDone);
 				statusMessage.setText(
 						String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
+				updateTimingEstimate(timingView, R.string.progress_timing_tile,
+						captureStartNanos[0], tilesDone, totalTiles - tilesDone);
+				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 			});
 			return !cancelRequested.get();
 		};
@@ -1855,12 +2076,15 @@ public class MainActivity extends AppCompatActivity {
 			if (backgroundCapable) {
 				shaderViewManager.setBackgroundCaptureActive(true);
 				HighResCaptureService.start(this);
+				serviceActive[0] = true;
 			}
 			byte[] png = backgroundCapable
 					? shaderViewManager.takeHighResScreenshotOnSharedContext(sharedContext,
-							width, height, oversample, preserveBackbufferEdges, progressListener)
+							width, height, oversample, preserveBackbufferEdges, bucketSize, tileOrder,
+							progressListener, tilePreviewListener)
 					: shaderViewManager.takeHighResScreenshot(
-							width, height, oversample, preserveBackbufferEdges, progressListener);
+							width, height, oversample, preserveBackbufferEdges, bucketSize, tileOrder,
+							progressListener, tilePreviewListener);
 			if (backgroundCapable) {
 				sharedContext.destroy();
 				HighResCaptureService.stop(this);
@@ -1940,17 +2164,51 @@ public class MainActivity extends AppCompatActivity {
 	// the end - opening a single image wouldn't make sense for a batch
 	// of them - just a toast summarizing what happened.
 	private void runFrameSequenceCapture(int width, int height, int oversample,
-			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
-			boolean createVideo, int videoQuality, boolean cleanupImages, boolean wasPaused) {
+			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
+			@NonNull TileRenderOrder initialTileOrder, int skipFrames,
+			int numFrames, float virtualFps, boolean createVideo, int videoQuality,
+			int videoScale, boolean cleanupImages, boolean wasPaused) {
 		setShaderPaused(true);
 		var shader = dataSource.shader.getShader(shaderManager.getSelectedShaderId());
 		String baseShaderName = sanitizeFilename(shader != null ? shader.getTitle() : "shader");
 
 		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
 		TextView statusMessage = progressView.findViewById(R.id.status_message);
+		TextView timingView = progressView.findViewById(R.id.progress_timing);
 		ProgressBar overallBar = progressView.findViewById(R.id.progress_overall);
 		ProgressBar subtaskBar = progressView.findViewById(R.id.progress_subtask);
+		ImageView tilePreviewView = progressView.findViewById(R.id.tile_preview);
+		ImageView lastTileView = progressView.findViewById(R.id.last_tile_preview);
 		Button cancelButton = progressView.findViewById(R.id.progress_cancel);
+		int[] previewSize = computeTilePreviewSize(width, height);
+		Bitmap previewBitmap = createTilePreviewBitmap(previewSize[0], previewSize[1]);
+		tilePreviewView.setImageBitmap(previewBitmap);
+		// Same approximation as runHighResCapture()'s own copy of this.
+		boolean singlePass = bucketSize == TileBucketSize.MAX && oversample == 1;
+		ShaderRenderer.TilePreviewListener tilePreviewListener =
+				createTilePreviewListener(tilePreviewView, previewBitmap, lastTileView, singlePass);
+		// Live-changeable mid-sequence (see TileOrderSupplier's own doc) -
+		// seeded from whatever was picked in the Custom Resolution
+		// dialog, and written back to that same persisted preference on
+		// every change here too, so "last used" stays accurate regardless
+		// of which of the two pickers was used last.
+		AtomicReference<TileRenderOrder> liveTileOrder = new AtomicReference<>(initialTileOrder);
+		ShaderRenderer.TileOrderSupplier tileOrderSupplier = liveTileOrder::get;
+		Spinner tileOrderSpinner = progressView.findViewById(R.id.progress_tile_order);
+		tileOrderSpinner.setVisibility(View.VISIBLE);
+		tileOrderSpinner.setSelection(initialTileOrder.ordinal());
+		tileOrderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+				TileRenderOrder selected = TileRenderOrder.values()[position];
+				liveTileOrder.set(selected);
+				dialogPrefs().edit().putInt(PREF_CUSTOM_RES_TILE_ORDER, selected.ordinal()).apply();
+			}
+
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+			}
+		});
 		AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
 				.setView(progressView)
 				.setCancelable(false)
@@ -1985,6 +2243,27 @@ public class MainActivity extends AppCompatActivity {
 				.setNeutralButton(R.string.cancel_capture_keep_rendering, null)
 				.show());
 
+		// Only offered when a video is actually being made - stopping
+		// early has nothing extra to offer Cancel otherwise. Unlike
+		// Cancel, needs no confirmation dialog: nothing destructive
+		// happens (frames already on disk are kept either way). Lets
+		// whichever frame is currently tiling finish normally (see
+		// tileProgressListener's return value below) rather than
+		// discarding it mid-render - only refuses to *start* another
+		// frame or skip-step afterward (sequenceProgressListener's
+		// return value) - then heads straight to encoding whatever was
+		// captured, same as a normal finish.
+		AtomicBoolean interruptRequested = new AtomicBoolean(false);
+		Button interruptButton = progressView.findViewById(R.id.progress_interrupt_make_video);
+		if (createVideo) {
+			interruptButton.setVisibility(View.VISIBLE);
+			interruptButton.setOnClickListener(v -> {
+				interruptRequested.set(true);
+				interruptButton.setEnabled(false);
+				cancelButton.setEnabled(false);
+			});
+		}
+
 		// One bar for the whole job: compiling (a small fixed slice),
 		// stepping through any skipped frames (1 unit each), tiled
 		// rendering (1 unit per tile - the dominant cost, found out only
@@ -2005,10 +2284,49 @@ public class MainActivity extends AppCompatActivity {
 		String[] skipVariant = {null};
 		String[] tileVariant = {null};
 		String[] encodeVariant = {null};
+		// Same "set once the capture thread knows" / throttle contract as
+		// runHighResCapture()'s own copy of these two.
+		boolean[] serviceActive = {false};
+		int[] lastNotifiedPercent = {-1};
+		// Marked by tileProgressListener at the first tile of whichever
+		// frame is currently rendering, read back by frameListener once
+		// that frame completes - the two together give one frame's
+		// actual wall-clock render time, averaged across every frame
+		// completed so far (frameAvgTotalSeconds / framesTimed) for the
+		// Avg/ETA line, same idea as runHighResCapture()'s own
+		// per-tile version but at frame granularity.
+		long[] frameStartNanos = {0};
+		double[] frameAvgTotalSeconds = {0};
+		int[] framesTimed = {0};
 
 		ShaderRenderer.SequenceProgressListener sequenceProgressListener = (skipping, stepIndex, totalSteps) -> {
+			// Resolved before posting to the UI thread (not re-checked
+			// inside the Runnable) so the preview-clear below never
+			// fires for a frame that's actually about to be refused -
+			// see the !skipping branch's own doc.
+			boolean willContinue = !cancelRequested.get() && !interruptRequested.get();
 			runOnUiThread(() -> {
 				if (!skipping) {
+					// Clears the whole-image preview right as the *next*
+					// frame is about to start rendering, rather than the
+					// instant the previous one finished (frameListener
+					// used to do this) - so whatever frame just
+					// completed stays visible as long as possible,
+					// through the status/progress-bar churn between
+					// frames, right up until there's actually something
+					// new to start overwriting it with. Skipped if this
+					// frame was about to be refused (Cancel/Interrupt),
+					// so the last real frame stays on screen instead of
+					// being wiped for a frame that will never render -
+					// and skipped entirely for a single pass, which
+					// never uses this overview in the first place (see
+					// createTilePreviewListener()) and just has the next
+					// frame's full image plainly replace the last one in
+					// lastTileView, no separate clear needed or wanted.
+					if (willContinue && !singlePass) {
+						previewBitmap.eraseColor(0xff202020);
+						tilePreviewView.invalidate();
+					}
 					return;
 				}
 				if (compileAnim[0] != null) {
@@ -2024,8 +2342,9 @@ public class MainActivity extends AppCompatActivity {
 				subtaskBar.setProgress(stepIndex);
 				statusMessage.setText(
 						String.format(Locale.getDefault(), skipVariant[0], stepIndex, totalSteps));
+				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 			});
-			return !cancelRequested.get();
+			return willContinue;
 		};
 		ShaderRenderer.HighResProgressListener tileProgressListener = (tilesDone, totalTiles) -> {
 			runOnUiThread(() -> {
@@ -2040,16 +2359,36 @@ public class MainActivity extends AppCompatActivity {
 					tileVariant[0] = pickRandomStatus(
 							numFrames > 1 ? R.array.status_tile_sequence : R.array.status_tile_single);
 				}
+				if (tilesDone == 1) {
+					frameStartNanos[0] = System.nanoTime();
+				}
 				overallBar.setProgress(PROGRESS_COMPILE_UNITS + skipFrames +
 						currentFrameIndex[0] * tilesPerFrame[0] + tilesDone);
 				subtaskBar.setVisibility(View.VISIBLE);
 				subtaskBar.setMax(totalTiles);
 				subtaskBar.setProgress(tilesDone);
-				statusMessage.setText(numFrames > 1
-						? String.format(Locale.getDefault(), tileVariant[0],
-								currentFrameIndex[0] + 1, numFrames, tilesDone, totalTiles)
-						: String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
+				// Interrupt lets this (the currently-tiling) frame finish
+				// rather than abandoning it - see tileProgressListener's
+				// return value below - so the narrated status is
+				// overridden here to say so, rather than continuing to
+				// cycle through the normal randomized tile-progress text
+				// as if nothing had changed.
+				statusMessage.setText(interruptRequested.get()
+						? getString(R.string.status_interrupting_after_frame)
+						: numFrames > 1
+								? String.format(Locale.getDefault(), tileVariant[0],
+										currentFrameIndex[0] + 1, numFrames, tilesDone, totalTiles)
+								: String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
+				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 			});
+			// Deliberately cancelRequested-only, unlike
+			// sequenceProgressListener above: Interrupt means "stop
+			// starting new frames", not "abandon the one currently
+			// tiling" - letting it finish means the video gets one more
+			// frame instead of discarding whatever fraction of it had
+			// already rendered. sequenceProgressListener (the only place
+			// a *new* frame or skip-step gets started) is where
+			// interruptRequested actually takes effect.
 			return !cancelRequested.get();
 		};
 
@@ -2068,9 +2407,47 @@ public class MainActivity extends AppCompatActivity {
 				frameUris.add(saved.uri());
 			}
 			currentFrameIndex[0] = frameIndex + 1;
+			double frameSeconds = (System.nanoTime() - frameStartNanos[0]) / 1e9;
+			frameAvgTotalSeconds[0] += frameSeconds;
+			++framesTimed[0];
+			int remainingFrames = totalFrames - currentFrameIndex[0];
+			// How much virtual-time footage has actually been rendered
+			// so far, at the sequence's own virtualFps - independent of
+			// how long rendering it took in the real world (that's what
+			// the Avg/ETA line below is for).
+			double footageSeconds = virtualFps > 0 ? currentFrameIndex[0] / virtualFps : 0;
+			runOnUiThread(() -> {
+				if (framesTimed[0] > 0) {
+					double avgSeconds = frameAvgTotalSeconds[0] / framesTimed[0];
+					// Projects all the way to the end of the whole job,
+					// not just the rendering - if a video's being made,
+					// adds an estimate for encoding every frame this
+					// sequence will eventually have (using whatever's
+					// actually been measured from a past encode this
+					// process, or a rough guess if nothing has yet).
+					double encodeEtaSeconds = createVideo
+							? totalFrames * (lastKnownEncodeSecondsPerFrame >= 0
+									? lastKnownEncodeSecondsPerFrame
+									: ESTIMATED_ENCODE_SECONDS_PER_FRAME_FALLBACK)
+							: 0;
+					long etaSeconds = Math.round(avgSeconds * remainingFrames + encodeEtaSeconds);
+					timingView.setVisibility(View.VISIBLE);
+					timingView.setText(getString(R.string.progress_timing_frame, avgSeconds,
+							formatEtaDuration(etaSeconds))
+							+ "\n" + getString(R.string.progress_footage_length, footageSeconds));
+				}
+			});
 		};
 
 		new Thread(() -> {
+			Process.setThreadPriority(ShaderEditorApp.preferences.getCaptureThreadPriority());
+			// Recorded so the capture notification's priority buttons
+			// (see HighResCaptureService) can re-prioritize *this*
+			// thread live, not just change what the next capture starts
+			// at - cleared in the finally-equivalent cleanup below
+			// regardless of how this thread finishes, since a tid can
+			// be reused for an unrelated thread once this one exits.
+			HighResCaptureService.setCaptureThreadId(Process.myTid());
 			// Resolved once, before capture starts, so every frame in
 			// this run lands in the same (possibly-suffixed) folder.
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -2089,11 +2466,13 @@ public class MainActivity extends AppCompatActivity {
 			if (backgroundCapable) {
 				shaderViewManager.setBackgroundCaptureActive(true);
 				HighResCaptureService.start(this);
+				serviceActive[0] = true;
 			}
 			if (backgroundCapable) {
 				shaderViewManager.takeHighResScreenshotSequenceOnSharedContext(sharedContext,
 						width, height, oversample, preserveBackbufferEdges, skipFrames, numFrames,
-						virtualFps, tileProgressListener, sequenceProgressListener, frameListener);
+						virtualFps, bucketSize, tileOrderSupplier, tileProgressListener,
+						tilePreviewListener, sequenceProgressListener, frameListener);
 				// Done with the shared context itself (every frame's tiled
 				// render is now complete) - but the foreground service
 				// stays up a bit longer, through any video encoding and
@@ -2103,19 +2482,38 @@ public class MainActivity extends AppCompatActivity {
 			} else {
 				shaderViewManager.takeHighResScreenshotSequence(
 						width, height, oversample, preserveBackbufferEdges, skipFrames, numFrames,
-						virtualFps, tileProgressListener, sequenceProgressListener, frameListener);
+						virtualFps, bucketSize, tileOrderSupplier, tileProgressListener,
+						tilePreviewListener, sequenceProgressListener, frameListener);
 			}
 
 			boolean cancelled = cancelRequested.get();
+			boolean interrupted = interruptRequested.get();
 			Uri videoUri = null;
 			boolean cleanedUp = false;
-			// Never attempts a video from a deliberately-interrupted
-			// sequence - see cancelButton's own doc above.
+			// Cancel never attempts a video - see cancelButton's own doc
+			// above - but Interrupt deliberately does, from whatever
+			// frames got captured before it was pressed (frameUris.size(),
+			// not the originally-requested numFrames, which an interrupted
+			// run never reaches).
 			if (!cancelled && createVideo && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 					&& !frameUris.isEmpty()) {
+				int actualFrameCount = frameUris.size();
 				int tilesPerFrameFinal = Math.max(0, tilesPerFrame[0]);
-				int encodeBaseUnits = PROGRESS_COMPILE_UNITS + skipFrames + numFrames * tilesPerFrameFinal;
-				runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
+				int encodeBaseUnits =
+						PROGRESS_COMPILE_UNITS + skipFrames + actualFrameCount * tilesPerFrameFinal;
+				runOnUiThread(() -> {
+					overallBar.setMax(encodeBaseUnits + actualFrameCount);
+					overallBar.setProgress(encodeBaseUnits);
+					statusMessage.setText(interrupted
+							? getString(R.string.status_interrupted_making_video, actualFrameCount)
+							: getString(R.string.status_wrapping_up));
+				});
+				// Rendering's done by now, so the timing line's ETA only
+				// has encoding left to account for - real per-frame
+				// timing from here on (not the render-phase estimate's
+				// guess), which also becomes lastKnownEncodeSecondsPerFrame
+				// for the *next* capture's render-phase estimate.
+				long encodeStartNanos = System.nanoTime();
 				VideoEncoder.ProgressListener videoProgress = (frameIndex, totalFrames) -> {
 					runOnUiThread(() -> {
 						if (encodeVariant[0] == null) {
@@ -2127,12 +2525,18 @@ public class MainActivity extends AppCompatActivity {
 						subtaskBar.setProgress(frameIndex);
 						statusMessage.setText(String.format(
 								Locale.getDefault(), encodeVariant[0], frameIndex, totalFrames));
+						double avgEncodeSeconds = (System.nanoTime() - encodeStartNanos) / 1e9 / frameIndex;
+						lastKnownEncodeSecondsPerFrame = avgEncodeSeconds;
+						timingView.setVisibility(View.VISIBLE);
+						timingView.setText(getString(R.string.progress_timing_frame, avgEncodeSeconds,
+								formatEtaDuration(Math.round(avgEncodeSeconds * (totalFrames - frameIndex)))));
+						notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 					});
 					return !cancelRequested.get();
 				};
 				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + ".mp4";
-				videoUri = VideoEncoder.encode(this, frameUris, width, height, virtualFps, videoQuality,
-						videoFilename, videoProgress);
+				videoUri = VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
+						videoQuality, videoFilename, videoProgress);
 				if (videoUri != null && cleanupImages) {
 					runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
 					ScreenshotSaver.deleteSubAlbum(this, frameSubAlbum[0]);
@@ -2148,6 +2552,7 @@ public class MainActivity extends AppCompatActivity {
 			if (backgroundCapable) {
 				HighResCaptureService.stop(this);
 			}
+			HighResCaptureService.clearCaptureThreadId();
 
 			int savedCount = frameUris.size();
 			Uri finalVideoUri = videoUri;
@@ -2186,12 +2591,23 @@ public class MainActivity extends AppCompatActivity {
 	// own entry in the recent-apps switcher, so backing out of it to
 	// return here means alt-tab/recents, not this Activity's own back
 	// stack.
-	private void openMedia(@NonNull Uri uri, @NonNull String mimeType, int noAppMessageRes) {
+	private void openMedia(@NonNull Uri uri, @NonNull String mimeType, int noAppMessageRes,
+			boolean loopHint) {
 		Intent viewIntent = new Intent(Intent.ACTION_VIEW)
 				.setDataAndType(uri, mimeType)
 				.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 				.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 				.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+		if (loopHint) {
+			// Best-effort only, not a real contract: Android has no
+			// standard ACTION_VIEW extra for "loop this" the way it does
+			// for e.g. EXTRA_STREAM, and there's no guarantee the
+			// installed video player recognizes this one - it's a guess
+			// at the single most commonly used spelling, unverified
+			// against any specific app's source/docs. Harmless if
+			// ignored either way.
+			viewIntent.putExtra("loop", true);
+		}
 		try {
 			startActivity(viewIntent);
 		} catch (ActivityNotFoundException e) {
@@ -2200,7 +2616,7 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void openVideo(@NonNull Uri uri) {
-		openMedia(uri, "video/mp4", R.string.no_app_to_open_video);
+		openMedia(uri, "video/mp4", R.string.no_app_to_open_video, true);
 	}
 
 	// Shows a capture's result toast (and opens the video, if videoUri is
@@ -2261,13 +2677,13 @@ public class MainActivity extends AppCompatActivity {
 			// Listener cleared first - the dismiss below would otherwise
 			// restore pause state to whatever it was before this whole
 			// flow started, which (if the shader wasn't already paused)
-			// would briefly un-pause it right as the resolution picker
-			// comes up. runHighResCapture() is the only thing that
-			// should ever restore it now, once the capture+save is fully
-			// done - see showSaveAtHigherResDialog().
+			// would briefly un-pause it right as the resolution dialog
+			// comes up. runHighResCapture()/runFrameSequenceCapture() are
+			// the only things that should ever restore it now, once the
+			// capture+save is fully done - see showCustomResolutionDialog().
 			dialog.setOnDismissListener(null);
 			dialog.dismiss();
-			showSaveAtHigherResDialog(wasPaused);
+			showCustomResolutionDialog(wasPaused);
 		});
 		view.findViewById(R.id.screenshot_cancel).setOnClickListener(v -> dialog.dismiss());
 	}
@@ -2314,7 +2730,7 @@ public class MainActivity extends AppCompatActivity {
 						Toast.makeText(this,
 								getString(R.string.screenshot_saved, saved.filename()),
 								Toast.LENGTH_SHORT).show();
-						openMedia(saved.uri(), "image/png", R.string.no_app_to_open_image);
+						openMedia(saved.uri(), "image/png", R.string.no_app_to_open_image, false);
 					}
 				}
 				onComplete.run();
@@ -2483,6 +2899,82 @@ public class MainActivity extends AppCompatActivity {
 		shaderListManager.renameShader(id, newName);
 		Toast.makeText(this, getString(R.string.renamed_shader_to, newName), Toast.LENGTH_SHORT)
 				.show();
+	}
+
+	// Lists the most recent frame-sequence videos VideoEncoder has saved
+	// (same MediaStore album ScreenshotSaver uses for screenshots, but
+	// filtered to video/mp4 - see VideoEncoder's own ALBUM constant,
+	// duplicated here as a literal since neither class exposes it
+	// publicly and there's nothing else in this app that would need to).
+	// Requires Q, same as video creation itself (MediaStore's
+	// RELATIVE_PATH column, and the only reason any such video could
+	// exist in the first place) - older devices just see "no
+	// recordings", never a crash from querying an unsupported column.
+	private static final int RECENT_RECORDINGS_LIMIT = 20;
+
+	private void showRecentRecordingsDialog() {
+		List<RecentRecording> recordings = new ArrayList<>();
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			String relativePath = Environment.DIRECTORY_PICTURES + "/Enki Shader Editor/";
+			String[] projection = {
+					MediaStore.Video.Media._ID,
+					MediaStore.Video.Media.DISPLAY_NAME,
+					MediaStore.Video.Media.DATE_ADDED,
+			};
+			String selection = MediaStore.Video.Media.RELATIVE_PATH + " = ?";
+			String[] selectionArgs = {relativePath};
+			String sortOrder = MediaStore.Video.Media.DATE_ADDED + " DESC";
+			try (Cursor cursor = getContentResolver().query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+					projection, selection, selectionArgs, sortOrder)) {
+				if (cursor != null) {
+					int idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID);
+					int nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME);
+					int dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED);
+					while (cursor.moveToNext() && recordings.size() < RECENT_RECORDINGS_LIMIT) {
+						long id = cursor.getLong(idColumn);
+						Uri uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id);
+						recordings.add(RecentRecording.fromDisplayName(
+								uri, cursor.getString(nameColumn), cursor.getLong(dateColumn)));
+					}
+				}
+			}
+		}
+		if (recordings.isEmpty()) {
+			Toast.makeText(this, R.string.no_recent_recordings, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.play_recent_recordings)
+				.setAdapter(new RecordingAdapter(recordings),
+						(d, which) -> openVideo(recordings.get(which).uri()))
+				.setPositiveButton(R.string.play_all_recordings,
+						(d, w) -> playAllRecordings(recordings))
+				.show();
+	}
+
+	// Best-effort only, same spirit as openMedia()'s loop hint: there's
+	// no standard Android contract for "play these as a queue" the way
+	// there is for viewing one file, so this shares the list via
+	// ACTION_SEND_MULTIPLE (which at least VLC is known to open as a
+	// playlist) and lets the user pick a target from a chooser, rather
+	// than assuming any specific app will do the right thing with it.
+	// Shared oldest-first (reversed from the dialog's own newest-first
+	// listing) so "play all" plays back in the order the recordings were
+	// actually made.
+	private void playAllRecordings(@NonNull List<RecentRecording> recordings) {
+		ArrayList<Uri> uris = new ArrayList<>();
+		for (int i = recordings.size() - 1; i >= 0; --i) {
+			uris.add(recordings.get(i).uri());
+		}
+		Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE)
+				.setType("video/mp4")
+				.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+				.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+		try {
+			startActivity(Intent.createChooser(intent, getString(R.string.play_all_recordings)));
+		} catch (ActivityNotFoundException e) {
+			Toast.makeText(this, R.string.no_app_to_open_video, Toast.LENGTH_SHORT).show();
+		}
 	}
 
 	private void showShaderStatsDialog() {
@@ -2851,6 +3343,16 @@ public class MainActivity extends AppCompatActivity {
 			if (focused != null) {
 				SoftKeyboard.hide(this, focused);
 			}
+			// A paused shader (manually, via the pause button, or via
+			// "run when not editing" with the editor visible) would
+			// otherwise show nothing useful full-screen - a frozen last
+			// frame, or (see togglePauseShader()) solid black. Unpause
+			// for the duration of fullscreen and restore the exact prior
+			// state on the way back out, below.
+			pausedBeforeFullscreen = shaderViewManager.isPaused();
+			if (pausedBeforeFullscreen) {
+				setShaderPaused(false);
+			}
 		}
 		uiManager.setFullscreen(fullscreen);
 		shaderViewManager.setCropBorderPixel(fullscreen);
@@ -2867,6 +3369,15 @@ public class MainActivity extends AppCompatActivity {
 		// be toggled visible underneath would stay frozen the whole time
 		// fullscreen is up, even though nothing editable is on screen.
 		updatePauseForEditingVisibility(editorFragment.isCodeVisible());
+		// Restores whatever pause state fullscreen's own entry above
+		// overrode - a no-op if updatePauseForEditingVisibility() just
+		// above already re-paused it (setShaderPaused() ignores a
+		// request to re-enter the state it's already in).
+		if (!fullscreen && pausedBeforeFullscreen) {
+			pausedBeforeFullscreen = false;
+			setShaderPaused(true);
+			shaderViewManager.blankScreen();
+		}
 		// The keyboard needs explicit handling since IME visibility isn't
 		// tied to View visibility and the editor doesn't regain focus on
 		// its own. Selection is restored explicitly too, defensively -
@@ -2895,7 +3406,15 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void togglePauseShader() {
-		setShaderPaused(!shaderViewManager.isPaused());
+		boolean pausing = !shaderViewManager.isPaused();
+		setShaderPaused(pausing);
+		if (pausing) {
+			// Only for this, the manual pause button - other
+			// setShaderPaused(true) callers (screenshot/capture flows,
+			// "run when not editing") still need the live frame visible
+			// while paused, not blanked.
+			shaderViewManager.blankScreen();
+		}
 	}
 
 	// Explicit-target version of togglePauseShader(), so code other

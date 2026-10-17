@@ -113,16 +113,25 @@ public final class VideoEncoder {
 	// frameUris: already-saved frame images, in playback order. quality:
 	// 0 (smallest file, roughest) to 100 (largest file, best) - linearly
 	// scales the bitrate between a low and high bound, independent of
-	// fps (see estimateBitrate()'s own doc for why). filename: the
-	// desired output filename (including ".mp4"). Returns the saved
-	// video's content:// URI, or null on any failure (missing encoder
-	// support, an I/O error, etc) - callers should treat that as "the
-	// image sequence is still fine, just the video step failed", not
-	// something that should discard the frames already saved.
+	// fps (see estimateBitrate()'s own doc for why). videoScale: an
+	// integer multiplier (1 = no change) applied to each frame's own
+	// width/height to get the *video's* actual encoded resolution - for
+	// deliberately-tiny captures (e.g. a pixel-art-style shader rendered
+	// at 64x64) where the raw frame size would be awkward to view/share
+	// as a video. Every frame is always drawn with GL_NEAREST sampling
+	// (not GL_LINEAR) specifically so this upscale stays crisp/blocky
+	// ("pixelly") rather than smoothing the source pixels away - at
+	// videoScale 1 this has no visible effect either way, since there's
+	// no sub-pixel stretch for either filter mode to interpolate across.
+	// filename: the desired output filename (including ".mp4"). Returns
+	// the saved video's content:// URI, or null on any failure (missing
+	// encoder support, an I/O error, etc) - callers should treat that as
+	// "the image sequence is still fine, just the video step failed",
+	// not something that should discard the frames already saved.
 	@Nullable
 	@RequiresApi(Build.VERSION_CODES.Q)
 	public static Uri encode(@NonNull Context context, @NonNull List<Uri> frameUris,
-			int width, int height, float fps, int quality, @NonNull String filename,
+			int width, int height, int videoScale, float fps, int quality, @NonNull String filename,
 			@Nullable ProgressListener progressListener) {
 		if (frameUris.isEmpty()) {
 			return null;
@@ -133,6 +142,8 @@ public final class VideoEncoder {
 			return null;
 		}
 
+		int videoWidth = width * videoScale;
+		int videoHeight = height * videoScale;
 		MediaCodec codec = null;
 		MediaMuxer muxer = null;
 		Surface inputSurface = null;
@@ -142,10 +153,11 @@ public final class VideoEncoder {
 		int texture = 0;
 		boolean succeeded = false;
 		try {
-			MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, width, height);
+			MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, videoWidth, videoHeight);
 			format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
 					MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-			format.setInteger(MediaFormat.KEY_BIT_RATE, estimateBitrate(width, height, fps, quality));
+			format.setInteger(MediaFormat.KEY_BIT_RATE,
+					estimateBitrate(videoWidth, videoHeight, fps, quality));
 			// This is only an encoder hint (bitrate/I-frame pacing) - it's
 			// fine that it's rounded (and clamped to at least 1 for a
 			// sub-1-fps sequence). The video's *actual* played-back speed
@@ -200,9 +212,9 @@ public final class VideoEncoder {
 				texture = textureHolder[0];
 				GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture);
 				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
-						GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+						GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
 				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
-						GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+						GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST);
 				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
 						GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
 				GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,
@@ -210,7 +222,7 @@ public final class VideoEncoder {
 				GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
 				bitmap.recycle();
 
-				GLES20.glViewport(0, 0, width, height);
+				GLES20.glViewport(0, 0, videoWidth, videoHeight);
 				GLES20.glClearColor(0f, 0f, 0f, 1f);
 				GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 				GLES20.glUseProgram(program);

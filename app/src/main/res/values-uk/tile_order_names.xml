@@ -1,0 +1,8 @@
+<resources>
+	<string-array name="tile_order_names">
+		<item>Рядками</item>
+		<item>Випадковий порядок</item>
+		<item>Від центру</item>
+		<item>Крива Гільберта</item>
+	</string-array>
+</resources>

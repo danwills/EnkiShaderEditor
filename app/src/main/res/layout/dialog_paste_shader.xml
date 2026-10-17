@@ -1,0 +1,32 @@
+<ScrollView
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical"
+		android:padding="16dp">
+
+		<!-- Starts blank, unlike e.g. the custom-resolution dialog's
+		     oversample field - a plain hint is enough here, no separate
+		     persistent label needed, since a blank EditText actually
+		     shows its hint. -->
+		<EditText
+			android:id="@+id/paste_shader_name"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:hint="@string/paste_shader_name_hint"
+			android:inputType="text"
+			android:maxLines="1" />
+
+		<RadioGroup
+			android:id="@+id/paste_shader_quality_options"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="16dp"
+			android:orientation="vertical" />
+
+	</LinearLayout>
+</ScrollView>

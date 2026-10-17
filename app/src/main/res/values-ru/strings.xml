@@ -17,6 +17,8 @@
 	<string name="paste_as_new_shader">Вставить как новый шейдер</string>
 	<string name="paste_over_shader">Вставить поверх текущего шейдера</string>
 	<string name="select_quality">Качество рендера</string>
+	<string name="paste_shader_title">Вставить шейдер</string>
+	<string name="paste_shader_name_hint">Имя шейдера (необязательно)</string>
 	<string name="clipboard_empty">Буфер обмена пуст</string>
 	<string name="duplicate_shader">Сохранить как новый шейдер</string>
 	<string name="delete_shader">Удалить шейдер</string>
@@ -37,24 +39,23 @@
 	<string name="screenshot_saved">Сохранено в Pictures/Enki Shader Editor/%1$s</string>
 	<string name="screenshot_save_failed">Не удалось сохранить скриншот</string>
 	<string name="screenshot_copy_to_clipboard">Скопировать в буфер обмена</string>
-	<string name="screenshot_just_save">Просто сохранить</string>
+	<string name="screenshot_save_current_frame">Сохранить текущий кадр</string>
 	<string name="screenshot_save_and_open">Сохранить и открыть</string>
 	<string name="screenshot_copied">Скриншот скопирован в буфер обмена</string>
 	<string name="no_app_to_open_image">Не найдено приложение для открытия изображения</string>
 	<string name="no_app_to_open_video">Не найдено приложение для открытия видео</string>
-	<string name="save_at_higher_res">Произвольное</string>
-	<string name="higher_res_option">%1$dx — %2$d×%3$d (~%4$d МБ)</string>
-	<string name="higher_res_no_options_fit">Ни один вариант высокого разрешения не помещается в доступную память этого устройства</string>
 	<string name="higher_res_capturing">Рендеринг в высоком разрешении…</string>
 	<string name="higher_res_compiling">Компиляция шейдера…</string>
 	<string name="higher_res_compiling_estimate">Компиляция шейдера… (в прошлый раз заняло %1$d мс)</string>
 	<string name="status_wrapping_up">Подводим итоги…</string>
-	<string name="higher_res_custom">Произвольное</string>
+	<string name="higher_res_custom">Разрешение/Серия</string>
 	<string name="higher_res_custom_width">Ширина</string>
 	<string name="higher_res_custom_height">Высота</string>
 	<string name="higher_res_custom_invalid">Введите ширину и высоту</string>
 	<string name="higher_res_preserve_backbuffer">Сохранять значения из backbuffer (напр. строка 0) между тайлами</string>
 	<string name="higher_res_oversample">Передискретизация (x) - рендер в большем размере с последующим уменьшением для сглаживания</string>
+	<string name="higher_res_tile_order">Порядок плиток</string>
+	<string name="higher_res_bucket_size">Размер блока</string>
 	<string name="higher_res_capturing_tiles">Рендеринг тайла %1$d из %2$d…</string>
 	<string name="higher_res_render_sequence">Рендерить последовательность кадров</string>
 	<string name="higher_res_sequence_frame_count">Количество кадров</string>
@@ -72,6 +73,7 @@
 	<string name="higher_res_sequence_video_quality">Качество видео: %1$d%%</string>
 	<string name="higher_res_sequence_duration">≈ %1$s секунд видео</string>
 	<string name="higher_res_sequence_cleanup">Удалить файлы изображений после создания видео</string>
+	<string name="higher_res_sequence_video_scale">Масштаб видео (x) - не меняет разрешение рендера выше, а только увеличивает сохранённый файл видео с использованием ближайшего соседа для пикселизированного вида</string>
 	<string name="cancel_capture_title">Отменить рендеринг?</string>
 	<string name="cancel_capture_message">Можно сохранить уже отрендеренные кадры или удалить их.</string>
 	<string name="cancel_capture_delete">Удалить</string>
@@ -80,10 +82,19 @@
 	<string name="higher_res_cancelled">Отменено</string>
 	<string name="higher_res_sequence_cancelled_kept">Отменено — сохранено %1$d кадр(ов)</string>
 	<string name="higher_res_sequence_cancelled_deleted">Отменено — частичные кадры удалены</string>
+	<string name="interrupt_make_video_button">Прервать и создать частичное видео</string>
+	<string name="status_interrupting_after_frame">Прерывание после этого кадра…</string>
+	<string name="progress_timing_tile">Сред. %1$.2fс/плитка · Осталось %2$s</string>
+	<string name="progress_timing_frame">Сред. %1$.1fс/кадр · Осталось %2$s</string>
+	<string name="progress_footage_length">Отрендерено %1$.4fс материала</string>
+	<string name="status_interrupted_making_video">Досрочная остановка — создание видео из %1$d кадра(ов)…</string>
 	<string name="reacquire_audio">Повторный захват системного звука</string>
 	<string name="audio_capture_already_working">Захват системного звука уже работает</string>
 	<string name="hide_toolbar">Скрыть верхнее меню</string>
 	<string name="shader_stats">Статистика шейдера</string>
+	<string name="play_recent_recordings">Воспроизвести последние записи</string>
+	<string name="play_all_recordings">Воспроизвести все</string>
+	<string name="no_recent_recordings">Записей пока не найдено</string>
 	<string name="more_options">Другие параметры</string>
 	<string name="stats_lines_chars">Строк: %1$d Символов: %2$d</string>
 	<string name="stats_size_bytes">Размер исходного кода: %1$d байт</string>
@@ -138,6 +149,9 @@
 	<string name="wallpaper">Обоя</string>
 	<string name="save_battery">Экономить батарею</string>
 	<string name="save_battery_summary">Прекратить отрисовку при низком заряде аккамулятора</string>
+	<string name="capture_thread_priority">Приоритет фонового рендеринга</string>
+	<string name="capture_thread_priority_normal">Обычный</string>
+	<string name="capture_thread_priority_high">Высокий (быстрее, больше нагрузки на ЦП)</string>
 	<string name="sort_by_last_modification">Сортировать по недавним изменениям</string>
 	<string name="sort_by_last_modification_summary">Сортировать шейдеры по недавним изменениям</string>
 	<string name="sensors">Сенсоры</string>
@@ -296,6 +310,8 @@
 	<string name="audio_capture_notification_title">Захват системного звука для предпросмотра шейдера</string>
 	<string name="high_res_capture_channel_name">Захват в высоком разрешении</string>
 	<string name="high_res_capture_notification_title">Рендеринг захвата в высоком разрешении</string>
+	<string name="capture_priority_action_normal">Приоритет: обычный</string>
+	<string name="capture_priority_action_high">Приоритет: высокий</string>
 
 	<!-- UniformSampler2dPageFragment -->
 	<string name="texture_preview">Предпросмотр текстуры</string>

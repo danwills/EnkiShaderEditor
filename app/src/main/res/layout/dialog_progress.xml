@@ -5,6 +5,64 @@
 	android:orientation="vertical"
 	android:padding="16dp">
 
+	<!-- Lets the tile visiting order (see TileRenderOrder) be changed
+	     live, mid-sequence - only shown for a frame-sequence capture
+	     (MainActivity.runFrameSequenceCapture() shows/populates it; a
+	     single-image capture leaves it gone, since there's no "next
+	     frame" for a change to ever take effect on). Takes effect
+	     starting with the next frame, never the one currently
+	     rendering - same spirit as the Interrupt button below. -->
+	<Spinner
+		android:id="@+id/progress_tile_order"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:entries="@array/tile_order_names"
+		android:visibility="gone" />
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:orientation="horizontal">
+
+		<!-- Shows the actual rendered pixels filling in tile by tile as
+		     the capture progresses - a small preview Bitmap that
+		     MainActivity mutates in place (setPixels + invalidate(),
+		     never reassigned), so this stays an ImageView wrapping one
+		     Bitmap for the whole capture. Hidden until the first tile
+		     arrives, same convention as progress_subtask below. -->
+		<ImageView
+			android:id="@+id/tile_preview"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:adjustViewBounds="true"
+			android:maxHeight="160dp"
+			android:scaleType="fitCenter"
+			android:visibility="gone"
+			android:contentDescription="@null" />
+
+		<!-- The most recently rendered tile on its own, at its own
+		     native resolution (unlike tile_preview above, which
+		     downsamples every tile into a shared small overview) - a
+		     close-up to go with the zoomed-out one, reassigned to a
+		     fresh Bitmap each tile rather than mutated in place, since
+		     tile size itself can vary (edge tiles are smaller). -->
+		<ImageView
+			android:id="@+id/last_tile_preview"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:layout_marginStart="8dp"
+			android:adjustViewBounds="true"
+			android:maxHeight="160dp"
+			android:scaleType="fitCenter"
+			android:visibility="gone"
+			android:contentDescription="@null" />
+
+	</LinearLayout>
+
 	<!-- Reserves room for at least two lines up front (minLines, not
 	     just wrap_content) so a long narrated status doesn't appear to
 	     go missing by rendering into a sliver of space the first layout
@@ -46,6 +104,33 @@
 		android:layout_marginTop="4dp"
 		android:indeterminate="false"
 		android:max="100"
+		android:visibility="gone" />
+
+	<!-- Average time per completed frame/tile and an ETA for the whole
+	     job - hidden until there's at least one completed frame/tile to
+	     average from. -->
+	<TextView
+		android:id="@+id/progress_timing"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:textAppearance="?attr/textAppearanceCaption"
+		android:visibility="gone" />
+
+	<!-- Only shown for a frame-sequence capture with video creation
+	     enabled - stops rendering further frames but, unlike Cancel,
+	     still assembles whatever frames were captured so far into a
+	     (shorter) video. Hidden by default: single-image captures and
+	     sequences without video have nothing extra for this to offer
+	     over Cancel. -->
+	<Button
+		android:id="@+id/progress_interrupt_make_video"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@string/interrupt_make_video_button"
 		android:visibility="gone" />
 
 	<Button

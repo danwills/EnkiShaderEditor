@@ -1,0 +1,13 @@
+<resources>
+	<!-- Index-aligned with TileRenderOrder's own enum ordinal order
+	     (SCANLINE, RANDOM, FROM_CENTER, HILBERT) - see
+	     dialog_custom_resolution.xml's custom_tile_order Spinner and
+	     dialog_progress.xml's progress_tile_order Spinner, both of which
+	     use this same array. -->
+	<string-array name="tile_order_names">
+		<item>Scanline</item>
+		<item>Random</item>
+		<item>From center</item>
+		<item>Hilbert curve</item>
+	</string-array>
+</resources>

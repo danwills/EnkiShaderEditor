@@ -97,9 +97,28 @@ final class BuiltinUniforms {
 	// Suspends time-based uniforms without losing their position, so
 	// resumeClock() can continue smoothly from where they left off
 	// instead of jumping forward by the paused duration.
+	//
+	// Also clears pointerCount (and with it, every shader's own
+	// `pointerCount == N` gesture branches) - updateTouch() only zeroes
+	// it on an ACTION_UP/ACTION_CANCEL MotionEvent, so pausing mid-
+	// gesture (the common case right before a screenshot/capture, which
+	// routes through here - e.g. finishing a pinch-zoom or a shader's
+	// own multi-finger gesture to set up a view, then immediately
+	// tapping the camera button without first lifting every finger)
+	// would otherwise leave it stuck at whatever it was, with no real
+	// touch ever following up to clear it. A shader using that stale
+	// pointerCount to decide how `time` advances each step (e.g. "3
+	// fingers = scrub time") then sees that gesture as still active on
+	// literally every captured frame of a sequence, not just the one
+	// live frame it was genuinely true for - which can leave the whole
+	// sequence's simulation time barely advancing at all. Harmless to
+	// clear unconditionally: if fingers are still genuinely down when
+	// resumeClock() runs, the next real MotionEvent (a MOVE, if nothing
+	// else) re-populates it correctly within a frame or two.
 	void pauseClock() {
 		pausedAtNanos = System.nanoTime();
 		runtimeClock.pause();
+		pointerCount = 0;
 	}
 
 	void resumeClock() {

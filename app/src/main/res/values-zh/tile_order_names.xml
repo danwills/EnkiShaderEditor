@@ -1,0 +1,8 @@
+<resources>
+	<string-array name="tile_order_names">
+		<item>逐行扫描</item>
+		<item>随机顺序</item>
+		<item>从中心向外</item>
+		<item>希尔伯特曲线</item>
+	</string-array>
+</resources>

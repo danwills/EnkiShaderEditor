@@ -4,60 +4,61 @@
 	<!-- MainActivity -->
 	<string name="drawer_open">Open drawer</string>
 	<string name="drawer_close">Close drawer</string>
-	<string name="no_shaders">No shaders</string>
+	<string name="no_shaders">No Shaders</string>
 	<string name="unsuitable_text">Sorry, this text is unsuitable.</string>
 	<string name="cannot_open_content">Sorry, there is no app that can open URLs</string>
-	<string name="insert_tab">Insert tab</string>
-	<string name="run_code">Run code</string>
-	<string name="toggle_code">Toggle code</string>
+	<string name="insert_tab">Insert Tab</string>
+	<string name="run_code">Run Code</string>
+	<string name="toggle_code">Toggle Code</string>
 	<string name="undo">Undo</string>
 	<string name="redo">Redo</string>
-	<string name="save_shader">Save shader</string>
-	<string name="add_shader">New shader</string>
-	<string name="paste_as_new_shader">Paste as new shader</string>
-	<string name="paste_over_shader">Paste over current shader</string>
-	<string name="select_quality">Render quality</string>
+	<string name="save_shader">Save Shader</string>
+	<string name="add_shader">New Shader</string>
+	<string name="paste_as_new_shader">Paste as New Shader</string>
+	<string name="paste_over_shader">Paste over Current Shader</string>
+	<string name="select_quality">Render Quality</string>
+	<string name="paste_shader_title">Paste Shader</string>
+	<string name="paste_shader_name_hint">Shader Name (Optional)</string>
 	<string name="clipboard_empty">Clipboard is empty</string>
-	<string name="duplicate_shader">Save as new shader</string>
-	<string name="delete_shader">Delete shader</string>
-	<string name="share_shader">Share shader</string>
-	<string name="copy_shader">Copy shader to clipboard</string>
-	<string name="copy_defines">Copy #define lines</string>
+	<string name="duplicate_shader">Save as New Shader</string>
+	<string name="delete_shader">Delete Shader</string>
+	<string name="share_shader">Share Shader</string>
+	<string name="copy_shader">Copy Shader to Clipboard</string>
+	<string name="copy_defines">Copy #define Lines</string>
 	<string name="no_defines_found">No #define lines found</string>
-	<string name="update_wallpaper">Update wallpaper</string>
-	<string name="set_as_wallpaper">Set as wallpaper</string>
-	<string name="pause_shader">Pause shader</string>
-	<string name="resume_shader">Resume shader</string>
-	<string name="restart_shader">Restart shader</string>
+	<string name="update_wallpaper">Update Wallpaper</string>
+	<string name="set_as_wallpaper">Set as Wallpaper</string>
+	<string name="pause_shader">Pause Shader</string>
+	<string name="resume_shader">Resume Shader</string>
+	<string name="restart_shader">Restart Shader</string>
 	<string name="faq">FAQ</string>
 	<string name="show_extra_keys">Show Extra Keys</string>
 	<string name="fullscreen">Fullscreen</string>
 	<string name="release_to_exit_fullscreen">Release to exit fullscreen</string>
-	<string name="save_screenshot">Save screenshot</string>
+	<string name="save_screenshot">Save Screenshot</string>
 	<string name="screenshot_saved">Saved to Pictures/Enki Shader Editor/%1$s</string>
 	<string name="screenshot_save_failed">Couldn\'t save screenshot</string>
 	<string name="screenshot_copy_to_clipboard">Copy to Clipboard</string>
-	<string name="screenshot_just_save">Just Save</string>
+	<string name="screenshot_save_current_frame">Save Current Frame</string>
 	<string name="screenshot_save_and_open">Save and Open</string>
 	<string name="screenshot_copied">Screenshot copied to clipboard</string>
 	<string name="no_app_to_open_image">No app found to open the image</string>
 	<string name="no_app_to_open_video">No app found to open the video</string>
-	<string name="save_at_higher_res">Custom</string>
-	<string name="higher_res_option">%1$dx — %2$d×%3$d (~%4$d MB)</string>
-	<string name="higher_res_no_options_fit">No higher-res option fits in available memory on this device</string>
 	<string name="higher_res_capturing">Rendering at higher resolution…</string>
 	<string name="higher_res_compiling">Compiling shader…</string>
 	<string name="higher_res_compiling_estimate">Compiling shader… (took %1$d ms last time)</string>
 	<string name="status_wrapping_up">Wrapping things up…</string>
-	<string name="higher_res_custom">Custom</string>
+	<string name="higher_res_custom">Custom Res/Seq</string>
 	<string name="higher_res_custom_width">Width</string>
 	<string name="higher_res_custom_height">Height</string>
 	<string name="higher_res_custom_invalid">Enter a width and height</string>
 	<string name="higher_res_preserve_backbuffer">Preserve backbuffer-stored values (e.g. row 0) across tiles</string>
 	<string name="higher_res_oversample">Oversampling (x) - renders bigger then resizes down for antialiasing</string>
+	<string name="higher_res_tile_order">Tile Order</string>
+	<string name="higher_res_bucket_size">Bucket Size</string>
 	<string name="higher_res_capturing_tiles">Rendering tile %1$d of %2$d…</string>
-	<string name="higher_res_render_sequence">Render a sequence of frames</string>
-	<string name="higher_res_sequence_frame_count">Number of frames</string>
+	<string name="higher_res_render_sequence">Render a Sequence of Frames</string>
+	<string name="higher_res_sequence_frame_count">Number of Frames</string>
 	<string name="higher_res_sequence_fps">Virtual FPS</string>
 	<string name="higher_res_sequence_frame_progress">Frame %1$d of %2$d</string>
 	<string name="higher_res_sequence_skip_progress">Skipping frame %1$d of %2$d</string>
@@ -67,12 +68,13 @@
 	<string name="higher_res_sequence_video_saved">Saved %1$d frames and created a video</string>
 	<string name="higher_res_sequence_video_saved_cleaned">Created a video from %1$d frames</string>
 	<string name="higher_res_sequence_invalid">Enter a number of frames and a virtual FPS</string>
-	<string name="higher_res_sequence_skip_frames">Skip first N frames</string>
-	<string name="higher_res_sequence_create_video">Create video from frames</string>
+	<string name="higher_res_sequence_skip_frames">Skip First N Frames</string>
+	<string name="higher_res_sequence_create_video">Create Video from Frames</string>
 	<string name="higher_res_sequence_video_quality">Video quality: %1$d%%</string>
 	<string name="higher_res_sequence_duration">≈ %1$s seconds of video</string>
-	<string name="higher_res_sequence_cleanup">Delete image files after creating the video</string>
-	<string name="cancel_capture_title">Cancel rendering?</string>
+	<string name="higher_res_sequence_cleanup">Delete Image Files after Creating the Video</string>
+	<string name="higher_res_sequence_video_scale">Video Scale (x) - leaves the resolution above as-is and only enlarges the saved video file afterwards, with nearest-neighbor filtering for a pixelly look</string>
+	<string name="cancel_capture_title">Cancel Rendering?</string>
 	<string name="cancel_capture_message">You can keep the frames already rendered, or delete them.</string>
 	<string name="cancel_capture_delete">Delete</string>
 	<string name="cancel_capture_keep">Keep</string>
@@ -80,11 +82,20 @@
 	<string name="higher_res_cancelled">Cancelled</string>
 	<string name="higher_res_sequence_cancelled_kept">Cancelled — kept %1$d frame(s)</string>
 	<string name="higher_res_sequence_cancelled_deleted">Cancelled — deleted the partial frames</string>
-	<string name="reacquire_audio">Reacquire system audio</string>
+	<string name="interrupt_make_video_button">Interrupt and Make Partial Video</string>
+	<string name="status_interrupted_making_video">Stopping early — making a video from %1$d frame(s)…</string>
+	<string name="status_interrupting_after_frame">Interrupting after this frame…</string>
+	<string name="progress_timing_tile">Avg %1$.2fs/tile · ETA %2$s</string>
+	<string name="progress_timing_frame">Avg %1$.1fs/frame · ETA %2$s</string>
+	<string name="progress_footage_length">%1$.4fs of footage rendered so far</string>
+	<string name="reacquire_audio">Reacquire System Audio</string>
 	<string name="audio_capture_already_working">System audio capture is already working</string>
-	<string name="hide_toolbar">Hide top menu</string>
-	<string name="shader_stats">Shader stats</string>
-	<string name="more_options">More options</string>
+	<string name="hide_toolbar">Hide Top Menu</string>
+	<string name="shader_stats">Shader Stats</string>
+	<string name="play_recent_recordings">Play Recent Recordings</string>
+	<string name="play_all_recordings">Play All</string>
+	<string name="no_recent_recordings">No recordings found yet</string>
+	<string name="more_options">More Options</string>
 	<string name="stats_lines_chars">Lines: %1$d Characters: %2$d</string>
 	<string name="stats_size_bytes">Source size: %1$d bytes</string>
 	<string name="stats_compiled_size_bytes">Compiled size: %1$d bytes (GPU binary)</string>
@@ -107,26 +118,26 @@
 	<string name="stats_compile_unknown">Last compile: not yet measured</string>
 	<string name="stats_fps">Current frame rate: %1$d fps</string>
 	<string name="stats_fps_unknown">Current frame rate: not available yet</string>
-	<string name="previous_shader">Previous shader</string>
-	<string name="next_shader">Next shader</string>
-	<string name="random_shader">Random shader</string>
+	<string name="previous_shader">Previous Shader</string>
+	<string name="next_shader">Next Shader</string>
+	<string name="random_shader">Random Shader</string>
 	<string name="settings">Settings</string>
 	<string name="sure_remove_shader">Are you sure you want to delete this shader?</string>
-	<string name="paste_over_warning_title">Overwrite shader?</string>
+	<string name="paste_over_warning_title">Overwrite Shader?</string>
 	<string name="sure_paste_over_shader">Warning: this will permanently overwrite this shader\'s current code with the clipboard contents and save immediately. The prior code cannot be recovered. Continue?</string>
-	<string name="rename_shader">Rename shader</string>
+	<string name="rename_shader">Rename Shader</string>
 	<string name="rename_shader_tooltip">Rename the shader</string>
 	<string name="reparent_shader">Reparent</string>
 	<string name="name_prefix_warning">\"%1$s\" doesn\'t start with a capital letter, which may affect how it\'s grouped in the tree view.</string>
 	<string name="capitalize_name">Capitalize</string>
 	<string name="add_underscore_prefix">Add Underscore</string>
-	<string name="do_it_anyway">Do it Anyway</string>
-	<string name="enter_name">Enter a name</string>
+	<string name="do_it_anyway">Do It Anyway</string>
+	<string name="enter_name">Enter a Name</string>
 	<string name="wallpaper_set">Wallpaper set</string>
 	<string name="cannot_set_wallpaper">Cannot set a wallpaper</string>
 	<string name="pick_live_wallpaper_manually">You need to pick this app as Live Wallpaper first</string>
-	<string name="menu_btn">More options</string>
-	<string name="show_errors">Show errors</string>
+	<string name="menu_btn">More Options</string>
+	<string name="show_errors">Show Errors</string>
 	<string name="shader_saved">Shader saved</string>
 	<string name="shader_disabled_after_crash">The previous shader crashed Enki Shader Editor and was commented out.</string>
 
@@ -136,27 +147,30 @@
 	<!-- PreferencesFragment -->
 	<string name="preferences">Preferences</string>
 	<string name="wallpaper">Wallpaper</string>
-	<string name="save_battery">Save battery</string>
+	<string name="save_battery">Save Battery</string>
 	<string name="save_battery_summary">Stop rendering when battery is low</string>
-	<string name="sort_by_last_modification">Sort by last modification</string>
+	<string name="capture_thread_priority">Background Render Priority</string>
+	<string name="capture_thread_priority_normal">Normal</string>
+	<string name="capture_thread_priority_high">High (Faster, Uses More CPU)</string>
+	<string name="sort_by_last_modification">Sort by Last Modification</string>
 	<string name="sort_by_last_modification_summary">Sort shaders by last modification</string>
 	<string name="sensors">Sensors</string>
 	<string name="sensor_delay">Sensor Delay</string>
-	<string name="use_microphone_audio">Use microphone input</string>
+	<string name="use_microphone_audio">Use Microphone Input</string>
 	<string name="use_microphone_audio_summary">For the audioSpectrum uniform, listen to the microphone. Used as a fallback whenever system playback audio is on but not yet available; turn this off to stay silent instead.</string>
-	<string name="use_system_audio">Use system playback audio</string>
+	<string name="use_system_audio">Use System Playback Audio</string>
 	<string name="use_system_audio_summary">For the audioSpectrum uniform, also try to analyze what the device is playing back. Only works while running a shader in the app (falls back to the microphone, if enabled, for the live wallpaper and manual preview). When asked, choose \"Entire screen\", not \"A single app\" (picking an app switches you to it instead of capturing its audio). If you cancel the prompt, turn this off and back on to ask again.</string>
-	<string name="audio_spectrum_shadertoy_compatible">ShaderToy-compatible audio timing</string>
+	<string name="audio_spectrum_shadertoy_compatible">ShaderToy-Compatible Audio Timing</string>
 	<string name="audio_spectrum_shadertoy_compatible_summary">For the audioSpectrum uniform. Off (default): analyze the full time since the previous frame, resized down to 512 bins - smoother, less jumpy. On: use ShaderToy\'s short, fixed-size audio window instead, for exact compatibility with ShaderToy audio shaders.</string>
 	<string name="no_shader_selected">No shader selected</string>
 	<string name="shader">Shader</string>
-	<string name="expand_collapse">Expand/collapse</string>
-	<string name="show_shaders_in_name_tree">Show shaders in name tree</string>
-	<string name="add_shader_to_name_group">Add shader to name group</string>
-	<string name="show_similar_shaders">Show similar shaders</string>
-	<string name="filter_shaders">Filter shaders</string>
-	<string name="pick_parent_shader">Pick a shader to group this one with</string>
-	<string name="sort_by_similarity">Sort by code similarity</string>
+	<string name="expand_collapse">Expand/Collapse</string>
+	<string name="show_shaders_in_name_tree">Show Shaders in Name Tree</string>
+	<string name="add_shader_to_name_group">Add Shader to Name Group</string>
+	<string name="show_similar_shaders">Show Similar Shaders</string>
+	<string name="filter_shaders">Filter Shaders</string>
+	<string name="pick_parent_shader">Pick a Shader to Group This One With</string>
+	<string name="sort_by_similarity">Sort by Code Similarity</string>
 	<string name="name_group_prefix_label">New name will start with: %1$s</string>
 	<string name="name_group_postfix_hint">Postfix</string>
 	<string name="name_already_exists">A shader is already named \"%1$s\". Rename anyway?</string>
@@ -164,41 +178,41 @@
 	<string name="renamed_shader_to">Renamed to %1$s</string>
 	<string name="no_similar_shaders">No similar shaders found</string>
 	<string name="similar_shaders_threshold_label">Minimum similarity: %1$d%%</string>
-	<string name="similar_shaders_include_source">Also compare shader source code</string>
+	<string name="similar_shaders_include_source">Also Compare Shader Source Code</string>
 	<string name="unnamed_shaders_group">Unnamed</string>
 	<string name="editor">Editor</string>
-	<string name="run_mode">Run mode</string>
-	<string name="update_delay">Update delay</string>
-	<string name="text_size">Text size</string>
+	<string name="run_mode">Run Mode</string>
+	<string name="update_delay">Update Delay</string>
+	<string name="text_size">Text Size</string>
 	<string name="font">Font</string>
 	<string name="use_ligatures">Use Ligatures</string>
 	<string name="use_ligatures_summary">Join some characters like &lt;= into ≤</string>
-	<string name="tab_width">Tab width</string>
-	<string name="use_tab_for_indent">Use tab key</string>
+	<string name="tab_width">Tab Width</string>
+	<string name="use_tab_for_indent">Use Tab Key</string>
 	<string name="use_tab_for_indent_summary">Use tab key for indenting instead of focus navigation.</string>
-	<string name="export_tabs">Export tabs</string>
+	<string name="export_tabs">Export Tabs</string>
 	<string name="export_tabs_summary">Export tabs instead of converting to spaces when sharing</string>
-	<string name="show_insert_tab">Show insert tab</string>
+	<string name="show_insert_tab">Show Insert Tab</string>
 	<string name="show_insert_tab_summary">Show insert tab menu item</string>
-	<string name="save_on_run">Save on run</string>
+	<string name="save_on_run">Save on Run</string>
 	<string name="save_on_run_summary">Save changes when running manually</string>
-	<string name="disable_highlighting">Disable highlighting</string>
+	<string name="disable_highlighting">Disable Highlighting</string>
 	<string name="disable_highlighting_summary">Disable highlighting for big shaders</string>
-	<string name="auto_save">Auto save</string>
+	<string name="auto_save">Auto Save</string>
 	<string name="auto_save_summary">Save shader automatically</string>
 	<string name="warn_slow_compile">Warn About Slow Compiles</string>
 	<string name="warn_slow_compile_summary">Before compiling a shader that was slow last time, show how long it took and ask first if it\'ll likely take a while again</string>
-	<string name="auto_hide_extra_keys">Auto hide extra keys</string>
+	<string name="auto_hide_extra_keys">Auto Hide Extra Keys</string>
 	<string name="auto_hide_extra_keys_summary">Automatically hide the extra keys row above the soft keyboard</string>
-	<string name="default_new_shader">Default new shader</string>
+	<string name="default_new_shader">Default New Shader</string>
 	<string name="import_export">Import &amp; Export</string>
-	<string name="import_shaders_files">Import shaders from files</string>
+	<string name="import_shaders_files">Import Shaders from Files</string>
 	<string name="import_shaders_files_summary">Import all *.glsl files from Download/EnkiShaderEditor</string>
-	<string name="export_shaders_files">Export shaders to files</string>
+	<string name="export_shaders_files">Export Shaders to Files</string>
 	<string name="export_shaders_files_summary">Export all shaders to Download/EnkiShaderEditor</string>
-	<string name="import_database">Import database</string>
+	<string name="import_database">Import Database</string>
 	<string name="import_database_summary">Import a previously exported SQLite database</string>
-	<string name="export_database">Export database</string>
+	<string name="export_database">Export Database</string>
 	<string name="export_database_summary">Export all shaders into a SQLite database</string>
 	<string name="compile_all_shaders">Compile All Shaders</string>
 	<string name="compile_all_shaders_summary">Pre-compiles every shader in the library so browsing them later is instant; skips shaders already compiled for this device. Runs in the background and can take a while for a large library.</string>
@@ -211,15 +225,15 @@
 	<string name="enable_notification_listener">To use the notificationCount or lastNotificationTime uniform, please enable the Notification Listener in Settings.</string>
 	<string name="go_to_settings">Go to Settings</string>
 	<string name="enable_notification_listener_title">Enable Notification Listener</string>
-	<string name="hide_native_suggestions">Hide native suggestions</string>
+	<string name="hide_native_suggestions">Hide Native Suggestions</string>
 	<string name="hide_native_suggestions_summary">Hides the soft keyboard\'s suggestions. If problems arise, turn this setting off.</string>
 
 	<!-- Preferences -->
-	<string name="run_auto">Auto run on change</string>
-	<string name="run_manually">Run manually</string>
-	<string name="run_manually_extra">Run in extra activity</string>
-	<string name="run_manually_new">Run as a new task</string>
-	<string name="run_pause_while_editing">Run when not editing</string>
+	<string name="run_auto">Auto Run on Change</string>
+	<string name="run_manually">Run Manually</string>
+	<string name="run_manually_extra">Run in Extra Activity</string>
+	<string name="run_manually_new">Run as a New Task</string>
+	<string name="run_pause_while_editing">Run When Not Editing</string>
 	<string name="monospace">Monospace</string>
 	<string name="fira_code">Fira Code</string>
 	<string name="ibm_plex_mono">IBM Plex Mono</string>
@@ -238,16 +252,16 @@
 	<string name="icon_size">Icon Size</string>
 
 	<!-- WallpaperService -->
-	<string name="wallpaper_description">Write your own live wallpaper</string>
+	<string name="wallpaper_description">Write Your Own Live Wallpaper</string>
 
 	<!-- PreviewActivity -->
 	<string name="preview">Preview</string>
 
 	<!-- UniformPagesFragment -->
-	<string name="add_uniform">Add uniform/texture</string>
+	<string name="add_uniform">Add Uniform/Texture</string>
 	<string name="sampler_2d">sampler2D</string>
 	<string name="sampler_cube">samplerCube</string>
-	<string name="preset">preset</string>
+	<string name="preset">Preset</string>
 	<string name="search">Search</string>
 
 	<!-- UniformPresetPageFragment -->
@@ -292,28 +306,30 @@
 	<string name="media_volume_level">Media volume level from 0.0 to 1.0</string>
 	<string name="microphone_amplitude">Microphone input amplitude from 0.0 to 1.0</string>
 	<string name="audio_spectrum">Audio spectrum/waveform texture (512x2), matching ShaderToy\'s audio input layout</string>
-	<string name="audio_capture_channel_name">Audio capture</string>
+	<string name="audio_capture_channel_name">Audio Capture</string>
 	<string name="audio_capture_notification_title">Capturing system audio for shader preview</string>
-	<string name="high_res_capture_channel_name">High-res capture</string>
+	<string name="high_res_capture_channel_name">High-Res Capture</string>
 	<string name="high_res_capture_notification_title">Rendering a high-res capture</string>
+	<string name="capture_priority_action_normal">Priority: Normal</string>
+	<string name="capture_priority_action_high">Priority: High</string>
 
 	<!-- UniformSampler2dPageFragment -->
-	<string name="texture_preview">Texture preview</string>
+	<string name="texture_preview">Texture Preview</string>
 	<string name="texture_name_noise">noise</string>
 	<string name="texture_name_rgba_noise">rgba_noise</string>
-	<string name="choose_image">Choose image</string>
-	<string name="no_textures">No textures available</string>
+	<string name="choose_image">Choose Image</string>
+	<string name="no_textures">No Textures Available</string>
 	<string name="texture_size_format" formatted="false">%d x %d</string>
 
 	<!-- CropImageFragment -->
-	<string name="crop_image">Crop image</string>
+	<string name="crop_image">Crop Image</string>
 	<string name="cannot_pick_image">Cannot open image. Please try another app to choose an image.</string>
-	<string name="rotate_clockwise">Rotate clockwise</string>
+	<string name="rotate_clockwise">Rotate Clockwise</string>
 
 	<!-- CubeMapFragment -->
-	<string name="compose_sampler_cube">Compose cube map</string>
-	<string name="not_enough_faces">Not enough faces</string>
-	<string name="add_texture">Add texture</string>
+	<string name="compose_sampler_cube">Compose Cube Map</string>
+	<string name="not_enough_faces">Not Enough Faces</string>
+	<string name="add_texture">Add Texture</string>
 
 	<!-- CubeMapView -->
 	<string name="cube_map_negative_x">-X Left</string>
@@ -324,56 +340,56 @@
 	<string name="cube_map_positive_z">+Z Back</string>
 
 	<!-- AbstractSamplerPropertiesFragment -->
-	<string name="texture_properties">Texture properties</string>
-	<string name="texture_size">Texture size in pixels</string>
-	<string name="face_size">Face size in pixels</string>
-	<string name="texture_name">Unique texture name</string>
-	<string name="input_texture_name">Give a name</string>
-	<string name="should_add_uniform">Add uniform sampler2D statement to source?</string>
-	<string name="save_texture">Save texture</string>
+	<string name="texture_properties">Texture Properties</string>
+	<string name="texture_size">Texture Size in Pixels</string>
+	<string name="face_size">Face Size in Pixels</string>
+	<string name="texture_name">Unique Texture Name</string>
+	<string name="input_texture_name">Give a Name</string>
+	<string name="should_add_uniform">Add Uniform sampler2D Statement to Source?</string>
+	<string name="save_texture">Save Texture</string>
 	<string name="missing_name">You need to give a name</string>
 	<string name="invalid_texture_name">Invalid name, please choose a name you can use in a GLSL source</string>
-	<string name="illegal_rectangle">Illegal rectangle</string>
-	<string name="name_already_taken">Name already taken</string>
-	<string name="insert_uniform_sampler">Insert uniform sampler2D statement</string>
+	<string name="illegal_rectangle">Illegal Rectangle</string>
+	<string name="name_already_taken">Name Already Taken</string>
+	<string name="insert_uniform_sampler">Insert Uniform sampler2D Statement</string>
 
 	<!-- TextureViewFragment -->
-	<string name="view_texture">View texture</string>
-	<string name="remove_texture">Remove texture</string>
+	<string name="view_texture">View Texture</string>
+	<string name="remove_texture">Remove Texture</string>
 	<string name="sure_remove_texture">Do you want to remove this texture?</string>
 	<string name="removed_invalid_texture">Texture was too big to handle</string>
 
 	<!-- TextureParametersFragment -->
-	<string name="texture_parameters">Texture parameters</string>
-	<string name="texture_minifying">Texture minifying function</string>
-	<string name="texture_magnification">Texture magnification function</string>
-	<string name="texture_wrap_s">Wrap parameter for texture coordinate s</string>
-	<string name="texture_wrap_t">Wrap parameter for texture coordinate t</string>
+	<string name="texture_parameters">Texture Parameters</string>
+	<string name="texture_minifying">Texture Minifying Function</string>
+	<string name="texture_magnification">Texture Magnification Function</string>
+	<string name="texture_wrap_s">Wrap Parameter for Texture Coordinate s</string>
+	<string name="texture_wrap_t">Wrap Parameter for Texture Coordinate t</string>
 
 	<!-- BackBufferParametersFragment -->
-	<string name="backbuffer_preset">Preset texture</string>
-	<string name="no_preset">(no preset)</string>
+	<string name="backbuffer_preset">Preset Texture</string>
+	<string name="no_preset">(No Preset)</string>
 	<string name="insert_code">Insert Code</string>
 
 	<!-- LoadSampleFragment -->
-	<string name="load_sample">Load sample</string>
-	<string name="find_shader">Find shader</string>
+	<string name="load_sample">Load Sample</string>
+	<string name="find_shader">Find Shader</string>
 	<string name="load">Load</string>
-	<string name="search_shader_source">Also search shader source</string>
-	<string name="fuzzy_matching">Fuzzy matching</string>
-	<string name="find_in_shader">Find in shader</string>
-	<string name="find_next">Find next</string>
-	<string name="find_previous">Find previous</string>
-	<string name="find_random">Find random</string>
+	<string name="search_shader_source">Also Search Shader Source</string>
+	<string name="fuzzy_matching">Fuzzy Matching</string>
+	<string name="find_in_shader">Find in Shader</string>
+	<string name="find_next">Find Next</string>
+	<string name="find_previous">Find Previous</string>
+	<string name="find_random">Find Random</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d match</item>
 		<item quantity="other">%1$d matches</item>
 	</plurals>
-	<string name="no_matches_found">No matches found</string>
+	<string name="no_matches_found">No Matches Found</string>
 	<string name="sample_battery_name">Battery</string>
 	<string name="sample_battery_rationale">Horizontal battery gauge</string>
-	<string name="sample_camera_back_name">Back camera</string>
+	<string name="sample_camera_back_name">Back Camera</string>
 	<string name="sample_camera_back_rationale">How to use the back camera (only on Ice Cream Sandwich or better)</string>
 	<string name="sample_circles_name">Circles</string>
 	<string name="sample_circles_rationale">Draw some circles</string>
@@ -385,7 +401,7 @@
 	<string name="sample_game_of_life_rationale">Conway\'s Game of Life. Touch to spark new life.</string>
 	<string name="sample_gles_300_name">GLES 300</string>
 	<string name="sample_gles_300_rationale">Use GLES version 3.00</string>
-	<string name="sample_gravity_name">Gravity sensor</string>
+	<string name="sample_gravity_name">Gravity Sensor</string>
 	<string name="sample_gravity_rationale">How to use the gravity uniform</string>
 	<string name="sample_orientation_name">Orientation</string>
 	<string name="sample_orientation_rationale">How to use the orienation uniform</string>
