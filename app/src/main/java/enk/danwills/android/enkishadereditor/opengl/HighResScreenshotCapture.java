@@ -62,46 +62,49 @@ final class HighResScreenshotCapture {
 			#define gl_FragCoord vec4(gl_FragCoord.xy + _tileOffset, gl_FragCoord.zw)
 			""";
 
-	// Rebuilds, per tile, an exact (nearest-pixel, never blended) copy of
-	// the *real* backbuffer at the capture's target resolution, so
-	// anything the shader stores at specific pixels - a counter or other
-	// state stashed in row 0 is the common pattern - reads back the same
-	// value it would at normal resolution instead of a bilinear blend
-	// between neighbours. Plain UV sampling of the original (small)
-	// backbuffer texture isn't enough on its own: the shader's own
-	// addressing math (texel-index / resolution) assumes backbuffer and
-	// `resolution` are the same size, which is true normally but not
-	// once `resolution` is bound to the inflated capture target -
-	// without this, that math would land on the wrong texel entirely,
-	// not just a blurred one. texelFetch() (GLES3) reads a single texel
-	// by *integer* coordinate, bypassing the texture's own filter
-	// setting entirely, so this needs no filter-state save/restore on
-	// the live backbuffer texture either. GLES2-only devices fall back
-	// to plain (bilinear, resolution-mismatched) sampling - a known
-	// limitation there, not fixable without texelFetch.
-	// A shader reading backbuffer via a position-*independent* UV (a
-	// fixed small constant, not derived from gl_FragCoord at all - the
-	// "persistent global state stashed at pixel (0,0)/row 0" pattern) is
-	// a second, different problem from the one this blit otherwise
-	// fixes: such a read isn't touched by the _tileOffset macro at all
-	// (it never mentions gl_FragCoord), so it computes the *same* tiny
-	// UV in every tile - which then lands on that tile's own local
-	// corner instead of the true global origin, since each tile only
-	// has its own small window of the backbuffer to sample from. Fixed
-	// pragmatically: for the small corner of *every* tile's blit output
-	// nearest its own local origin, force the effective tile offset to
-	// (0,0) - i.e. pretend this tile is also the bottom-left-most tile,
-	// just for that corner - so fixed/near-zero UV reads always find
-	// the true global near-origin data regardless of which tile is
-	// actually being rendered. Bounded to a generous but finite corner
-	// (CORNER_OVERLAY_SIZE) since this is a correctness/best-effort
-	// trade-off, not a free lunch: a gl_FragCoord-relative read that
-	// happens to sample within this same corner, on a tile that isn't
-	// actually near the global origin, will incorrectly see the
-	// overlay's stamped content instead of its own tile-local
-	// neighbourhood - acceptable because real-world "nearby-pixel"
-	// feedback sampling is almost always a tiny radius, far smaller
-	// than this corner.
+	// Rebuilds an exact (nearest-pixel, never blended) copy of the *real*
+	// backbuffer at the capture's target resolution, so anything the
+	// shader stores at specific pixels - a counter or other state
+	// stashed in row 0 is the common pattern - reads back the same value
+	// it would at normal resolution instead of a bilinear blend between
+	// neighbours. Plain UV sampling of the original (small) backbuffer
+	// texture isn't enough on its own: the shader's own addressing math
+	// (texel-index / resolution) assumes backbuffer and `resolution` are
+	// the same size, which is true normally but not once `resolution` is
+	// bound to the inflated capture target - without this, that math
+	// would land on the wrong texel entirely, not just a blurred one.
+	// texelFetch() (GLES3) reads a single texel by *integer* coordinate,
+	// bypassing the texture's own filter setting entirely, so this needs
+	// no filter-state save/restore on the live backbuffer texture
+	// either. GLES2-only devices fall back to plain (bilinear,
+	// resolution-mismatched) sampling - a known limitation there, not
+	// fixable without texelFetch.
+	//
+	// The blit output is deliberately sized targetWidth x (one tile's
+	// own height), not tile-sized in both dimensions: a shader reading
+	// backbuffer via a position-*independent* UV (a fixed small
+	// constant like (idx+0.5)/resolution, not derived from gl_FragCoord
+	// at all - the "persistent state packed at pixel index idx, row 0"
+	// pattern) computes that UV against the *bound texture's own size* -
+	// if that's merely tile-sized, the same tiny UV that was meant to
+	// select "pixel idx" instead lands on whatever texel idx maps to
+	// once rescaled by (tileWidth / targetWidth), silently reading a
+	// *different* packed state field than the one asked for. Matching
+	// the blit output's width to the shader's own `resolution.x` keeps
+	// that arithmetic honest without needing the full *height* too,
+	// since every such read's Y component is equally tiny (near 0) -
+	// i.e. "row 0" - regardless of which tile is rendering, so only the
+	// bottommost (GL-native row 0) tile's own blit pass ever satisfies
+	// the corner condition below, and that's the one tile that actually
+	// has true row-0 data to offer. Within that corner the copy is a
+	// direct, *unscaled* 1:1 mapping (not proportional to the capture's
+	// resolution multiplier) - precisely because discrete packed state
+	// at a specific index must not be resampled, unlike ordinary visual
+	// content. Outside the corner (any gl_FragCoord-relative visual
+	// feedback read, not the index-based state pattern) falls back to a
+	// proportional mapping against the true global Y - correct for any
+	// tile, since this blit already covers the full target width and
+	// only needs the tile's own Y offset.
 	private static final int CORNER_OVERLAY_SIZE = 64;
 
 	private static final String BACKBUFFER_BLIT_VERTEX_3 =
@@ -110,19 +113,20 @@ final class HighResScreenshotCapture {
 			#version 300 es
 			precision highp float;
 			uniform sampler2D srcBackbuffer;
-			uniform vec2 _tileOffset;
+			uniform float _tileOffsetY;
 			uniform vec2 targetResolution;
 			uniform float _cornerOverlaySize;
 			out vec4 fragColor;
 			void main() {
-				vec2 effectiveOffset =
-						(gl_FragCoord.x < _cornerOverlaySize && gl_FragCoord.y < _cornerOverlaySize)
-								? vec2(0.0)
-								: _tileOffset;
-				vec2 globalPixel = gl_FragCoord.xy + effectiveOffset;
-				vec2 uv = globalPixel / targetResolution;
 				ivec2 srcSize = textureSize(srcBackbuffer, 0);
-				ivec2 srcCoord = ivec2(floor(uv * vec2(srcSize)));
+				ivec2 srcCoord;
+				if (gl_FragCoord.x < _cornerOverlaySize && gl_FragCoord.y < _cornerOverlaySize) {
+					srcCoord = ivec2(gl_FragCoord.xy);
+				} else {
+					vec2 globalPixel = vec2(gl_FragCoord.x, gl_FragCoord.y + _tileOffsetY);
+					vec2 uv = globalPixel / targetResolution;
+					srcCoord = ivec2(floor(uv * vec2(srcSize)));
+				}
 				srcCoord = clamp(srcCoord, ivec2(0), srcSize - ivec2(1));
 				fragColor = texelFetch(srcBackbuffer, srcCoord, 0);
 			}
@@ -219,7 +223,12 @@ final class HighResScreenshotCapture {
 		GlProgram tileProgram = buildResult.getProgram();
 
 		GlProgram blitProgram = null;
-		if (glVersion >= 3 && preserveBackbufferEdges) {
+		// The blit output needs to be targetWidth wide (see the big
+		// comment above BACKBUFFER_BLIT_FRAGMENT_3) - skip it entirely if
+		// that alone wouldn't fit as a single texture, rather than
+		// silently falling back to a tile-sized one that would mis-map
+		// any index-based state read.
+		if (glVersion >= 3 && preserveBackbufferEdges && targetWidth <= device.getMaxTextureSize()) {
 			var blitResult = device.createProgram(
 					BACKBUFFER_BLIT_VERTEX_3, BACKBUFFER_BLIT_FRAGMENT_3, ShaderLineMapping.identity());
 			if (blitResult.succeeded() && blitResult.getProgram() != null) {
@@ -257,8 +266,10 @@ final class HighResScreenshotCapture {
 		GlTexture2D backbufferTileTexture = null;
 		GlFramebuffer backbufferTileFramebuffer = null;
 		if (blitProgram != null && framebufferOk) {
+			// targetWidth wide (not renderBufferSize - see the comment on
+			// BACKBUFFER_BLIT_FRAGMENT_3), one tile's own height tall.
 			backbufferTileTexture = device.createTexture2D();
-			device.allocateTexture2D(backbufferTileTexture, renderBufferSize, renderBufferSize);
+			device.allocateTexture2D(backbufferTileTexture, targetWidth, renderBufferSize);
 			device.applyTextureParameters(backbufferTileTexture, new TextureParameters(
 					GLES20.GL_NEAREST, GLES20.GL_NEAREST,
 					GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
@@ -360,33 +371,38 @@ final class HighResScreenshotCapture {
 		for (int tileRow = 0; tileRow < tilesY; ++tileRow) {
 			int contentY0 = tileRow * tileContentSize;
 			int contentH = Math.min(tileContentSize, targetHeight - contentY0);
+			int renderY0 = Math.max(0, contentY0 - TILE_MARGIN);
+			int renderY1 = Math.min(targetHeight, contentY0 + contentH + TILE_MARGIN);
+			int renderH = renderY1 - renderY0;
+
+			// The blit output now spans the full target width (see the
+			// comment on BACKBUFFER_BLIT_FRAGMENT_3), so it only depends
+			// on this row's Y range - one draw per row, reused by every
+			// column, rather than one per tile.
+			if (canBlitBackbuffer) {
+				blitBindings.clear();
+				blitBindings.setTexture("srcBackbuffer", originalBackbuffer);
+				blitBindings.setFloat("_tileOffsetY", renderY0);
+				blitBindings.setFloat2("targetResolution",
+						new float[]{targetWidth, targetHeight});
+				blitBindings.setFloat("_cornerOverlaySize", CORNER_OVERLAY_SIZE);
+				device.bindFramebuffer(backbufferTileFramebuffer);
+				device.setViewport(0, 0, targetWidth, renderH);
+				device.applyBindings(blitBindings);
+				device.draw(fullScreenQuad, blitProgram);
+				bindings.setTexture(ShaderRenderer.UNIFORM_BACKBUFFER, backbufferTileTexture);
+			}
+
 			for (int tileCol = 0; tileCol < tilesX; ++tileCol) {
 				int contentX0 = tileCol * tileContentSize;
 				int contentW = Math.min(tileContentSize, targetWidth - contentX0);
 
 				int renderX0 = Math.max(0, contentX0 - TILE_MARGIN);
-				int renderY0 = Math.max(0, contentY0 - TILE_MARGIN);
 				int renderX1 = Math.min(targetWidth, contentX0 + contentW + TILE_MARGIN);
-				int renderY1 = Math.min(targetHeight, contentY0 + contentH + TILE_MARGIN);
 				int renderW = renderX1 - renderX0;
-				int renderH = renderY1 - renderY0;
 
 				tileOffset[0] = renderX0;
 				tileOffset[1] = renderY0;
-
-				if (canBlitBackbuffer) {
-					blitBindings.clear();
-					blitBindings.setTexture("srcBackbuffer", originalBackbuffer);
-					blitBindings.setFloat2("_tileOffset", tileOffset);
-					blitBindings.setFloat2("targetResolution",
-							new float[]{targetWidth, targetHeight});
-					blitBindings.setFloat("_cornerOverlaySize", CORNER_OVERLAY_SIZE);
-					device.bindFramebuffer(backbufferTileFramebuffer);
-					device.setViewport(0, 0, renderW, renderH);
-					device.applyBindings(blitBindings);
-					device.draw(fullScreenQuad, blitProgram);
-					bindings.setTexture(ShaderRenderer.UNIFORM_BACKBUFFER, backbufferTileTexture);
-				}
 
 				bindings.setFloat2("_tileOffset", tileOffset);
 
