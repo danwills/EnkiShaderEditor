@@ -25,6 +25,7 @@ import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
+import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
@@ -63,6 +64,7 @@ public class ShaderViewManager {
 	private float quality = 1f;
 	private boolean paused = false;
 	private boolean needsRealResume = false;
+	private boolean backgroundCaptureActive = false;
 	// Persists compiled program binaries so re-selecting a shader (or
 	// relaunching the app) can skip straight to glProgramBinary() instead
 	// of a full source recompile - see ProgramBinaryCache. A single
@@ -150,16 +152,68 @@ public class ShaderViewManager {
 	}
 
 	public void onResume() {
-		if (paused) {
+		if (shaderView.getVisibility() != View.VISIBLE) {
 			return;
 		}
-		if (shaderView.getVisibility() == View.VISIBLE) {
-			shaderView.onResume();
+		if (paused) {
+			// A real pause (screen off, backgrounding) happened while we
+			// were only soft-paused - shaderView.onPause() already tore
+			// down the EGL context, and without a matching onResume()
+			// here it stays torn down (no GL context at all, not even
+			// for a capture queued via queueEvent()) for as long as we
+			// remain soft-paused - which, mid-flow in a capture dialog,
+			// can be the whole rest of that flow, including the capture
+			// itself. Recreate it promptly, but stay on
+			// RENDERMODE_WHEN_DIRTY and re-assert the paused clock - this
+			// is still a soft pause, just with a live context again, not
+			// an invitation to resume continuous playback.
+			// If HighResCaptureService has a capture running on a
+			// SharedCaptureContext right now, leave the live context torn
+			// down and needsRealResume pending - recreating it here would
+			// mean two threads touching the same shared
+			// programManager/renderPipeline/builtinUniforms at once (this
+			// one via a fresh onSurfaceCreated(), which recompiles the
+			// main program; the capture thread via the shared context).
+			// setBackgroundCaptureActive(false) performs this same
+			// recreation once that capture is actually done.
+			if (needsRealResume && !backgroundCaptureActive) {
+				needsRealResume = false;
+				shaderView.onResume();
+				shaderView.queueEvent(() -> shaderView.getRenderer().pauseClock());
+			}
+			return;
 		}
+		shaderView.onResume();
 	}
 
 	public boolean isPaused() {
 		return paused;
+	}
+
+	// Called by MainActivity around a capture that may outlive the
+	// activity being foregrounded (see HighResCaptureService) - while
+	// active, suppresses onResume()'s and setPaused(false)'s normal
+	// live-context recreation/resumption, since both would otherwise
+	// race against the capture thread's concurrent use of the exact
+	// same renderer objects on its own SharedCaptureContext. Also
+	// forwarded to the renderer itself, so ShaderView.onPause() (which
+	// fires the moment the app backgrounds, regardless of any of the
+	// above) skips clearing BuiltinUniforms' live configuration out from
+	// under that same capture - see ShaderRenderer.
+	// setBackgroundCaptureActive() and BuiltinUniforms.release(). Turning
+	// this off performs whichever live-context resume was deferred, if
+	// the activity is currently resumed.
+	public void setBackgroundCaptureActive(boolean active) {
+		backgroundCaptureActive = active;
+		shaderView.getRenderer().setBackgroundCaptureActive(active);
+		if (active || shaderView.getVisibility() != View.VISIBLE) {
+			return;
+		}
+		if (paused && needsRealResume) {
+			needsRealResume = false;
+			shaderView.onResume();
+			shaderView.queueEvent(() -> shaderView.getRenderer().pauseClock());
+		}
 	}
 
 	// Pausing freezes both compilation (new shader sources are
@@ -174,6 +228,16 @@ public class ShaderViewManager {
 	// that goes through the real GL lifecycle methods.
 	public void setPaused(boolean paused) {
 		if (this.paused == paused) {
+			return;
+		}
+		// Ignore attempts to unpause while HighResCaptureService still has
+		// a capture running on its SharedCaptureContext - switching the
+		// live GL thread back to RENDERMODE_CONTINUOUSLY now would start
+		// it rendering again concurrently with that capture thread, both
+		// touching the same shared renderer objects at once. Callers
+		// should wait for setBackgroundCaptureActive(false), which
+		// performs any resume this call would otherwise have done.
+		if (!paused && backgroundCaptureActive) {
 			return;
 		}
 		this.paused = paused;
@@ -258,9 +322,9 @@ public class ShaderViewManager {
 			synchronized (lock) {
 				lastProgressMillis[0] = System.currentTimeMillis();
 			}
-			if (progressListener != null) {
-				progressListener.onProgress(tilesDone, totalTiles);
-			}
+			boolean continueCapture = progressListener == null || progressListener.onProgress(tilesDone, totalTiles);
+			pacedProgressDelay();
+			return continueCapture;
 		};
 		shaderView.queueEvent(() -> {
 			byte[] result = shaderView.getRenderer()
@@ -299,6 +363,198 @@ public class ShaderViewManager {
 				}
 			}
 			return resultHolder[0];
+		}
+	}
+
+	// Like takeHighResScreenshot() above, but captures numFrames frames
+	// spaced virtualFps seconds apart in simulated (not wall-clock)
+	// time, stepping the shader's own state forward between frames - see
+	// ShaderRenderer.stepSimulationFrame(). skipFrames steps forward
+	// that many times first, without saving anything. frameListener is
+	// invoked once per completed (saved) frame, sequenceProgressListener
+	// once per step of either phase - both still on the GL thread (same
+	// hand-off expectations as progressListener - callers needing UI
+	// updates or slower work like saving to disk should expect this to
+	// briefly block the GL thread). Returns false if any frame failed to
+	// capture (frameListener may already have been called for whichever
+	// frames succeeded before that).
+	public boolean takeHighResScreenshotSequence(int width, int height, int oversample,
+			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
+			@NonNull ShaderRenderer.FrameListener frameListener) {
+		Object lock = new Object();
+		boolean[] doneHolder = new boolean[1];
+		boolean[] successHolder = new boolean[1];
+		long[] lastProgressMillis = {System.currentTimeMillis()};
+		ShaderRenderer.HighResProgressListener innerTileListener = (tilesDone, totalTiles) -> {
+			synchronized (lock) {
+				lastProgressMillis[0] = System.currentTimeMillis();
+			}
+			boolean continueCapture = progressListener == null || progressListener.onProgress(tilesDone, totalTiles);
+			pacedProgressDelay();
+			return continueCapture;
+		};
+		ShaderRenderer.SequenceProgressListener innerSequenceListener = (skipping, stepIndex, totalSteps) -> {
+			synchronized (lock) {
+				lastProgressMillis[0] = System.currentTimeMillis();
+			}
+			return sequenceProgressListener == null ||
+					sequenceProgressListener.onSequenceProgress(skipping, stepIndex, totalSteps);
+		};
+		ShaderRenderer.FrameListener innerFrameListener = (frameIndex, totalFrames, png) -> {
+			synchronized (lock) {
+				lastProgressMillis[0] = System.currentTimeMillis();
+			}
+			frameListener.onFrame(frameIndex, totalFrames, png);
+		};
+		shaderView.queueEvent(() -> {
+			boolean success = shaderView.getRenderer().captureHighResScreenshotSequence(
+					width, height, oversample, preserveBackbufferEdges, skipFrames, numFrames, virtualFps,
+					innerTileListener, innerSequenceListener, innerFrameListener);
+			synchronized (lock) {
+				successHolder[0] = success;
+				doneHolder[0] = true;
+				lock.notifyAll();
+			}
+		});
+		synchronized (lock) {
+			long timeoutMillis = 60000;
+			while (!doneHolder[0]) {
+				long remaining = (lastProgressMillis[0] + timeoutMillis) - System.currentTimeMillis();
+				if (remaining <= 0) {
+					Log.e("HighResCapture",
+							"takeHighResScreenshotSequence: timed out waiting for GL thread");
+					return false;
+				}
+				try {
+					lock.wait(remaining);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return false;
+				}
+			}
+			return successHolder[0];
+		}
+	}
+
+	// Gives the caller direct access to the live ShaderRenderer - needed
+	// by HighResCaptureService, which (unlike the two methods above)
+	// doesn't run its capture via queueEvent() on the GL thread at all,
+	// precisely so it can keep running after that thread's own context
+	// is torn down - see createSharedCaptureContext() below and
+	// ShaderRenderer.captureHighResScreenshotOnSharedContext().
+	@NonNull
+	public ShaderRenderer getRenderer() {
+		return shaderView.getRenderer();
+	}
+
+	// Blocks until a SharedCaptureContext is created against whatever
+	// context is current on the GL thread right now - call this *before*
+	// handing off to HighResCaptureService, while the live context still
+	// definitely exists (e.g. right as a capture is kicked off from the
+	// UI, not after the service has already started). Returns null if
+	// the GL thread doesn't have a live context at that moment (should
+	// only happen if the view's already been torn down some other way)
+	// or creation otherwise fails - see SharedCaptureContext's own doc.
+	@Nullable
+	public SharedCaptureContext createSharedCaptureContext() {
+		Object lock = new Object();
+		SharedCaptureContext[] resultHolder = new SharedCaptureContext[1];
+		boolean[] doneHolder = new boolean[1];
+		shaderView.queueEvent(() -> {
+			var result = shaderView.getRenderer().createSharedCaptureContext();
+			synchronized (lock) {
+				resultHolder[0] = result;
+				doneHolder[0] = true;
+				lock.notifyAll();
+			}
+		});
+		synchronized (lock) {
+			long deadlineMillis = System.currentTimeMillis() + 5000;
+			while (!doneHolder[0]) {
+				long remaining = deadlineMillis - System.currentTimeMillis();
+				if (remaining <= 0) {
+					Log.e("HighResCapture",
+							"createSharedCaptureContext: timed out waiting for GL thread");
+					return null;
+				}
+				try {
+					lock.wait(remaining);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return null;
+				}
+			}
+			return resultHolder[0];
+		}
+	}
+
+	// Like takeHighResScreenshot() above, but runs directly on the
+	// calling thread against a SharedCaptureContext obtained earlier
+	// from createSharedCaptureContext() - see HighResCaptureService,
+	// whose whole point is to keep that calling thread (and therefore
+	// this call) alive even if the app gets backgrounded partway
+	// through. No queueEvent()/lock/timeout dance needed here, unlike
+	// the live-context version: this isn't hopping to another thread,
+	// it's already running on whichever thread the caller is keeping
+	// the shared context current on. Callers must have already called
+	// setBackgroundCaptureActive(true) before this, and must call
+	// setBackgroundCaptureActive(false) (and sharedContext.destroy(), on
+	// this same thread) once done - see those methods' own doc for why.
+	@Nullable
+	public byte[] takeHighResScreenshotOnSharedContext(@NonNull SharedCaptureContext sharedContext,
+			int width, int height, int oversample, boolean preserveBackbufferEdges,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener) {
+		ShaderRenderer.HighResProgressListener innerListener = progressListener == null ? null :
+				(tilesDone, totalTiles) -> {
+					boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);
+					pacedProgressDelay();
+					return continueCapture;
+				};
+		return shaderView.getRenderer().captureHighResScreenshotOnSharedContext(
+				sharedContext, width, height, oversample, preserveBackbufferEdges, innerListener);
+	}
+
+	// Sequence counterpart to takeHighResScreenshotOnSharedContext()
+	// above, same relationship to takeHighResScreenshotSequence() as
+	// that method has to takeHighResScreenshot().
+	public boolean takeHighResScreenshotSequenceOnSharedContext(
+			@NonNull SharedCaptureContext sharedContext, int width, int height, int oversample,
+			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener,
+			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
+			@NonNull ShaderRenderer.FrameListener frameListener) {
+		ShaderRenderer.HighResProgressListener innerTileListener = progressListener == null ? null :
+				(tilesDone, totalTiles) -> {
+					boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);
+					pacedProgressDelay();
+					return continueCapture;
+				};
+		return shaderView.getRenderer().captureHighResScreenshotSequenceOnSharedContext(
+				sharedContext, width, height, oversample, preserveBackbufferEdges, skipFrames,
+				numFrames, virtualFps, innerTileListener, sequenceProgressListener, frameListener);
+	}
+
+	// A 512px tile (chosen to dodge the GPU watchdog - see
+	// HighResScreenshotCapture) can render and read back in well under
+	// a display refresh interval for anything but the heaviest shaders.
+	// Without this, runOnUiThread() progress updates on the UI side get
+	// posted and coalesced faster than Android can actually paint a
+	// frame for each one - only the *last* value before each vsync ever
+	// gets drawn, so a tile-progress bar visibly jumps straight to
+	// "done" instead of stepping through. Pacing each tile's completion
+	// by roughly one frame interval (called from the GL thread, same
+	// thread the whole capture already runs on) costs very little next
+	// to the capture's own overall runtime but gives the UI thread a
+	// real chance to paint each intermediate value.
+	private static final long PROGRESS_PACE_MILLIS = 16;
+
+	private static void pacedProgressDelay() {
+		try {
+			Thread.sleep(PROGRESS_PACE_MILLIS);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
 		}
 	}
 

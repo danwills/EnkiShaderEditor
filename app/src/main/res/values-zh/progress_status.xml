@@ -1,0 +1,18 @@
+<resources>
+	<string-array name="status_skip">
+		<item>正在跳过第 %1$d / %2$d 帧 — 快进过无聊的部分</item>
+		<item>第 %1$d / %2$d 帧，不会保存 — 只是正式开始前热热身</item>
+	</string-array>
+	<string-array name="status_tile_single">
+		<item>正在渲染第 %1$d / %2$d 块…</item>
+		<item>第 %1$d / %2$d 块 — 像素可不会自己画出来</item>
+	</string-array>
+	<string-array name="status_tile_sequence">
+		<item>第 %1$d / %2$d 帧，第 %3$d / %4$d 块…</item>
+		<item>第 %1$d / %2$d 帧，第 %3$d / %4$d 块 — 像拼拼图一样拼接像素</item>
+	</string-array>
+	<string-array name="status_encoding">
+		<item>正在将第 %1$d / %2$d 帧编码进视频…</item>
+		<item>第 %1$d / %2$d 帧 — 说白了就是个翻页动画书，只是更花哨</item>
+	</string-array>
+</resources>

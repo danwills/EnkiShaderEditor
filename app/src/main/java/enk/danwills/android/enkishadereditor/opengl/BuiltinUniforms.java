@@ -58,6 +58,13 @@ final class BuiltinUniforms {
 	private float fTimeMax = DEFAULT_FTIME_MAX;
 	private float quality = 1f;
 	private float startRandom;
+	// Set/cleared by ShaderRenderer.setBackgroundCaptureActive() for the
+	// duration of a HighResCaptureService capture running on a
+	// SharedCaptureContext - see release() below for why. Written from
+	// whichever thread starts/finishes the capture, read from the GL
+	// thread inside release(); a plain volatile is enough since it's a
+	// single flag with no other state to publish alongside it.
+	private volatile boolean backgroundCaptureActive;
 
 	BuiltinUniforms(@NonNull Context context) {
 		this.context = context;
@@ -100,6 +107,19 @@ final class BuiltinUniforms {
 			startTime += System.nanoTime() - pausedAtNanos;
 			pausedAtNanos = -1;
 		}
+	}
+
+	// Steps a paused simulation forward by exactly deltaNanos of virtual
+	// time (not wall-clock) - used by frame-sequence capture to advance
+	// `time`/`runtime` deterministically between frames regardless of how
+	// long each frame's own (possibly slow, tiled) capture actually
+	// takes. No-op if not currently paused.
+	void advancePausedTime(long deltaNanos) {
+		if (pausedAtNanos < 0) {
+			return;
+		}
+		pausedAtNanos += deltaNanos;
+		runtimeClock.setElapsedNanos(runtimeClock.getElapsedNanos() + deltaNanos);
 	}
 
 	void setQuality(float quality) {
@@ -271,9 +291,30 @@ final class BuiltinUniforms {
 		programBindings = null;
 	}
 
+	// Called from ShaderView.onPause() on every real pause, including
+	// just the app being backgrounded while a capture keeps running on
+	// its own SharedCaptureContext (see HighResCaptureService) - sensors/
+	// camera/audio still get released as normal (same as any other
+	// backgrounded app, and this renderer's own live playback is paused
+	// anyway during a capture), but clearConfiguration() is skipped while
+	// backgroundCaptureActive: it nulls programBindings and resets
+	// textureResources/fTimeMax, which beginFrame() (still being called
+	// by that capture, on its own thread, against this same instance)
+	// needs to keep returning real bindings instead of null. Skipping it
+	// is safe because configure() (the only thing that would need a
+	// clean slate) always calls releaseModules() itself first regardless
+	// of this flag - clearConfiguration()'s own effects are purely
+	// defensive cleanup for an *idle* paused renderer, not something a
+	// fresh configure() depends on having already happened.
 	void release() {
 		releaseModules();
-		clearConfiguration();
+		if (!backgroundCaptureActive) {
+			clearConfiguration();
+		}
+	}
+
+	void setBackgroundCaptureActive(boolean active) {
+		backgroundCaptureActive = active;
 	}
 
 	private void bindFrameUniforms(

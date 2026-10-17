@@ -30,7 +30,13 @@ import androidx.annotation.Nullable;
 // while still physically rendering into a small, reusable framebuffer.
 final class HighResScreenshotCapture {
 	interface ProgressListener {
-		void onProgress(int tilesDone, int totalTiles);
+		// Return false to abort the capture after this tile - checked
+		// between every tile, so cancelling takes effect within at most
+		// one tile's render+readback time. The caller's already-allocated
+		// result Bitmap and GL resources are discarded the same way as
+		// any other capture failure - see capture()'s cleanup, which runs
+		// unconditionally regardless of why renderTiles() returned null.
+		boolean onProgress(int tilesDone, int totalTiles);
 	}
 
 	private static final String TAG = "HighResCapture";
@@ -359,6 +365,7 @@ final class HighResScreenshotCapture {
 		int tilesY = (targetHeight + tileContentSize - 1) / tileContentSize;
 		int totalTiles = tilesX * tilesY;
 		int tilesDone = 0;
+		boolean cancelled = false;
 		float[] tileOffset = new float[2];
 		Mesh fullScreenQuad = Mesh.fullScreenQuad();
 
@@ -432,12 +439,16 @@ final class HighResScreenshotCapture {
 						contentW, contentH);
 
 				++tilesDone;
-				if (onProgress != null) {
-					onProgress.onProgress(tilesDone, totalTiles);
+				if (onProgress != null && !onProgress.onProgress(tilesDone, totalTiles)) {
+					cancelled = true;
+					break;
 				}
 			}
+			if (cancelled) {
+				break;
+			}
 		}
-		return result;
+		return cancelled ? null : result;
 	}
 
 	// Downsamples `src` to dstWidth x dstHeight by averaging every source

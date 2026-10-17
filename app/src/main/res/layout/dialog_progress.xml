@@ -5,28 +5,56 @@
 	android:orientation="vertical"
 	android:padding="16dp">
 
+	<!-- Reserves room for at least two lines up front (minLines, not
+	     just wrap_content) so a long narrated status doesn't appear to
+	     go missing by rendering into a sliver of space the first layout
+	     pass gave this TextView before any text had arrived. -->
 	<TextView
-		android:id="@+id/message"
+		android:id="@+id/status_message"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:textAppearance="?attr/textAppearanceBody2" />
+		android:layout_marginBottom="4dp"
+		android:minLines="2"
+		android:textColor="#FFEB3B"
+		android:textStyle="bold"
+		android:textAppearance="?attr/textAppearanceBody1" />
 
+	<!-- One bar for the whole operation end to end (compiling, stepping
+	     through any skipped frames, tiled rendering, video encoding) -
+	     see MainActivity's progress-unit accounting for how these very
+	     differently-sized phases get folded into one 0..max range. -->
 	<ProgressBar
-		android:id="@+id/progress_indeterminate"
+		android:id="@+id/progress_overall"
 		style="?android:attr/progressBarStyleHorizontal"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:layout_marginTop="12dp"
-		android:indeterminate="true" />
+		android:layout_marginTop="8dp"
+		android:indeterminate="false"
+		android:max="100" />
 
+	<!-- A second, smaller bar for progress *within* whichever phase is
+	     currently running (tiles in the current frame, frames in the
+	     current skip/encode pass) - the overall bar above answers "how
+	     much of the whole job is done", this one answers "how's the
+	     current step going". Hidden until there's a real sub-phase total
+	     to show (not during the fake compile-estimate animation). -->
 	<ProgressBar
-		android:id="@+id/progress_determinate"
+		android:id="@+id/progress_subtask"
 		style="?android:attr/progressBarStyleHorizontal"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:layout_marginTop="12dp"
+		android:layout_marginTop="4dp"
 		android:indeterminate="false"
 		android:max="100"
 		android:visibility="gone" />
+
+	<Button
+		android:id="@+id/progress_cancel"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@android:string/cancel" />
 
 </LinearLayout>

@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.io;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -49,12 +50,70 @@ public final class ScreenshotSaver {
 		String filename = "EnkiShader_" +
 				new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) +
 				".png";
+		return save(context, pngBytes, filename, null);
+	}
+
+	// Finds a sub-album name under ALBUM that nothing's been saved into
+	// yet, starting from baseName and trying baseName1, baseName2, ...
+	// A frame sequence re-rendered for the same shader would otherwise
+	// silently mix its new frames in among an older run's leftovers (or
+	// overwrite them) instead of getting its own folder.
+	@NonNull
+	@RequiresApi(Build.VERSION_CODES.Q)
+	public static String findAvailableSubAlbum(Context context, @NonNull String baseName) {
+		ContentResolver resolver = context.getContentResolver();
+		String candidate = baseName;
+		int suffix = 0;
+		while (subAlbumHasContent(resolver, candidate)) {
+			++suffix;
+			candidate = baseName + suffix;
+		}
+		return candidate;
+	}
+
+	@RequiresApi(Build.VERSION_CODES.Q)
+	private static boolean subAlbumHasContent(ContentResolver resolver, String subAlbum) {
+		String relativePath = Environment.DIRECTORY_PICTURES + "/" + ALBUM + "/" + subAlbum + "/";
+		String[] projection = {MediaStore.Images.Media._ID};
+		String selection = MediaStore.Images.Media.RELATIVE_PATH + " = ?";
+		String[] selectionArgs = {relativePath};
+		try (Cursor cursor = resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+				projection, selection, selectionArgs, null)) {
+			return cursor != null && cursor.getCount() > 0;
+		}
+	}
+
+	// Deletes every image MediaStore has under this sub-album (e.g. a
+	// rendered frame sequence's many frames) - used once a video's been
+	// successfully assembled from them and the "delete image files"
+	// option is on. The now-empty folder itself isn't something this app
+	// deletes directly (MediaStore's RELATIVE_PATH "folders" are virtual;
+	// the system reclaims the real one once nothing's left in it).
+	// Returns how many files were actually deleted.
+	@RequiresApi(Build.VERSION_CODES.Q)
+	public static int deleteSubAlbum(Context context, @NonNull String subAlbum) {
+		String relativePath = Environment.DIRECTORY_PICTURES + "/" + ALBUM + "/" + subAlbum + "/";
+		String selection = MediaStore.Images.Media.RELATIVE_PATH + " = ?";
+		String[] selectionArgs = {relativePath};
+		return context.getContentResolver().delete(
+				MediaStore.Images.Media.EXTERNAL_CONTENT_URI, selection, selectionArgs);
+	}
+
+	// subAlbum (may be null/blank): an extra path segment nested under
+	// the usual album, e.g. so a rendered frame sequence's many files
+	// land together in their own folder instead of flooding the main
+	// one alongside ordinary screenshots.
+	@Nullable
+	@RequiresApi(Build.VERSION_CODES.Q)
+	public static SavedScreenshot save(Context context, byte[] pngBytes,
+			@NonNull String filename, @Nullable String subAlbum) {
+		String relativePath = Environment.DIRECTORY_PICTURES + "/" + ALBUM +
+				(subAlbum != null && !subAlbum.isBlank() ? "/" + subAlbum : "");
 
 		ContentValues values = new ContentValues();
 		values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
 		values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-		values.put(MediaStore.Images.Media.RELATIVE_PATH,
-				Environment.DIRECTORY_PICTURES + "/" + ALBUM);
+		values.put(MediaStore.Images.Media.RELATIVE_PATH, relativePath);
 
 		ContentResolver resolver = context.getContentResolver();
 		Uri uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);

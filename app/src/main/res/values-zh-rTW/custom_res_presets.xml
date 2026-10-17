@@ -1,0 +1,14 @@
+<resources>
+	<string-array name="custom_res_presets">
+		<item>自訂</item>
+		<item>0.5× 螢幕</item>
+		<item>1× 螢幕</item>
+		<item>2× 螢幕</item>
+		<item>正方形 512×512</item>
+		<item>正方形 1024×1024</item>
+		<item>正方形 2048×2048</item>
+		<item>HD 720 (1280×720)</item>
+		<item>HD 1080 (1920×1080)</item>
+		<item>4K (3840×2160)</item>
+	</string-array>
+</resources>

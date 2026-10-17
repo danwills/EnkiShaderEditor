@@ -294,10 +294,23 @@ public class ShaderListManager {
 	private void refreshDisplayedAdapters() {
 		List<ShaderInfo> data = lastLoadedShaders;
 		if (similarFilterMode) {
-			data = similarityIndex.findSimilar(
+			List<ShaderInfo> similar = similarityIndex.findSimilar(
 					similarityReferenceId, lastLoadedShaders, similarityThreshold);
-			if (data.isEmpty() && !lastLoadedShaders.isEmpty()) {
+			if (similar.isEmpty() && !lastLoadedShaders.isEmpty()) {
 				Toast.makeText(activity, R.string.no_similar_shaders, Toast.LENGTH_SHORT).show();
+			}
+			// Keep the reference shader itself in the list too - it's
+			// already highlighted/selected, and dropping it made "similar
+			// to this" look like it was missing the one shader the whole
+			// comparison is actually anchored to.
+			ShaderInfo reference = findById(lastLoadedShaders, similarityReferenceId);
+			if (reference != null) {
+				List<ShaderInfo> withReference = new ArrayList<>(similar.size() + 1);
+				withReference.add(reference);
+				withReference.addAll(similar);
+				data = withReference;
+			} else {
+				data = similar;
 			}
 		}
 		if (textFilterEnabled && !textFilterQuery.isEmpty()) {
@@ -312,6 +325,16 @@ public class ShaderListManager {
 		}
 		shaderAdapter.setData(data);
 		shaderTreeAdapter.setData(data);
+	}
+
+	@Nullable
+	private static ShaderInfo findById(@NonNull List<ShaderInfo> shaders, long id) {
+		for (ShaderInfo shader : shaders) {
+			if (shader.id() == id) {
+				return shader;
+			}
+		}
+		return null;
 	}
 
 	private void toggleTreeMode() {

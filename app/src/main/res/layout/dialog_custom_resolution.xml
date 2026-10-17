@@ -1,83 +1,204 @@
-<LinearLayout
+<ScrollView
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	android:layout_width="match_parent"
-	android:layout_height="wrap_content"
-	android:orientation="vertical"
-	android:padding="16dp">
+	android:layout_height="wrap_content">
 
 	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:orientation="horizontal"
-		android:gravity="center_vertical">
+		android:orientation="vertical"
+		android:padding="16dp">
+
+		<Spinner
+			android:id="@+id/custom_res_preset"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:entries="@array/custom_res_presets" />
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:orientation="horizontal"
+			android:gravity="center_vertical">
+
+			<EditText
+				android:id="@+id/custom_width"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:hint="@string/higher_res_custom_width"
+				android:inputType="number"
+				android:maxLength="5" />
+
+			<TextView
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginHorizontal="12dp"
+				android:text="×" />
+
+			<EditText
+				android:id="@+id/custom_height"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:hint="@string/higher_res_custom_height"
+				android:inputType="number"
+				android:maxLength="5" />
+
+		</LinearLayout>
 
 		<EditText
-			android:id="@+id/custom_width"
-			android:layout_width="0dp"
+			android:id="@+id/custom_oversample"
+			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:hint="@string/higher_res_custom_width"
+			android:layout_marginTop="12dp"
+			android:hint="@string/higher_res_oversample"
 			android:inputType="number"
-			android:maxLength="5" />
+			android:maxLength="3"
+			android:text="1" />
 
-		<TextView
-			android:layout_width="wrap_content"
+		<CheckBox
+			android:id="@+id/preserve_backbuffer_edges"
+			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_marginHorizontal="12dp"
-			android:text="×" />
+			android:layout_marginTop="12dp"
+			android:checked="true"
+			android:text="@string/higher_res_preserve_backbuffer" />
 
-		<EditText
-			android:id="@+id/custom_height"
-			android:layout_width="0dp"
+		<CheckBox
+			android:id="@+id/render_sequence"
+			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_weight="1"
-			android:hint="@string/higher_res_custom_height"
-			android:inputType="number"
-			android:maxLength="5" />
+			android:layout_marginTop="4dp"
+			android:checked="false"
+			android:text="@string/higher_res_render_sequence" />
+
+		<LinearLayout
+			android:id="@+id/sequence_options"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="vertical"
+			android:visibility="gone">
+
+			<LinearLayout
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="8dp"
+				android:orientation="horizontal"
+				android:gravity="center_vertical">
+
+				<EditText
+					android:id="@+id/sequence_frame_count"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:hint="@string/higher_res_sequence_frame_count"
+					android:inputType="number"
+					android:maxLength="6"
+					android:text="30" />
+
+				<EditText
+					android:id="@+id/sequence_fps"
+					android:layout_width="0dp"
+					android:layout_height="wrap_content"
+					android:layout_weight="1"
+					android:layout_marginStart="12dp"
+					android:hint="@string/higher_res_sequence_fps"
+					android:inputType="numberDecimal"
+					android:maxLength="6"
+					android:text="30" />
+
+			</LinearLayout>
+
+			<TextView
+				android:id="@+id/sequence_duration"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="4dp"
+				android:textAppearance="?attr/textAppearanceCaption" />
+
+			<!-- A persistent label, not just the EditText's own hint -
+			     the hint never actually shows since the field always
+			     starts pre-filled with "0", not blank. -->
+			<TextView
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="12dp"
+				android:text="@string/higher_res_sequence_skip_frames"
+				android:textAppearance="?attr/textAppearanceCaption" />
+
+			<EditText
+				android:id="@+id/sequence_skip_frames"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="number"
+				android:maxLength="6"
+				android:text="0" />
+
+			<CheckBox
+				android:id="@+id/sequence_create_video"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="12dp"
+				android:checked="true"
+				android:text="@string/higher_res_sequence_create_video" />
+
+			<LinearLayout
+				android:id="@+id/sequence_video_options"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="32dp"
+				android:orientation="vertical">
+
+				<TextView
+					android:id="@+id/sequence_video_quality_label"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="4dp"
+					android:textAppearance="?attr/textAppearanceCaption" />
+
+				<SeekBar
+					android:id="@+id/sequence_video_quality"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:max="100" />
+
+				<CheckBox
+					android:id="@+id/sequence_cleanup_images"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:checked="true"
+					android:text="@string/higher_res_sequence_cleanup" />
+
+			</LinearLayout>
+
+		</LinearLayout>
+
+		<com.google.android.material.divider.MaterialDivider
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginVertical="12dp" />
+
+		<!-- Plain custom buttons, not AlertDialog's built-in slots - see
+		     dialog_higher_res_picker.xml for why. -->
+		<Button
+			android:id="@+id/custom_res_ok"
+			style="@style/BarButton"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:gravity="end|center_vertical"
+			android:text="@android:string/ok" />
+
+		<Button
+			android:id="@+id/custom_res_cancel"
+			style="@style/BarButton"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:gravity="end|center_vertical"
+			android:text="@android:string/cancel" />
 
 	</LinearLayout>
-
-	<EditText
-		android:id="@+id/custom_oversample"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_marginTop="12dp"
-		android:hint="@string/higher_res_oversample"
-		android:inputType="number"
-		android:maxLength="3"
-		android:text="1" />
-
-	<CheckBox
-		android:id="@+id/preserve_backbuffer_edges"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_marginTop="12dp"
-		android:checked="true"
-		android:text="@string/higher_res_preserve_backbuffer" />
-
-	<com.google.android.material.divider.MaterialDivider
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_marginVertical="12dp" />
-
-	<!-- Plain custom buttons, not AlertDialog's built-in slots - see
-	     dialog_higher_res_picker.xml for why. -->
-	<Button
-		android:id="@+id/custom_res_ok"
-		style="@style/BarButton"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_gravity="end"
-		android:gravity="end|center_vertical"
-		android:text="@android:string/ok" />
-
-	<Button
-		android:id="@+id/custom_res_cancel"
-		style="@style/BarButton"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:layout_gravity="end"
-		android:gravity="end|center_vertical"
-		android:text="@android:string/cancel" />
-
-</LinearLayout>
+</ScrollView>

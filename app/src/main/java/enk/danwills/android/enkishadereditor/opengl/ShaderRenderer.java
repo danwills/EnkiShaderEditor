@@ -41,7 +41,34 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// as every other renderer callback; implementations needing to touch
 	// UI must hop to the UI thread themselves.
 	public interface HighResProgressListener {
-		void onProgress(int tilesDone, int totalTiles);
+		// Return false to cancel the capture - see
+		// HighResScreenshotCapture.ProgressListener, which this gets
+		// forwarded to one-for-one.
+		boolean onProgress(int tilesDone, int totalTiles);
+	}
+
+	// Reports one completed frame of captureHighResScreenshotSequence()
+	// below - called synchronously on the GL thread, same as
+	// HighResProgressListener; implementations needing to touch UI or do
+	// slower work (saving to disk) must either hop to another thread or
+	// accept blocking the GL thread briefly, same trade-off callers of
+	// the single-frame capture already make for PNG encoding.
+	public interface FrameListener {
+		void onFrame(int frameIndex, int totalFrames, @NonNull byte[] png);
+	}
+
+	// Reports overall progress through captureHighResScreenshotSequence()
+	// below, one step at a time - either stepping through the initial
+	// (unsaved) skip frames, or capturing one of the saved output frames
+	// - alongside HighResProgressListener's finer per-tile detail within
+	// whichever output frame is currently capturing. Called synchronously
+	// on the GL thread, same hand-off expectations as the other
+	// listeners here.
+	public interface SequenceProgressListener {
+		// Return false to cancel the rest of the sequence - checked
+		// between every skip step and every saved frame, same contract
+		// as HighResProgressListener above.
+		boolean onSequenceProgress(boolean skipping, int stepIndex, int totalSteps);
 	}
 
 	public static final String UNIFORM_AUDIO_SPECTRUM = "audioSpectrum";
@@ -241,6 +268,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See BuiltinAudioUniforms.releaseMediaProjection().
 	public void releaseMediaProjection() {
 		builtinUniforms.releaseMediaProjection();
+	}
+
+	// Forwards to BuiltinUniforms - see its own doc on release() for why
+	// this needs to be set before the app can be backgrounded during a
+	// HighResCaptureService capture, and cleared once that capture is
+	// done. Call via ShaderViewManager.setBackgroundCaptureActive(),
+	// never directly - that method also guards the live-context
+	// recreate/resume paths this flag doesn't cover.
+	public void setBackgroundCaptureActive(boolean active) {
+		builtinUniforms.setBackgroundCaptureActive(active);
 	}
 
 	// See AudioSpectrumListener.isReceivingAudio().
@@ -450,6 +487,49 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@Nullable
 	public byte[] captureHighResScreenshot(int width, int height, int oversample,
 			boolean preserveBackbufferEdges, @Nullable HighResProgressListener progressListener) {
+		return captureHighResScreenshot(
+				device, width, height, oversample, preserveBackbufferEdges, progressListener);
+	}
+
+	// Same as above, but against a caller-supplied SharedCaptureContext
+	// instead of this renderer's own live context - see
+	// HighResCaptureService, which uses this to keep a capture running
+	// even after the app's backgrounded and the live GLSurfaceView's own
+	// context has been torn down. Must be called on whichever thread the
+	// caller is keeping that context current on - never the live GL
+	// thread (and never concurrently with any live-context rendering,
+	// even though the two contexts are otherwise independent, since
+	// `programManager`/`renderPipeline`/`builtinUniforms` are the SAME
+	// instances the live renderer itself uses, same as the point of
+	// sharing in the first place - see SharedCaptureContext's own doc).
+	//
+	// Reuses the live `device` field rather than a fresh GlDevice:
+	// captureHighResScreenshotSequenceOnSharedContext() below needs
+	// stepSimulationFrame()'s renderPipeline.renderMainPass() call, which
+	// is hard-wired to this same `device` instance (renderPipeline owns
+	// it from construction, there's no per-call override), so a single
+	// capture run via the shared context has to use it too for the two
+	// to behave consistently. GlDevice itself doesn't own any GL objects
+	// by identity - it's just a state-cache wrapper around whichever
+	// context is actually current on the calling thread - so the only
+	// thing that needs resetting when handing it to a different context
+	// is that cache, via resetState().
+	@Nullable
+	public byte[] captureHighResScreenshotOnSharedContext(@NonNull SharedCaptureContext sharedContext,
+			int width, int height, int oversample, boolean preserveBackbufferEdges,
+			@Nullable HighResProgressListener progressListener) {
+		if (!sharedContext.makeCurrent()) {
+			return null;
+		}
+		device.resetState();
+		return captureHighResScreenshot(
+				device, width, height, oversample, preserveBackbufferEdges, progressListener);
+	}
+
+	@Nullable
+	private byte[] captureHighResScreenshot(@NonNull GlDevice useDevice, int width, int height,
+			int oversample, boolean preserveBackbufferEdges,
+			@Nullable HighResProgressListener progressListener) {
 		if (!programManager.hasPreparedShader()) {
 			return null;
 		}
@@ -457,7 +537,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				? null
 				: progressListener::onProgress;
 		var bitmap = HighResScreenshotCapture.capture(
-				device, programManager, renderPipeline, builtinUniforms,
+				useDevice, programManager, renderPipeline, builtinUniforms,
 				glVersion, width * oversample, height * oversample,
 				preserveBackbufferEdges, innerListener);
 		if (bitmap == null) {
@@ -475,6 +555,125 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		} catch (IOException | OutOfMemoryError e) {
 			return null;
 		}
+	}
+
+	// Must be called on the GL thread (e.g. via
+	// GLSurfaceView.queueEvent()) while the live context is current -
+	// see SharedCaptureContext's own doc for why. Returns null if this
+	// device/moment doesn't support it (an unsupported EGL config,
+	// resource exhaustion, etc) - callers should fall back to running
+	// the capture on the live context in the usual way.
+	@Nullable
+	public SharedCaptureContext createSharedCaptureContext() {
+		return SharedCaptureContext.createFromCurrentContext(glVersion);
+	}
+
+	// Advances a paused simulation forward by exactly deltaSeconds of
+	// virtual time, rendering one ordinary (normal-resolution, not
+	// tiled) frame into the ping-pong targets so backbuffer-dependent
+	// state (spin, feedback trails, anything a shader persists via
+	// `backbuffer`) evolves the same way it would during live playback -
+	// just driven by a fixed virtual delta instead of wall-clock time.
+	// Used between frames of captureHighResScreenshotSequence() below, so
+	// how long each frame's own (possibly slow, tiled) capture actually
+	// takes has no effect on the simulated motion between frames. No-op
+	// if no compiled program/targets exist yet.
+	private void stepSimulationFrame(float deltaSeconds) {
+		var mainProgram = programManager.getMainProgram();
+		if (mainProgram == null || !renderPipeline.hasTargets()) {
+			return;
+		}
+		builtinUniforms.advancePausedTime((long) (deltaSeconds * 1_000_000_000L));
+		var frame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
+		if (frame == null) {
+			return;
+		}
+		renderPipeline.renderMainPass(frame.bindings(), mainProgram);
+		renderPipeline.swapTargets();
+		builtinUniforms.endFrame();
+	}
+
+	// Captures numFrames frames via captureHighResScreenshot() above,
+	// each virtualFps seconds apart in simulated (not wall-clock) time -
+	// the first captured frame at whatever state the shader is currently
+	// paused at, every later one stepped forward via
+	// stepSimulationFrame(). skipFrames steps the simulation forward
+	// that many times *first*, without capturing or saving anything -
+	// for skipping past an intro/settling period before the saved
+	// sequence starts - so the saved output is always exactly numFrames
+	// long regardless of skipFrames. frameListener is called once per
+	// completed (saved) frame, sequenceProgressListener once per step
+	// of either phase - both still on the GL thread (see their own
+	// doc). Returns false (and may have already handed some frames to
+	// frameListener) if a frame fails to capture partway through; true
+	// if every frame succeeded.
+	public boolean captureHighResScreenshotSequence(int width, int height, int oversample,
+			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@Nullable HighResProgressListener tileProgressListener,
+			@Nullable SequenceProgressListener sequenceProgressListener,
+			@NonNull FrameListener frameListener) {
+		if (!programManager.hasPreparedShader()) {
+			return false;
+		}
+		float deltaSeconds = virtualFps > 0 ? 1f / virtualFps : 0f;
+		for (int i = 0; i < skipFrames; ++i) {
+			stepSimulationFrame(deltaSeconds);
+			if (sequenceProgressListener != null &&
+					!sequenceProgressListener.onSequenceProgress(true, i + 1, skipFrames)) {
+				return false;
+			}
+		}
+		for (int i = 0; i < numFrames; ++i) {
+			if (i > 0 || skipFrames > 0) {
+				stepSimulationFrame(deltaSeconds);
+			}
+			if (sequenceProgressListener != null &&
+					!sequenceProgressListener.onSequenceProgress(false, i + 1, numFrames)) {
+				return false;
+			}
+			byte[] png = captureHighResScreenshot(
+					width, height, oversample, preserveBackbufferEdges, tileProgressListener);
+			if (png == null) {
+				return false;
+			}
+			frameListener.onFrame(i, numFrames, png);
+		}
+		return true;
+	}
+
+	// Same as above, but against a caller-supplied SharedCaptureContext -
+	// see captureHighResScreenshotOnSharedContext() just above for why
+	// that means reusing the live `device` field (reset first) rather
+	// than a fresh one, and HighResCaptureService for the caller. The
+	// plain captureHighResScreenshotSequence() above already resolves
+	// back to that same `device` field internally (via the 5-arg
+	// captureHighResScreenshot() overload), so once the shared context
+	// is current and the state cache is reset, it needs no further
+	// special-casing - everything it calls, including
+	// stepSimulationFrame()'s use of renderPipeline, already runs
+	// against whatever context is current on this thread.
+	//
+	// Same thread-affinity and no-concurrent-live-rendering requirements
+	// as captureHighResScreenshotOnSharedContext() apply here too, for
+	// the whole duration of the sequence (not just one call) -
+	// stepSimulationFrame() advances this renderer's actual shared
+	// simulation state (BuiltinUniforms' paused clock, the ping-pong
+	// backbuffer), so it's never safe to interleave with the live GL
+	// thread doing its own rendering against the same state, even
+	// briefly between frames.
+	public boolean captureHighResScreenshotSequenceOnSharedContext(
+			@NonNull SharedCaptureContext sharedContext, int width, int height, int oversample,
+			boolean preserveBackbufferEdges, int skipFrames, int numFrames, float virtualFps,
+			@Nullable HighResProgressListener tileProgressListener,
+			@Nullable SequenceProgressListener sequenceProgressListener,
+			@NonNull FrameListener frameListener) {
+		if (!sharedContext.makeCurrent()) {
+			return false;
+		}
+		device.resetState();
+		return captureHighResScreenshotSequence(width, height, oversample, preserveBackbufferEdges,
+				skipFrames, numFrames, virtualFps, tileProgressListener, sequenceProgressListener,
+				frameListener);
 	}
 
 	private void resetFps() {

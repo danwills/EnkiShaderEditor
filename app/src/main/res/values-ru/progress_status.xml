@@ -1,0 +1,18 @@
+<resources>
+	<string-array name="status_skip">
+		<item>Пропуск кадра %1$d из %2$d — перематываем скучную часть</item>
+		<item>Кадр %1$d из %2$d, не сохраняется — просто разминка перед настоящей работой</item>
+	</string-array>
+	<string-array name="status_tile_single">
+		<item>Рендеринг тайла %1$d из %2$d…</item>
+		<item>Тайл %1$d из %2$d — пиксели сами себя не нарисуют</item>
+	</string-array>
+	<string-array name="status_tile_sequence">
+		<item>Кадр %1$d из %2$d, тайл %3$d из %4$d…</item>
+		<item>Кадр %1$d из %2$d, тайл %3$d из %4$d — собираем пиксели как пазл</item>
+	</string-array>
+	<string-array name="status_encoding">
+		<item>Кодирование кадра %1$d из %2$d в видео…</item>
+		<item>Кадр %1$d из %2$d — по сути, флипбук, только модный</item>
+	</string-array>
+</resources>

@@ -1,0 +1,18 @@
+<resources>
+	<string-array name="status_skip">
+		<item>正在跳過第 %1$d / %2$d 影格 — 快轉過無聊的部分</item>
+		<item>第 %1$d / %2$d 影格，不會儲存 — 只是正式開始前熱熱身</item>
+	</string-array>
+	<string-array name="status_tile_single">
+		<item>正在算繪第 %1$d / %2$d 區塊…</item>
+		<item>第 %1$d / %2$d 區塊 — 像素可不會自己畫出來</item>
+	</string-array>
+	<string-array name="status_tile_sequence">
+		<item>第 %1$d / %2$d 影格，第 %3$d / %4$d 區塊…</item>
+		<item>第 %1$d / %2$d 影格，第 %3$d / %4$d 區塊 — 像拼拼圖一樣拼接像素</item>
+	</string-array>
+	<string-array name="status_encoding">
+		<item>正在將第 %1$d / %2$d 影格編碼進影片…</item>
+		<item>第 %1$d / %2$d 影格 — 說白了就是個翻頁動畫書，只是更花俏</item>
+	</string-array>
+</resources>

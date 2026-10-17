@@ -11,6 +11,9 @@
 	<!-- Required (API 34+) to use MediaProjection for system audio capture -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+	<!-- Required (API 34+) to keep a tiled high-res capture running in
+		HighResCaptureService while the app is backgrounded -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 	<!-- Required to import textures on API < 19 from gallery apps
 		that do not use grantUriPermission(); later API's will not
@@ -83,6 +86,10 @@
 		<service
 			android:name=".service.AudioCaptureForegroundService"
 			android:foregroundServiceType="mediaProjection"
+			android:exported="false"/>
+		<service
+			android:name=".service.HighResCaptureService"
+			android:foregroundServiceType="dataSync"
 			android:exported="false"/>
 
 		<activity
