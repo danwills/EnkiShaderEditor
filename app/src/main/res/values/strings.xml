@@ -41,6 +41,17 @@
 	<string name="screenshot_save_and_open">Save and Open</string>
 	<string name="screenshot_copied">Screenshot copied to clipboard</string>
 	<string name="no_app_to_open_image">No app found to open the image</string>
+	<string name="save_at_higher_res">Render At Custom Res</string>
+	<string name="higher_res_option">%1$dx — %2$d×%3$d (~%4$d MB)</string>
+	<string name="higher_res_no_options_fit">No higher-res option fits in available memory on this device</string>
+	<string name="higher_res_capturing">Rendering at higher resolution…</string>
+	<string name="higher_res_custom">Custom resolution…</string>
+	<string name="higher_res_custom_width">Width</string>
+	<string name="higher_res_custom_height">Height</string>
+	<string name="higher_res_custom_invalid">Enter a width and height</string>
+	<string name="higher_res_preserve_backbuffer">Preserve backbuffer-stored values (e.g. row 0) across tiles</string>
+	<string name="higher_res_oversample">Oversampling (x) - renders bigger then resizes down for antialiasing</string>
+	<string name="higher_res_capturing_tiles">Rendering tile %1$d of %2$d…</string>
 	<string name="reacquire_audio">Reacquire system audio</string>
 	<string name="audio_capture_already_working">System audio capture is already working</string>
 	<string name="hide_toolbar">Hide top menu</string>

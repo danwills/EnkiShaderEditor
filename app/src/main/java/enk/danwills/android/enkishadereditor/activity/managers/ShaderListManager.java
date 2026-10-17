@@ -341,6 +341,10 @@ public class ShaderListManager {
 		selectedShaderId = id;
 		shaderAdapter.setSelectedId(id);
 		shaderTreeAdapter.setSelectedId(id);
+		// Selecting a shader - whether the highlighted one or some other
+		// one - is as good a "context has moved on" signal as any, so
+		// the find-shader highlight (if any) doesn't linger past it.
+		setHighlightedShaderId(0);
 	}
 
 	// Scrolls the sidebar to the given shader, expanding tree ancestors
@@ -349,33 +353,44 @@ public class ShaderListManager {
 	// scroll, which crawls one row at a time and can take a very long
 	// time to cross a large library.
 	public void revealShader(long id) {
-		if (treeMode) {
-			int position = shaderTreeAdapter.revealShader(id);
-			if (position >= 0) {
-				listView.setSelection(position);
-			}
+		int position = findRevealPosition(id);
+		if (position < 0) {
 			return;
+		}
+		// Posted rather than called directly - setSelection() right
+		// after a layout-affecting change (the tree adapter's
+		// notifyDataSetChanged() above, or the drawer having just been
+		// opened by the caller) can get silently dropped because the
+		// ListView hasn't actually re-measured against the new state
+		// yet; posting runs it after that pending layout pass instead.
+		listView.post(() -> listView.setSelection(position));
+	}
+
+	private int findRevealPosition(long id) {
+		if (treeMode) {
+			return shaderTreeAdapter.revealShader(id);
 		}
 		List<ShaderInfo> shaders = shaderAdapter.getShaders();
 		for (int i = 0; i < shaders.size(); ++i) {
 			if (shaders.get(i).id() == id) {
-				listView.setSelection(i);
-				return;
+				return i;
 			}
 		}
+		return -1;
 	}
 
-	private final Handler matchHighlightHandler = new Handler(Looper.getMainLooper());
-	private final Runnable clearMatchHighlightRunnable = () -> setHighlightedShaderId(0);
-
-	// Scrolls to and briefly tints the given shader's row - the sidebar
+	// Scrolls to and outlines the given shader's row - the sidebar
 	// counterpart to the editor's own found-it ring, used while browsing
-	// Find Shader's results.
+	// Find Shader's results. Persists (no auto-clear timer) until the
+	// user picks a shader - see setSelectedShaderId() - or calls
+	// clearHighlightedShader() directly.
 	public void revealAndHighlightShader(long id) {
 		revealShader(id);
 		setHighlightedShaderId(id);
-		matchHighlightHandler.removeCallbacks(clearMatchHighlightRunnable);
-		matchHighlightHandler.postDelayed(clearMatchHighlightRunnable, 1200);
+	}
+
+	public void clearHighlightedShader() {
+		setHighlightedShaderId(0);
 	}
 
 	private void setHighlightedShaderId(long id) {

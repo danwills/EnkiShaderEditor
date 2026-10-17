@@ -201,24 +201,7 @@ final class ShaderRenderPipeline {
 	// expect, and BGRA/RGBA channel order is swapped to Bitmap's ARGB.
 	@Nullable
 	byte[] readPixelsAsPng(int width, int height) {
-		final int pixels = width * height;
-		final int[] rgba = new int[pixels];
-		final IntBuffer buffer = IntBuffer.wrap(rgba);
-		device.readPixels(0, 0, width, height, buffer);
-
-		int[] argb = new int[pixels];
-		for (int y = 0; y < height; ++y) {
-			for (int x = 0; x < width; ++x) {
-				int srcIdx = y * width + x;
-				int destIdx = (height - y - 1) * width + x;
-				int pixel = rgba[srcIdx];
-				argb[destIdx] = 0xff000000
-						| ((pixel << 16) & 0x00ff0000)
-						| (pixel & 0x0000ff00)
-						| ((pixel >> 16) & 0x000000ff);
-			}
-		}
-
+		int[] argb = readPixelsFlippedToArgb(0, 0, width, height);
 		try (var out = new ByteArrayOutputStream()) {
 			Bitmap.createBitmap(
 					argb,
@@ -232,6 +215,34 @@ final class ShaderRenderPipeline {
 		} catch (OutOfMemoryError | IllegalArgumentException | IOException e) {
 			return null;
 		}
+	}
+
+	// Reads back a sub-rectangle of whatever's currently bound, top-down
+	// row order and ARGB channel order (same conversion readPixelsAsPng()
+	// above uses, factored out for callers - like the tiled high-res
+	// capture - that need to assemble several such reads, each possibly
+	// a sub-rectangle of a larger render, into one bigger Bitmap rather
+	// than PNG-encoding each one individually.
+	@NonNull
+	int[] readPixelsFlippedToArgb(int readX, int readY, int width, int height) {
+		final int pixels = width * height;
+		final int[] rgba = new int[pixels];
+		final IntBuffer buffer = IntBuffer.wrap(rgba);
+		device.readPixels(readX, readY, width, height, buffer);
+
+		int[] argb = new int[pixels];
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				int srcIdx = y * width + x;
+				int destIdx = (height - y - 1) * width + x;
+				int pixel = rgba[srcIdx];
+				argb[destIdx] = 0xff000000
+						| ((pixel << 16) & 0x00ff0000)
+						| (pixel & 0x0000ff00)
+						| ((pixel >> 16) & 0x000000ff);
+			}
+		}
+		return argb;
 	}
 
 	private void drawSurface(

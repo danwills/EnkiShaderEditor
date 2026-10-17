@@ -133,8 +133,13 @@ final class ShaderSourcePreparer {
 		return version == 3 && matcher.find() ? matcher.group(0) : null;
 	}
 
+	// Package-private: also used by HighResScreenshotCapture, which needs
+	// to inject its own directive (the per-tile gl_FragCoord offset)
+	// into an already-prepared source the same #version-safe way - a
+	// #version directive (GLES3 shaders) must stay the first line, so a
+	// plain prepend would break any such shader.
 	@NonNull
-	private static PreparedShaderInput addPreprocessorDirective(
+	static PreparedShaderInput addPreprocessorDirective(
 			@NonNull PreparedShaderInput input,
 			@NonNull String directive) {
 		String source = input.getSource();

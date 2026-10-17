@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.media.projection.MediaProjection;
 import android.opengl.GLSurfaceView;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -228,7 +229,77 @@ public class ShaderViewManager {
 	// Blocks until the next frame renders - call off the main thread.
 	@Nullable
 	public byte[] takeScreenshot() {
+		// RENDERMODE_WHEN_DIRTY (set when paused) only draws a frame on an
+		// explicit request, so without this the capture flag below would
+		// never get serviced and the wait would just time out.
+		shaderView.requestRender();
 		return shaderView.getRenderer().captureFullScreenshot();
+	}
+
+	// Blocks until the capture finishes rendering - call off the main
+	// thread. Unlike takeScreenshot() above, this doesn't ride the
+	// normal per-frame render loop (no requestRender() dance needed) -
+	// the capture runs as a standalone GL-thread operation dispatched
+	// via queueEvent(), so it works the same whether playback is
+	// currently paused or not. progressListener (may be null) is called
+	// after every tile; each call also resets this method's own timeout,
+	// so an oversample factor large enough to make the *whole* capture
+	// take minutes doesn't get mistaken for a hang - only actually
+	// making no progress for 60s does.
+	@Nullable
+	public byte[] takeHighResScreenshot(int width, int height, int oversample,
+			boolean preserveBackbufferEdges,
+			@Nullable ShaderRenderer.HighResProgressListener progressListener) {
+		Object lock = new Object();
+		byte[][] resultHolder = new byte[1][];
+		boolean[] doneHolder = new boolean[1];
+		long[] lastProgressMillis = {System.currentTimeMillis()};
+		ShaderRenderer.HighResProgressListener innerListener = (tilesDone, totalTiles) -> {
+			synchronized (lock) {
+				lastProgressMillis[0] = System.currentTimeMillis();
+			}
+			if (progressListener != null) {
+				progressListener.onProgress(tilesDone, totalTiles);
+			}
+		};
+		shaderView.queueEvent(() -> {
+			byte[] result = shaderView.getRenderer()
+					.captureHighResScreenshot(
+						width, height, oversample, preserveBackbufferEdges, innerListener);
+			synchronized (lock) {
+				resultHolder[0] = result;
+				doneHolder[0] = true;
+				lock.notifyAll();
+			}
+		});
+		synchronized (lock) {
+			// Looped against the remaining time on a per-progress-tick
+			// deadline (unlike captureFullScreenshot()'s single wait()) -
+			// tiling a large image can genuinely take several seconds (or,
+			// at a large oversample factor, minutes overall), long enough
+			// that a spurious wakeup (Object.wait() can return early
+			// without being notified or timing out - rare, but real) must
+			// not be mistaken for a timeout and cut the wait short.
+			long timeoutMillis = 60000;
+			while (!doneHolder[0]) {
+				// Already holding `lock` here (this whole loop is inside
+				// the enclosing synchronized block), so this read is safe
+				// without a further nested acquire - same monitor as the
+				// write in innerListener above.
+				long remaining = (lastProgressMillis[0] + timeoutMillis) - System.currentTimeMillis();
+				if (remaining <= 0) {
+					Log.e("HighResCapture", "takeHighResScreenshot: timed out waiting for GL thread");
+					return null;
+				}
+				try {
+					lock.wait(remaining);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return null;
+				}
+			}
+			return resultHolder[0];
+		}
 	}
 
 	public long getLastCompileNanos() {

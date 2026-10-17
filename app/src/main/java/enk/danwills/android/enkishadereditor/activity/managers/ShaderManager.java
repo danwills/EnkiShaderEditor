@@ -48,6 +48,15 @@ public class ShaderManager {
 	private boolean isModified = false;
 	@Nullable
 	private ShaderProjectSession currentProjectSession;
+	// Notified whenever applyProjectSession() below actually switches
+	// what's loaded - e.g. so the caller can drop any editor-state
+	// (like a Find-in-Shader ring) that's tied to the shader just left.
+	@Nullable
+	private Runnable onShaderSwitchedListener;
+
+	public void setOnShaderSwitchedListener(@Nullable Runnable listener) {
+		onShaderSwitchedListener = listener;
+	}
 
 	public ShaderManager(@NonNull AppCompatActivity activity,
 			EditorFragment editorFragment,
@@ -325,6 +334,9 @@ public class ShaderManager {
 		shaderViewManager.setProjectSession(projectSession);
 		updatePendingCrashShaderId();
 		setModified(false);
+		if (onShaderSwitchedListener != null) {
+			onShaderSwitchedListener.run();
+		}
 	}
 
 	private void updatePendingCrashShaderId() {

@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.activity;
 
+import android.app.ActivityManager;
 import android.app.WallpaperManager;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
@@ -15,15 +16,20 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -159,6 +165,12 @@ public class MainActivity extends AppCompatActivity {
 	// so repeated searches don't have to be re-typed from scratch.
 	private final EditorSearchState findInShaderState = new EditorSearchState();
 	private final ShaderSearchState findShaderState = new ShaderSearchState();
+	// Offsets of the Find-in-Shader match the ring overlay is currently
+	// tracking (-1 when none), so the scroll listener wired up in
+	// onCreate() can keep it aligned with the actual text as the editor
+	// scrolls underneath it - see repositionFindMatchRing().
+	private int trackedFindMatchStart = -1;
+	private int trackedFindMatchLength = 0;
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
 	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
 	// Steps back through the UI one layer at a time instead of the
@@ -247,6 +259,8 @@ public class MainActivity extends AppCompatActivity {
 				uiManager,
 				dataSource,
 				createShaderViewListener());
+		shaderManager.setOnShaderSwitchedListener(this::clearFindMatchRing);
+		uiManager.setOnDrawerOpenedListener(this::clearFindMatchRing);
 
 		MainMenuManager mainMenuManager = new MainMenuManager(
 				this,
@@ -300,9 +314,36 @@ public class MainActivity extends AppCompatActivity {
 		});
 		editorFragment.setOnTextModifiedListener(() -> {
 			shaderManager.setModified(true);
-			editorFragment.clearMatchHighlight();
+			clearFindMatchRing();
 		});
 		editorFragment.setCodeCompletionListener(extraKeysManager::setCompletions);
+		editorFragment.setOnScrollChangedListener(this::repositionFindMatchRing);
+	}
+
+	// Keeps the Find-in-Shader ring aligned with its match as the editor
+	// scrolls underneath it (vertically or horizontally) - without this
+	// the ring stays at a fixed screen position while the matched text
+	// moves out from under it. A no-op once nothing is tracked (see
+	// trackedFindMatchStart).
+	private void repositionFindMatchRing() {
+		if (trackedFindMatchStart < 0) {
+			return;
+		}
+		Rect bounds = editorFragment.getMatchBoundsOnScreen(
+				trackedFindMatchStart, trackedFindMatchLength);
+		if (bounds != null) {
+			uiManager.repositionSearchMatch(bounds);
+		}
+	}
+
+	// Clears the Find-in-Shader ring/highlight and stops tracking its
+	// match - called whenever the context it was found in goes stale:
+	// an actual source edit, switching to a different shader, a fresh
+	// compile, or reopening either find dialog for a new search.
+	private void clearFindMatchRing() {
+		editorFragment.clearMatchHighlight();
+		uiManager.hideSearchMatch();
+		trackedFindMatchStart = -1;
 	}
 
 	@Override
@@ -937,6 +978,7 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void showFindInShaderDialog() {
+		clearFindMatchRing();
 		View view = getLayoutInflater().inflate(R.layout.dialog_find_in_shader, null);
 		EditText queryView = view.findViewById(R.id.query);
 		TextView resultPosition = view.findViewById(R.id.result_position);
@@ -974,6 +1016,13 @@ public class MainActivity extends AppCompatActivity {
 		Runnable showCurrentMatch = () -> {
 			int start = state.matches.get(state.index);
 			int length = state.query.length();
+			// Set before any scrolling below so that if selectMatch()'s
+			// focus change triggers the framework's own (possibly
+			// deferred) scroll-into-view, repositionFindMatchRing() -
+			// wired to every scroll change - has the right target to
+			// snap the ring to rather than stale/absent state.
+			trackedFindMatchStart = start;
+			trackedFindMatchLength = length;
 			// Scrolls the match to just below the dialog instead of
 			// wherever a generic "bring into view" would leave it -
 			// otherwise easy to miss since the dialog covers the top of
@@ -1216,6 +1265,244 @@ public class MainActivity extends AppCompatActivity {
 		}, "ScreenshotCapture").start();
 	}
 
+	// Multipliers of the device's own screen resolution offered by the
+	// picker below - only those whose final ARGB_8888 bitmap would stay
+	// within a conservative share of this app's heap budget are actually
+	// shown (larger multipliers only need *more* memory, so the first
+	// one that doesn't fit means none of the later, bigger ones would
+	// either).
+	// 1x deliberately omitted - that's just a plain screenshot, already
+	// covered by "Just Save"/"Save and Open" on the dialog this picker
+	// opens from.
+	private static final int[] HIGHER_RES_MULTIPLIERS = {2, 4, 6, 8};
+	// android:largeHeap is on specifically so this has real headroom to
+	// work with - getLargeMemoryClass() (not getMemoryClass()) reports
+	// what that's actually worth on this device.
+	private static final double HIGHER_RES_MAX_HEAP_FRACTION = 0.6;
+
+	// wasPaused: the shader's pause state from *before* this whole Save
+	// At Higher Res flow started (threaded in from showScreenshotActionsDialog,
+	// which already paused it the same way the normal screenshot does) -
+	// kept paused continuously through this picker, the capture, and the
+	// save, only restored once everything's actually done (see
+	// runHighResCapture()'s onComplete callback) - not released early
+	// just because a dialog in the middle of the flow got dismissed.
+	private void showSaveAtHigherResDialog(boolean wasPaused) {
+		DisplayMetrics metrics = getResources().getDisplayMetrics();
+		int screenWidth = metrics.widthPixels;
+		int screenHeight = metrics.heightPixels;
+
+		ActivityManager activityManager =
+				(ActivityManager) getSystemService(ACTIVITY_SERVICE);
+		long heapBudgetBytes =
+				(activityManager != null ? activityManager.getLargeMemoryClass() : 256)
+						* 1024L * 1024L;
+		long maxBitmapBytes = (long) (heapBudgetBytes * HIGHER_RES_MAX_HEAP_FRACTION);
+
+		List<Integer> multipliers = new ArrayList<>();
+		List<String> labels = new ArrayList<>();
+		for (int multiplier : HIGHER_RES_MULTIPLIERS) {
+			long width = (long) screenWidth * multiplier;
+			long height = (long) screenHeight * multiplier;
+			long bytes = width * height * 4;
+			if (bytes > maxBitmapBytes) {
+				break;
+			}
+			multipliers.add(multiplier);
+			labels.add(getString(R.string.higher_res_option,
+					multiplier, width, height, bytes / (1024 * 1024)));
+		}
+
+		View view = getLayoutInflater().inflate(R.layout.dialog_higher_res_picker, null);
+		RadioGroup optionsGroup = view.findViewById(R.id.resolution_options);
+		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
+		if (multipliers.isEmpty()) {
+			view.findViewById(R.id.no_options_message).setVisibility(View.VISIBLE);
+		} else {
+			for (int i = 0; i < labels.size(); ++i) {
+				RadioButton button = new RadioButton(this);
+				button.setId(View.generateViewId());
+				button.setText(labels.get(i));
+				optionsGroup.addView(button);
+				if (i == 0) {
+					button.setChecked(true);
+				}
+			}
+		}
+
+		// Plain custom buttons at the bottom of the view (not AlertDialog's
+		// built-in slots) - those reorder depending on whether Android
+		// lays them out in a row or stacks them vertically, which isn't
+		// reliably under our control, making "Cancel last" unreliable
+		// via setPositiveButton/etc. alone.
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.save_at_higher_res)
+				.setView(view)
+				.setOnCancelListener(d -> setShaderPaused(wasPaused))
+				.show();
+		view.findViewById(R.id.higher_res_custom_button).setOnClickListener(v -> {
+			dialog.dismiss();
+			showCustomResolutionDialog(wasPaused);
+		});
+		Button okButton = view.findViewById(R.id.higher_res_ok);
+		if (multipliers.isEmpty()) {
+			okButton.setVisibility(View.GONE);
+		} else {
+			okButton.setOnClickListener(v -> {
+				dialog.dismiss();
+				int checkedIndex = optionsGroup.indexOfChild(
+						optionsGroup.findViewById(optionsGroup.getCheckedRadioButtonId()));
+				int multiplier = multipliers.get(Math.max(0, checkedIndex));
+				runHighResCapture(screenWidth * multiplier, screenHeight * multiplier, 1,
+						preserveBackbufferBox.isChecked(), wasPaused);
+			});
+		}
+		view.findViewById(R.id.higher_res_cancel).setOnClickListener(v -> {
+			dialog.dismiss();
+			setShaderPaused(wasPaused);
+		});
+	}
+
+	// Any resolution, not just a multiplier of the screen - still tiled
+	// the same way, so there's no upper bound beyond what the device's
+	// memory can actually hold (see HighResScreenshotCapture).
+	private void showCustomResolutionDialog(boolean wasPaused) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_custom_resolution, null);
+		EditText widthView = view.findViewById(R.id.custom_width);
+		EditText heightView = view.findViewById(R.id.custom_height);
+		EditText oversampleView = view.findViewById(R.id.custom_oversample);
+		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
+
+		// Select-all on focus for every field, so tabbing/tapping in
+		// immediately lets typing replace the old value instead of
+		// appending to it.
+		widthView.setOnFocusChangeListener((v, hasFocus) -> {
+			if (hasFocus) {
+				widthView.selectAll();
+			}
+		});
+		heightView.setOnFocusChangeListener((v, hasFocus) -> {
+			if (hasFocus) {
+				// Defaults height to a square (same as width) the first
+				// time it's reached with width already filled in and
+				// height still blank - still freely overwritable since
+				// it's selected, same as the other fields.
+				if (heightView.getText().toString().isBlank() &&
+						!widthView.getText().toString().isBlank()) {
+					heightView.setText(widthView.getText());
+				}
+				heightView.selectAll();
+			}
+		});
+		oversampleView.setOnFocusChangeListener((v, hasFocus) -> {
+			if (hasFocus) {
+				oversampleView.selectAll();
+			}
+		});
+
+		// Plain custom buttons - see showSaveAtHigherResDialog().
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.higher_res_custom)
+				.setView(view)
+				.setOnCancelListener(d -> setShaderPaused(wasPaused))
+				.show();
+		view.findViewById(R.id.custom_res_ok).setOnClickListener(v -> {
+			String widthText = widthView.getText().toString();
+			String heightText = heightView.getText().toString();
+			// Same square default as the focus-change handler above, as
+			// a fallback for going straight from width to OK without
+			// ever focusing the height field.
+			if (heightText.isBlank() && !widthText.isBlank()) {
+				heightText = widthText;
+			}
+			int width = parsePositiveInt(widthText);
+			int height = parsePositiveInt(heightText);
+			int oversample = Math.max(1, parsePositiveInt(oversampleView.getText().toString()));
+			if (width <= 0 || height <= 0) {
+				Toast.makeText(this, R.string.higher_res_custom_invalid, Toast.LENGTH_SHORT).show();
+				setShaderPaused(wasPaused);
+				dialog.dismiss();
+				return;
+			}
+			dialog.dismiss();
+			runHighResCapture(width, height, oversample, preserveBackbufferBox.isChecked(), wasPaused);
+		});
+		view.findViewById(R.id.custom_res_cancel).setOnClickListener(v -> {
+			dialog.dismiss();
+			setShaderPaused(wasPaused);
+		});
+	}
+
+	private static int parsePositiveInt(@NonNull String text) {
+		try {
+			return Integer.parseInt(text.trim());
+		} catch (NumberFormatException e) {
+			return -1;
+		}
+	}
+
+	// wasPaused: see showSaveAtHigherResDialog() - the pause state from
+	// before the whole flow started, restored only once the capture AND
+	// the save (and whatever the chosen action does after - here always
+	// Save and Open) have both finished, so the shader stays still for
+	// the entire flow rather than resuming the moment pixels are read
+	// back. Tiling a large image can take anywhere from a couple of
+	// seconds to minutes (large oversample factors especially), so the
+	// progress dialog switches from indeterminate to a tile-count
+	// progress bar as soon as the first progress callback arrives.
+	private void runHighResCapture(int width, int height, int oversample,
+			boolean preserveBackbufferEdges, boolean wasPaused) {
+		setShaderPaused(true);
+		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
+		TextView progressMessage = progressView.findViewById(R.id.message);
+		progressMessage.setText(R.string.higher_res_capturing);
+		View indeterminateBar = progressView.findViewById(R.id.progress_indeterminate);
+		ProgressBar determinateBar = progressView.findViewById(R.id.progress_determinate);
+		AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
+				.setView(progressView)
+				.setCancelable(false)
+				.show();
+		// A tiled capture can run for several seconds (or, at a large
+		// oversample factor, minutes) entirely on the GL thread. Without
+		// this, a screen timeout mid-capture lets Android tear down the
+		// GLSurfaceView's EGL context from under it (same as backgrounding
+		// the app) - every GL object the capture was still using becomes
+		// invalid, and uniform/readback calls start returning garbage for
+		// whatever tiles hadn't rendered yet. Cleared once the capture
+		// (success or failure) is done, below.
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		ShaderRenderer.HighResProgressListener progressListener = (tilesDone, totalTiles) ->
+				runOnUiThread(() -> {
+					indeterminateBar.setVisibility(View.GONE);
+					determinateBar.setVisibility(View.VISIBLE);
+					determinateBar.setMax(totalTiles);
+					determinateBar.setProgress(tilesDone);
+					progressMessage.setText(
+							getString(R.string.higher_res_capturing_tiles, tilesDone, totalTiles));
+				});
+		new Thread(() -> {
+			byte[] png = shaderViewManager.takeHighResScreenshot(
+					width, height, oversample, preserveBackbufferEdges, progressListener);
+			runOnUiThread(() -> {
+				getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+				progressDialog.dismiss();
+				if (png == null) {
+					Toast.makeText(this, R.string.screenshot_save_failed, Toast.LENGTH_SHORT).show();
+					setShaderPaused(wasPaused);
+					return;
+				}
+				// Straight to Save and Open (no action picker) - by the
+				// time someone's picked a resolution and waited out the
+				// tiled render, they want to see the result, not choose
+				// again from a dialog they've effectively already been
+				// through once for this capture. Pause is only restored
+				// once this (the save itself) is also done.
+				handleScreenshotAction(png, ScreenshotAction.SAVE_AND_OPEN,
+						() -> setShaderPaused(wasPaused));
+			});
+		}, "HighResScreenshotCapture").start();
+	}
+
 	private enum ScreenshotAction {COPY, SAVE, SAVE_AND_OPEN}
 
 	private void showScreenshotActionsDialog(@NonNull byte[] png, boolean wasPaused) {
@@ -1237,6 +1524,18 @@ public class MainActivity extends AppCompatActivity {
 			dialog.dismiss();
 			handleScreenshotAction(png, ScreenshotAction.SAVE_AND_OPEN);
 		});
+		view.findViewById(R.id.screenshot_higher_res).setOnClickListener(v -> {
+			// Listener cleared first - the dismiss below would otherwise
+			// restore pause state to whatever it was before this whole
+			// flow started, which (if the shader wasn't already paused)
+			// would briefly un-pause it right as the resolution picker
+			// comes up. runHighResCapture() is the only thing that
+			// should ever restore it now, once the capture+save is fully
+			// done - see showSaveAtHigherResDialog().
+			dialog.setOnDismissListener(null);
+			dialog.dismiss();
+			showSaveAtHigherResDialog(wasPaused);
+		});
 		view.findViewById(R.id.screenshot_cancel).setOnClickListener(v -> dialog.dismiss());
 	}
 
@@ -1246,6 +1545,17 @@ public class MainActivity extends AppCompatActivity {
 	// without needing a separate FileProvider/cache-file setup just for
 	// the copy-only case).
 	private void handleScreenshotAction(@NonNull byte[] png, @NonNull ScreenshotAction action) {
+		handleScreenshotAction(png, action, () -> {
+		});
+	}
+
+	// onComplete runs on the UI thread once the save (and whatever the
+	// action does with it after - clipboard/open) has finished, success
+	// or failure - see runHighResCapture(), which uses this to keep the
+	// shader paused for the whole save instead of restoring playback the
+	// instant the pixels are captured.
+	private void handleScreenshotAction(
+			@NonNull byte[] png, @NonNull ScreenshotAction action, @NonNull Runnable onComplete) {
 		new Thread(() -> {
 			ScreenshotSaver.SavedScreenshot saved =
 					Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
@@ -1254,6 +1564,7 @@ public class MainActivity extends AppCompatActivity {
 			runOnUiThread(() -> {
 				if (saved == null) {
 					Toast.makeText(this, R.string.screenshot_save_failed, Toast.LENGTH_SHORT).show();
+					onComplete.run();
 					return;
 				}
 				switch (action) {
@@ -1270,9 +1581,17 @@ public class MainActivity extends AppCompatActivity {
 						Toast.makeText(this,
 								getString(R.string.screenshot_saved, saved.filename()),
 								Toast.LENGTH_SHORT).show();
+						// NEW_TASK (+ MULTIPLE_TASK so it doesn't just fold
+						// into some other already-running task of the
+						// viewer app) - the viewer then gets its own entry
+						// in the recent-apps switcher, so backing out of it
+						// to return here means alt-tab/recents, not this
+						// Activity's own back stack.
 						Intent viewIntent = new Intent(Intent.ACTION_VIEW)
 								.setDataAndType(saved.uri(), "image/png")
-								.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+								.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+								.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+								.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
 						try {
 							startActivity(viewIntent);
 						} catch (ActivityNotFoundException e) {
@@ -1281,6 +1600,7 @@ public class MainActivity extends AppCompatActivity {
 						}
 					}
 				}
+				onComplete.run();
 			});
 		}, "ScreenshotSave").start();
 	}
@@ -1605,6 +1925,7 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void showFindShaderDialog() {
+		clearFindMatchRing();
 		View view = getLayoutInflater().inflate(R.layout.dialog_find_shader, null);
 		EditText queryView = view.findViewById(R.id.query);
 		CheckBox searchSourceBox = view.findViewById(R.id.search_source);
@@ -1651,7 +1972,14 @@ public class MainActivity extends AppCompatActivity {
 
 		Runnable showCurrentMatch = () -> {
 			DataRecords.ShaderInfo match = state.matches.get(state.index);
-			shaderListManager.revealAndHighlightShader(match.id());
+			// Opened (not just scrolled) so the reveal+highlight below is
+			// actually visible - otherwise it happens behind a closed
+			// drawer the user never sees move. Deferred until the drawer
+			// has actually finished opening (not just requested to) -
+			// scrolling the list to a row while the drawer's open
+			// animation is still mid-flight races its own layout pass
+			// and silently has no visible effect.
+			uiManager.openDrawer(() -> shaderListManager.revealAndHighlightShader(match.id()));
 			matchCount.setVisibility(View.GONE);
 			resultRow.setVisibility(View.VISIBLE);
 			resultTitle.setText(match.getTitle());
@@ -1912,6 +2240,7 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void doRunShader(@NonNull String src) {
+		clearFindMatchRing();
 		var projectSession = shaderManager.getEditedProjectSession(src);
 		editorFragment.clearError();
 		if (ShaderEditorApp.preferences.doesSaveOnRun()) {

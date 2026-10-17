@@ -41,6 +41,17 @@
 	<string name="screenshot_save_and_open">Сохранить и открыть</string>
 	<string name="screenshot_copied">Скриншот скопирован в буфер обмена</string>
 	<string name="no_app_to_open_image">Не найдено приложение для открытия изображения</string>
+	<string name="save_at_higher_res">Рендер с произвольным разрешением</string>
+	<string name="higher_res_option">%1$dx — %2$d×%3$d (~%4$d МБ)</string>
+	<string name="higher_res_no_options_fit">Ни один вариант высокого разрешения не помещается в доступную память этого устройства</string>
+	<string name="higher_res_capturing">Рендеринг в высоком разрешении…</string>
+	<string name="higher_res_custom">Произвольное разрешение…</string>
+	<string name="higher_res_custom_width">Ширина</string>
+	<string name="higher_res_custom_height">Высота</string>
+	<string name="higher_res_custom_invalid">Введите ширину и высоту</string>
+	<string name="higher_res_preserve_backbuffer">Сохранять значения из backbuffer (напр. строка 0) между тайлами</string>
+	<string name="higher_res_oversample">Передискретизация (x) - рендер в большем размере с последующим уменьшением для сглаживания</string>
+	<string name="higher_res_capturing_tiles">Рендеринг тайла %1$d из %2$d…</string>
 	<string name="reacquire_audio">Повторный захват системного звука</string>
 	<string name="audio_capture_already_working">Захват системного звука уже работает</string>
 	<string name="hide_toolbar">Скрыть верхнее меню</string>

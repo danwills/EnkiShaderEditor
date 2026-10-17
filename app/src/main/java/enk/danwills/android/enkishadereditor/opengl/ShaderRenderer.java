@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
@@ -15,6 +16,8 @@ import android.view.WindowManager;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
@@ -31,6 +34,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// system playback audio" preference is on, but no MediaProjection
 		// consent has been granted yet. Invoked on the GL thread.
 		void onRequestAudioCapture();
+	}
+
+	// Reports tile-by-tile progress during captureHighResScreenshot()
+	// below - called synchronously on the GL thread between tiles, same
+	// as every other renderer callback; implementations needing to touch
+	// UI must hop to the UI thread themselves.
+	public interface HighResProgressListener {
+		void onProgress(int tilesDone, int totalTiles);
 	}
 
 	public static final String UNIFORM_AUDIO_SPECTRUM = "audioSpectrum";
@@ -422,6 +433,47 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return null;
 			}
 			return fullImage;
+		}
+	}
+
+	// Renders the current shader at `width`x`height` times `oversample`
+	// (independent of the screen's actual resolution and the live
+	// `quality` setting), then - if oversample > 1 - box-filter
+	// downsamples back to `width`x`height` for antialiasing, and returns
+	// an encoded PNG, or null on any failure. Unlike
+	// captureFullScreenshot() above, this doesn't hook into the normal
+	// per-frame render loop at all - callers (see
+	// ShaderViewManager.takeHighResScreenshot()) must invoke this
+	// directly on the GL thread (e.g. via GLSurfaceView.queueEvent()),
+	// not from onDrawFrame(). See HighResScreenshotCapture for why this
+	// needs to be tiled rather than one single large render.
+	@Nullable
+	public byte[] captureHighResScreenshot(int width, int height, int oversample,
+			boolean preserveBackbufferEdges, @Nullable HighResProgressListener progressListener) {
+		if (!programManager.hasPreparedShader()) {
+			return null;
+		}
+		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
+				? null
+				: progressListener::onProgress;
+		var bitmap = HighResScreenshotCapture.capture(
+				device, programManager, renderPipeline, builtinUniforms,
+				glVersion, width * oversample, height * oversample,
+				preserveBackbufferEdges, innerListener);
+		if (bitmap == null) {
+			return null;
+		}
+		if (oversample > 1) {
+			bitmap = HighResScreenshotCapture.boxDownscale(bitmap, width, height);
+			if (bitmap == null) {
+				return null;
+			}
+		}
+		try (var out = new ByteArrayOutputStream()) {
+			bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+			return out.toByteArray();
+		} catch (IOException | OutOfMemoryError e) {
+			return null;
 		}
 	}
 

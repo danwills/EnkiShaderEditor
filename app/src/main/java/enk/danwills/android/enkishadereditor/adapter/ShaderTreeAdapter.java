@@ -2,6 +2,7 @@ package enk.danwills.android.enkishadereditor.adapter;
 
 import android.content.Context;
 import android.graphics.BitmapFactory;
+import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -40,7 +41,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
 	private final int textColorGroup;
-	private final int highlightColor;
+	private final Drawable highlightRing;
 	private final int indentPx;
 
 	// Keyed by the token path ("Example/Tasty"), not node identity, so
@@ -73,7 +74,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		// drawer background here is dark, so group labels need a light
 		// color like the other drawer text, just a bit dimmer.
 		textColorGroup = ContextCompat.getColor(context, R.color.drawer_text_unselected);
-		highlightColor = ContextCompat.getColor(context, R.color.search_match);
+		highlightRing = ContextCompat.getDrawable(context, R.drawable.search_match_ring);
 		indentPx = (int) (16 * context.getResources().getDisplayMetrics().density);
 		unnamedGroupLabel = context.getString(R.string.unnamed_shaders_group);
 	}
@@ -284,6 +285,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 			// to a highlighted leaf row would otherwise keep showing
 			// that highlight after being rebound to an unrelated row.
 			root.setBackgroundResource(R.drawable.drawer_item_selector);
+			root.setForeground(null);
 			if (shader != null) {
 				byte[] bytes = shader.thumb();
 				if (bytes != null && bytes.length > 0) {
@@ -293,7 +295,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 				}
 				title.setText(row.node().token);
 				if (shader.id() == highlightedShaderId) {
-					root.setBackgroundColor(highlightColor);
+					root.setForeground(highlightRing);
 				}
 				title.setTextColor(shader.id() == selectedShaderId
 						? textColorSelected

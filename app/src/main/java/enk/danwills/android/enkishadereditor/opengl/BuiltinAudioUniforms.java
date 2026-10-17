@@ -38,6 +38,10 @@ final class BuiltinAudioUniforms {
 	@Nullable
 	private MediaProjection mediaProjection;
 	private boolean needsAudioCaptureConsent;
+	// Set once releaseMediaProjection() has run (Activity being destroyed
+	// for good) - see setMediaProjection() below for why this is needed
+	// in addition to that method already being synchronized.
+	private boolean destroyed;
 
 	BuiltinAudioUniforms(@NonNull Context context) {
 		this.context = context;
@@ -100,8 +104,27 @@ final class BuiltinAudioUniforms {
 	// consumeNeedsAudioCaptureConsent()) has been answered by the user.
 	// A null projection means they declined, or the API level/activity
 	// didn't support asking; either way we keep running on the mic.
+	// mediaProjection can legitimately arrive here well after consent was
+	// granted - MainActivity.onMediaProjectionResult() waits on an extra
+	// async hop (the audio-capture foreground service actually starting)
+	// before calling this, and the Activity can be destroyed during that
+	// window (e.g. the user backs out, or a config change, while that
+	// service is still starting up). Without this check, a MediaProjection
+	// handed to an already-destroyed instance would get registered
+	// (openListenerIfNeeded() below) with nothing left to ever release it -
+	// releaseMediaProjection() already ran and won't run again - leaking
+	// the MediaProjection (and the destroyed Activity's Context with it)
+	// until the process dies. Stopping it immediately instead is the
+	// correct response: there's no renderer left for it to usefully drive.
 	synchronized void setMediaProjection(@Nullable MediaProjection mediaProjection) {
 		Log.i(TAG, "setMediaProjection: " + (mediaProjection != null ? "granted" : "null"));
+		if (destroyed) {
+			if (mediaProjection != null) {
+				Log.i(TAG, "setMediaProjection: already destroyed, stopping it immediately");
+				mediaProjection.stop();
+			}
+			return;
+		}
 		this.mediaProjection = mediaProjection;
 		if (mediaProjection != null && ShaderEditorApp.preferences.useSystemAudio()) {
 			unregisterListener();
@@ -149,6 +172,7 @@ final class BuiltinAudioUniforms {
 	// without a clean pause first (e.g. recovering from a crash),
 	// nothing else ever calls stop() and the whole chain leaks.
 	synchronized void releaseMediaProjection() {
+		destroyed = true;
 		unregisterListener();
 		if (mediaProjection != null) {
 			mediaProjection.stop();

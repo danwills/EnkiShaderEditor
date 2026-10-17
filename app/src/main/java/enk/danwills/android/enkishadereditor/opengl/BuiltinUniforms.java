@@ -218,13 +218,32 @@ final class BuiltinUniforms {
 			return null;
 		}
 
-		long now = System.nanoTime();
+		// Frozen at the moment pauseClock() ran rather than a fresh
+		// System.nanoTime(), while paused - without this, `time`/
+		// `second`/`subsecond` and the system uniforms below kept
+		// advancing by real wall-clock time even though `runtime` (via
+		// runtimeClock, paused separately) correctly froze, which
+		// mattered in practice for the high-res capture: it runs well
+		// after the pause (through a resolution-picker dialog, a tiled
+		// render taking several seconds), so without this the captured
+		// image evaluated the shader at a visibly later moment than what
+		// was actually on screen when the user paused it.
+		long now = pausedAtNanos >= 0 ? pausedAtNanos : System.nanoTime();
 		float delta = (now - startTime) / NS_PER_SECOND;
 
 		bindings.clear();
 		bindFrameUniforms(bindings, delta);
-		bindings.setFloat(ShaderRenderer.UNIFORM_RUNTIME,
-				(float) (runtimeClock.advance(now) / 1000000000.0));
+		// getElapsedNanos() (read-only) rather than advance(now) while
+		// paused - advance() also records `now` as the clock's "last
+		// frame" time for computing the *next* call's delta; mutating
+		// that here (from this capture-only call, while genuinely
+		// unpaused frames aren't happening) would make the next real
+		// frame after resuming see a huge gap back to this frozen `now`
+		// and add the entire paused duration to `runtime` in one jump.
+		long runtimeNanos = pausedAtNanos >= 0
+				? runtimeClock.getElapsedNanos()
+				: runtimeClock.advance(now);
+		bindings.setFloat(ShaderRenderer.UNIFORM_RUNTIME, (float) (runtimeNanos / 1000000000.0));
 		systemUniforms.apply(bindings, now);
 		sensorUniforms.apply(bindings);
 		if (backBufferTexture != null) {

@@ -2,6 +2,7 @@ package enk.danwills.android.enkishadereditor.adapter;
 
 import android.content.Context;
 import android.graphics.BitmapFactory;
+import android.graphics.drawable.Drawable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,7 +23,7 @@ import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 public class ShaderAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
-	private final int highlightColor;
+	private final Drawable highlightRing;
 	private final List<ShaderInfo> shaders = new ArrayList<>();
 	private long selectedShaderId = 0;
 	private long highlightedShaderId = 0;
@@ -30,7 +31,7 @@ public class ShaderAdapter extends BaseAdapter {
 	public ShaderAdapter(Context context) {
 		this.textColorSelected = ContextCompat.getColor(context, R.color.accent);
 		this.textColorUnselected = ContextCompat.getColor(context, R.color.drawer_text_unselected);
-		this.highlightColor = ContextCompat.getColor(context, R.color.search_match);
+		this.highlightRing = ContextCompat.getDrawable(context, R.drawable.search_match_ring);
 	}
 
 	@Override
@@ -114,11 +115,8 @@ public class ShaderAdapter extends BaseAdapter {
 			title.setText(shader.getTitle());
 			title.setTextColor(shader.id() == selectedShaderId ? textColorSelected :
 					textColorUnselected);
-			if (shader.id() == highlightedShaderId) {
-				root.setBackgroundColor(highlightColor);
-			} else {
-				root.setBackgroundResource(R.drawable.drawer_item_selector);
-			}
+			root.setBackgroundResource(R.drawable.drawer_item_selector);
+			root.setForeground(shader.id() == highlightedShaderId ? highlightRing : null);
 		}
 	}
 }

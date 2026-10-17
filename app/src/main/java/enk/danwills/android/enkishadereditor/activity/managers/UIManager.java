@@ -72,6 +72,8 @@ public class UIManager {
 	private boolean fullscreen = false;
 	private boolean toolbarHidden = false;
 	private boolean drawerOpen = false;
+	@Nullable
+	private Runnable onDrawerOpenedListener;
 
 	public UIManager(@NonNull AppCompatActivity activity,
 			@NonNull EditorFragment editorFragment,
@@ -101,6 +103,9 @@ public class UIManager {
 			public void onDrawerOpened(@NonNull View drawerView) {
 				drawerOpen = true;
 				updateShaderTitleLabelVisibility();
+				if (onDrawerOpenedListener != null) {
+					onDrawerOpenedListener.run();
+				}
 			}
 
 			@Override
@@ -450,8 +455,43 @@ public class UIManager {
 		return drawerLayout.isDrawerOpen(GravityCompat.START);
 	}
 
+	// Notified every time the drawer finishes opening, regardless of how
+	// (hamburger tap, swipe, openDrawer()/openDrawer(Runnable)) - for
+	// state that should drop once the sidebar comes up, like the
+	// Find-in-Shader ring no longer being relevant once the editor's
+	// covered.
+	public void setOnDrawerOpenedListener(@Nullable Runnable listener) {
+		onDrawerOpenedListener = listener;
+	}
+
 	public void closeDrawer() {
 		drawerLayout.closeDrawer(GravityCompat.START);
+	}
+
+	public void openDrawer() {
+		drawerLayout.openDrawer(GravityCompat.START);
+	}
+
+	// Like openDrawer(), but runs `onOpened` once the drawer has actually
+	// settled open rather than immediately - opening is an animated
+	// slide, so code that needs the drawer's content laid out at its
+	// final size (e.g. scrolling its list to a specific row) run right
+	// after a plain openDrawer() can race that animation and silently
+	// have no visible effect. Runs `onOpened` synchronously instead if
+	// the drawer is already open.
+	public void openDrawer(@NonNull Runnable onOpened) {
+		if (isDrawerOpen()) {
+			onOpened.run();
+			return;
+		}
+		drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+			@Override
+			public void onDrawerOpened(@NonNull View drawerView) {
+				drawerLayout.removeDrawerListener(this);
+				onOpened.run();
+			}
+		});
+		drawerLayout.openDrawer(GravityCompat.START);
 	}
 
 	public boolean isToolbarHidden() {
@@ -467,27 +507,17 @@ public class UIManager {
 		}
 	}
 
-	// Briefly draws an animated ring around `screenRect` (absolute
-	// screen coordinates, e.g. from ShaderEditor.getMatchBoundsOnScreen())
-	// - pops in with a quick scale-down-to-size + fade-in, holds, then
-	// fades out on its own. Used to make a Find-in-Shader match obvious
-	// at a glance once the editor's scrolled it into view, not just
-	// technically selected.
+	// Draws an animated ring around `screenRect` (absolute screen
+	// coordinates, e.g. from ShaderEditor.getMatchBoundsOnScreen()) -
+	// pops in with a quick scale-down-to-size + fade-in and then stays
+	// put. Used to make a Find-in-Shader match obvious at a glance once
+	// the editor's scrolled it into view, not just technically selected.
+	// Call hideSearchMatch() to remove it (e.g. once the source changes).
 	public void flashSearchMatch(@NonNull Rect screenRect) {
 		if (searchMatchIndicator == null) {
 			return;
 		}
-		ViewGroup parent = (ViewGroup) searchMatchIndicator.getParent();
-		int[] parentLocation = new int[2];
-		parent.getLocationOnScreen(parentLocation);
-
-		int pad = dpToPx(6);
-		ViewGroup.LayoutParams lp = searchMatchIndicator.getLayoutParams();
-		lp.width = screenRect.width() + pad * 2;
-		lp.height = screenRect.height() + pad * 2;
-		searchMatchIndicator.setLayoutParams(lp);
-		searchMatchIndicator.setX(screenRect.left - parentLocation[0] - pad);
-		searchMatchIndicator.setY(screenRect.top - parentLocation[1] - pad);
+		positionSearchMatchIndicator(screenRect);
 
 		searchMatchIndicator.animate().cancel();
 		searchMatchIndicator.setVisibility(View.VISIBLE);
@@ -499,13 +529,41 @@ public class UIManager {
 				.scaleX(1f)
 				.scaleY(1f)
 				.setDuration(220)
-				.withEndAction(() -> searchMatchIndicator.animate()
-						.alpha(0f)
-						.setStartDelay(500)
-						.setDuration(300)
-						.withEndAction(() -> searchMatchIndicator.setVisibility(View.GONE))
-						.start())
 				.start();
+	}
+
+	// Moves the ring already shown by flashSearchMatch() to `screenRect`
+	// without animating or touching visibility/alpha - for keeping it
+	// tracking the match's actual on-screen position as the editor
+	// scrolls underneath it. A no-op if the ring isn't currently shown.
+	public void repositionSearchMatch(@NonNull Rect screenRect) {
+		if (searchMatchIndicator == null || searchMatchIndicator.getVisibility() != View.VISIBLE) {
+			return;
+		}
+		positionSearchMatchIndicator(screenRect);
+	}
+
+	private void positionSearchMatchIndicator(@NonNull Rect screenRect) {
+		ViewGroup parent = (ViewGroup) searchMatchIndicator.getParent();
+		int[] parentLocation = new int[2];
+		parent.getLocationOnScreen(parentLocation);
+
+		int pad = dpToPx(6);
+		ViewGroup.LayoutParams lp = searchMatchIndicator.getLayoutParams();
+		lp.width = screenRect.width() + pad * 2;
+		lp.height = screenRect.height() + pad * 2;
+		searchMatchIndicator.setLayoutParams(lp);
+		searchMatchIndicator.setX(screenRect.left - parentLocation[0] - pad);
+		searchMatchIndicator.setY(screenRect.top - parentLocation[1] - pad);
+	}
+
+	// Removes the ring drawn by flashSearchMatch(), if present.
+	public void hideSearchMatch() {
+		if (searchMatchIndicator == null) {
+			return;
+		}
+		searchMatchIndicator.animate().cancel();
+		searchMatchIndicator.setVisibility(View.GONE);
 	}
 
 	public void showShaderNameOverlay(@Nullable String name) {

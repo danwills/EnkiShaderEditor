@@ -41,6 +41,17 @@
 	<string name="screenshot_save_and_open">Зберегти й відкрити</string>
 	<string name="screenshot_copied">Знімок екрана скопійовано в буфер обміну</string>
 	<string name="no_app_to_open_image">Не знайдено застосунку для відкриття зображення</string>
+	<string name="save_at_higher_res">Рендер у довільній роздільності</string>
+	<string name="higher_res_option">%1$dx — %2$d×%3$d (~%4$d МБ)</string>
+	<string name="higher_res_no_options_fit">Жоден варіант вищої роздільності не вміщається в доступну пам\'ять цього пристрою</string>
+	<string name="higher_res_capturing">Рендеринг у вищій роздільності…</string>
+	<string name="higher_res_custom">Довільна роздільність…</string>
+	<string name="higher_res_custom_width">Ширина</string>
+	<string name="higher_res_custom_height">Висота</string>
+	<string name="higher_res_custom_invalid">Введіть ширину і висоту</string>
+	<string name="higher_res_preserve_backbuffer">Зберігати значення з backbuffer (напр. рядок 0) між тайлами</string>
+	<string name="higher_res_oversample">Передискретизація (x) - рендер у більшому розмірі з подальшим зменшенням для згладжування</string>
+	<string name="higher_res_capturing_tiles">Рендеринг тайла %1$d з %2$d…</string>
 	<string name="reacquire_audio">Повторне захоплення системного звуку</string>
 	<string name="audio_capture_already_working">Захоплення системного звуку вже працює</string>
 	<string name="hide_toolbar">Сховати верхнє меню</string>

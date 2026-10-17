@@ -33,6 +33,15 @@
 		android:text="@string/screenshot_save_and_open"/>
 
 	<Button
+		android:id="@+id/screenshot_higher_res"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_gravity="end"
+		android:gravity="end|center_vertical"
+		android:text="@string/save_at_higher_res"/>
+
+	<Button
 		android:id="@+id/screenshot_cancel"
 		style="@style/BarButton"
 		android:layout_width="match_parent"

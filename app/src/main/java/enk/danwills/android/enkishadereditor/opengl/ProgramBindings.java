@@ -44,13 +44,24 @@ final class ProgramBindings {
 	}
 
 	@NonNull
-	private final GlProgram program;
+	private GlProgram program;
 	@NonNull
 	private final Map<String, UniformValue> uniforms = new LinkedHashMap<>();
 	@NonNull
 	private final Map<String, TextureValue> textures = new LinkedHashMap<>();
 
 	ProgramBindings(@NonNull GlProgram program) {
+		this.program = program;
+	}
+
+	// Lets an already-populated set of uniform/texture values (e.g. a
+	// normal frame's live bindings) be applied against a *different*
+	// compiled program instead - GlDevice.applyBindings() re-resolves
+	// every uniform's location by name against getProgram() on each
+	// call, so this is safe as long as the other program declares the
+	// same uniform names (true for the high-res tile capture's program,
+	// which only prepends a macro to the same prepared source).
+	void retarget(@NonNull GlProgram program) {
 		this.program = program;
 	}
 

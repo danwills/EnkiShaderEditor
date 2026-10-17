@@ -38,6 +38,8 @@ public class EditorFragment extends Fragment {
 	private ShaderEditor.OnTextModifiedListener textModifiedListener;
 	@Nullable
 	private ShaderEditor.CodeCompletionListener codeCompletionListener;
+	@Nullable
+	private Runnable onScrollChangedListener;
 
 	@Override
 	public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle state) {
@@ -63,8 +65,21 @@ public class EditorFragment extends Fragment {
 		setShowLineNumbers(ShaderEditorApp.preferences.showLineNumbers());
 		undoRedo = new UndoRedo(shaderEditor, ShaderEditorApp.editHistory);
 		applyTopInset();
+		// Fires for both the vertical (editorContainer) and horizontal
+		// (wrapping it) scrolling - lets a caller keep something like the
+		// find-match ring overlay tracking the actual text position
+		// instead of drifting off it as the user scrolls.
+		editorContainer.getViewTreeObserver().addOnScrollChangedListener(() -> {
+			if (onScrollChangedListener != null) {
+				onScrollChangedListener.run();
+			}
+		});
 
 		return view;
+	}
+
+	public void setOnScrollChangedListener(@Nullable Runnable listener) {
+		onScrollChangedListener = listener;
 	}
 
 	// Top margin (in px) reserved above the editor so it starts below

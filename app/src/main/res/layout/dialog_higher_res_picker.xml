@@ -1,0 +1,77 @@
+<ScrollView
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical"
+		android:padding="16dp">
+
+		<TextView
+			android:id="@+id/no_options_message"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:text="@string/higher_res_no_options_fit"
+			android:textAppearance="?attr/textAppearanceBody2"
+			android:visibility="gone" />
+
+		<RadioGroup
+			android:id="@+id/resolution_options"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="vertical" />
+
+		<com.google.android.material.divider.MaterialDivider
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginVertical="12dp" />
+
+		<CheckBox
+			android:id="@+id/preserve_backbuffer_edges"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:checked="true"
+			android:text="@string/higher_res_preserve_backbuffer" />
+
+		<com.google.android.material.divider.MaterialDivider
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginVertical="12dp" />
+
+		<!-- Plain custom buttons (not AlertDialog's built-in positive/
+		     negative/neutral slots) - those reorder themselves depending
+		     on whether Android lays them out in a row or stacks them
+		     vertically (not fully under our control), which made
+		     "Cancel last" unreliable. A custom view keeps the order
+		     exactly as declared here regardless. -->
+		<Button
+			android:id="@+id/higher_res_custom_button"
+			style="@style/BarButton"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:gravity="end|center_vertical"
+			android:text="@string/higher_res_custom" />
+
+		<Button
+			android:id="@+id/higher_res_ok"
+			style="@style/BarButton"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:gravity="end|center_vertical"
+			android:text="@android:string/ok" />
+
+		<Button
+			android:id="@+id/higher_res_cancel"
+			style="@style/BarButton"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="end"
+			android:gravity="end|center_vertical"
+			android:text="@android:string/cancel" />
+
+	</LinearLayout>
+</ScrollView>

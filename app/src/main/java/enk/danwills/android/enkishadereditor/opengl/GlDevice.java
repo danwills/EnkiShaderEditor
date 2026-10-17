@@ -74,6 +74,16 @@ final class GlDevice {
 		stateCache.viewportHeight = height;
 	}
 
+	// Largest single dimension (width or height) a 2D texture/renderbuffer
+	// can have on this GPU/driver - used to size tiles for the high-res
+	// screenshot capture, since a target resolution can otherwise easily
+	// exceed what a single texture can hold.
+	int getMaxTextureSize() {
+		int[] result = new int[1];
+		GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE, result, 0);
+		return result[0];
+	}
+
 	@NonNull
 	GlTexture2D createTexture2D() {
 		int[] textures = new int[1];

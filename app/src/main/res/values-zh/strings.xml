@@ -40,6 +40,17 @@
 	<string name="screenshot_save_and_open">保存并打开</string>
 	<string name="screenshot_copied">截图已复制到剪贴板</string>
 	<string name="no_app_to_open_image">未找到可打开图片的应用</string>
+	<string name="save_at_higher_res">以自定义分辨率渲染</string>
+	<string name="higher_res_option">%1$d 倍 — %2$d×%3$d (约 %4$d MB)</string>
+	<string name="higher_res_no_options_fit">此设备可用内存无法容纳任何更高分辨率选项</string>
+	<string name="higher_res_capturing">正在以更高分辨率渲染…</string>
+	<string name="higher_res_custom">自定义分辨率…</string>
+	<string name="higher_res_custom_width">宽度</string>
+	<string name="higher_res_custom_height">高度</string>
+	<string name="higher_res_custom_invalid">请输入宽度和高度</string>
+	<string name="higher_res_preserve_backbuffer">跨图块保留 backbuffer 中存储的值（例如第 0 行）</string>
+	<string name="higher_res_oversample">过采样倍数 (x) - 以更大尺寸渲染后再缩小以实现抗锯齿</string>
+	<string name="higher_res_capturing_tiles">正在渲染第 %1$d / %2$d 块…</string>
 	<string name="reacquire_audio">重新获取系统音频</string>
 	<string name="audio_capture_already_working">系统音频捕获已在正常工作</string>
 	<string name="hide_toolbar">隐藏顶部菜单</string>

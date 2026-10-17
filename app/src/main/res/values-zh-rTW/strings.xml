@@ -40,6 +40,17 @@
 	<string name="screenshot_save_and_open">儲存並開啟</string>
 	<string name="screenshot_copied">螢幕截圖已複製到剪貼簿</string>
 	<string name="no_app_to_open_image">找不到可開啟圖片的應用程式</string>
+	<string name="save_at_higher_res">以自訂解析度算繪</string>
+	<string name="higher_res_option">%1$d 倍 — %2$d×%3$d (約 %4$d MB)</string>
+	<string name="higher_res_no_options_fit">此裝置的可用記憶體無法容納任何更高解析度選項</string>
+	<string name="higher_res_capturing">正在以更高解析度算繪…</string>
+	<string name="higher_res_custom">自訂解析度…</string>
+	<string name="higher_res_custom_width">寬度</string>
+	<string name="higher_res_custom_height">高度</string>
+	<string name="higher_res_custom_invalid">請輸入寬度和高度</string>
+	<string name="higher_res_preserve_backbuffer">跨區塊保留 backbuffer 中儲存的值（例如第 0 列）</string>
+	<string name="higher_res_oversample">超取樣倍數 (x) - 以更大尺寸算繪後再縮小以達到反鋸齒效果</string>
+	<string name="higher_res_capturing_tiles">正在算繪第 %1$d / %2$d 區塊…</string>
 	<string name="reacquire_audio">重新取得系統音訊</string>
 	<string name="audio_capture_already_working">系統音訊擷取已在正常運作</string>
 	<string name="hide_toolbar">隱藏頂部選單</string>

@@ -193,6 +193,15 @@ final class RendererProgramManager {
 		return preparedShaderSource.getBackBufferParameters();
 	}
 
+	// For the high-res tile capture, which needs to compile its own
+	// variant of the main program (same prepared source, with a tile-
+	// offset macro prepended) alongside the normal one reload() above
+	// builds - see HighResScreenshotCapture.
+	@NonNull
+	PreparedShaderSource getPreparedShaderSource() {
+		return preparedShaderSource;
+	}
+
 	float getFTimeMax() {
 		return preparedShaderSource.getFTimeMax();
 	}

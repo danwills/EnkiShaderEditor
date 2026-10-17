@@ -235,10 +235,14 @@ public class MainMenuManager {
 	private void setClickListener(int id, @NonNull Runnable action,
 			boolean dismiss) {
 		popupWindow.getContentView().findViewById(id).setOnClickListener(v -> {
-			action.run();
+			// Dismissed before running the action (not after) - an action
+			// that shows its own dialog while this popup's window is
+			// still up can otherwise race the popup's dismissal and never
+			// actually become visible.
 			if (dismiss) {
 				popupWindow.dismiss();
 			}
+			action.run();
 		});
 	}
 
@@ -248,8 +252,11 @@ public class MainMenuManager {
 
 	private void setMoreOptionsClickListener(int id, @NonNull Runnable action) {
 		moreOptionsPopupWindow.getContentView().findViewById(id).setOnClickListener(v -> {
-			action.run();
+			// See setClickListener() above - dismiss first, then act, so
+			// an action that shows its own dialog doesn't race this
+			// popup's dismissal.
 			moreOptionsPopupWindow.dismiss();
+			action.run();
 		});
 	}
 }
