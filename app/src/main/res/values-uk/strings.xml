@@ -53,6 +53,7 @@
 	<string name="higher_res_custom_height">Висота</string>
 	<string name="higher_res_custom_invalid">Введіть ширину і висоту</string>
 	<string name="higher_res_preserve_backbuffer">Зберігати значення з backbuffer (напр. рядок 0) між тайлами</string>
+	<string name="higher_res_match_device_playback">Відповідність відтворенню на пристрої - вибір пресету "x роздільності пристрою" вище також встановлює передискретизацію 1, розмір блоку Max і масштаб відео так, щоб збережене відео відтворювалося в повній роздільності пристрою</string>
 	<string name="higher_res_oversample">Передискретизація (x) - рендер у більшому розмірі з подальшим зменшенням для згладжування</string>
 	<string name="higher_res_tile_order">Порядок плиток</string>
 	<string name="higher_res_bucket_size">Розмір блоку</string>

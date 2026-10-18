@@ -52,6 +52,7 @@
 	<string name="higher_res_custom_height">高度</string>
 	<string name="higher_res_custom_invalid">請輸入寬度和高度</string>
 	<string name="higher_res_preserve_backbuffer">跨區塊保留 backbuffer 中儲存的值（例如第 0 列）</string>
+	<string name="higher_res_match_device_playback">符合裝置播放 - 選擇上方的「x 裝置解析度」預設時，同時將超取樣倍數設為 1、區塊大小設為 Max、影片縮放倍數設為可讓已儲存的影片以裝置完整解析度播放</string>
 	<string name="higher_res_oversample">超取樣倍數 (x) - 以更大尺寸算繪後再縮小以達到反鋸齒效果</string>
 	<string name="higher_res_tile_order">區塊順序</string>
 	<string name="higher_res_bucket_size">區塊大小</string>

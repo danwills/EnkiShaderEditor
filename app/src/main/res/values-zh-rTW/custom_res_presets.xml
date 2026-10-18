@@ -1,15 +1,15 @@
 <resources>
 	<string-array name="custom_res_presets">
-		<item>自訂</item>
-		<item>1/32× 目前模式</item>
-		<item>1/16× 目前模式</item>
-		<item>1/8× 目前模式</item>
-		<item>1/4× 目前模式</item>
-		<item>0.5× 目前模式</item>
-		<item>1× 目前模式</item>
-		<item>2× 目前模式</item>
-		<item>4× 目前模式</item>
-		<item>8× 目前模式</item>
+		<item>解析度</item>
+		<item>1/32× 裝置解析度</item>
+		<item>1/16× 裝置解析度</item>
+		<item>1/8× 裝置解析度</item>
+		<item>1/4× 裝置解析度</item>
+		<item>0.5× 裝置解析度</item>
+		<item>1× 裝置解析度</item>
+		<item>2× 裝置解析度</item>
+		<item>4× 裝置解析度</item>
+		<item>8× 裝置解析度</item>
 		<item>正方形 256×256</item>
 		<item>正方形 512×512</item>
 		<item>正方形 1024×1024</item>

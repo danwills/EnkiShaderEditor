@@ -52,6 +52,7 @@
 	<string name="higher_res_custom_height">高度</string>
 	<string name="higher_res_custom_invalid">请输入宽度和高度</string>
 	<string name="higher_res_preserve_backbuffer">跨图块保留 backbuffer 中存储的值（例如第 0 行）</string>
+	<string name="higher_res_match_device_playback">匹配设备播放 - 选择上方的"x 设备分辨率"预设时，同时将过采样倍数设为 1、分块大小设为 Max、视频缩放倍数设为可让保存的视频以设备完整分辨率播放</string>
 	<string name="higher_res_oversample">过采样倍数 (x) - 以更大尺寸渲染后再缩小以实现抗锯齿</string>
 	<string name="higher_res_tile_order">分块顺序</string>
 	<string name="higher_res_bucket_size">分块大小</string>

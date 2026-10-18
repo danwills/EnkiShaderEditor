@@ -128,6 +128,20 @@ final class BuiltinUniforms {
 		}
 	}
 
+	// Separate from (and in addition to) the pointerCount reset inside
+	// pauseClock() above: that one only runs on an actual pause-state
+	// *transition*, so it misses the equally common case of the shader
+	// already being paused (ShaderViewManager.setPaused()/MainActivity's
+	// setShaderPaused() both no-op if already at the target state) -
+	// e.g. gesturing with the view (any number of fingers) *while*
+	// already paused, then starting a capture without an intervening
+	// resume/re-pause. Called unconditionally at the start of every
+	// capture (see ShaderRenderer's own capture methods), regardless of
+	// whether this particular call just paused anything.
+	void clearTouchState() {
+		pointerCount = 0;
+	}
+
 	// Steps a paused simulation forward by exactly deltaNanos of virtual
 	// time (not wall-clock) - used by frame-sequence capture to advance
 	// `time`/`runtime` deterministically between frames regardless of how

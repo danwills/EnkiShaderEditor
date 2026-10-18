@@ -1359,6 +1359,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_CLEANUP_IMAGES = "custom_res_cleanup_images";
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
 	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
+	private static final String PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK = "custom_res_match_device_playback";
 	private static final String PREF_LAST_SCREENSHOT_ACTION = "last_screenshot_action";
 
 	@NonNull
@@ -1380,13 +1381,14 @@ public class MainActivity extends AppCompatActivity {
 		dialogPrefs().edit().putInt(prefKey, buttonId).apply();
 	}
 
-	// Index-aligned with R.array.custom_res_presets, index 0 ("Custom")
-	// excepted - that one's a no-op handled separately, not a dimension
-	// pair. Indices 1..CUSTOM_RES_SCREEN_MULTIPLIERS.length are multiples
-	// of the *current mode's* resolution (the live quality-scaled render
-	// size, not necessarily the raw screen - see showCustomResolutionDialog()'s
-	// own currentModeWidth/currentModeHeight, computed at selection time,
-	// not fixed here) - this is also what used to be a separate "Save at
+	// Index-aligned with R.array.custom_res_presets, index 0
+	// ("Resolution") excepted - that one's a no-op handled separately,
+	// not a dimension pair. Indices 1..CUSTOM_RES_SCREEN_MULTIPLIERS.length
+	// are multiples of the device's own live render resolution (the
+	// quality-scaled size, not necessarily the raw screen - see
+	// showCustomResolutionDialog()'s own deviceResWidth/deviceResHeight,
+	// computed at selection time, not fixed here) - this is also what
+	// used to be a separate "Save at
 	// Higher Res" picker's own fixed {2, 4, 6, 8} list before it got
 	// folded into this one dialog's preset dropdown, hence covering the
 	// same range (and well below/above it, for deliberately-tiny or
@@ -1537,7 +1539,7 @@ public class MainActivity extends AppCompatActivity {
 		EditText widthView = view.findViewById(R.id.custom_width);
 		EditText heightView = view.findViewById(R.id.custom_height);
 		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		// "1x Current Mode" below means "whatever's actually rendering
+		// "1x Device Res" below means "whatever's actually rendering
 		// right now" - read directly from the renderer's own live
 		// surface size rather than re-derived from DisplayMetrics *
 		// quality, since the GLSurfaceView's actual onSurfaceChanged()
@@ -1552,51 +1554,28 @@ public class MainActivity extends AppCompatActivity {
 		// the surface yet (getRenderWidth() still 0).
 		int liveRenderWidth = shaderViewManager.getRenderWidth();
 		int liveRenderHeight = shaderViewManager.getRenderHeight();
-		final int currentModeWidth;
-		final int currentModeHeight;
+		final int deviceResWidth;
+		final int deviceResHeight;
 		if (liveRenderWidth > 0 && liveRenderHeight > 0) {
-			currentModeWidth = liveRenderWidth;
-			currentModeHeight = liveRenderHeight;
+			deviceResWidth = liveRenderWidth;
+			deviceResHeight = liveRenderHeight;
 		} else {
 			float quality = shaderManager.getQuality();
-			currentModeWidth = Math.max(1, Math.round(metrics.widthPixels * quality));
-			currentModeHeight = Math.max(1, Math.round(metrics.heightPixels * quality));
+			deviceResWidth = Math.max(1, Math.round(metrics.widthPixels * quality));
+			deviceResHeight = Math.max(1, Math.round(metrics.heightPixels * quality));
 		}
 		// A remembered value (from last time this dialog was actually
 		// used) always wins over the current-mode-resolution default -
 		// that default only applies the very first time, before
 		// anything's been remembered yet.
 		widthView.setText(String.valueOf(
-				prefs.getInt(PREF_CUSTOM_RES_WIDTH, currentModeWidth)));
+				prefs.getInt(PREF_CUSTOM_RES_WIDTH, deviceResWidth)));
 		heightView.setText(String.valueOf(
-				prefs.getInt(PREF_CUSTOM_RES_HEIGHT, currentModeHeight)));
+				prefs.getInt(PREF_CUSTOM_RES_HEIGHT, deviceResHeight)));
 		Spinner presetSpinner = view.findViewById(R.id.custom_res_preset);
-		presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-			@Override
-			public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
-				if (position == 0) {
-					return;
-				}
-				int presetWidth;
-				int presetHeight;
-				if (position <= CUSTOM_RES_SCREEN_MULTIPLIERS.length) {
-					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
-					presetWidth = Math.round(currentModeWidth * multiplier);
-					presetHeight = Math.round(currentModeHeight * multiplier);
-				} else {
-					int[] fixed = CUSTOM_RES_FIXED_PRESETS[
-							position - 1 - CUSTOM_RES_SCREEN_MULTIPLIERS.length];
-					presetWidth = fixed[0];
-					presetHeight = fixed[1];
-				}
-				widthView.setText(String.valueOf(presetWidth));
-				heightView.setText(String.valueOf(presetHeight));
-			}
-
-			@Override
-			public void onNothingSelected(AdapterView<?> parent) {
-			}
-		});
+		CheckBox matchDevicePlaybackBox = view.findViewById(R.id.custom_match_device_playback);
+		matchDevicePlaybackBox.setChecked(
+				prefs.getBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK, false));
 		EditText oversampleView = view.findViewById(R.id.custom_oversample);
 		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
 		Spinner tileOrderSpinner = view.findViewById(R.id.custom_tile_order);
@@ -1609,6 +1588,73 @@ public class MainActivity extends AppCompatActivity {
 		preserveBackbufferBox.setChecked(
 				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
 		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
+
+		// While Match Device Playback is on, oversampling/bucket
+		// size/video scale are entirely driven by whichever "x Device
+		// Res" preset is picked (see the preset spinner's own listener
+		// below) - disabled here so it's visually obvious they're not
+		// free to edit right now, rather than silently overwriting
+		// whatever the user just typed the next time a preset is
+		// re-picked. Turning the checkbox back off immediately frees
+		// them up again, still holding whatever value they last had.
+		Runnable updateMatchDeviceEnablement = () -> {
+			boolean matching = matchDevicePlaybackBox.isChecked();
+			oversampleView.setEnabled(!matching);
+			bucketSizeSpinner.setEnabled(!matching);
+			sequenceViews.videoScaleView.setEnabled(!matching);
+		};
+		updateMatchDeviceEnablement.run();
+		matchDevicePlaybackBox.setOnCheckedChangeListener(
+				(button, checked) -> updateMatchDeviceEnablement.run());
+
+		presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+				if (position == 0) {
+					return;
+				}
+				boolean isDeviceResPreset = position <= CUSTOM_RES_SCREEN_MULTIPLIERS.length;
+				int presetWidth;
+				int presetHeight;
+				if (isDeviceResPreset) {
+					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
+					presetWidth = Math.round(deviceResWidth * multiplier);
+					presetHeight = Math.round(deviceResHeight * multiplier);
+				} else {
+					int[] fixed = CUSTOM_RES_FIXED_PRESETS[
+							position - 1 - CUSTOM_RES_SCREEN_MULTIPLIERS.length];
+					presetWidth = fixed[0];
+					presetHeight = fixed[1];
+				}
+				widthView.setText(String.valueOf(presetWidth));
+				heightView.setText(String.valueOf(presetHeight));
+				// Only for the "x Device Res" presets, and only while
+				// Match Device Playback is checked (see
+				// updateMatchDeviceEnablement above - those fields are
+				// disabled whenever this would apply, so there's
+				// nothing to clobber either way); a fixed pixel-size
+				// preset leaves oversampling/bucket size/video scale
+				// exactly as they already were.
+				if (isDeviceResPreset && matchDevicePlaybackBox.isChecked()) {
+					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
+					float quality = shaderManager.getQuality();
+					// Capture resolution is already (device res *
+					// quality * multiplier) - scaling the saved video
+					// up by the reciprocal of that whole product lands
+					// back on exactly the device's own native
+					// resolution, regardless of which multiplier was
+					// picked, so the result plays back fullscreen 1:1.
+					int videoScale = Math.max(1, Math.round(1f / (quality * multiplier)));
+					oversampleView.setText("1");
+					bucketSizeSpinner.setSelection(TileBucketSize.MAX.ordinal());
+					sequenceViews.videoScaleView.setText(String.valueOf(videoScale));
+				}
+			}
+
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+			}
+		});
 
 		// Select-all on focus for every field, so tabbing/tapping in
 		// immediately lets typing replace the old value instead of
@@ -1677,6 +1723,8 @@ public class MainActivity extends AppCompatActivity {
 					.putInt(PREF_CUSTOM_RES_TILE_ORDER, tileOrder.ordinal())
 					.putInt(PREF_CUSTOM_RES_BUCKET_SIZE, bucketSize.ordinal())
 					.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
+					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
+							matchDevicePlaybackBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
 			if (sequenceViews.sequenceBox.isChecked()) {
 				int frameCount = parsePositiveInt(sequenceViews.frameCountView.getText().toString());

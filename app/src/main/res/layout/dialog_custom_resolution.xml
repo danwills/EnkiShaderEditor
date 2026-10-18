@@ -15,6 +15,18 @@
 			android:layout_height="wrap_content"
 			android:entries="@array/custom_res_presets" />
 
+		<!-- Only affects what picking one of the "x Device Res" presets
+		     above does - see MainActivity's own wiring - never touches
+		     anything for "Resolution" (the no-op placeholder) or a fixed
+		     pixel-size preset. -->
+		<CheckBox
+			android:id="@+id/custom_match_device_playback"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="4dp"
+			android:checked="false"
+			android:text="@string/higher_res_match_device_playback" />
+
 		<LinearLayout
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
@@ -47,6 +59,29 @@
 				android:maxLength="5" />
 
 		</LinearLayout>
+
+		<!-- A persistent label, not just the EditText's own hint - same
+		     issue as custom_oversample below. Moved up here, next to the
+		     resolution fields it's closely related to (see
+		     custom_match_device_playback above), rather than buried
+		     under "Render a Sequence of Frames" -> "Create Video from
+		     Frames" - it only ever does anything when a video actually
+		     gets made, but editing it doesn't depend on either being
+		     checked. -->
+		<TextView
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:text="@string/higher_res_sequence_video_scale"
+			android:textAppearance="?attr/textAppearanceCaption" />
+
+		<EditText
+			android:id="@+id/sequence_video_scale"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:inputType="number"
+			android:maxLength="4"
+			android:text="1" />
 
 		<!-- A persistent label, not just the EditText's own hint - the
 		     hint never actually shows since the field always starts
@@ -214,24 +249,6 @@
 					android:layout_height="wrap_content"
 					android:checked="true"
 					android:text="@string/higher_res_sequence_cleanup" />
-
-				<!-- A persistent label, not just the EditText's own hint -
-				     same issue as custom_oversample/sequence_skip_frames
-				     above. -->
-				<TextView
-					android:layout_width="match_parent"
-					android:layout_height="wrap_content"
-					android:layout_marginTop="12dp"
-					android:text="@string/higher_res_sequence_video_scale"
-					android:textAppearance="?attr/textAppearanceCaption" />
-
-				<EditText
-					android:id="@+id/sequence_video_scale"
-					android:layout_width="match_parent"
-					android:layout_height="wrap_content"
-					android:inputType="number"
-					android:maxLength="2"
-					android:text="1" />
 
 			</LinearLayout>
 

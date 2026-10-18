@@ -53,6 +53,7 @@
 	<string name="higher_res_custom_height">Height</string>
 	<string name="higher_res_custom_invalid">Enter a width and height</string>
 	<string name="higher_res_preserve_backbuffer">Preserve backbuffer-stored values (e.g. row 0) across tiles</string>
+	<string name="higher_res_match_device_playback">Match Device Playback - picking an "x Device Res" preset above also sets Oversampling to 1, Bucket Size to Max, and Video Scale so the saved video plays back at the device\'s full resolution</string>
 	<string name="higher_res_oversample">Oversampling (x) - renders bigger then resizes down for antialiasing</string>
 	<string name="higher_res_tile_order">Tile Order</string>
 	<string name="higher_res_bucket_size">Bucket Size</string>

@@ -604,6 +604,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			int oversample, boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
 			@NonNull TileRenderOrder tileOrder, @Nullable HighResProgressListener progressListener,
 			@Nullable TilePreviewListener tilePreviewListener) {
+		// See BuiltinUniforms.clearTouchState()'s own doc - called here
+		// (the entry point every single, non-sequence high-res capture
+		// funnels through) rather than relying on pauseClock() alone,
+		// since the shader may already have been paused before this
+		// capture started.
+		builtinUniforms.clearTouchState();
 		return captureHighResScreenshot(useDevice, width, height, oversample, preserveBackbufferEdges,
 				bucketSize, tileOrder, progressListener, tilePreviewListener, null);
 	}
@@ -716,6 +722,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (!programManager.hasPreparedShader()) {
 			return false;
 		}
+		// See BuiltinUniforms.clearTouchState()'s own doc - called once
+		// here, before the frame loop starts, rather than relying on
+		// pauseClock() alone, since the shader may already have been
+		// paused (e.g. the user adjusted the view with a gesture while
+		// already paused) before this sequence started.
+		builtinUniforms.clearTouchState();
 		// Bucket size (unlike tile order) isn't live-changeable mid-
 		// sequence, so singlePass eligibility is fixed for the whole
 		// run - safe to decide once, up front, whether a
