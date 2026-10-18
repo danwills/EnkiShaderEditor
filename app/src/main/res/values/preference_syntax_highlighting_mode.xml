@@ -1,0 +1,12 @@
+<resources>
+	<string-array name="syntax_highlighting_mode_names">
+		<item>@string/syntax_highlighting_off</item>
+		<item>@string/syntax_highlighting_fast</item>
+		<item>@string/syntax_highlighting_full</item>
+	</string-array>
+	<string-array name="syntax_highlighting_mode_values">
+		<item>1</item>
+		<item>2</item>
+		<item>3</item>
+	</string-array>
+</resources>

@@ -72,6 +72,8 @@ public class MainMenuManager {
 		void onPlayRecentRecordings();
 
 		void onShowHotkeys();
+
+		void onAdjustDefines();
 	}
 
 	@NonNull
@@ -152,6 +154,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.play_recent_recordings, navigationActions::onPlayRecentRecordings);
 		setMoreOptionsClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setMoreOptionsClickListener(R.id.hotkeys, navigationActions::onShowHotkeys);
+		setMoreOptionsClickListener(R.id.adjust_defines, navigationActions::onAdjustDefines);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 
 		CompoundButton extraKeysToggle = moreOptionsView.findViewById(

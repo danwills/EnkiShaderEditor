@@ -240,6 +240,18 @@ public class EditorFragment extends Fragment {
 		shaderEditor.insert(text);
 	}
 
+	// Replaces the whole document in one go, same as insert() above but
+	// spanning all of it - unlike setText(), this goes through the
+	// editor's normal Editable.replace() path instead of resetting it,
+	// so it's a single, perfectly normal undoable edit (Ctrl+Z undoes
+	// it in one step) rather than wiping undo history the way loading a
+	// different shader's source into this same editor should. See
+	// MainActivity's "Adjust Defines" tool, the first caller that needs
+	// a whole-document programmatic edit to still be undoable.
+	public void replaceAll(@NonNull String newText) {
+		shaderEditor.replaceAll(newText);
+	}
+
 	public void addUniform(String name) {
 		shaderEditor.addUniform(name);
 	}

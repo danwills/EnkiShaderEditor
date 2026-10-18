@@ -1,0 +1,31 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:layout_marginTop="2dp"
+	android:gravity="center_vertical"
+	android:orientation="horizontal">
+	<TextView
+		android:id="@+id/component_label"
+		android:layout_width="20dp"
+		android:layout_height="wrap_content"
+		android:alpha="0.7"
+		android:gravity="center"
+		android:textSize="12sp"/>
+	<SeekBar
+		android:id="@+id/component_slider"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_weight="1"
+		android:max="1000"/>
+	<EditText
+		android:id="@+id/component_value_text"
+		style="@android:style/Widget.EditText"
+		android:layout_width="72dp"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="8dp"
+		android:gravity="end"
+		android:importantForAutofill="no"
+		android:inputType="numberDecimal|numberSigned"
+		android:maxLines="1"/>
+</LinearLayout>

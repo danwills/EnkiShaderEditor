@@ -6,10 +6,12 @@
 	     sync with MainActivity.dispatchKeyEvent()'s own handling if either
 	     changes. -->
 	<string-array name="hotkeys_list">
-		<item>Ctrl+R — Open the Render dialog</item>
+		<item>Ctrl+R — Open the screenshot actions dialog (Copy/Save/Save and Open/Render at Custom Res) - same as the camera button</item>
+		<item>Ctrl+C — Copy the current frame to the clipboard immediately, skipping that dialog</item>
 		<item>Ctrl+F — Find Shader (shader list showing) or Find in Shader (cursor in the source editor)</item>
 		<item>Ctrl+S — Save Shader</item>
-		<item>Ctrl+Shift+S — Paste as New Shader</item>
+		<item>Ctrl+V — Paste as New Shader</item>
+		<item>Ctrl+Shift+D — Open the Adjust Defines tool</item>
 		<item>Esc — Same as the back button</item>
 		<item>F11 — Toggle Fullscreen</item>
 		<item>Up — Play/Pause (outside the source editor)</item>

@@ -1,0 +1,281 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="16dp">
+
+	<View
+		android:id="@+id/color_picker_swatch"
+		android:layout_width="match_parent"
+		android:layout_height="56dp"
+		android:layout_marginBottom="12dp"
+		android:background="@drawable/color_swatch_background"/>
+
+	<!-- The RGB/HSV sliders below always edit a normalized (0-1 per
+	     channel) color - this is what lets an HDR color like
+	     (20.0, 5.0, 1.0) still get full slider precision: it's stored
+	     as intensity=20 and a normalized color of (1.0, 0.25, 0.05),
+	     multiplied back together only once OK is pressed (see
+	     showColorPickerDialog()). Always shown, not just for HDR
+	     values - an ordinary 0-1 color just starts with intensity at 1,
+	     a no-op. -->
+	<TextView
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="2dp"
+		android:alpha="0.7"
+		android:text="@string/color_picker_intensity"
+		android:textSize="12sp"/>
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="12dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+		<SeekBar
+			android:id="@+id/color_picker_intensity"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:max="1000"/>
+		<EditText
+			android:id="@+id/color_picker_intensity_text"
+			style="@android:style/Widget.EditText"
+			android:layout_width="72dp"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="8dp"
+			android:gravity="end"
+			android:importantForAutofill="no"
+			android:inputType="numberDecimal|numberSigned"
+			android:maxLines="1"/>
+	</LinearLayout>
+
+	<RadioGroup
+		android:id="@+id/color_picker_mode"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:orientation="horizontal">
+		<RadioButton
+			android:id="@+id/color_picker_mode_rgb"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:checked="true"
+			android:text="@string/color_picker_mode_rgb"/>
+		<RadioButton
+			android:id="@+id/color_picker_mode_hsv"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/color_picker_mode_hsv"/>
+	</RadioGroup>
+
+	<LinearLayout
+		android:id="@+id/color_picker_rgb_group"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical">
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_red"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_r"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="255"/>
+			<TextView
+				android:id="@+id/color_picker_r_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_green"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_g"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="255"/>
+			<TextView
+				android:id="@+id/color_picker_g_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_blue"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_b"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="255"/>
+			<TextView
+				android:id="@+id/color_picker_b_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+	</LinearLayout>
+
+	<LinearLayout
+		android:id="@+id/color_picker_hsv_group"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical"
+		android:visibility="gone">
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_hue"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_h"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="360"/>
+			<TextView
+				android:id="@+id/color_picker_h_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_saturation"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_s"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="100"/>
+			<TextView
+				android:id="@+id/color_picker_s_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+			<TextView
+				android:layout_width="20dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:text="@string/color_picker_value"
+				android:textSize="12sp"/>
+			<SeekBar
+				android:id="@+id/color_picker_v"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:max="100"/>
+			<TextView
+				android:id="@+id/color_picker_v_value"
+				android:layout_width="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="end"
+				android:textSize="12sp"/>
+		</LinearLayout>
+	</LinearLayout>
+
+	<!-- Only shown for a VEC4 color (see showColorPickerDialog()) -
+	     alpha is shared between both RGB/HSV modes, so it lives outside
+	     either group. -->
+	<LinearLayout
+		android:id="@+id/color_picker_a_row"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:visibility="gone">
+		<TextView
+			android:layout_width="20dp"
+			android:layout_height="wrap_content"
+			android:gravity="center"
+			android:text="@string/color_picker_alpha"
+			android:textSize="12sp"/>
+		<SeekBar
+			android:id="@+id/color_picker_a"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:max="255"/>
+		<TextView
+			android:id="@+id/color_picker_a_value"
+			android:layout_width="40dp"
+			android:layout_height="wrap_content"
+			android:gravity="end"
+			android:textSize="12sp"/>
+	</LinearLayout>
+
+	<!-- Accepts #RRGGBB or #RRGGBBAA (the latter only while the alpha
+	     row above is showing) - edits here update whichever group
+	     (RGB/HSV) is currently showing, same as those update this. -->
+	<EditText
+		android:id="@+id/color_picker_hex"
+		style="@android:style/Widget.EditText"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="12dp"
+		android:hint="@string/color_picker_hex_hint"
+		android:importantForAutofill="no"
+		android:inputType="text"
+		android:maxLines="1"/>
+</LinearLayout>

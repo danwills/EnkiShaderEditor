@@ -1,0 +1,128 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:paddingHorizontal="16dp"
+	android:paddingVertical="10dp">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+		<ImageView
+			android:id="@+id/define_drag_handle"
+			android:layout_width="32dp"
+			android:layout_height="32dp"
+			android:layout_marginEnd="8dp"
+			android:contentDescription="@string/adjust_defines_drag_handle"
+			android:src="@drawable/ic_drag_handle"/>
+		<TextView
+			android:id="@+id/define_name"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:ellipsize="end"
+			android:maxLines="1"
+			android:textSize="16sp"
+			android:textStyle="bold"/>
+		<CheckBox
+			android:id="@+id/define_bool_value"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:visibility="gone"/>
+	</LinearLayout>
+
+	<!-- Slider + exact-value text box, only shown for FLOAT/INT. -->
+	<LinearLayout
+		android:id="@+id/define_slider_row"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:visibility="gone">
+		<SeekBar
+			android:id="@+id/define_slider"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:max="1000"/>
+		<EditText
+			android:id="@+id/define_value_text"
+			style="@android:style/Widget.EditText"
+			android:layout_width="84dp"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="8dp"
+			android:gravity="end"
+			android:importantForAutofill="no"
+			android:inputType="numberDecimal|numberSigned"
+			android:maxLines="1"/>
+	</LinearLayout>
+
+	<!-- Plain value box, only shown for OTHER (strings, expressions,
+	     function-like macro bodies) - no slider makes sense here. -->
+	<EditText
+		android:id="@+id/define_other_value_text"
+		style="@android:style/Widget.EditText"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:importantForAutofill="no"
+		android:inputType="text"
+		android:maxLines="1"
+		android:visibility="gone"/>
+
+	<!-- Shown for any VEC3/VEC4 (not just one ShaderDefineParser's own
+	     looksLikeColor() heuristic already guessed is a color - that's
+	     just where the checkbox starts out checked) - lets the user
+	     override the guess either way. The swatch next to it (tap to
+	     open the full picker) only shows once checked. -->
+	<LinearLayout
+		android:id="@+id/define_color_row"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal"
+		android:visibility="gone">
+		<CheckBox
+			android:id="@+id/define_color_toggle"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/adjust_defines_treat_as_color"/>
+		<View
+			android:id="@+id/define_color_swatch"
+			android:layout_width="32dp"
+			android:layout_height="32dp"
+			android:layout_marginStart="12dp"
+			android:background="@drawable/color_swatch_background"
+			android:visibility="gone"/>
+	</LinearLayout>
+
+	<!-- Per-component slider+value rows for any VEC2/VEC3/VEC4 (color
+	     or not) - populated/bound programmatically, one row per
+	     component, since the count varies (see DefineAdapter.bindVector()). -->
+	<LinearLayout
+		android:id="@+id/define_vector_rows"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="4dp"
+		android:orientation="vertical"
+		android:visibility="gone"/>
+
+	<EditText
+		android:id="@+id/define_comment_text"
+		style="@android:style/Widget.EditText"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="2dp"
+		android:alpha="0.7"
+		android:hint="@string/adjust_defines_comment_hint"
+		android:importantForAutofill="no"
+		android:inputType="text"
+		android:maxLines="1"
+		android:textSize="13sp"/>
+</LinearLayout>

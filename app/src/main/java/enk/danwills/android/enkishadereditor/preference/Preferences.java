@@ -37,7 +37,7 @@ public class Preferences {
 	public static final String EXPORT_TABS = "export_tabs";
 	public static final String SAVE_ON_RUN = "save_on_run";
 	public static final String DEFAULT_NEW_SHADER = "default_new_shader";
-	public static final String DISABLE_HIGHLIGHTING = "disable_highlighting";
+	public static final String SYNTAX_HIGHLIGHTING_MODE = "syntax_highlighting_mode";
 	public static final String AUTO_SAVE = "auto_save";
 	public static final String IMPORT_FROM_DIRECTORY = "import_from_directory";
 	public static final String EXPORT_TO_DIRECTORY = "export_to_directory";
@@ -80,6 +80,16 @@ public class Preferences {
 	// this preference live, from outside Preferences itself.
 	public static final int CAPTURE_PRIORITY_NORMAL = 1;
 	public static final int CAPTURE_PRIORITY_HIGH = 2;
+
+	// OFF skips tokenizing/coloring entirely (fastest, plain text). FAST
+	// still runs the real Lexer in the background (same colors as FULL)
+	// but never blocks the UI thread waiting for it - see ShaderEditor's
+	// own highlight()/TokenListUpdater, where FULL's wait-for-it
+	// ensureUpdated() call is exactly what can stall typing on a large
+	// shader. FULL is today's original, always-consistent behavior.
+	public static final int HIGHLIGHTING_OFF = 1;
+	public static final int HIGHLIGHTING_FAST = 2;
+	public static final int HIGHLIGHTING_FULL = 3;
 	private static final Map<String, Integer> fontNameToResId = new HashMap<>();
 
 	static {
@@ -113,7 +123,7 @@ public class Preferences {
 	private int systemBarColor;
 	private long defaultNewShaderId = 0;
 	private long lastOpenedShaderId = 0;
-	private boolean disableHighlighting = false;
+	private int syntaxHighlightingMode = HIGHLIGHTING_FULL;
 	private boolean autoSave = true;
 	private boolean warnSlowCompile = true;
 	private boolean showLineNumbers = true;
@@ -197,9 +207,9 @@ public class Preferences {
 		saveOnRun = preferences.getBoolean(
 				SAVE_ON_RUN,
 				saveOnRun);
-		disableHighlighting = preferences.getBoolean(
-				DISABLE_HIGHLIGHTING,
-				disableHighlighting);
+		syntaxHighlightingMode = parseInt(
+				preferences.getString(SYNTAX_HIGHLIGHTING_MODE, null),
+				syntaxHighlightingMode);
 		autoSave = preferences.getBoolean(
 				AUTO_SAVE,
 				autoSave);
@@ -467,8 +477,8 @@ public class Preferences {
 		powerConnected = isConnected;
 	}
 
-	public boolean disableHighlighting() {
-		return disableHighlighting;
+	public int getSyntaxHighlightingMode() {
+		return syntaxHighlightingMode;
 	}
 
 	public boolean autoSave() {

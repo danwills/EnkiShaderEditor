@@ -1,0 +1,73 @@
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical">
+
+	<!-- Only shown when at least one #define was excluded for not being
+	     referenced anywhere else in the source - see
+	     ShaderDefineParser.parseUsedDefines(). -->
+	<TextView
+		android:id="@+id/adjust_defines_excluded_note"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingHorizontal="16dp"
+		android:paddingBottom="8dp"
+		android:textSize="12sp"
+		android:alpha="0.7"
+		android:visibility="gone"/>
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="16dp"
+		android:layout_marginBottom="8dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+		<EditText
+			android:id="@+id/adjust_defines_filter"
+			style="@android:style/Widget.EditText"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:hint="@string/adjust_defines_filter_hint"
+			android:imeOptions="actionSearch"
+			android:importantForAutofill="no"
+			android:inputType="text"
+			android:maxLines="1"/>
+		<!-- Only the defines actually applied (value or comment
+		     changed) via this tool earlier in the current app session
+		     - see MainActivity.recentlyEditedDefineNames. -->
+		<CheckBox
+			android:id="@+id/adjust_defines_show_recent"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="8dp"
+			android:text="@string/adjust_defines_show_recent"/>
+	</LinearLayout>
+
+	<FrameLayout
+		android:layout_width="match_parent"
+		android:layout_height="match_parent">
+		<androidx.recyclerview.widget.RecyclerView
+			android:id="@+id/adjust_defines_list"
+			android:layout_width="match_parent"
+			android:layout_height="match_parent"
+			android:clipToPadding="false"
+			android:paddingBottom="8dp"/>
+		<!-- Shown instead of the (then-empty) list above whenever the
+		     filter/"Show Recent" combination matches nothing - see
+		     DefineAdapter.OnEmptyChanged. -->
+		<TextView
+			android:id="@+id/adjust_defines_no_matches"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="center"
+			android:gravity="center"
+			android:padding="24dp"
+			android:text="@string/adjust_defines_no_matches"
+			android:textSize="14sp"
+			android:alpha="0.7"
+			android:visibility="gone"/>
+	</FrameLayout>
+</LinearLayout>

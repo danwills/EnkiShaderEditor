@@ -98,12 +98,12 @@
 			android:summary="@string/save_on_run_summary"
 			android:checked="true"
 			android:defaultValue="true"/>
-		<androidx.preference.SwitchPreferenceCompat
-			android:key="disable_highlighting"
-			android:title="@string/disable_highlighting"
-			android:summary="@string/disable_highlighting_summary"
-			android:checked="false"
-			android:defaultValue="false"/>
+		<ListPreference
+			android:key="syntax_highlighting_mode"
+			android:title="@string/syntax_highlighting_mode"
+			android:entries="@array/syntax_highlighting_mode_names"
+			android:entryValues="@array/syntax_highlighting_mode_values"
+			android:defaultValue="3"/>
 		<androidx.preference.SwitchPreferenceCompat
 			android:key="auto_save"
 			android:title="@string/auto_save"

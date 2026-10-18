@@ -143,7 +143,6 @@
 	<string name="cannot_set_wallpaper">Cannot set a wallpaper</string>
 	<string name="pick_live_wallpaper_manually">You need to pick this app as Live Wallpaper first</string>
 	<string name="menu_btn">More Options</string>
-	<string name="show_errors">Show Errors</string>
 	<string name="shader_saved">Shader saved</string>
 	<string name="shader_disabled_after_crash">The previous shader crashed Enki Shader Editor and was commented out.</string>
 
@@ -202,8 +201,10 @@
 	<string name="show_insert_tab_summary">Show insert tab menu item</string>
 	<string name="save_on_run">Save on Run</string>
 	<string name="save_on_run_summary">Save changes when running manually</string>
-	<string name="disable_highlighting">Disable Highlighting</string>
-	<string name="disable_highlighting_summary">Disable highlighting for big shaders</string>
+	<string name="syntax_highlighting_mode">Syntax Highlighting</string>
+	<string name="syntax_highlighting_off">Off</string>
+	<string name="syntax_highlighting_fast">Fast</string>
+	<string name="syntax_highlighting_full">Full</string>
 	<string name="auto_save">Auto Save</string>
 	<string name="auto_save_summary">Save shader automatically</string>
 	<string name="warn_slow_compile">Warn About Slow Compiles</string>
@@ -392,7 +393,6 @@
 	<string name="find_shader_hotkey_hint">Enter: search / next match · Ctrl+Enter: load shown match · ←/→: cycle matches</string>
 	<!-- Hotkey-toast feature (see MainActivity.showHotkeyToast()) -->
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
-	<string name="open_render_dialog">Open Render Dialog</string>
 	<string name="quality_picker">Quality Picker</string>
 	<string name="back">Back</string>
 	<string name="toggle_sidebar">Toggle Shader Sidebar</string>
@@ -400,6 +400,41 @@
 	<string name="history_forward">Forward in History</string>
 	<string name="toggle_editor_and_pause">Toggle Editor and Pause</string>
 	<string name="first_shader">First Shader</string>
+	<!-- Adjust Defines tool (see MainActivity.showAdjustDefinesDialog()) -->
+	<string name="adjust_defines">Adjust Defines</string>
+	<string name="adjust_defines_drag_handle">Drag to reorder</string>
+	<string name="adjust_defines_comment_hint">Comment (optional)</string>
+	<string name="adjust_defines_make_edits">Make Edits</string>
+	<string name="adjust_defines_confirm_title">Confirm Define Changes</string>
+	<string name="adjust_defines_apply">Apply</string>
+	<string name="adjust_defines_apply_and_save">Apply and Save</string>
+	<string name="adjust_defines_save_permanent_warning">Apply and Save writes the shader to disk immediately - this cannot be undone from here.</string>
+	<string name="adjust_defines_comment_changed_format">comment: %1$s → %2$s</string>
+	<string name="adjust_defines_reordered_note">Defines were reordered</string>
+	<string name="adjust_defines_no_changes">No changes</string>
+	<string name="adjust_defines_no_comment">(none)</string>
+	<string name="adjust_defines_applied">Defines updated</string>
+	<string name="adjust_defines_applied_and_saved">Defines updated and saved</string>
+	<plurals name="adjust_defines_excluded_note">
+		<item quantity="one">%1$d define not shown - not referenced elsewhere in the shader</item>
+		<item quantity="other">%1$d defines not shown - not referenced elsewhere in the shader</item>
+	</plurals>
+	<string name="adjust_defines_filter_hint">Filter by name</string>
+	<string name="adjust_defines_show_recent">Show Recent</string>
+	<string name="adjust_defines_no_matches">No defines match</string>
+	<string name="adjust_defines_treat_as_color">Treat as Color</string>
+	<string name="color_picker_title">Pick a Color</string>
+	<string name="color_picker_red">R</string>
+	<string name="color_picker_green">G</string>
+	<string name="color_picker_blue">B</string>
+	<string name="color_picker_alpha">A</string>
+	<string name="color_picker_hex_hint">#RRGGBB</string>
+	<string name="color_picker_mode_rgb">RGB</string>
+	<string name="color_picker_mode_hsv">HSV</string>
+	<string name="color_picker_hue">H</string>
+	<string name="color_picker_saturation">S</string>
+	<string name="color_picker_value">V</string>
+	<string name="color_picker_intensity">Intensity (for HDR colors above 1.0)</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d match</item>

@@ -1,9 +1,11 @@
 <resources>
 	<string-array name="hotkeys_list">
-		<item>Ctrl+R — 開啟算繪對話框</item>
+		<item>Ctrl+R — 開啟螢幕截圖操作對話框（複製/儲存/儲存並開啟/以自訂解析度算繪）- 與相機按鈕相同</item>
+		<item>Ctrl+C — 立即將目前畫面複製到剪貼簿，跳過該對話框</item>
 		<item>Ctrl+F — 顯示著色器側欄時尋找著色器，游標在原始碼編輯區時在著色器中尋找</item>
 		<item>Ctrl+S — 儲存著色器</item>
-		<item>Ctrl+Shift+S — 貼上為新著色器</item>
+		<item>Ctrl+V — 貼上為新著色器</item>
+		<item>Ctrl+Shift+D — 開啟調整 Defines 工具</item>
 		<item>Esc — 相當於返回按鈕</item>
 		<item>F11 — 切換全螢幕</item>
 		<item>Up — 播放/暫停（在原始碼編輯區之外）</item>

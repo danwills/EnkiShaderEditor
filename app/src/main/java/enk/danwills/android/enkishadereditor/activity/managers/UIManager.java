@@ -171,8 +171,7 @@ public class UIManager {
 
 	public void setupToolbar(View.OnClickListener menuClickListener,
 			View.OnClickListener runClickListener,
-			View.OnClickListener toggleCodeClickListener,
-			View.OnClickListener showErrorClickListener) {
+			View.OnClickListener toggleCodeClickListener) {
 		View menuBtn = activity.findViewById(R.id.menu_btn);
 		ViewCompat.setTooltipText(menuBtn, activity.getText(R.string.menu_btn));
 		menuBtn.setOnClickListener(menuClickListener);
@@ -184,10 +183,6 @@ public class UIManager {
 		View toggleCode = activity.findViewById(R.id.toggle_code);
 		ViewCompat.setTooltipText(toggleCode, activity.getText(R.string.toggle_code));
 		toggleCode.setOnClickListener(toggleCodeClickListener);
-
-		View showErrors = activity.findViewById(R.id.show_errors);
-		ViewCompat.setTooltipText(showErrors, activity.getText(R.string.show_errors));
-		showErrors.setOnClickListener(showErrorClickListener);
 	}
 
 	// Tapping the shader-name label opens the same rename dialog as

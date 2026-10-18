@@ -1,9 +1,11 @@
 <resources>
 	<string-array name="hotkeys_list">
-		<item>Ctrl+R — 打开渲染对话框</item>
+		<item>Ctrl+R — 打开截图操作对话框（复制/保存/保存并打开/以自定义分辨率渲染）- 与相机按钮相同</item>
+		<item>Ctrl+C — 立即将当前帧复制到剪贴板，跳过该对话框</item>
 		<item>Ctrl+F — 显示着色器侧栏时查找着色器，光标在源代码编辑区时在着色器中查找</item>
 		<item>Ctrl+S — 保存着色器</item>
-		<item>Ctrl+Shift+S — 粘贴为新着色器</item>
+		<item>Ctrl+V — 粘贴为新着色器</item>
+		<item>Ctrl+Shift+D — 打开调整 Defines 工具</item>
 		<item>Esc — 相当于返回按钮</item>
 		<item>F11 — 切换全屏</item>
 		<item>Up — 播放/暂停（在源代码编辑区之外）</item>

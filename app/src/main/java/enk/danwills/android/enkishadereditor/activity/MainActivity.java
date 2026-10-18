@@ -13,8 +13,11 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
@@ -60,6 +63,9 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
@@ -72,6 +78,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Locale;
@@ -88,6 +95,7 @@ import enk.danwills.android.enkishadereditor.activity.managers.ShaderListManager
 import enk.danwills.android.enkishadereditor.activity.managers.ShaderManager;
 import enk.danwills.android.enkishadereditor.activity.managers.ShaderViewManager;
 import enk.danwills.android.enkishadereditor.activity.managers.UIManager;
+import enk.danwills.android.enkishadereditor.adapter.DefineAdapter;
 import enk.danwills.android.enkishadereditor.adapter.RecordingAdapter;
 import enk.danwills.android.enkishadereditor.adapter.ShaderTreeAdapter;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
@@ -98,6 +106,8 @@ import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
+import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
+import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
@@ -336,8 +346,7 @@ public class MainActivity extends AppCompatActivity {
 
 		uiManager.setupToolbar(mainMenuManager::show,
 				v -> this.runShader(),
-				v -> uiManager.toggleCodeVisibility(),
-				v -> editorFragment.showErrors());
+				v -> uiManager.toggleCodeVisibility());
 		uiManager.setupShaderTitleLabel(v -> {
 			long id = shaderManager.getSelectedShaderId();
 			if (id > 0) {
@@ -446,11 +455,35 @@ public class MainActivity extends AppCompatActivity {
 					return true;
 				}
 				if (ctrl) {
-					openRenderDialogViaHotkey();
-					showHotkeyToast("Ctrl+R", R.string.open_render_dialog);
+					// Same dialog the camera button opens (Copy/Save/
+					// Save & Open/Render at Custom Res) - not a direct
+					// jump to Custom Res, so Ctrl+Enter/clicking Copy
+					// there is the keyboard path to a clipboard copy.
+					// See also Ctrl+C below for a one-key version of
+					// that specific action.
+					takeScreenshot();
+					showHotkeyToast("Ctrl+R", R.string.save_screenshot);
 					return true;
 				}
 				return false;
+			case KeyEvent.KEYCODE_C:
+				// Never hijack Ctrl+C from a normal text-copy while the
+				// cursor's in the source editor or any other text field
+				// (e.g. the shader sidebar's filter box) - only takes
+				// over out in the open, same guard as Ctrl+V below.
+				if (!ctrl || editorFocused || getCurrentFocus() instanceof EditText) {
+					return false;
+				}
+				copyScreenshotToClipboard();
+				showHotkeyToast("Ctrl+C", R.string.screenshot_copy_to_clipboard);
+				return true;
+			case KeyEvent.KEYCODE_D:
+				if (!ctrl || !shift) {
+					return false;
+				}
+				showAdjustDefinesDialog();
+				showHotkeyToast("Ctrl+Shift+D", R.string.adjust_defines);
+				return true;
 			case KeyEvent.KEYCODE_F:
 				if (!ctrl) {
 					return false;
@@ -468,12 +501,18 @@ public class MainActivity extends AppCompatActivity {
 					showHotkeyToast("Ctrl+F", R.string.find_shader);
 				}
 				return true;
-			case KeyEvent.KEYCODE_S:
-				if (ctrl && shift) {
-					pasteAsNewShader();
-					showHotkeyToast("Ctrl+Shift+S", R.string.paste_as_new_shader);
-					return true;
+			case KeyEvent.KEYCODE_V:
+				// Ctrl+V for Paste as New Shader, not a normal text
+				// paste - only outside the source editor/any other text
+				// field (same guard as Ctrl+C above), so a genuine
+				// clipboard paste into actual text still works normally.
+				if (!ctrl || editorFocused || getCurrentFocus() instanceof EditText) {
+					return false;
 				}
+				pasteAsNewShader();
+				showHotkeyToast("Ctrl+V", R.string.paste_as_new_shader);
+				return true;
+			case KeyEvent.KEYCODE_S:
 				if (ctrl) {
 					shaderManager.saveShader();
 					showHotkeyToast("Ctrl+S", R.string.save_shader);
@@ -598,16 +637,6 @@ public class MainActivity extends AppCompatActivity {
 	private void showHotkeyToast(@NonNull String combo, @StringRes int actionNameRes) {
 		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo, getString(actionNameRes)),
 				Toast.LENGTH_SHORT).show();
-	}
-
-	// Mirrors the camera button's own pause/restore bookkeeping (see
-	// takeScreenshot()) but skips straight to the Custom Res/Seq dialog
-	// itself, rather than the screenshot-actions dialog it's normally
-	// one tap further in behind.
-	private void openRenderDialogViaHotkey() {
-		boolean wasPaused = shaderViewManager.isPaused();
-		setShaderPaused(true);
-		showCustomResolutionDialog(wasPaused);
 	}
 
 	// Pauses, then focuses the quality spinner so a hardware keyboard's
@@ -845,9 +874,12 @@ public class MainActivity extends AppCompatActivity {
 	@Contract(" -> new")
 	private ShaderViewManager.Listener createShaderViewListener() {
 		return new ShaderViewManager.Listener() {
-			private final View showErrors = findViewById(R.id.show_errors);
 			private final View mainCoordinator = findViewById(R.id.main_coordinator);
 			private final View toolbar = findViewById(R.id.toolbar);
+			// Noticeably longer than Snackbar.LENGTH_LONG (~2.75s) - long
+			// enough to actually read and react to, short of sticking
+			// around indefinitely (see showError() below).
+			private static final int ERROR_SNACKBAR_DURATION_MS = 6000;
 
 			@Override
 			public void onFramesPerSecond(int fps) {
@@ -861,9 +893,6 @@ public class MainActivity extends AppCompatActivity {
 			public void onInfoLog(@NonNull List<ShaderError> infoLog) {
 				runOnUiThread(() -> {
 					editorFragment.setErrors(infoLog);
-					showErrors.setVisibility(editorFragment.hasErrors()
-							? View.VISIBLE
-							: View.GONE);
 					if (editorFragment.hasErrors()) {
 						showError(infoLog.get(0).toString());
 					}
@@ -905,13 +934,30 @@ public class MainActivity extends AppCompatActivity {
 				setFullscreen(false);
 			}
 
+			// The only surfacing a compile error gets now - no toolbar
+			// icon (removed; see toolbar_main.xml's git history for why
+			// that used to exist and why it doesn't any more), just this:
+			// a longer-than-usual Snackbar with a red warning icon,
+			// tappable (the "Details" action) to open the same error
+			// list editorFragment.showErrors() always has.
 			private void showError(String error) {
-				Snackbar.make(mainCoordinator,
-								error,
-								Snackbar.LENGTH_LONG)
-						.setAction(R.string.details,
-								v -> editorFragment.showErrors())
-						.show();
+				TypedValue typedValue = new TypedValue();
+				getTheme().resolveAttribute(android.R.attr.colorError, typedValue, true);
+				int errorColor = typedValue.data;
+
+				Snackbar snackbar = Snackbar.make(mainCoordinator, error, ERROR_SNACKBAR_DURATION_MS)
+						.setAction(R.string.details, v -> editorFragment.showErrors());
+				TextView text = snackbar.getView().findViewById(
+						com.google.android.material.R.id.snackbar_text);
+				Drawable icon = ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_warning);
+				if (text != null && icon != null) {
+					icon = icon.mutate();
+					icon.setTint(errorColor);
+					icon.setBounds(0, 0, icon.getIntrinsicWidth(), icon.getIntrinsicHeight());
+					text.setCompoundDrawables(icon, null, null, null);
+					text.setCompoundDrawablePadding(dpToPx(8));
+				}
+				snackbar.show();
 			}
 		};
 	}
@@ -1079,6 +1125,11 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onShowHotkeys() {
 				showHotkeysDialog();
+			}
+
+			@Override
+			public void onAdjustDefines() {
+				showAdjustDefinesDialog();
 			}
 		};
 	}
@@ -1311,6 +1362,544 @@ public class MainActivity extends AppCompatActivity {
 			}
 		}
 		return defines;
+	}
+
+	// Define names actually applied (value or comment changed) via the
+	// Adjust Defines tool this app session - see applyAdjustedDefines()
+	// (where names are added) and the "Show Recent" checkbox in
+	// showAdjustDefinesDialog() (where this is read). In-memory only,
+	// static so it survives this Activity being recreated (rotation
+	// etc.) same as it would across any shader switch, but cleared on
+	// process death - deliberately session-scoped, not persisted.
+	private static final Set<String> recentlyEditedDefineNames = new LinkedHashSet<>();
+
+	// Opens the "Adjust Defines" tool (More Options menu) - a
+	// scrollable, reorderable list of every #define in the current
+	// shader that's actually referenced elsewhere in it (see
+	// ShaderDefineParser.parseUsedDefines()), each editable via a
+	// slider+text box (FLOAT/INT), a checkbox (BOOL) or a plain text
+	// box (anything else, including function-like macros). originalOrder
+	// keeps the defines' original file-order and ShaderDefine identity
+	// so showAdjustDefinesConfirmDialog()/ShaderDefineParser.reconstruct()
+	// can tell what changed and put it all back in the right place;
+	// workingOrder is the same ShaderDefine instances, live-edited and
+	// freely reordered by the dialog's own drag handles.
+	private void showAdjustDefinesDialog() {
+		String source = editorFragment.getText();
+		List<ShaderDefine> originalOrder = ShaderDefineParser.parseUsedDefines(source);
+		if (originalOrder.isEmpty()) {
+			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
+
+		// Paused for the whole flow (this dialog and the confirm dialog
+		// it leads to) - dragging a slider recompiles nothing by itself,
+		// but the shader's still rendering every frame underneath, and
+		// this tool can use every bit of headroom it can get. Restored
+		// in whichever dialog the flow actually ends on - see
+		// `proceeding` below and showAdjustDefinesConfirmDialog()'s own
+		// dismiss listener.
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
+
+		View view = getLayoutInflater().inflate(R.layout.dialog_adjust_defines, null);
+		int excluded = ShaderDefineParser.countExcludedDefines(source);
+		if (excluded > 0) {
+			TextView excludedNote = view.findViewById(R.id.adjust_defines_excluded_note);
+			excludedNote.setVisibility(View.VISIBLE);
+			excludedNote.setText(getResources().getQuantityString(
+					R.plurals.adjust_defines_excluded_note, excluded, excluded));
+		}
+
+		RecyclerView list = view.findViewById(R.id.adjust_defines_list);
+		list.setLayoutManager(new LinearLayoutManager(this));
+		// Forward reference - the callback below needs the adapter, and
+		// the adapter's constructor needs the drag-start callback,
+		// which itself needs the (same) ItemTouchHelper. Resolved by
+		// the time any drag actually happens, well after both exist.
+		DefineAdapter[] adapterHolder = new DefineAdapter[1];
+		ItemTouchHelper itemTouchHelper = new ItemTouchHelper(
+				new ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
+					@Override
+					public boolean onMove(@NonNull RecyclerView recyclerView,
+							@NonNull RecyclerView.ViewHolder viewHolder,
+							@NonNull RecyclerView.ViewHolder target) {
+						adapterHolder[0].moveItem(
+								viewHolder.getAdapterPosition(), target.getAdapterPosition());
+						return true;
+					}
+
+					@Override
+					public boolean isLongPressDragEnabled() {
+						// Only the drag handle starts a drag (see
+						// DefineAdapter.ViewHolder.bind()) - a bare long
+						// press anywhere on the row would otherwise
+						// fight the row's own text fields/slider.
+						return false;
+					}
+
+					@Override
+					public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {
+					}
+				});
+		itemTouchHelper.attachToRecyclerView(list);
+		DefineAdapter adapter = new DefineAdapter(workingOrder, itemTouchHelper::startDrag,
+				this::showColorPickerDialog, recentlyEditedDefineNames);
+		adapterHolder[0] = adapter;
+		list.setAdapter(adapter);
+
+		TextView noMatches = view.findViewById(R.id.adjust_defines_no_matches);
+		adapter.setOnEmptyChanged(empty -> noMatches.setVisibility(empty ? View.VISIBLE : View.GONE));
+
+		EditText filterView = view.findViewById(R.id.adjust_defines_filter);
+		filterView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				adapter.setFilter(s.toString());
+			}
+		});
+		// The live filtering above already does the actual work on
+		// every keystroke - this just dismisses the keyboard on the
+		// IME's own Search action (imeOptions="actionSearch" in the
+		// layout), so pressing it reads as "I'm done" instead of doing
+		// nothing visible.
+		filterView.setOnEditorActionListener((v, actionId, event) -> {
+			SoftKeyboard.hide(this, filterView);
+			return true;
+		});
+		CheckBox showRecentBox = view.findViewById(R.id.adjust_defines_show_recent);
+		showRecentBox.setOnCheckedChangeListener((button, checked) -> adapter.setShowRecentOnly(checked));
+
+		// Set once the flow actually continues into the confirm dialog
+		// (its own responsibility to restore wasPaused from then on) -
+		// otherwise this dialog's own dismissal (Cancel, back press, or
+		// tapping outside) is the end of the flow, and needs to restore
+		// it here instead.
+		boolean[] proceeding = {false};
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.adjust_defines)
+				.setView(view)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string.adjust_defines_make_edits, (d, w) -> {
+					proceeding[0] = true;
+					showAdjustDefinesConfirmDialog(source, originalOrder, workingOrder, wasPaused);
+				})
+				.setOnDismissListener(d -> {
+					if (!proceeding[0]) {
+						setShaderPaused(wasPaused);
+					}
+				})
+				.show();
+	}
+
+	private void showAdjustDefinesConfirmDialog(@NonNull String originalSource,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			boolean wasPaused) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_adjust_defines_confirm, null);
+		TextView summary = view.findViewById(R.id.adjust_defines_confirm_summary);
+		summary.setText(buildAdjustDefinesSummary(originalOrder, workingOrder));
+
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.adjust_defines_confirm_title)
+				.setView(view)
+				.setOnDismissListener(d -> setShaderPaused(wasPaused))
+				.show();
+		view.findViewById(R.id.adjust_defines_confirm_cancel).setOnClickListener(v -> dialog.dismiss());
+		view.findViewById(R.id.adjust_defines_confirm_apply).setOnClickListener(v -> {
+			applyAdjustedDefines(originalSource, originalOrder, workingOrder, false);
+			dialog.dismiss();
+		});
+		view.findViewById(R.id.adjust_defines_confirm_apply_and_save).setOnClickListener(v -> {
+			applyAdjustedDefines(originalSource, originalOrder, workingOrder, true);
+			dialog.dismiss();
+		});
+	}
+
+	@NonNull
+	private String buildAdjustDefinesSummary(
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder) {
+		StringBuilder summary = new StringBuilder();
+		for (ShaderDefine define : workingOrder) {
+			boolean valueChanged = define.isValueChanged();
+			boolean commentChanged = define.isCommentChanged();
+			if (!valueChanged && !commentChanged) {
+				continue;
+			}
+			summary.append(define.name).append(": ");
+			if (valueChanged) {
+				summary.append(define.originalValue).append(" → ").append(define.value);
+			}
+			if (commentChanged) {
+				if (valueChanged) {
+					summary.append(", ");
+				}
+				summary.append(getString(R.string.adjust_defines_comment_changed_format,
+						orNone(define.originalComment), orNone(define.comment)));
+			}
+			summary.append('\n');
+		}
+		boolean reordered = false;
+		for (int i = 0; i < originalOrder.size(); i++) {
+			if (originalOrder.get(i) != workingOrder.get(i)) {
+				reordered = true;
+				break;
+			}
+		}
+		if (reordered) {
+			summary.append(getString(R.string.adjust_defines_reordered_note)).append('\n');
+		}
+		if (summary.length() == 0) {
+			summary.append(getString(R.string.adjust_defines_no_changes));
+		}
+		return summary.toString();
+	}
+
+	@NonNull
+	private String orNone(@Nullable String value) {
+		return value == null ? getString(R.string.adjust_defines_no_comment) : value;
+	}
+
+	private void applyAdjustedDefines(@NonNull String originalSource,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			boolean andSave) {
+		String newSource = ShaderDefineParser.reconstruct(originalSource, originalOrder, workingOrder);
+		editorFragment.replaceAll(newSource);
+		if (andSave) {
+			shaderManager.saveShader();
+		}
+		for (ShaderDefine define : workingOrder) {
+			if (define.isValueChanged() || define.isCommentChanged()) {
+				recentlyEditedDefineNames.add(define.name);
+			}
+		}
+		Toast.makeText(this,
+				andSave ? R.string.adjust_defines_applied_and_saved : R.string.adjust_defines_applied,
+				Toast.LENGTH_SHORT).show();
+	}
+
+	// R/G/B(/A) sliders, a live swatch, and a hex field, all kept in
+	// sync with each other - the color-picker half of a VEC3/VEC4
+	// define's color swatch (see DefineAdapter.OnColorPickerRequested).
+	// onChanged runs only if the user confirms (OK) - define's own
+	// components/value are untouched on Cancel.
+	//
+	// The RGB/HSV/hex controls all edit a normalized (0-1 per channel)
+	// color, never the raw components directly - intensity (a separate
+	// slider, factored out of the color's own largest channel at
+	// dialog-open time) carries however far past 1.0 an HDR color like
+	// (20.0, 5.0, 1.0) actually goes, so the color controls themselves
+	// always get full slider precision regardless of how bright the
+	// original value was. The two are only multiplied back together
+	// once, in the OK handler. Alpha is never scaled by intensity - an
+	// opacity channel, not a color magnitude.
+	private void showColorPickerDialog(@NonNull ShaderDefine define, @NonNull Runnable onChanged) {
+		float[] components = define.vectorComponents;
+		if (components == null) {
+			return;
+		}
+		boolean hasAlpha = components.length == 4;
+
+		View view = getLayoutInflater().inflate(R.layout.dialog_color_picker, null);
+		View swatch = view.findViewById(R.id.color_picker_swatch);
+		SeekBar intensitySeek = view.findViewById(R.id.color_picker_intensity);
+		EditText intensityText = view.findViewById(R.id.color_picker_intensity_text);
+		RadioGroup modeGroup = view.findViewById(R.id.color_picker_mode);
+		View rgbGroup = view.findViewById(R.id.color_picker_rgb_group);
+		View hsvGroup = view.findViewById(R.id.color_picker_hsv_group);
+		SeekBar rSeek = view.findViewById(R.id.color_picker_r);
+		SeekBar gSeek = view.findViewById(R.id.color_picker_g);
+		SeekBar bSeek = view.findViewById(R.id.color_picker_b);
+		SeekBar aSeek = view.findViewById(R.id.color_picker_a);
+		SeekBar hSeek = view.findViewById(R.id.color_picker_h);
+		SeekBar sSeek = view.findViewById(R.id.color_picker_s);
+		SeekBar vSeek = view.findViewById(R.id.color_picker_v);
+		TextView rVal = view.findViewById(R.id.color_picker_r_value);
+		TextView gVal = view.findViewById(R.id.color_picker_g_value);
+		TextView bVal = view.findViewById(R.id.color_picker_b_value);
+		TextView aVal = view.findViewById(R.id.color_picker_a_value);
+		TextView hVal = view.findViewById(R.id.color_picker_h_value);
+		TextView sVal = view.findViewById(R.id.color_picker_s_value);
+		TextView vVal = view.findViewById(R.id.color_picker_v_value);
+		View aRow = view.findViewById(R.id.color_picker_a_row);
+		EditText hexField = view.findViewById(R.id.color_picker_hex);
+		aRow.setVisibility(hasAlpha ? View.VISIBLE : View.GONE);
+
+		float initialIntensity = Math.max(Math.abs(components[0]),
+				Math.max(Math.abs(components[1]), Math.abs(components[2])));
+		if (initialIntensity == 0f) {
+			initialIntensity = 1f;
+		}
+		float[] intensity = {initialIntensity};
+		float[] intensityRange = ShaderDefineParser.inferSliderRange(initialIntensity);
+		float intensityLo = Math.max(0f, intensityRange[0]);
+		float intensityHi = Math.max(intensityLo + 1f, intensityRange[1]);
+
+		int[] rgba = {
+				colorComponentToByte(components[0] / intensity[0]),
+				colorComponentToByte(components[1] / intensity[0]),
+				colorComponentToByte(components[2] / intensity[0]),
+				hasAlpha ? colorComponentToByte(components[3]) : 255,
+		};
+		float[] hsv = new float[3];
+		boolean[] updating = {false};
+		// Recomputed from rgba (the single source of truth for the
+		// normalized color) on every change, regardless of source (an
+		// RGB slider, an HSV slider, the hex field, or the intensity
+		// slider) or which group is currently showing - all stay fully
+		// in sync even while hidden, so switching tabs never shows a
+		// stale value.
+		Runnable refresh = () -> {
+			Color.RGBToHSV(rgba[0], rgba[1], rgba[2], hsv);
+			((GradientDrawable) swatch.getBackground().mutate())
+					.setColor(Color.argb(hasAlpha ? rgba[3] : 255, rgba[0], rgba[1], rgba[2]));
+			updating[0] = true;
+			intensitySeek.setProgress(progressFor(intensity[0], intensityLo, intensityHi));
+			intensityText.setText(ShaderDefine.formatFloat(intensity[0]));
+			rSeek.setProgress(rgba[0]);
+			gSeek.setProgress(rgba[1]);
+			bSeek.setProgress(rgba[2]);
+			rVal.setText(String.valueOf(rgba[0]));
+			gVal.setText(String.valueOf(rgba[1]));
+			bVal.setText(String.valueOf(rgba[2]));
+			if (hasAlpha) {
+				aSeek.setProgress(rgba[3]);
+				aVal.setText(String.valueOf(rgba[3]));
+			}
+			hSeek.setProgress(Math.round(hsv[0]));
+			sSeek.setProgress(Math.round(hsv[1] * 100));
+			vSeek.setProgress(Math.round(hsv[2] * 100));
+			hVal.setText(String.valueOf(Math.round(hsv[0])));
+			sVal.setText(String.valueOf(Math.round(hsv[1] * 100)));
+			vVal.setText(String.valueOf(Math.round(hsv[2] * 100)));
+			hexField.setText(hasAlpha
+					? String.format(Locale.US, "#%02X%02X%02X%02X", rgba[0], rgba[1], rgba[2], rgba[3])
+					: String.format(Locale.US, "#%02X%02X%02X", rgba[0], rgba[1], rgba[2]));
+			updating[0] = false;
+		};
+		intensitySeek.setMax(1000);
+		refresh.run();
+
+		modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+			boolean rgbMode = checkedId == R.id.color_picker_mode_rgb;
+			rgbGroup.setVisibility(rgbMode ? View.VISIBLE : View.GONE);
+			hsvGroup.setVisibility(rgbMode ? View.GONE : View.VISIBLE);
+		});
+
+		intensitySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				if (!fromUser || updating[0]) {
+					return;
+				}
+				intensity[0] = intensityLo + (intensityHi - intensityLo) * progress / 1000f;
+				refresh.run();
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		});
+		intensityText.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				if (updating[0]) {
+					return;
+				}
+				Float parsed = parseFloatOrNull(s.toString());
+				if (parsed != null) {
+					intensity[0] = parsed;
+					refresh.run();
+				}
+			}
+		});
+
+		SeekBar.OnSeekBarChangeListener rgbListener = new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				if (!fromUser || updating[0]) {
+					return;
+				}
+				if (seekBar == rSeek) {
+					rgba[0] = progress;
+				} else if (seekBar == gSeek) {
+					rgba[1] = progress;
+				} else if (seekBar == bSeek) {
+					rgba[2] = progress;
+				} else if (seekBar == aSeek) {
+					rgba[3] = progress;
+				}
+				refresh.run();
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		};
+		rSeek.setOnSeekBarChangeListener(rgbListener);
+		gSeek.setOnSeekBarChangeListener(rgbListener);
+		bSeek.setOnSeekBarChangeListener(rgbListener);
+		if (hasAlpha) {
+			aSeek.setOnSeekBarChangeListener(rgbListener);
+		}
+
+		// H/S/V sliders edit the same hsv[] refresh() just recomputed
+		// from rgba - converting straight back to rgba (not writing
+		// through some separate "hsv is the real state" path) keeps
+		// rgba the single source of truth no matter which group was
+		// last touched.
+		SeekBar.OnSeekBarChangeListener hsvListener = new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				if (!fromUser || updating[0]) {
+					return;
+				}
+				if (seekBar == hSeek) {
+					hsv[0] = progress;
+				} else if (seekBar == sSeek) {
+					hsv[1] = progress / 100f;
+				} else if (seekBar == vSeek) {
+					hsv[2] = progress / 100f;
+				}
+				int color = Color.HSVToColor(hsv);
+				rgba[0] = Color.red(color);
+				rgba[1] = Color.green(color);
+				rgba[2] = Color.blue(color);
+				refresh.run();
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		};
+		hSeek.setOnSeekBarChangeListener(hsvListener);
+		sSeek.setOnSeekBarChangeListener(hsvListener);
+		vSeek.setOnSeekBarChangeListener(hsvListener);
+
+		hexField.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				if (updating[0]) {
+					return;
+				}
+				int[] parsed = parseHexColor(s.toString(), hasAlpha);
+				if (parsed == null) {
+					return;
+				}
+				System.arraycopy(parsed, 0, rgba, 0, hasAlpha ? 4 : 3);
+				refresh.run();
+			}
+		});
+
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.color_picker_title)
+				.setView(view)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok, (d, w) -> {
+					components[0] = (rgba[0] / 255f) * intensity[0];
+					components[1] = (rgba[1] / 255f) * intensity[0];
+					components[2] = (rgba[2] / 255f) * intensity[0];
+					if (hasAlpha) {
+						components[3] = rgba[3] / 255f;
+					}
+					define.syncVectorValue();
+					onChanged.run();
+				})
+				.show();
+	}
+
+	private static int colorComponentToByte(float component) {
+		return Math.max(0, Math.min(255, Math.round(component * 255f)));
+	}
+
+	// Maps `value` onto a 0-1000 SeekBar progress against [lo, hi] -
+	// shared by the color picker's own intensity slider (see
+	// showColorPickerDialog()); DefineAdapter has its own copy of this
+	// same mapping for the per-component vector sliders it owns.
+	private static int progressFor(float value, float lo, float hi) {
+		if (hi <= lo) {
+			return 500;
+		}
+		int progress = Math.round((value - lo) / (hi - lo) * 1000);
+		return Math.max(0, Math.min(1000, progress));
+	}
+
+	// Tolerates a trailing 'f'/'F' suffix and otherwise-unparseable text
+	// (returns null rather than throwing) - same idiom as
+	// DefineAdapter.ViewHolder.parseLeading(), used here for the
+	// intensity field's own exact-value entry.
+	@Nullable
+	private static Float parseFloatOrNull(@NonNull String text) {
+		String candidate = (text.endsWith("f") || text.endsWith("F"))
+				? text.substring(0, text.length() - 1)
+				: text;
+		try {
+			return Float.parseFloat(candidate);
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	// Accepts "#RRGGBB"/"RRGGBB" always, and additionally
+	// "#RRGGBBAA"/"RRGGBBAA" when hasAlpha - anything else (including a
+	// 6-digit hex typed while hasAlpha is true, mid-edit) returns null,
+	// which the hex field's own watcher treats as "not valid yet",
+	// leaving the sliders where they were rather than guessing.
+	@Nullable
+	private static int[] parseHexColor(@NonNull String text, boolean hasAlpha) {
+		String hex = text.strip();
+		if (hex.startsWith("#")) {
+			hex = hex.substring(1);
+		}
+		int expectedLength = hasAlpha ? 8 : 6;
+		if (hex.length() != expectedLength) {
+			return null;
+		}
+		try {
+			int r = Integer.parseInt(hex.substring(0, 2), 16);
+			int g = Integer.parseInt(hex.substring(2, 4), 16);
+			int b = Integer.parseInt(hex.substring(4, 6), 16);
+			int a = hasAlpha ? Integer.parseInt(hex.substring(6, 8), 16) : 255;
+			return new int[]{r, g, b, a};
+		} catch (NumberFormatException e) {
+			return null;
+		}
 	}
 
 	private int dpToPx(int dp) {
@@ -1662,14 +2251,24 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	@FunctionalInterface
+	private interface OnScreenshotCaptured {
+		void onCaptured(@NonNull byte[] png, boolean wasPaused);
+	}
+
 	// Pauses first - reads straight from the GLSurfaceView's own
 	// framebuffer (see ShaderRenderer.captureFullScreenshot()), so the
 	// saved image never has any toolbar/editor/dialog chrome in it, but
-	// an un-paused shader would otherwise keep animating underneath the
-	// action dialog while the user is still deciding what to do with a
-	// frame they've already seen and chosen. Resumed (if it wasn't
-	// already paused) once the dialog closes, however it closes.
-	private void takeScreenshot() {
+	// an un-paused shader would otherwise keep animating underneath
+	// whatever's deciding what to do with a frame already captured.
+	// wasPaused (the pause state from *before* this call) is handed to
+	// onCaptured so it can decide when/whether to restore it - e.g.
+	// once a dialog it shows is dismissed, or immediately once an
+	// immediate action (see copyScreenshotToClipboard()) is done. A
+	// plain interface of our own, not java.util.function.BiConsumer -
+	// that one's unavailable before API 24 without core library
+	// desugaring (not enabled in this project).
+	private void captureScreenshotAnd(@NonNull OnScreenshotCaptured onCaptured) {
 		boolean wasPaused = shaderViewManager.isPaused();
 		setShaderPaused(true);
 		new Thread(() -> {
@@ -1680,9 +2279,22 @@ public class MainActivity extends AppCompatActivity {
 					setShaderPaused(wasPaused);
 					return;
 				}
-				showScreenshotActionsDialog(png, wasPaused);
+				onCaptured.onCaptured(png, wasPaused);
 			});
 		}, "ScreenshotCapture").start();
+	}
+
+	private void takeScreenshot() {
+		captureScreenshotAnd(this::showScreenshotActionsDialog);
+	}
+
+	// One-key version of the action dialog's own first entry (Copy to
+	// Clipboard, see showScreenshotActionsDialog()) - same capture, same
+	// save-then-copy, just without the extra tap/keypress through the
+	// dialog first (see KEYCODE_C in handleHotkeyDown()).
+	private void copyScreenshotToClipboard() {
+		captureScreenshotAnd((png, wasPaused) ->
+				handleScreenshotAction(png, ScreenshotAction.COPY, () -> setShaderPaused(wasPaused)));
 	}
 
 	// Remembers the last values used in the custom-res/frame-sequence

@@ -51,6 +51,7 @@ import enk.danwills.android.enkishadereditor.highlighter.Highlight;
 import enk.danwills.android.enkishadereditor.highlighter.Lexer;
 import enk.danwills.android.enkishadereditor.highlighter.Token;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.preference.Preferences;
 
 public class ShaderEditor extends LineNumberEditText {
 	private static final Pattern PATTERN_TRAILING_WHITE_SPACE = Pattern.compile(
@@ -80,10 +81,28 @@ public class ShaderEditor extends LineNumberEditText {
 
 	private int revision = 0;
 	private final int[] colors = new int[Highlight.values().length];
+	// In HIGHLIGHTING_FAST (see highlight()), live typing never blocks
+	// waiting for a fresh token list - it uses whatever's already
+	// finished and otherwise leaves the editor showing its last
+	// highlight. This same background-tokenization-completed callback
+	// is what catches it up afterwards, once the newest revision's
+	// result actually lands, without ever stalling the UI thread to
+	// get there. tokenRevision == revision (guarding both branches
+	// below) is what keeps a now-stale, already-superseded result from
+	// a cancelled-but-still-finishing older computation from applying.
 	private final TokenListUpdater tokenListUpdater = new TokenListUpdater(
 			(tokenRevision, tokens, text) -> post(() -> {
-				if (tokenRevision == revision) {
-					provideCompletions(tokens, text);
+				if (tokenRevision != revision) {
+					return;
+				}
+				provideCompletions(tokens, text);
+				if (ShaderEditorApp.preferences.getSyntaxHighlightingMode()
+						== Preferences.HIGHLIGHTING_FAST) {
+					Editable e = getText();
+					if (e != null) {
+						applySpans(e, tokens, false);
+						this.tokens = tokens;
+					}
 				}
 			}));
 	private final Runnable updateRunnable = new Runnable() {
@@ -373,6 +392,16 @@ public class ShaderEditor extends LineNumberEditText {
 				text,
 				0,
 				text.length());
+	}
+
+	// Same shape as insert() above, but replacing the entire document
+	// rather than the current selection - see EditorFragment.replaceAll().
+	public void replaceAll(@NonNull String text) {
+		Editable e = getText();
+		if (e == null) {
+			return;
+		}
+		e.replace(0, e.length(), text, 0, text.length());
 	}
 
 	public void navigateToLine(int lineNumber) {
@@ -830,13 +859,47 @@ public class ShaderEditor extends LineNumberEditText {
 			e.replace(m.start(), m.end(), " ");
 		}
 
-		if (ShaderEditorApp.preferences.disableHighlighting() &&
-				length > 4096) {
+		int mode = ShaderEditorApp.preferences.getSyntaxHighlightingMode();
+		if (mode == Preferences.HIGHLIGHTING_OFF) {
 			clearSpans(e, 0, length, ForegroundColorSpan.class);
+			tokens = new ArrayList<>();
 			return e;
 		}
-		List<Token> newTokens = tokenListUpdater.ensureUpdated(e, revision);
 
+		// FULL (and any one-time complete highlight, e.g. a freshly
+		// loaded shader - see setTextHighlighted()) waits for a fresh,
+		// fully up-to-date token list before touching a single span,
+		// same as this app has always done; that's exactly the UI-
+		// thread stall FAST exists to avoid for live typing, so it
+		// instead uses whatever's already finished and lets the
+		// background computation's own completion callback (see the
+		// tokenListUpdater field above) catch the spans up once ready,
+		// without ever blocking here.
+		if (complete || mode == Preferences.HIGHLIGHTING_FULL) {
+			List<Token> newTokens = tokenListUpdater.ensureUpdated(e, revision);
+			applySpans(e, newTokens, complete);
+			tokens = newTokens;
+			return e;
+		}
+		List<Token> ready = tokenListUpdater.getCompletedTokens(revision);
+		if (ready != null) {
+			applySpans(e, ready, false);
+			tokens = ready;
+		}
+
+		return e;
+	}
+
+	// Applies newTokens' coloring to e - complete clears and respans
+	// the whole document (used for a one-time full highlight, e.g. a
+	// freshly loaded shader); otherwise just the range Lexer.diff()
+	// says actually changed since `tokens` (the previous, already-
+	// applied list), which is cheap enough to redo on every live
+	// keystroke/async catch-up. Shared by highlight() (FULL, and any
+	// complete pass) and the tokenListUpdater completion callback above
+	// (FAST's async catch-up).
+	private void applySpans(@NonNull Editable e, @NonNull List<Token> newTokens, boolean complete) {
+		int length = e.length();
 		if (complete) {
 			clearSpans(e, 0, length, ForegroundColorSpan.class);
 			for (Token token : newTokens) {
@@ -848,27 +911,23 @@ public class ShaderEditor extends LineNumberEditText {
 							Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 				}
 			}
-		} else {
-			Lexer.Diff diff = Lexer.diff(tokens, newTokens);
-			if (diff.start <= diff.deleteEnd) {
-				int startOffset = newTokens.get(diff.start).startOffset();
-				int endOffset = newTokens.get(diff.insertEnd).endOffset();
-				clearSpans(e, startOffset, endOffset, ForegroundColorSpan.class);
-			}
-			for (int i = diff.start; i <= diff.insertEnd; ++i) {
-				Token token = newTokens.get(i);
-				e.setSpan(
-						new ForegroundColorSpan(
-								colors[Highlight.from(token.type()).ordinal()]),
-						token.startOffset(),
-						token.endOffset(),
-						Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-			}
+			return;
 		}
-
-		tokens = newTokens;
-
-		return e;
+		Lexer.Diff diff = Lexer.diff(tokens, newTokens);
+		if (diff.start <= diff.deleteEnd) {
+			int startOffset = newTokens.get(diff.start).startOffset();
+			int endOffset = newTokens.get(diff.insertEnd).endOffset();
+			clearSpans(e, startOffset, endOffset, ForegroundColorSpan.class);
+		}
+		for (int i = diff.start; i <= diff.insertEnd; ++i) {
+			Token token = newTokens.get(i);
+			e.setSpan(
+					new ForegroundColorSpan(
+							colors[Highlight.from(token.type()).ordinal()]),
+					token.startOffset(),
+					token.endOffset(),
+					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		}
 	}
 
 	private void provideCompletions(
