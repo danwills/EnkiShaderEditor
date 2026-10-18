@@ -80,6 +80,24 @@ final class ProgramBindings {
 		return textures.values();
 	}
 
+	// Replaces every active uniform's values array with its own private
+	// copy. The setters store the caller's array by reference, and several
+	// callers pass live arrays that keep changing (touch, mouse, pointers,
+	// sensors) - harmless for a frame drawn in one go, but a progressive
+	// frame is drawn as bands across several refreshes, and without this
+	// each band saw whatever those arrays held at *its* draw (e.g. an
+	// orbit drag landing mid-frame tore the image into bands rendered from
+	// different camera positions). The next beginFrame() re-binds fresh
+	// references anyway, so this only ever affects the frame it's called
+	// for.
+	void freezeValues() {
+		for (var uniform : uniforms.values()) {
+			if (uniform.active && uniform.values != null) {
+				uniform.values = uniform.values.clone();
+			}
+		}
+	}
+
 	void clear() {
 		for (var uniform : uniforms.values()) {
 			uniform.active = false;

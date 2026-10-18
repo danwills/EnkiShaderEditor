@@ -73,6 +73,11 @@ public class Preferences {
 	public static final int LIVE_RENDER_NORMAL = 0;
 	public static final int LIVE_RENDER_PROGRESSIVE = 1;
 	public static final int LIVE_RENDER_AUTO = 2;
+	public static final String STATE_ROWS = "state_rows";
+	// Same values as ShaderRenderer.STATE_ROWS_* - see getStateRows().
+	public static final int STATE_ROWS_OFF = 0;
+	public static final int STATE_ROWS_AUTO = 1;
+	public static final int STATE_ROWS_ALWAYS = 2;
 
 	// GPU_PRIORITY levels - see getGpuPriorityLevel().
 	public static final int GPU_PRIORITY_DEFAULT = 0;
@@ -166,6 +171,7 @@ public class Preferences {
 	private int gpuPriority = GPU_PRIORITY_LOW;
 	private float breathingRoom = 0f;
 	private int liveRenderMode = LIVE_RENDER_AUTO;
+	private int stateRows = STATE_ROWS_AUTO;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -288,6 +294,9 @@ public class Preferences {
 		liveRenderMode = parseInt(
 				preferences.getString(LIVE_RENDER_MODE, null),
 				liveRenderMode);
+		stateRows = parseInt(
+				preferences.getString(STATE_ROWS, null),
+				stateRows);
 	}
 
 	// One of the GPU_PRIORITY_* levels - what the live preview's EGL
@@ -302,6 +311,11 @@ public class Preferences {
 	// is >= 1.0 (1.0 = no idle time added at all).
 	public float getBreathingRoom() {
 		return breathingRoom;
+	}
+
+	// One of STATE_ROWS_* - see ShaderRenderer.setStateRowMigration().
+	public int getStateRows() {
+		return stateRows;
 	}
 
 	// One of LIVE_RENDER_* - see ShaderRenderer.setLiveRenderMode().

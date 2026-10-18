@@ -39,6 +39,9 @@ final class ShaderRenderPipeline {
 	private final GlTexture2D[] targetTextures = new GlTexture2D[2];
 	private int frontTarget;
 	private int backTarget = 1;
+	// See releaseTargetsKeepingLastFrame().
+	@Nullable
+	private GlTexture2D standInFrame;
 	@Nullable
 	private GlFramebuffer thumbnailFramebuffer;
 	@Nullable
@@ -73,6 +76,7 @@ final class ShaderRenderPipeline {
 	void discardContextResources() {
 		thumbnailFramebuffer = null;
 		thumbnailTexture = null;
+		standInFrame = null;
 		discardTargets();
 	}
 
@@ -85,6 +89,153 @@ final class ShaderRenderPipeline {
 		}
 		frontTarget = 0;
 		backTarget = 1;
+	}
+
+	// Like releaseTargets(), but holds on to the most recently completed
+	// frame's texture (deleting only its framebuffer) as a stand-in that
+	// renderCompletedSurfacePass() keeps presenting until a frame at the
+	// new size completes - see ShaderRenderer.onSurfaceChanged().
+	void releaseTargetsKeepingLastFrame() {
+		GlTexture2D lastCompleted = targetTextures[backTarget];
+		targetTextures[backTarget] = null;
+		releaseStandInFrame();
+		releaseTargets();
+		standInFrame = lastCompleted;
+	}
+
+	// Frees the stand-in from releaseTargetsKeepingLastFrame(), if any -
+	// called once a frame at the new size has completed.
+	void releaseStandInFrame() {
+		if (standInFrame != null) {
+			device.deleteTexture(standInFrame);
+			standInFrame = null;
+		}
+	}
+
+	// Most rows a shader's state may span at the bottom of the frame -
+	// see detectStateRows().
+	static final int MAX_STATE_ROWS = 8;
+	// Rows above MAX_STATE_ROWS read to gauge how much an ordinary image's
+	// neighbouring rows differ, for comparison.
+	private static final int STATE_ROW_BASELINE_ROWS = 6;
+	private static final int STATE_ROW_MIN_PREFIX = 8;
+
+	// How many rows, from the bottom up, of the stand-in frame look like
+	// state storage rather than picture - 0 if none (or no stand-in).
+	// Storage is typically wildly discontinuous with what's next to it
+	// (packed positions/velocities rather than image), so row i counts
+	// if it differs from row i + 1 far more than ordinary picture rows
+	// differ from each other. State conventionally starts at x = 0 and
+	// may only fill part of a row (the rest being picture), so this tests
+	// growing prefixes of the row (8, 16, 32 ... pixels, then the whole
+	// width) - comparing whole rows diluted a 128-pixel state across a
+	// 360-pixel row below the threshold. One small glReadPixels, once per
+	// resize.
+	int detectStateRows() {
+		GlTexture2D source = standInFrame;
+		if (source == null) {
+			return 0;
+		}
+		int width = source.getWidth();
+		int rows = Math.min(source.getHeight(), MAX_STATE_ROWS + 1 + STATE_ROW_BASELINE_ROWS);
+		if (width <= 0 || rows < 3) {
+			return 0;
+		}
+		GlFramebuffer framebuffer = device.createFramebuffer();
+		device.attachColor(framebuffer, source);
+		int[] pixels = new int[width * rows];
+		device.readPixels(0, 0, width, rows, IntBuffer.wrap(pixels));
+		device.bindFramebuffer(null);
+		device.deleteFramebuffer(framebuffer);
+
+		// prefixDiff[i][x] = summed per-channel difference between rows i
+		// and i + 1 over pixels [0, x].
+		long[][] prefixDiff = new long[rows - 1][width];
+		for (int i = 0; i < rows - 1; ++i) {
+			long sum = 0;
+			int a = i * width;
+			int b = a + width;
+			for (int x = 0; x < width; ++x) {
+				int p = pixels[a + x];
+				int q = pixels[b + x];
+				for (int shift = 0; shift < 32; shift += 8) {
+					sum += Math.abs(((p >>> shift) & 0xff) - ((q >>> shift) & 0xff));
+				}
+				prefixDiff[i][x] = sum;
+			}
+		}
+		// Rows above any state, for "how different are ordinary rows".
+		int baselineStart = Math.min(MAX_STATE_ROWS + 1, rows - 2);
+		int stateRows = 0;
+		for (int i = 0; i < Math.min(MAX_STATE_ROWS, baselineStart); ++i) {
+			if (!rowLooksLikeState(prefixDiff, i, baselineStart, width)) {
+				break;
+			}
+			stateRows = i + 1;
+		}
+		return stateRows;
+	}
+
+	private static boolean rowLooksLikeState(
+			@NonNull long[][] prefixDiff, int row, int baselineStart, int width) {
+		for (int prefix = Math.min(STATE_ROW_MIN_PREFIX, width); ; prefix = Math.min(prefix * 2, width)) {
+			double mean = prefixDiff[row][prefix - 1] / (4.0 * prefix);
+			double[] baseline = new double[prefixDiff.length - baselineStart];
+			for (int k = 0; k < baseline.length; ++k) {
+				baseline[k] = prefixDiff[baselineStart + k][prefix - 1] / (4.0 * prefix);
+			}
+			java.util.Arrays.sort(baseline);
+			double typical = baseline[baseline.length / 2];
+			if (mean > typical * 3 + 6) {
+				return true;
+			}
+			if (prefix == width) {
+				return false;
+			}
+		}
+	}
+
+	// Copies the stand-in frame's bottom `rows` rows into both freshly
+	// created targets as exact pixel values (raw GPU copies, no scaling
+	// or filtering), treating them as one long line of pixels - wrapped
+	// at the old width, re-laid wrapped at the new one - the usual way a
+	// shader lays out more state than fits in one row. So a shader keeping
+	// state there carries on across a resolution change instead of
+	// restarting from black, even when the change moves where its state
+	// wraps. Anything that lands beyond the shader's actual state is
+	// just picture it redraws next frame.
+	void migrateStateRows(int rows) {
+		GlTexture2D source = standInFrame;
+		if (source == null || rows <= 0 || !hasTargets()) {
+			return;
+		}
+		int oldWidth = source.getWidth();
+		int newWidth = targetTextures[0].getWidth();
+		int newHeight = targetTextures[0].getHeight();
+		rows = Math.min(rows, source.getHeight());
+		long total = Math.min((long) rows * oldWidth, (long) newHeight * newWidth);
+		GlFramebuffer framebuffer = device.createFramebuffer();
+		device.attachColor(framebuffer, source);
+		device.bindFramebuffer(framebuffer);
+		for (GlTexture2D target : targetTextures) {
+			device.bindTexture(0, target);
+			// Walk the linear range in runs that stay within one source
+			// row and one destination row.
+			for (long i = 0; i < total; ) {
+				int srcY = (int) (i / oldWidth);
+				int srcX = (int) (i % oldWidth);
+				int dstY = (int) (i / newWidth);
+				int dstX = (int) (i % newWidth);
+				int run = (int) Math.min(total - i,
+						Math.min(oldWidth - srcX, newWidth - dstX));
+				GLES20.glCopyTexSubImage2D(GLES20.GL_TEXTURE_2D, 0,
+						dstX, dstY, srcX, srcY, run, 1);
+				i += run;
+			}
+			device.generateMipmap(target);
+		}
+		device.bindFramebuffer(null);
+		device.deleteFramebuffer(framebuffer);
 	}
 
 	boolean hasTargets() {
@@ -193,7 +344,7 @@ final class ShaderRenderPipeline {
 			int surfaceWidth,
 			int surfaceHeight) {
 		drawSurface(
-				targetTextures[backTarget],
+				standInFrame != null ? standInFrame : targetTextures[backTarget],
 				surfaceWidth,
 				surfaceHeight,
 				null,

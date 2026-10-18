@@ -204,6 +204,11 @@
 	<string name="live_render_mode_progressive">始终渐进</string>
 	<string name="live_render_mode_auto">自动（仅在缓慢时渐进）</string>
 	<string name="live_render_mode_summary">%1$s - 渐进式会把缓慢的帧拆成多条横带，分散到多次屏幕刷新中绘制，并且只显示已完成的帧：重型着色器更新得慢一些，但编辑器和屏幕其余部分保持流畅。自动模式平时整帧渲染，只在帧慢到让屏幕卡顿时切换为渐进式，恢复快速后再切回。常规模式始终一次绘制整帧。</string>
+	<string name="state_rows">调整分辨率时保留状态行</string>
+	<string name="state_rows_off">关闭</string>
+	<string name="state_rows_auto">自动（看起来像存储数据时）</string>
+	<string name="state_rows_always">始终（至少最底行）</string>
+	<string name="state_rows_summary">%1$s - 在 backbuffer 底部像素行中保存状态（位置、速度等）的着色器，每次更改分辨率时通常会从头开始。此选项会按精确像素值复制这些行，并按新宽度重新换行排列，让模拟得以继续。自动模式只复制看起来像存储数据而非图像的行。仅影响使用 backbuffer 的着色器。</string>
 	<string name="fps_progressive">%1$s fps（渐进）</string>
 	<string name="fps_full_frame">%1$s fps（整帧）</string>
 	<string name="fps_progressive_bands">%1$s fps（渐进）· 帧 %2$d×%3$d，横带 %4$d×%5$d</string>

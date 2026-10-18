@@ -90,6 +90,17 @@
 				android:textColor="@color/drawer_text"
 				android:textSize="15sp"/>
 
+			<!-- Shown only while the live preview renders progressively:
+			     a dot that shrinks as the current frame nears completion
+			     and is absent while a finished frame is shown (see
+			     ProgressiveSpinnerView). -->
+			<enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView
+				android:id="@+id/progressive_spinner"
+				android:layout_width="14dp"
+				android:layout_height="14dp"
+				android:layout_marginTop="4dp"
+				android:visibility="gone"/>
+
 		</LinearLayout>
 
 		<!-- Transient "found it" ring drawn around a Find-in-Shader match -

@@ -204,6 +204,11 @@
 	<string name="live_render_mode_progressive">一律漸進</string>
 	<string name="live_render_mode_auto">自動（僅在緩慢時漸進）</string>
 	<string name="live_render_mode_summary">%1$s - 漸進式會把緩慢的影格拆成多條橫帶，分散到多次畫面更新中繪製，並且只顯示已完成的影格：重型著色器更新得慢一些，但編輯器和畫面其餘部分保持流暢。自動模式平時整個影格算繪，只在影格慢到讓畫面卡頓時切換為漸進式，恢復快速後再切回。一般模式一律一次繪製整個影格。</string>
+	<string name="state_rows">調整解析度時保留狀態列</string>
+	<string name="state_rows_off">關閉</string>
+	<string name="state_rows_auto">自動（看起來像儲存資料時）</string>
+	<string name="state_rows_always">一律（至少最底列）</string>
+	<string name="state_rows_summary">%1$s - 在 backbuffer 底部像素列中儲存狀態（位置、速度等）的著色器，每次變更解析度時通常會從頭開始。此選項會依精確像素值複製這些列，並依新寬度重新換列排列，讓模擬得以繼續。自動模式只複製看起來像儲存資料而非影像的列。僅影響使用 backbuffer 的著色器。</string>
 	<string name="fps_progressive">%1$s fps（漸進）</string>
 	<string name="fps_full_frame">%1$s fps（整個影格）</string>
 	<string name="fps_progressive_bands">%1$s fps（漸進）· 影格 %2$d×%3$d，橫帶 %4$d×%5$d</string>

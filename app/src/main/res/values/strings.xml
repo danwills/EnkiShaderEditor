@@ -207,6 +207,11 @@
 	<string name="live_render_mode_progressive">Always Progressive</string>
 	<string name="live_render_mode_auto">Automatic (progressive only when slow)</string>
 	<string name="live_render_mode_summary">%1$s - Progressive splits slow frames into bands drawn across several screen refreshes and only shows finished frames, so a heavy shader updates less often but the editor and the rest of the screen stay smooth. Automatic renders whole frames normally and only switches to progressive while frames are slow enough to stall the screen, switching back once they\'re fast again. Normal always draws each frame in one go.</string>
+	<string name="state_rows">Keep State Rows on Resize</string>
+	<string name="state_rows_off">Off</string>
+	<string name="state_rows_auto">Automatic (when they look like storage)</string>
+	<string name="state_rows_always">Always (at least the bottom row)</string>
+	<string name="state_rows_summary">%1$s - Shaders that keep state (positions, velocities…) in the bottom pixel rows of the backbuffer normally restart from scratch whenever the resolution changes. This copies those rows across as exact pixel values instead, re-wrapping them to the new width, so the simulation can carry on. Automatic only copies rows that look like stored data rather than picture. Only affects shaders that use backbuffer.</string>
 	<string name="fps_progressive">%1$s fps (progressive)</string>
 	<string name="fps_full_frame">%1$s fps (full frame)</string>
 	<string name="fps_progressive_bands">%1$s fps (progressive) · %2$d×%3$d frame, %4$d×%5$d bands</string>

@@ -52,6 +52,7 @@ public class ShaderView extends GLSurfaceView {
 		// pauses/resumes this view on the way back) takes effect at once.
 		renderer.setBreathingRoom(ShaderEditorApp.preferences.getBreathingRoom());
 		renderer.setLiveRenderMode(ShaderEditorApp.preferences.getLiveRenderMode());
+		renderer.setStateRowMigration(ShaderEditorApp.preferences.getStateRows());
 		super.onResume();
 	}
 

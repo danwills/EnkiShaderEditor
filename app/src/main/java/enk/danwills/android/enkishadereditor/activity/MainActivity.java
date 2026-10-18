@@ -128,6 +128,7 @@ import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
+import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 
 public class MainActivity extends AppCompatActivity {
 	private static final String CODE_VISIBLE = "code_visible";
@@ -968,11 +969,22 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	@NonNull
+	private ProgressiveSpinnerView createProgressiveSpinner() {
+		ProgressiveSpinnerView spinner = findViewById(R.id.progressive_spinner);
+		// A lambda, not a method reference: shaderViewManager is still null
+		// when this runs (the listener is built before it), and a method
+		// reference would dereference it immediately.
+		spinner.setSource(() -> shaderViewManager.getProgressiveFrameProgress());
+		return spinner;
+	}
+
+	@NonNull
 	@Contract(" -> new")
 	private ShaderViewManager.Listener createShaderViewListener() {
 		return new ShaderViewManager.Listener() {
 			private final View mainCoordinator = findViewById(R.id.main_coordinator);
 			private final View toolbar = findViewById(R.id.toolbar);
+			private final ProgressiveSpinnerView progressiveSpinner = createProgressiveSpinner();
 			// Noticeably longer than Snackbar.LENGTH_LONG (~2.75s) - long
 			// enough to actually read and react to, short of sticking
 			// around indefinitely (see showError() below).
@@ -984,6 +996,9 @@ public class MainActivity extends AppCompatActivity {
 					ShaderEditorApp.preferences.setPendingCrashShaderId(0);
 					uiManager.setToolbarSubtitle(buildFpsLabel(fps));
 				}
+				boolean progressive = shaderViewManager.isProgressiveActive();
+				progressiveSpinner.post(() -> progressiveSpinner.setVisibility(
+						progressive ? View.VISIBLE : View.GONE));
 			}
 
 			@Override

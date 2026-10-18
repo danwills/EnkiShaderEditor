@@ -834,6 +834,11 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getSmoothedFps();
 	}
 
+	// See ShaderRenderer.getProgressiveFrameProgress().
+	public float getProgressiveFrameProgress() {
+		return shaderView.getRenderer().getProgressiveFrameProgress();
+	}
+
 	// See ShaderRenderer.isProgressiveActive().
 	public boolean isProgressiveActive() {
 		return shaderView.getRenderer().isProgressiveActive();

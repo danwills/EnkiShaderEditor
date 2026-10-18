@@ -259,6 +259,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private BuiltinUniforms.PreparedFrame progressiveFrame;
 	private int progressiveFrameStamp;
 	private int progressiveRowsDone;
+	// See setStateRowMigration() - same values as Preferences.STATE_ROWS_*.
+	public static final int STATE_ROWS_OFF = 0;
+	public static final int STATE_ROWS_AUTO = 1;
+	public static final int STATE_ROWS_ALWAYS = 2;
+	private volatile int stateRowMigration = STATE_ROWS_AUTO;
+	// Set by a resize (onSurfaceChanged()), cleared by a reload - see
+	// migrateStateRows().
+	private boolean stateRowMigrationPending;
+	// See getProgressiveFrameProgress().
+	private volatile float progressiveFrameProgress;
 	private int progressiveRowsPerStep = Integer.MAX_VALUE;
 	private int progressiveLastRows;
 	private long lastStepIntervalNanos;
@@ -550,7 +560,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		refreshRate = getRefreshRate(context);
 		surfaceState = builtinUniforms.updateSurface(width, height, now);
 		if (surfaceState.renderTargetsChanged()) {
-			renderPipeline.releaseTargets();
+			// Keeps the last completed frame on screen (scaled) until the
+			// first frame at the new size completes - otherwise a quality
+			// change showed black for however long that took, which for a
+			// slow shader in progressive mode can be several seconds.
+			renderPipeline.releaseTargetsKeepingLastFrame();
+			stateRowMigrationPending = true;
 			abandonProgressiveFrame();
 			if (primedFrameNanos > 0) {
 				primeReady = true;
@@ -646,6 +661,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// The new shader's backbuffer parameters (size/filtering) may
 			// differ from the old one's - ensureTargets() below rebuilds.
 			renderPipeline.releaseTargets();
+			// A different (or edited) shader - never hand it the previous
+			// one's stashed state.
+			stateRowMigrationPending = false;
 			reloadProgram();
 		} else if (pendingReconfigure) {
 			pendingReconfigure = false;
@@ -689,6 +707,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (!targetErrors.isEmpty()) {
 				submitErrors(targetErrors);
 			}
+			if (stateRowMigrationPending) {
+				stateRowMigrationPending = false;
+				migrateStateRows(mainProgram);
+			}
 			if (!renderPipeline.hasTargets()) {
 				cancelCaptureThumbnail();
 				cancelCaptureFullImage();
@@ -723,6 +745,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				frame.surfaceHeight());
 		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
 		renderPipeline.swapTargets();
+		renderPipeline.releaseStandInFrame();
 		captureThumbnail(false);
 
 		if (onRendererListener != null) {
@@ -755,6 +778,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return;
 			}
 			progressiveFrameStamp = builtinUniforms.getBeginFrameCount();
+			progressiveFrame.bindings().freezeValues();
 			progressiveRowsDone = 0;
 			progressiveStepsThisFrame = 0;
 		}
@@ -780,8 +804,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		progressiveLastRows = rows;
 		++progressiveStepsThisFrame;
 		boolean completed = progressiveRowsDone >= height;
+		progressiveFrameProgress = completed ? 1f : progressiveRowsDone / (float) height;
 		if (completed) {
 			renderPipeline.swapTargets();
+			// A real frame at the current size exists now - see
+			// releaseTargetsKeepingLastFrame().
+			renderPipeline.releaseStandInFrame();
 		}
 		renderPipeline.renderCompletedSurfacePass(
 				surfaceBindings,
@@ -918,6 +946,28 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 	}
 
+	// One of STATE_ROWS_* - see migrateStateRows().
+	public void setStateRowMigration(int mode) {
+		stateRowMigration = mode;
+	}
+
+	// After a resolution change (not a shader switch/reload - see
+	// stateRowMigrationPending), carries the bottom rows of the last
+	// completed frame over into the new targets when they look like a
+	// backbuffer shader's state storage - or at least row 0 regardless,
+	// in ALWAYS mode - so e.g. a physics shader's bodies don't all reset
+	// on every quality change. Only for shaders that sample backbuffer.
+	private void migrateStateRows(@NonNull GlProgram mainProgram) {
+		int mode = stateRowMigration;
+		if (mode == STATE_ROWS_OFF || !device.hasUniform(mainProgram, UNIFORM_BACKBUFFER)) {
+			return;
+		}
+		int detected = renderPipeline.detectStateRows();
+		int rows = mode == STATE_ROWS_ALWAYS ? Math.max(1, detected) : detected;
+		Log.d(TAG, "state rows: detected " + detected + ", migrating " + rows);
+		renderPipeline.migrateStateRows(rows);
+	}
+
 	// Called (from any thread) just before something expected to make
 	// frames much slower - a confirmed risky quality increase - with an
 	// estimate of the new full-frame time. Puts AUTO straight into
@@ -953,6 +1003,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	public int getProgressiveAverageBandRows() {
 		return progressiveAverageBandRows;
+	}
+
+	// 0..1, how much of the progressive frame being built is done, as of
+	// the last band drawn - drops back toward 0 as each new frame starts.
+	public float getProgressiveFrameProgress() {
+		return progressiveFrameProgress;
 	}
 
 	// Whether frames are currently being drawn progressively - always

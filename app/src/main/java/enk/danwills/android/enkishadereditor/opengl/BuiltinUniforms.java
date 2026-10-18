@@ -58,6 +58,8 @@ final class BuiltinUniforms {
 	private float fTimeMax = DEFAULT_FTIME_MAX;
 	private float quality = 1f;
 	private float startRandom;
+	// See setQuality(). Set on the UI thread, consumed on the GL thread.
+	private volatile boolean keepClockOnNextSurface;
 	// Set/cleared by ShaderRenderer.setBackgroundCaptureActive() for the
 	// duration of a HighResCaptureService capture running on a
 	// SharedCaptureContext - see release() below for why. Written from
@@ -155,7 +157,26 @@ final class BuiltinUniforms {
 		runtimeClock.setElapsedNanos(runtimeClock.getElapsedNanos() + deltaNanos);
 	}
 
+	// A quality change is a resolution change of the *same* running
+	// shader (hotkeys, the quality spinner/picker), so unlike other
+	// surface changes it shouldn't restart time - see updateSurface() -
+	// and positions already in render-pixel units (touch, touchStart,
+	// pointers) are rescaled to the new resolution so a finger held
+	// down, or a shader's last-touch position, stays where it was on
+	// screen instead of jumping. (mouse is normalised, so it's unchanged.)
 	void setQuality(float quality) {
+		if (quality != this.quality && this.quality > 0) {
+			float f = quality / this.quality;
+			touch[0] *= f;
+			touch[1] *= f;
+			touchStart[0] *= f;
+			touchStart[1] *= f;
+			for (int i = 0; i < pointers.length; i += 3) {
+				pointers[i] *= f;
+				pointers[i + 1] *= f;
+			}
+			keepClockOnNextSurface = true;
+		}
 		this.quality = quality;
 	}
 
@@ -205,11 +226,17 @@ final class BuiltinUniforms {
 
 	@NonNull
 	SurfaceState updateSurface(int width, int height, long now) {
+		// Excludes the recreate gap from `runtime` either way.
 		runtimeClock.pause();
-		pausedAtNanos = -1;
-		startTime = now;
-		startRandom = (float) Math.random();
-		frameNum = 0;
+		if (keepClockOnNextSurface) {
+			// See setQuality() - time, frame and startRandom carry on.
+			keepClockOnNextSurface = false;
+		} else {
+			pausedAtNanos = -1;
+			startTime = now;
+			startRandom = (float) Math.random();
+			frameNum = 0;
+		}
 
 		surfaceResolution[0] = width;
 		surfaceResolution[1] = height;
