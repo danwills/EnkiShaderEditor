@@ -1,0 +1,13 @@
+<resources>
+	<string-array name="live_render_mode_names">
+		<item>@string/live_render_mode_normal</item>
+		<item>@string/live_render_mode_auto</item>
+		<item>@string/live_render_mode_progressive</item>
+	</string-array>
+	<!-- Preferences.LIVE_RENDER_* -->
+	<string-array name="live_render_mode_values">
+		<item>0</item>
+		<item>2</item>
+		<item>1</item>
+	</string-array>
+</resources>

@@ -51,6 +51,7 @@ public class ShaderView extends GLSurfaceView {
 		// Re-read every resume so a change made in Settings (which always
 		// pauses/resumes this view on the way back) takes effect at once.
 		renderer.setBreathingRoom(ShaderEditorApp.preferences.getBreathingRoom());
+		renderer.setLiveRenderMode(ShaderEditorApp.preferences.getLiveRenderMode());
 		super.onResume();
 	}
 

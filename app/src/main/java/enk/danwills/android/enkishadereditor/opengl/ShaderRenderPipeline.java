@@ -138,6 +138,70 @@ final class ShaderRenderPipeline {
 		device.draw(fullScreenQuadMesh, program);
 	}
 
+	// Progressive live rendering (see ShaderRenderer.drawProgressiveStep()):
+	// renders just rows [y0, y0 + rows) of the front target, with the
+	// viewport still covering the whole target - so gl_FragCoord and
+	// every derivative are exactly what a full-frame pass would give,
+	// and a scissor rectangle alone limits which pixels get written. The
+	// back target (the previous *completed* frame - what `backbuffer`
+	// samples) isn't touched until the whole frame is done and
+	// swapTargets() runs, so feedback shaders see exactly what they
+	// would in a single full-frame pass.
+	void renderMainPassRows(
+			@NonNull ProgramBindings bindings,
+			@NonNull GlProgram program,
+			int y0,
+			int rows) {
+		GlFramebuffer framebuffer = framebuffers[frontTarget];
+		GlTexture2D targetTexture = targetTextures[frontTarget];
+		if (framebuffer == null || targetTexture == null) {
+			return;
+		}
+		int width = targetTexture.getWidth();
+		int height = targetTexture.getHeight();
+		device.bindFramebuffer(framebuffer);
+		device.setViewport(0, 0, width, height);
+		boolean partial = y0 > 0 || rows < height;
+		if (partial) {
+			device.setScissor(0, y0, width, rows);
+		}
+		device.applyBindings(bindings);
+		device.draw(fullScreenQuadMesh, program);
+		if (partial) {
+			device.disableScissor();
+		}
+	}
+
+	// Width of the live render targets, or 0 if there aren't any yet.
+	int getTargetWidth() {
+		GlTexture2D texture = targetTextures[frontTarget];
+		return texture != null ? texture.getWidth() : 0;
+	}
+
+	// Height of the live render targets, or 0 if there aren't any yet.
+	int getTargetHeight() {
+		GlTexture2D texture = targetTextures[frontTarget];
+		return texture != null ? texture.getHeight() : 0;
+	}
+
+	// Shows the most recently *completed* frame - the back target, after
+	// a swap - rather than the front one, which in progressive mode may
+	// only be partly rendered.
+	void renderCompletedSurfacePass(
+			@NonNull ProgramBindings surfaceBindings,
+			@NonNull GlProgram surfaceProgram,
+			int surfaceWidth,
+			int surfaceHeight) {
+		drawSurface(
+				targetTextures[backTarget],
+				surfaceWidth,
+				surfaceHeight,
+				null,
+				surfaceBindings,
+				surfaceProgram,
+				cropBorderPixel);
+	}
+
 	void renderSurfacePass(
 			@NonNull ProgramBindings surfaceBindings,
 			@NonNull GlProgram surfaceProgram,
@@ -172,16 +236,20 @@ final class ShaderRenderPipeline {
 		backTarget = target;
 	}
 
+	// fromBack: read the last completed frame (progressive mode, where the
+	// front target may be mid-render) instead of the front target.
 	@Nullable
 	byte[] captureThumbnail(
 			@NonNull ProgramBindings surfaceBindings,
-			@NonNull GlProgram surfaceProgram) {
-		if (thumbnailFramebuffer == null || targetTextures[frontTarget] == null) {
+			@NonNull GlProgram surfaceProgram,
+			boolean fromBack) {
+		GlTexture2D source = targetTextures[fromBack ? backTarget : frontTarget];
+		if (thumbnailFramebuffer == null || source == null) {
 			return null;
 		}
 
 		drawSurface(
-				targetTextures[frontTarget],
+				source,
 				(int) thumbnailResolution[0],
 				(int) thumbnailResolution[1],
 				thumbnailFramebuffer,

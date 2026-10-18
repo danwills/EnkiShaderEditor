@@ -269,11 +269,15 @@ final class BuiltinUniforms {
 	}
 
 	@Nullable
+	// See getBeginFrameCount().
+	private int beginFrameCount = 0;
+
 	PreparedFrame beginFrame(@NonNull GlDevice device, @Nullable GlTexture2D backBufferTexture) {
 		var bindings = programBindings;
 		if (bindings == null) {
 			return null;
 		}
+		++beginFrameCount;
 
 		// Frozen at the moment pauseClock() ran rather than a fresh
 		// System.nanoTime(), while paused - without this, `time`/
@@ -319,6 +323,15 @@ final class BuiltinUniforms {
 
 	void endFrame() {
 		++frameNum;
+	}
+
+	// Bumped by every beginFrame(), whoever called it - lets a frame
+	// spread across several onDrawFrame() calls (progressive live
+	// rendering) notice that something else (a high-res capture, a
+	// sequence's stepSimulationFrame()) rebuilt the one shared
+	// programBindings in between, so it can't keep drawing with them.
+	int getBeginFrameCount() {
+		return beginFrameCount;
 	}
 
 	void clearConfiguration() {

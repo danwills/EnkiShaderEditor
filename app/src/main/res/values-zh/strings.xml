@@ -199,6 +199,14 @@
 	<string name="update_delay">自动运行延迟</string>
 	<string name="update_delay_summary">停止输入 %1$s 后：刷新语法高亮；若运行模式为修改时重新编译，则重新编译着色器</string>
 	<string name="performance">性能</string>
+	<string name="live_render_mode">实时渲染</string>
+	<string name="live_render_mode_normal">常规（整帧一次绘制）</string>
+	<string name="live_render_mode_progressive">始终渐进</string>
+	<string name="live_render_mode_auto">自动（仅在缓慢时渐进）</string>
+	<string name="live_render_mode_summary">%1$s - 渐进式会把缓慢的帧拆成多条横带，分散到多次屏幕刷新中绘制，并且只显示已完成的帧：重型着色器更新得慢一些，但编辑器和屏幕其余部分保持流畅。自动模式平时整帧渲染，只在帧慢到让屏幕卡顿时切换为渐进式，恢复快速后再切回。常规模式始终一次绘制整帧。</string>
+	<string name="fps_progressive">%1$s fps（渐进）</string>
+	<string name="fps_full_frame">%1$s fps（整帧）</string>
+	<string name="fps_progressive_bands">%1$s fps（渐进）· 帧 %2$d×%3$d，横带 %4$d×%5$d</string>
 	<string name="gpu_priority">GPU 优先级</string>
 	<string name="gpu_priority_default">默认（不请求）</string>
 	<string name="gpu_priority_low">低</string>
@@ -401,6 +409,7 @@
 	<string name="find_shader_hotkey_hint">Enter：搜索／下一个匹配项 · Ctrl+Enter：载入当前匹配项 · ←/→：切换匹配项</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">质量选择器</string>
+	<string name="quality_step_toast">质量 %1$s</string>
 	<string name="quality_increase_risky_title">提高质量？</string>
 	<string name="quality_increase_risky_message">此着色器目前已经只能以约 %1$d fps 运行。从这里再提高质量会大幅增加 GPU 负载，在某些设备上可能导致应用崩溃。仍要继续吗？</string>
 	<string name="quality_increase_risky_proceed">仍然提高</string>

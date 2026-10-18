@@ -181,6 +181,9 @@ public class PreferencesFragment
 					? ShaderEditorApp.preferences.getWallpaperShader()
 					: ShaderEditorApp.preferences.getDefaultNewShader();
 			preference.setSummary(getShaderSummary(id));
+		} else if (Preferences.LIVE_RENDER_MODE.equals(preference.getKey()) &&
+				preference instanceof ListPreference listPreference) {
+			preference.setSummary(getString(R.string.live_render_mode_summary, listPreference.getEntry()));
 		} else if (Preferences.GPU_PRIORITY.equals(preference.getKey()) &&
 				preference instanceof ListPreference listPreference) {
 			preference.setSummary(getString(R.string.gpu_priority_summary, listPreference.getEntry()));

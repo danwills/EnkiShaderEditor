@@ -67,6 +67,12 @@ public class Preferences {
 	public static final String CAPTURE_THREAD_PRIORITY = "capture_thread_priority";
 	public static final String GPU_PRIORITY = "gpu_priority";
 	public static final String BREATHING_ROOM = "breathing_room";
+	public static final String LIVE_RENDER_MODE = "live_render_mode";
+	// Same values as ShaderRenderer.LIVE_RENDER_* - see
+	// getLiveRenderMode().
+	public static final int LIVE_RENDER_NORMAL = 0;
+	public static final int LIVE_RENDER_PROGRESSIVE = 1;
+	public static final int LIVE_RENDER_AUTO = 2;
 
 	// GPU_PRIORITY levels - see getGpuPriorityLevel().
 	public static final int GPU_PRIORITY_DEFAULT = 0;
@@ -159,6 +165,7 @@ public class Preferences {
 	private int captureThreadPriority = CAPTURE_PRIORITY_NORMAL;
 	private int gpuPriority = GPU_PRIORITY_LOW;
 	private float breathingRoom = 0f;
+	private int liveRenderMode = LIVE_RENDER_AUTO;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -278,6 +285,9 @@ public class Preferences {
 				preferences.getString(GPU_PRIORITY, null),
 				gpuPriority);
 		breathingRoom = parseBreathingRoom(preferences.getString(BREATHING_ROOM, null));
+		liveRenderMode = parseInt(
+				preferences.getString(LIVE_RENDER_MODE, null),
+				liveRenderMode);
 	}
 
 	// One of the GPU_PRIORITY_* levels - what the live preview's EGL
@@ -292,6 +302,11 @@ public class Preferences {
 	// is >= 1.0 (1.0 = no idle time added at all).
 	public float getBreathingRoom() {
 		return breathingRoom;
+	}
+
+	// One of LIVE_RENDER_* - see ShaderRenderer.setLiveRenderMode().
+	public int getLiveRenderMode() {
+		return liveRenderMode;
 	}
 
 	// Blank, "auto" or anything unparseable means automatic (0); numbers

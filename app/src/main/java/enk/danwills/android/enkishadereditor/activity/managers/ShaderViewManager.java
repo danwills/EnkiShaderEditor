@@ -820,6 +820,45 @@ public class ShaderViewManager {
 	// ever show, so this shouldn't fire during ordinary use.
 	private static final int RISKY_QUALITY_INCREASE_FPS_THRESHOLD = 10;
 
+	// See ShaderRenderer.getProgressive*() - {frameWidth, frameHeight,
+	// averageBandRows}, all 0 until a progressive frame has completed.
+	@NonNull
+	public int[] getProgressiveStats() {
+		var renderer = shaderView.getRenderer();
+		return new int[]{renderer.getProgressiveFrameWidth(), renderer.getProgressiveFrameHeight(),
+				renderer.getProgressiveAverageBandRows()};
+	}
+
+	// See ShaderRenderer.getSmoothedFps().
+	public float getSmoothedFps() {
+		return shaderView.getRenderer().getSmoothedFps();
+	}
+
+	// See ShaderRenderer.isProgressiveActive().
+	public boolean isProgressiveActive() {
+		return shaderView.getRenderer().isProgressiveActive();
+	}
+
+	// One step up (direction > 0) or down the quality list, via
+	// setQuality() - so an increase still goes through the risky-increase
+	// confirmation (and its conservative progressive start). Returns the
+	// index of the quality being requested, which is the current one when
+	// already at either end.
+	public int stepQuality(int direction) {
+		int current = 0;
+		for (int i = 0; i < qualityValues.length; ++i) {
+			if (qualityValues[i] == quality) {
+				current = i;
+				break;
+			}
+		}
+		int next = Math.max(0, Math.min(qualityValues.length - 1, current + Integer.signum(direction)));
+		if (next != current) {
+			setQuality(qualityValues[next]);
+		}
+		return next;
+	}
+
 	public float getQuality() {
 		return quality;
 	}
@@ -883,7 +922,18 @@ public class ShaderViewManager {
 		new MaterialAlertDialogBuilder(activity)
 				.setTitle(R.string.quality_increase_risky_title)
 				.setMessage(activity.getString(R.string.quality_increase_risky_message, fps))
-				.setPositiveButton(R.string.quality_increase_risky_proceed, (d, w) -> onProceed.run())
+				.setPositiveButton(R.string.quality_increase_risky_proceed, (d, w) -> {
+					// Every quality step is a linear scale, so pixel count
+					// (and roughly frame time) goes up with its square -
+					// hand the renderer that estimate *before* the change
+					// lands, so its first frame at the new resolution
+					// starts out in small progressive bands instead of one
+					// full-frame draw of exactly the size that's risky.
+					float scale = q / quality;
+					long estimatedFrameNanos = (long) (1_000_000_000L / (double) fps * scale * scale);
+					shaderView.getRenderer().primeConservativeStart(estimatedFrameNanos);
+					onProceed.run();
+				})
 				.setNegativeButton(android.R.string.cancel, (d, w) -> onDecline.run())
 				.setOnCancelListener(d -> onDecline.run())
 				.show();

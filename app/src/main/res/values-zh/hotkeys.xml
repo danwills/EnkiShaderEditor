@@ -19,6 +19,7 @@
 		<item>Ctrl+Y 或 Ctrl+Shift+Z — 重做</item>
 		<item>Ctrl+Shift+E — 全屏时：切换源代码编辑器并暂停，便于在快速编辑和全屏查看之间切换</item>
 		<item>Ctrl+Shift+R — 暂停并打开质量选择对话框；选择后自动取消暂停</item>
+		<item>Ctrl+= / Ctrl+- — 将分辨率质量提高/降低一级（对慢速着色器提高时仍会先询问）</item>
 		<item>Ctrl+Q — 退出（如有需要会先保存当前着色器）</item>
 		<item>Enter（在查找着色器/在着色器中查找对话框中）— 执行搜索，之后每次按下循环切换匹配项；Ctrl+Enter 载入当前显示的匹配项（仅查找着色器）</item>
 		<item>Left/Right（在查找着色器对话框中）— 循环切换匹配项</item>

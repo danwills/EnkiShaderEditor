@@ -9,6 +9,7 @@ import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
+import android.util.Log;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.WindowManager;
@@ -25,6 +26,8 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public class ShaderRenderer implements GLSurfaceView.Renderer {
+	private static final String TAG = "ShaderRenderer";
+
 	public interface OnRendererListener {
 		void onInfoLog(@NonNull List<ShaderError> error);
 
@@ -182,8 +185,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private boolean captureFullImage;
 	private volatile boolean blankFrameRequested;
 	private volatile long nextFpsUpdate;
-	private volatile float sum;
-	private volatile float samples;
+	// See updateFps().
+	private volatile double smoothedFrameNanos;
+	private static final double FPS_SMOOTHING_NANOS = 1_000_000_000.0;
 	private volatile int lastFps;
 	// See setFragmentShader()/onViewResumed()/onDrawFrame().
 	private volatile boolean pendingReload;
@@ -199,6 +203,68 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private static final float AUTO_BREATHING_FACTOR = 1.25f;
 	private static final long BREATHING_MAX_MEASURED_NANOS = 5_000_000_000L;
 	private static final long BREATHING_MAX_SLEEP_NANOS = 2_000_000_000L;
+	// See drawProgressiveStep()/adaptProgressiveRows(). Bands grow while
+	// draws finish well inside a refresh, shrink once they overrun it -
+	// aiming a bit under a full period so the app's own UI and the
+	// system still get GPU time within each refresh.
+	// NORMAL by default - only ShaderView (the app's own live preview)
+	// changes it, from the Live Rendering setting; the wallpaper
+	// service's own use of this renderer stays on the full-frame path.
+	private volatile int liveRenderMode = LIVE_RENDER_NORMAL;
+	// AUTO's own state - see checkAutoSwitchTo*(). GL thread only.
+	private volatile boolean autoProgressiveActive;
+	private int autoSlowFrames;
+	private int autoFastFrames;
+	// Slow enough to switch to progressive: below ~2.5fps (frames over
+	// 400ms) this many frames running - deliberately well past where the
+	// UI starts to feel it, since full-frame rendering is what keeps a
+	// shader feeling real-time, and that's worth some UI lag first.
+	private static final long AUTO_PROGRESSIVE_SLOW_NANOS = 400_000_000L;
+	private static final int AUTO_PROGRESSIVE_SLOW_FRAMES = 3;
+	// Fast enough to switch back: whole frames estimated under 350ms this
+	// many completed frames running. Optimistic on purpose (full frame is
+	// what keeps a shader feeling real-time) - and safe to be: the
+	// estimate includes some per-band refresh-wait padding, so the real
+	// full-frame cost should come in at or under it, below the 400ms
+	// that would send it straight back. autoNormalBackoff below covers
+	// any shader where that turns out not to hold.
+	private static final long AUTO_NORMAL_FAST_NANOS = 350_000_000L;
+	private static final int AUTO_NORMAL_FAST_FRAMES = 3;
+	// Loop guard - see checkAutoSwitchToProgressive(). Reset whenever the
+	// shader or the mode changes.
+	private static final long AUTO_FLAP_WINDOW_NANOS = 10_000_000_000L;
+	private static final int AUTO_MAX_BACKOFF = 16;
+	private int autoNormalBackoff = 1;
+	private long lastAutoSwitchToNormalNanos;
+	private long progressiveMeasuredNanos;
+	// See primeConservativeStart().
+	private volatile long primedFrameNanos;
+	private boolean conservativeStart;
+	private volatile boolean primeReady;
+	// See getProgressive*().
+	private int progressiveStepsThisFrame;
+	private volatile int progressiveFrameWidth;
+	private volatile int progressiveFrameHeight;
+	private volatile int progressiveAverageBandRows;
+	private long progressiveMeasuredRows;
+	private long progressiveMeasuredSteps;
+	// See learnStepFloor(). 0 until measured.
+	private double stepFloorNanos;
+	// "Small band" for floor-learning purposes: at most 1/this of the
+	// frame's height (or a single row).
+	private static final int PROGRESSIVE_FLOOR_BAND_FRACTION = 50;
+	private static final double PROGRESSIVE_FLOOR_RISE_RATE = 0.05;
+	private volatile boolean progressiveAbandonRequested;
+	@Nullable
+	private BuiltinUniforms.PreparedFrame progressiveFrame;
+	private int progressiveFrameStamp;
+	private int progressiveRowsDone;
+	private int progressiveRowsPerStep = Integer.MAX_VALUE;
+	private int progressiveLastRows;
+	private long lastStepIntervalNanos;
+	private static final double PROGRESSIVE_GROW_BELOW = 1.15;
+	private static final double PROGRESSIVE_SHRINK_ABOVE = 1.4;
+	private static final double PROGRESSIVE_SHRINK_TARGET = 0.7;
 	private volatile float refreshRate = DEFAULT_REFRESH_RATE;
 	private volatile long lastCompileNanos = -1;
 	private volatile boolean lastCompileSucceeded = false;
@@ -268,6 +334,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public void restartTime() {
 		builtinUniforms.restart(System.nanoTime());
 		renderPipeline.clearTargets();
+		abandonProgressiveFrame();
 	}
 
 	public void pauseClock() {
@@ -409,6 +476,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 		pendingReload = false;
 		pendingReconfigure = false;
+		abandonProgressiveFrame();
 		reloadProgram();
 	}
 
@@ -417,6 +485,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// onSurfaceCreated() (fresh context) and onDrawFrame()'s pendingReload
 	// path (shader changed on a preserved context).
 	private void reloadProgram() {
+		// A different (or edited) shader - whatever AUTO learnt about the
+		// last one's speed no longer applies.
+		autoNormalBackoff = 1;
+		lastAutoSwitchToNormalNanos = 0;
 		if (programManager.hasPreparedShader()) {
 			resetFps();
 
@@ -479,6 +551,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		surfaceState = builtinUniforms.updateSurface(width, height, now);
 		if (surfaceState.renderTargetsChanged()) {
 			renderPipeline.releaseTargets();
+			abandonProgressiveFrame();
+			if (primedFrameNanos > 0) {
+				primeReady = true;
+			}
 		}
 
 		resetFps();
@@ -538,6 +614,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			return;
 		}
 		long workNanos = now - previous;
+		lastStepIntervalNanos = workNanos;
 		if (workNanos <= 0 || workNanos > BREATHING_MAX_MEASURED_NANOS) {
 			// A stall unrelated to rendering (a queued capture, a
 			// reload) - not a frame time worth scaling.
@@ -564,6 +641,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (pendingReload) {
 			pendingReload = false;
 			pendingReconfigure = false;
+			abandonProgressiveFrame();
 			programManager.releaseForReload(device);
 			// The new shader's backbuffer parameters (size/filtering) may
 			// differ from the old one's - ensureTargets() below rebuilds.
@@ -571,6 +649,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			reloadProgram();
 		} else if (pendingReconfigure) {
 			pendingReconfigure = false;
+			abandonProgressiveFrame();
 			var program = programManager.getMainProgram();
 			if (program != null) {
 				builtinUniforms.configure(
@@ -617,6 +696,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			}
 		}
 
+		if (progressiveAbandonRequested) {
+			progressiveAbandonRequested = false;
+			abandonProgressiveFrame();
+		}
+		if (isProgressive()) {
+			drawProgressiveStep(mainProgram, surfaceProgram, surfaceBindings);
+			return;
+		}
+		checkAutoSwitchToProgressive(renderPipeline.getTargetHeight());
+
 		var frame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
 		if (frame == null) {
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT |
@@ -634,13 +723,335 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				frame.surfaceHeight());
 		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
 		renderPipeline.swapTargets();
-		captureThumbnail();
+		captureThumbnail(false);
 
 		if (onRendererListener != null) {
 			updateFps(frame.now());
 		}
 
 		builtinUniforms.endFrame();
+	}
+
+	// Progressive live rendering - see setProgressiveRendering(). Renders
+	// the next band of rows of the frame in progress (starting a fresh
+	// one first if there isn't one, or if anything else rebuilt the
+	// shared bindings since - see BuiltinUniforms.getBeginFrameCount()),
+	// then shows the most recently *completed* frame. A fast shader's
+	// band grows to the whole frame within a few frames and this behaves
+	// exactly like the normal path; a slow one's shrinks until each band
+	// fits in roughly one display refresh, so no single draw ever ties up
+	// the GPU for long and the rest of the screen keeps drawing.
+	private void drawProgressiveStep(@NonNull GlProgram mainProgram,
+			@NonNull GlProgram surfaceProgram, @NonNull ProgramBindings surfaceBindings) {
+		int height = renderPipeline.getTargetHeight();
+		adaptProgressiveRows(height);
+		if (progressiveFrame == null ||
+				builtinUniforms.getBeginFrameCount() != progressiveFrameStamp) {
+			progressiveFrame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
+			if (progressiveFrame == null) {
+				device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+				cancelCaptureThumbnail();
+				cancelCaptureFullImage();
+				return;
+			}
+			progressiveFrameStamp = builtinUniforms.getBeginFrameCount();
+			progressiveRowsDone = 0;
+			progressiveStepsThisFrame = 0;
+		}
+		var frame = progressiveFrame;
+		// A capture that ran in between may have left the shared bindings
+		// pointing at its own (since deleted) tile program.
+		frame.bindings().retarget(mainProgram);
+		// On-demand frames (paused, RENDERMODE_WHEN_DIRTY) are rare and
+		// expected to show a finished result - e.g. a quality change while
+		// paused recreates the targets and redraws exactly once - so they
+		// always complete the frame in one go rather than leave it part-
+		// done until some later request that may never come.
+		int remaining = height - progressiveRowsDone;
+		// ...except during a conservative start (see
+		// primeConservativeStart()): that's exactly when a whole-frame draw
+		// is the risk being avoided, and the quality change that triggers
+		// it redraws once while still paused.
+		int rows = continuousRendering || conservativeStart
+				? Math.max(1, Math.min(remaining, progressiveRowsPerStep))
+				: remaining;
+		renderPipeline.renderMainPassRows(frame.bindings(), mainProgram, progressiveRowsDone, rows);
+		progressiveRowsDone += rows;
+		progressiveLastRows = rows;
+		++progressiveStepsThisFrame;
+		boolean completed = progressiveRowsDone >= height;
+		if (completed) {
+			renderPipeline.swapTargets();
+		}
+		renderPipeline.renderCompletedSurfacePass(
+				surfaceBindings,
+				surfaceProgram,
+				frame.surfaceWidth(),
+				frame.surfaceHeight());
+		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
+		captureThumbnail(true);
+		if (completed) {
+			progressiveFrame = null;
+			if (onRendererListener != null) {
+				updateFps(frame.now());
+			}
+			builtinUniforms.endFrame();
+			conservativeStart = false;
+			progressiveFrameWidth = renderPipeline.getTargetWidth();
+			progressiveFrameHeight = height;
+			progressiveAverageBandRows = height / Math.max(1, progressiveStepsThisFrame);
+			// Progressive frames are slow by definition - refresh the
+			// listener's display on every one, not just when the rounded
+			// fps happens to change, so the band size it shows keeps up
+			// with adaptation.
+			if (onRendererListener != null && lastFps > 0) {
+				onRendererListener.onFramesPerSecond(lastFps);
+			}
+			checkAutoSwitchToNormal(height);
+		}
+	}
+
+	// Sizes the next band from how long the last one actually took, using
+	// the same draw-to-draw interval breathing room measures (see
+	// applyBreathingRoom() - eglSwapBuffers() blocks once the GPU falls
+	// behind, so in continuous mode that interval tracks GPU time, minus
+	// any deliberate sleep). Comfortably within a refresh: grow, up to
+	// the whole frame. Overrunning: shrink in proportion, so the next
+	// band lands near one refresh period.
+	private void adaptProgressiveRows(int height) {
+		if (height <= 0) {
+			return;
+		}
+		// Only once the targets have actually been rebuilt at the new size
+		// (see onSurfaceChanged()) - a frame or two at the old resolution
+		// can still land in between, and must not use the prime up.
+		long primed = primeReady ? primedFrameNanos : 0;
+		if (primed > 0) {
+			primedFrameNanos = 0;
+			primeReady = false;
+			conservativeStart = true;
+			double period = NS_PER_SECOND / refreshRate;
+			progressiveRowsPerStep = (int) Math.max(1,
+					Math.min(height, height * (period / primed) * PROGRESSIVE_SHRINK_TARGET));
+			progressiveLastRows = 0;
+			lastStepIntervalNanos = 0;
+			progressiveMeasuredNanos = 0;
+			progressiveMeasuredRows = 0;
+			progressiveMeasuredSteps = 0;
+			Log.d(TAG, "conservative start: expecting ~" + primed / 1_000_000 + "ms frames, " +
+					progressiveRowsPerStep + "/" + height + " rows per band");
+			return;
+		}
+		long interval = lastStepIntervalNanos;
+		lastStepIntervalNanos = 0;
+		if (!continuousRendering || interval <= 0 || interval > BREATHING_MAX_MEASURED_NANOS ||
+				progressiveLastRows <= 0) {
+			progressiveRowsPerStep = Math.min(progressiveRowsPerStep, height);
+			return;
+		}
+		// Feeds checkAutoSwitchToNormal()'s whole-frame estimate - this
+		// interval is the cost of the *previous* band, progressiveLastRows
+		// tall.
+		progressiveMeasuredNanos += interval;
+		progressiveMeasuredRows += progressiveLastRows;
+		++progressiveMeasuredSteps;
+		learnStepFloor(interval, height);
+		// Every step costs at least the floor regardless of band size
+		// (presenting the completed frame, compositing - see
+		// learnStepFloor()), so that, not the display's nominal refresh,
+		// is what "fits in about a refresh" has to mean. On a 120Hz
+		// panel the floor alone can exceed 1.4 refreshes, and judging by
+		// the nominal period made every band look overrun - bands only
+		// ever shrank, and never grew back once the shader got cheaper.
+		double period = Math.max(NS_PER_SECOND / refreshRate, stepFloorNanos);
+		int rows;
+		if (interval < period * PROGRESSIVE_GROW_BELOW) {
+			rows = (int) Math.min(height, progressiveLastRows * 1.5 + 1);
+		} else if (interval > period * PROGRESSIVE_SHRINK_ABOVE) {
+			rows = (int) Math.max(1, progressiveLastRows * (period / interval) * PROGRESSIVE_SHRINK_TARGET);
+		} else {
+			rows = progressiveLastRows;
+		}
+		progressiveRowsPerStep = Math.max(1, Math.min(height, rows));
+	}
+
+	// The fixed per-step cost that no band size can get under - learnt
+	// only from the smallest bands (where it's essentially all there is),
+	// so a slow shader's genuinely long bands can't drag it upward and
+	// gradually let big GPU-hogging bands back in. Drops straight to any
+	// lower reading; rises only slowly, in case the display/system got
+	// slower (e.g. an adaptive refresh rate dropping).
+	private void learnStepFloor(long interval, int height) {
+		boolean smallBand = progressiveLastRows <= Math.max(1, height / PROGRESSIVE_FLOOR_BAND_FRACTION);
+		if (stepFloorNanos <= 0 || interval < stepFloorNanos) {
+			if (smallBand || stepFloorNanos <= 0 || interval < stepFloorNanos) {
+				stepFloorNanos = stepFloorNanos <= 0
+						? Math.min(interval, NS_PER_SECOND / refreshRate)
+						: interval;
+			}
+		} else if (smallBand) {
+			stepFloorNanos += (interval - stepFloorNanos) * PROGRESSIVE_FLOOR_RISE_RATE;
+		}
+	}
+
+	// Live preview render modes - see setLiveRenderMode().
+	public static final int LIVE_RENDER_NORMAL = 0;
+	public static final int LIVE_RENDER_PROGRESSIVE = 1;
+	public static final int LIVE_RENDER_AUTO = 2;
+
+	// NORMAL: every frame in one full-screen draw, exactly as it always
+	// has. PROGRESSIVE: always via drawProgressiveStep(). AUTO: normal
+	// until frames get slow enough to stall the rest of the screen (see
+	// checkAutoSwitchToProgressive()), progressive from then until the
+	// bands have grown back to whole frames for a while (see
+	// checkAutoSwitchToNormal()). Switching abandons any frame in
+	// progress.
+	public void setLiveRenderMode(int mode) {
+		if (liveRenderMode != mode) {
+			liveRenderMode = mode;
+			autoProgressiveActive = false;
+			autoSlowFrames = 0;
+			autoFastFrames = 0;
+			autoNormalBackoff = 1;
+			lastAutoSwitchToNormalNanos = 0;
+			progressiveAbandonRequested = true;
+		}
+	}
+
+	// Called (from any thread) just before something expected to make
+	// frames much slower - a confirmed risky quality increase - with an
+	// estimate of the new full-frame time. Puts AUTO straight into
+	// progressive, and (AUTO or PROGRESSIVE) sizes the first bands from
+	// the estimate instead of starting from a whole frame, so the first
+	// draw at the new cost can't be the one that trips the GPU watchdog;
+	// normal adaptation (and AUTO's own switch back to full frame) takes
+	// over from there - once the render targets have actually been
+	// rebuilt at the new size (see onSurfaceChanged()). Until the first
+	// frame at that cost completes,
+	// on-demand frames stay banded too (see drawProgressiveStep()). A
+	// no-op in NORMAL - whole frames were explicitly asked for.
+	public void primeConservativeStart(long estimatedFrameNanos) {
+		if (liveRenderMode == LIVE_RENDER_NORMAL || estimatedFrameNanos <= 0) {
+			return;
+		}
+		primedFrameNanos = estimatedFrameNanos;
+		if (liveRenderMode == LIVE_RENDER_AUTO) {
+			autoProgressiveActive = true;
+		}
+	}
+
+	// Size of the frame being drawn progressively, and the average band
+	// height over the most recently completed one (bands always span the
+	// full width) - 0s until a progressive frame has completed.
+	public int getProgressiveFrameWidth() {
+		return progressiveFrameWidth;
+	}
+
+	public int getProgressiveFrameHeight() {
+		return progressiveFrameHeight;
+	}
+
+	public int getProgressiveAverageBandRows() {
+		return progressiveAverageBandRows;
+	}
+
+	// Whether frames are currently being drawn progressively - always
+	// true in PROGRESSIVE mode, whatever AUTO last decided otherwise.
+	public boolean isProgressiveActive() {
+		return isProgressive();
+	}
+
+	private boolean isProgressive() {
+		return liveRenderMode == LIVE_RENDER_PROGRESSIVE ||
+				(liveRenderMode == LIVE_RENDER_AUTO && autoProgressiveActive);
+	}
+
+	// AUTO, normal path: switch once a few full frames in a row have each
+	// taken long enough that everything else on screen was visibly
+	// waiting on them - and size the first band from that measurement,
+	// so the very next draw already fits in about a refresh instead of
+	// starting from a whole frame and shrinking.
+	private void checkAutoSwitchToProgressive(int height) {
+		long interval = lastStepIntervalNanos;
+		lastStepIntervalNanos = 0;
+		if (liveRenderMode != LIVE_RENDER_AUTO || !continuousRendering ||
+				interval <= 0 || interval > BREATHING_MAX_MEASURED_NANOS) {
+			return;
+		}
+		double period = NS_PER_SECOND / refreshRate;
+		if (interval <= AUTO_PROGRESSIVE_SLOW_NANOS) {
+			autoSlowFrames = 0;
+			return;
+		}
+		if (++autoSlowFrames < AUTO_PROGRESSIVE_SLOW_FRAMES || height <= 0) {
+			return;
+		}
+		autoSlowFrames = 0;
+		autoFastFrames = 0;
+		autoProgressiveActive = true;
+		// Back here soon after deciding full frame was fast enough means
+		// that decision was too optimistic for this shader - ask for more
+		// evidence next time, so the two can't keep flipping each other.
+		long sinceNormal = System.nanoTime() - lastAutoSwitchToNormalNanos;
+		if (lastAutoSwitchToNormalNanos != 0 && sinceNormal < AUTO_FLAP_WINDOW_NANOS) {
+			autoNormalBackoff = Math.min(autoNormalBackoff * 2, AUTO_MAX_BACKOFF);
+			Log.d(TAG, "auto live render: re-entered progressive " + sinceNormal / 1_000_000 +
+					"ms after leaving it, now needing " + AUTO_NORMAL_FAST_FRAMES * autoNormalBackoff +
+					" fast frames to leave again");
+		}
+		progressiveLastRows = 0;
+		progressiveMeasuredNanos = 0;
+		progressiveMeasuredRows = 0;
+		progressiveMeasuredSteps = 0;
+		progressiveRowsPerStep = (int) Math.max(1,
+				Math.min(height, height * (period / interval) * PROGRESSIVE_SHRINK_TARGET));
+		Log.d(TAG, "auto live render: frames ~" + interval / 1_000_000 +
+				"ms, switching to progressive (" + progressiveRowsPerStep + "/" + height + " rows per band)");
+	}
+
+	// AUTO, progressive path, on each completed frame: estimates what a
+	// whole frame would cost drawn in one go (band time per row, from
+	// every band measured since the last check, times the frame height -
+	// see adaptProgressiveRows()), and goes back to normal once that's
+	// comfortably fast for a few frames running. The gap between this
+	// and AUTO_PROGRESSIVE_SLOW_NANOS is what stops a shader hovering
+	// near one threshold from flip-flopping between the two modes.
+	private void checkAutoSwitchToNormal(int height) {
+		long nanos = progressiveMeasuredNanos;
+		long rows = progressiveMeasuredRows;
+		long steps = progressiveMeasuredSteps;
+		progressiveMeasuredNanos = 0;
+		progressiveMeasuredRows = 0;
+		progressiveMeasuredSteps = 0;
+		if (liveRenderMode != LIVE_RENDER_AUTO || rows <= 0 || height <= 0) {
+			return;
+		}
+		// Only the time each band spent above the fixed per-step floor
+		// scales with rows (see learnStepFloor()) - a full frame drawn in
+		// one go pays that floor once, not once per band.
+		long floor = (long) stepFloorNanos;
+		long work = Math.max(0, nanos - steps * floor);
+		long estimatedFullFrameNanos = work * height / rows + floor;
+		if (estimatedFullFrameNanos >= AUTO_NORMAL_FAST_NANOS) {
+			autoFastFrames = 0;
+			return;
+		}
+		if (++autoFastFrames >= AUTO_NORMAL_FAST_FRAMES * autoNormalBackoff) {
+			autoFastFrames = 0;
+			autoProgressiveActive = false;
+			lastAutoSwitchToNormalNanos = System.nanoTime();
+			Log.d(TAG, "auto live render: whole frame now estimated ~" +
+					estimatedFullFrameNanos / 1_000_000 + "ms, switching to normal");
+		}
+	}
+
+	// GL thread only. Drops a part-rendered progressive frame - used
+	// whenever what it was being drawn against no longer holds (targets
+	// cleared or recreated, program reloaded, mode switched). Doesn't
+	// call endFrame(): it never completed, so `frame` shouldn't advance.
+	private void abandonProgressiveFrame() {
+		progressiveFrame = null;
+		progressiveRowsDone = 0;
 	}
 
 	public void unregisterListeners() {
@@ -975,8 +1386,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	private void resetFps() {
-		sum = 0;
-		samples = 0;
+		smoothedFrameNanos = 0;
 		lastFps = 0;
 		nextFpsUpdate = 0;
 	}
@@ -1006,7 +1416,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		return binary != null ? binary.bytes().length : -1;
 	}
 
-	private void captureThumbnail() {
+	private void captureThumbnail(boolean fromBack) {
 		synchronized (thumbnailLock) {
 			var surfaceBindings = programManager.getSurfaceBindings();
 			var surfaceProgram = programManager.getSurfaceProgram();
@@ -1015,7 +1425,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					surfaceProgram != null) {
 				thumbnail = renderPipeline.captureThumbnail(
 						surfaceBindings,
-						surfaceProgram);
+						surfaceProgram,
+						fromBack);
 				captureThumbnail = false;
 				thumbnailLock.notifyAll();
 			}
@@ -1053,28 +1464,45 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 	}
 
+	// Exponential moving average of frame *time* (averaging per-frame
+	// fps instead skews high whenever frame times vary), weighted by how
+	// much real time each frame covered - FPS_SMOOTHING_NANOS is roughly
+	// the window it averages over. Used to be a plain running mean since
+	// the shader loaded, which took ages (tens of thousands of frames, in
+	// the worst case) to reflect a big change - e.g. dropping from 60fps
+	// to progressive's 0.5fps. A frame as long as the window, or longer,
+	// now moves the reading most or all of the way at once.
 	private void updateFps(long now) {
 		long delta = now - lastRender;
-
-		synchronized (this) {
-			sum += Math.min(NS_PER_SECOND / delta, refreshRate);
-
-			if (++samples > 0xffff) {
-				sum = sum / samples;
-				samples = 1;
-			}
+		lastRender = now;
+		if (delta <= 0) {
+			return;
 		}
+		double periodNanos = NS_PER_SECOND / refreshRate;
+		double frameNanos = Math.max(delta, periodNanos);
+		double previous = smoothedFrameNanos;
+		double alpha = 1.0 - Math.exp(-frameNanos / FPS_SMOOTHING_NANOS);
+		smoothedFrameNanos = previous <= 0 ? frameNanos : previous + (frameNanos - previous) * alpha;
 
 		if (now > nextFpsUpdate) {
-			int fps = Math.round(sum / samples);
+			// At least 1 while frames are completing at all - listeners
+			// treat 0 as "no reading yet" (see getSmoothedFps() for the
+			// unrounded value).
+			int fps = (int) Math.max(1, Math.round(NS_PER_SECOND / smoothedFrameNanos));
 			if (fps != lastFps && onRendererListener != null) {
 				onRendererListener.onFramesPerSecond(fps);
-				lastFps = fps;
 			}
+			lastFps = fps;
 			nextFpsUpdate = now + FPS_UPDATE_FREQUENCY_NS;
 		}
+	}
 
-		lastRender = now;
+	// The smoothed frame rate updateFps() reports, unrounded - so a slow
+	// shader can show "0.3 fps" instead of an integer that can't go below
+	// 1. 0 until a frame has completed.
+	public float getSmoothedFps() {
+		double nanos = smoothedFrameNanos;
+		return nanos > 0 ? (float) (NS_PER_SECOND / nanos) : 0f;
 	}
 
 	private static float getRefreshRate(Context context) {

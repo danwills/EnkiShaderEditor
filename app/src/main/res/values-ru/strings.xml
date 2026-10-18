@@ -202,6 +202,14 @@
 	<string name="update_delay">Задержка в обновлении</string>
 	<string name="update_delay_summary">%1$s после окончания ввода: обновить подсветку синтаксиса и, если режим запуска перекомпилирует при изменении, перекомпилировать шейдер</string>
 	<string name="performance">Производительность</string>
+	<string name="live_render_mode">Живой рендеринг</string>
+	<string name="live_render_mode_normal">Обычный (весь кадр сразу)</string>
+	<string name="live_render_mode_progressive">Всегда прогрессивный</string>
+	<string name="live_render_mode_auto">Автоматический (прогрессивный только при медленных кадрах)</string>
+	<string name="live_render_mode_summary">%1$s - Прогрессивный режим делит медленные кадры на полосы, отрисовываемые за несколько обновлений экрана, и показывает только готовые кадры: тяжёлый шейдер обновляется реже, но редактор и остальной экран остаются плавными. Автоматический рисует кадры целиком и переходит на прогрессивный только пока кадры настолько медленные, что экран подтормаживает, а затем возвращается обратно. Обычный всегда рисует каждый кадр за один раз.</string>
+	<string name="fps_progressive">%1$s кадр/с (прогрессивно)</string>
+	<string name="fps_full_frame">%1$s кадр/с (целый кадр)</string>
+	<string name="fps_progressive_bands">%1$s кадр/с (прогрессивно) · кадр %2$d×%3$d, полосы %4$d×%5$d</string>
 	<string name="gpu_priority">Приоритет GPU</string>
 	<string name="gpu_priority_default">По умолчанию (не запрашивать)</string>
 	<string name="gpu_priority_low">Низкий</string>
@@ -418,6 +426,7 @@
 	<string name="find_shader_hotkey_hint">Enter: поиск / следующее совпадение · Ctrl+Enter: загрузить показанное совпадение · ←/→: переключение совпадений</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">Выбор качества</string>
+	<string name="quality_step_toast">Качество %1$s</string>
 	<string name="quality_increase_risky_title">Повысить качество?</string>
 	<string name="quality_increase_risky_message">Этот шейдер уже работает со скоростью около %1$d кадров/с. Повышение качества отсюда - это значительный скачок нагрузки на GPU и может привести к сбою приложения на некоторых устройствах. Продолжить?</string>
 	<string name="quality_increase_risky_proceed">Повысить всё равно</string>

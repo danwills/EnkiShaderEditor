@@ -199,6 +199,14 @@
 	<string name="update_delay">更新延遲</string>
 	<string name="update_delay_summary">停止輸入 %1$s 後：重新整理語法醒目提示；若執行模式為變更時重新編譯，則重新編譯著色器</string>
 	<string name="performance">效能</string>
+	<string name="live_render_mode">即時算繪</string>
+	<string name="live_render_mode_normal">一般（整個影格一次繪製）</string>
+	<string name="live_render_mode_progressive">一律漸進</string>
+	<string name="live_render_mode_auto">自動（僅在緩慢時漸進）</string>
+	<string name="live_render_mode_summary">%1$s - 漸進式會把緩慢的影格拆成多條橫帶，分散到多次畫面更新中繪製，並且只顯示已完成的影格：重型著色器更新得慢一些，但編輯器和畫面其餘部分保持流暢。自動模式平時整個影格算繪，只在影格慢到讓畫面卡頓時切換為漸進式，恢復快速後再切回。一般模式一律一次繪製整個影格。</string>
+	<string name="fps_progressive">%1$s fps（漸進）</string>
+	<string name="fps_full_frame">%1$s fps（整個影格）</string>
+	<string name="fps_progressive_bands">%1$s fps（漸進）· 影格 %2$d×%3$d，橫帶 %4$d×%5$d</string>
 	<string name="gpu_priority">GPU 優先順序</string>
 	<string name="gpu_priority_default">預設（不要求）</string>
 	<string name="gpu_priority_low">低</string>
@@ -401,6 +409,7 @@
 	<string name="find_shader_hotkey_hint">Enter：搜尋／下一個相符項目 · Ctrl+Enter：載入目前相符項目 · ←/→：切換相符項目</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">品質選擇器</string>
+	<string name="quality_step_toast">品質 %1$s</string>
 	<string name="quality_increase_risky_title">提高品質？</string>
 	<string name="quality_increase_risky_message">此著色器目前已經只能以約 %1$d fps 執行。從這裡再提高品質會大幅增加 GPU 負載，在某些裝置上可能導致應用程式當機。仍要繼續嗎？</string>
 	<string name="quality_increase_risky_proceed">仍然提高</string>

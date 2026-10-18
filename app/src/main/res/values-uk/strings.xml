@@ -202,6 +202,14 @@
 	<string name="update_delay">Затримка оновлення</string>
 	<string name="update_delay_summary">%1$s після завершення введення: оновити підсвічування синтаксису і, якщо режим запуску перекомпілює при зміні, перекомпілювати шейдер</string>
 	<string name="performance">Продуктивність</string>
+	<string name="live_render_mode">Живий рендеринг</string>
+	<string name="live_render_mode_normal">Звичайний (увесь кадр одразу)</string>
+	<string name="live_render_mode_progressive">Завжди прогресивний</string>
+	<string name="live_render_mode_auto">Автоматичний (прогресивний лише за повільних кадрів)</string>
+	<string name="live_render_mode_summary">%1$s - Прогресивний режим ділить повільні кадри на смуги, що малюються за кілька оновлень екрана, і показує лише готові кадри: важкий шейдер оновлюється рідше, але редактор і решта екрана лишаються плавними. Автоматичний малює кадри цілком і переходить на прогресивний лише поки кадри настільки повільні, що екран пригальмовує, а потім повертається. Звичайний завжди малює кожен кадр за один раз.</string>
+	<string name="fps_progressive">%1$s кадр/с (прогресивно)</string>
+	<string name="fps_full_frame">%1$s кадр/с (цілий кадр)</string>
+	<string name="fps_progressive_bands">%1$s кадр/с (прогресивно) · кадр %2$d×%3$d, смуги %4$d×%5$d</string>
 	<string name="gpu_priority">Пріоритет GPU</string>
 	<string name="gpu_priority_default">Типово (не запитувати)</string>
 	<string name="gpu_priority_low">Низький</string>
@@ -418,6 +426,7 @@
 	<string name="find_shader_hotkey_hint">Enter: пошук / наступний збіг · Ctrl+Enter: завантажити показаний збіг · ←/→: перемикання збігів</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">Вибір якості</string>
+	<string name="quality_step_toast">Якість %1$s</string>
 	<string name="quality_increase_risky_title">Підвищити якість?</string>
 	<string name="quality_increase_risky_message">Цей шейдер вже працює зі швидкістю приблизно %1$d кадрів/с. Підвищення якості звідси - це значний стрибок навантаження на GPU і може призвести до збою застосунку на деяких пристроях. Продовжити?</string>
 	<string name="quality_increase_risky_proceed">Підвищити попри все</string>

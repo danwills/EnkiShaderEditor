@@ -453,6 +453,23 @@ public class MainActivity extends AppCompatActivity {
 		// changes mid-call.
 		boolean editorFocused = editorFragment.isSourceEditorFocused();
 		switch (event.getKeyCode()) {
+			// Zoom-style in/out - works in the source editor too, since
+			// it doesn't use these combos for anything itself.
+			case KeyEvent.KEYCODE_EQUALS:
+			case KeyEvent.KEYCODE_PLUS:
+			case KeyEvent.KEYCODE_NUMPAD_ADD:
+				if (ctrl) {
+					stepQualityViaHotkey(1, "Ctrl+=");
+					return true;
+				}
+				return false;
+			case KeyEvent.KEYCODE_MINUS:
+			case KeyEvent.KEYCODE_NUMPAD_SUBTRACT:
+				if (ctrl) {
+					stepQualityViaHotkey(-1, "Ctrl+-");
+					return true;
+				}
+				return false;
 			case KeyEvent.KEYCODE_R:
 				if (ctrl && shift) {
 					openQualityPickerViaHotkey();
@@ -649,6 +666,17 @@ public class MainActivity extends AppCompatActivity {
 	// they're used. combo is deliberately a literal, untranslated string
 	// (matching R.array.hotkeys_list's own convention) rather than a
 	// string resource - see hotkeys.xml's own comment for why.
+	// See ShaderViewManager.stepQuality() - the toast names the quality
+	// being asked for (the same one, at either end of the list), which an
+	// increase may still be waiting on the user to confirm.
+	private void stepQualityViaHotkey(int direction, @NonNull String combo) {
+		int index = shaderViewManager.stepQuality(direction);
+		String[] names = getResources().getStringArray(R.array.quality_names);
+		String name = index >= 0 && index < names.length ? names[index] : "";
+		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo,
+				getString(R.string.quality_step_toast, name)), Toast.LENGTH_SHORT).show();
+	}
+
 	private void showHotkeyToast(@NonNull String combo, @StringRes int actionNameRes) {
 		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo, getString(actionNameRes)),
 				Toast.LENGTH_SHORT).show();
@@ -919,6 +947,26 @@ public class MainActivity extends AppCompatActivity {
 		};
 	}
 
+	// "N fps (full frame)", or while progressive, the frame size and
+	// average band size too - see ShaderRenderer.getProgressive*().
+	@NonNull
+	private String buildFpsLabel(int fps) {
+		// One decimal place once it's slow enough for that to matter -
+		// a progressive shader at 0.3fps otherwise reads as "1 fps".
+		float smoothed = shaderViewManager.getSmoothedFps();
+		String fpsText = smoothed > 0f && smoothed < 9.95f
+				? String.format(Locale.getDefault(), "%.1f", smoothed)
+				: String.valueOf(fps);
+		if (!shaderViewManager.isProgressiveActive()) {
+			return getString(R.string.fps_full_frame, fpsText);
+		}
+		int[] stats = shaderViewManager.getProgressiveStats();
+		if (stats[0] <= 0 || stats[1] <= 0) {
+			return getString(R.string.fps_progressive, fpsText);
+		}
+		return getString(R.string.fps_progressive_bands, fpsText, stats[0], stats[1], stats[0], stats[2]);
+	}
+
 	@NonNull
 	@Contract(" -> new")
 	private ShaderViewManager.Listener createShaderViewListener() {
@@ -934,7 +982,7 @@ public class MainActivity extends AppCompatActivity {
 			public void onFramesPerSecond(int fps) {
 				if (fps > 0) {
 					ShaderEditorApp.preferences.setPendingCrashShaderId(0);
-					uiManager.setToolbarSubtitle(fps + " fps");
+					uiManager.setToolbarSubtitle(buildFpsLabel(fps));
 				}
 			}
 
@@ -958,22 +1006,14 @@ public class MainActivity extends AppCompatActivity {
 				runOnUiThread(MainActivity.this::requestAudioCapture);
 			}
 
-			// Only shown if the wait outlasts this - a cheap shader is back
-			// on screen within a frame or two of returning, and a spinner
-			// flashing up for that would be more distracting than helpful.
-			private static final long RESUME_INDICATOR_DELAY_MS = 150;
+			// Shown the instant the app is back on screen, so whatever's
+			// visible before the shader's first new frame (a stale or blank
+			// view) is clearly marked as "not live yet".
 			private final View resumeIndicator = findViewById(R.id.resume_render_indicator);
-			private final Runnable showResumeIndicator =
-					() -> resumeIndicator.setVisibility(View.VISIBLE);
 
 			@Override
 			public void onResumeRenderPending(boolean pending) {
-				resumeIndicator.removeCallbacks(showResumeIndicator);
-				if (pending) {
-					resumeIndicator.postDelayed(showResumeIndicator, RESUME_INDICATOR_DELAY_MS);
-				} else {
-					resumeIndicator.setVisibility(View.GONE);
-				}
+				resumeIndicator.setVisibility(pending ? View.VISIBLE : View.GONE);
 			}
 
 			// Touch dispatch (unlike rendering) already runs on the UI
@@ -2573,7 +2613,12 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
 	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
 	private static final String PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK = "custom_res_match_device_playback";
-	private static final String PREF_LAST_SCREENSHOT_ACTION = "last_screenshot_action";
+	// Stores the button's resource *name* (e.g. "screenshot_copy"), not
+	// its numeric id - those get renumbered whenever resources are added,
+	// which silently turned the remembered choice into a different button
+	// (or none) after an update. A new key, so the old numeric value under
+	// "last_screenshot_action" is just ignored rather than misread.
+	private static final String PREF_LAST_SCREENSHOT_ACTION = "last_screenshot_action_name";
 
 	@NonNull
 	private SharedPreferences dialogPrefs() {
@@ -2588,12 +2633,17 @@ public class MainActivity extends AppCompatActivity {
 	// it does nothing, so the bold button isn't *just* decorative.
 	private void highlightLastUsedButton(
 			@NonNull AlertDialog dialog, @NonNull String prefKey, @NonNull Button... buttons) {
-		int lastUsedId = dialogPrefs().getInt(prefKey, -1);
+		String lastUsedName = dialogPrefs().getString(prefKey, null);
 		Button lastUsedButton = null;
 		for (Button button : buttons) {
-			boolean isLastUsed = button.getId() == lastUsedId;
+			boolean isLastUsed = lastUsedName != null &&
+					lastUsedName.equals(getResources().getResourceEntryName(button.getId()));
 			button.setTypeface(null, isLastUsed ? Typeface.BOLD : Typeface.NORMAL);
 			if (isLastUsed) {
+				// Yellow as well as bold - the same accent the app already
+				// uses for "the action this dialog is about" (e.g. Start
+				// Render), so it reads as "Enter does this".
+				button.setTextColor(ContextCompat.getColor(this, R.color.toggle_active));
 				lastUsedButton = button;
 			}
 		}
@@ -2601,18 +2651,23 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		Button target = lastUsedButton;
+		// Fires on key *up*, and swallows the matching down: acting on the
+		// down left the up to be delivered to whatever opened next (e.g.
+		// Render at Custom Res's own dialog, where it opened the first
+		// dropdown).
 		dialog.setOnKeyListener((d, keyCode, event) -> {
-			if (event.getAction() != KeyEvent.ACTION_DOWN ||
-					(keyCode != KeyEvent.KEYCODE_ENTER && keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+			if (keyCode != KeyEvent.KEYCODE_ENTER && keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER) {
 				return false;
 			}
-			target.performClick();
+			if (event.getAction() == KeyEvent.ACTION_UP) {
+				target.performClick();
+			}
 			return true;
 		});
 	}
 
 	private void rememberLastUsedButton(@NonNull String prefKey, int buttonId) {
-		dialogPrefs().edit().putInt(prefKey, buttonId).apply();
+		dialogPrefs().edit().putString(prefKey, getResources().getResourceEntryName(buttonId)).apply();
 	}
 
 	// Index-aligned with R.array.custom_res_presets, index 0
