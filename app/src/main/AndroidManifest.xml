@@ -91,6 +91,15 @@
 			android:name=".service.HighResCaptureService"
 			android:foregroundServiceType="dataSync"
 			android:exported="false"/>
+		<!-- Isolated process so a probe render that trips the GPU
+			driver's hang-detection watchdog only takes this disposable
+			process down, not the real app - see TileProbeService's own
+			doc. A declared process isn't a permission; nothing here
+			changes what the app asks the user to grant. -->
+		<service
+			android:name=".service.TileProbeService"
+			android:process=":probe"
+			android:exported="false"/>
 
 		<activity
 			android:name=".activity.SplashActivity"

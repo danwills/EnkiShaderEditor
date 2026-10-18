@@ -63,6 +63,19 @@
 
 	</LinearLayout>
 
+	<!-- Base resolution, the oversampled render target it actually maps
+	     to, and (once known) the tile size actually being used - see
+	     MainActivity.buildResolutionInfoLine(). Hidden until set, since
+	     the auto-detect dialog doesn't yet know a tile size the first
+	     instant it shows. -->
+	<TextView
+		android:id="@+id/progress_resolution_info"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="4dp"
+		android:textAppearance="?attr/textAppearanceCaption"
+		android:visibility="gone" />
+
 	<!-- Reserves room for at least two lines up front (minLines, not
 	     just wrap_content) so a long narrated status doesn't appear to
 	     go missing by rendering into a sliver of space the first layout

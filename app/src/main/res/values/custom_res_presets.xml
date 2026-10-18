@@ -13,6 +13,10 @@
 		<item>2× Device Res</item>
 		<item>4× Device Res</item>
 		<item>8× Device Res</item>
+		<item>Square 16×16</item>
+		<item>Square 32×32</item>
+		<item>Square 64×64</item>
+		<item>Square 128×128</item>
 		<item>Square 256×256</item>
 		<item>Square 512×512</item>
 		<item>Square 1024×1024</item>

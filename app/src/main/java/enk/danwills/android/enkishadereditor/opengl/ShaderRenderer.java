@@ -34,6 +34,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// system playback audio" preference is on, but no MediaProjection
 		// consent has been granted yet. Invoked on the GL thread.
 		void onRequestAudioCapture();
+
+		// Called once, on the GL thread, right after the first frame
+		// following ShaderView.onResume() has been drawn (successfully or
+		// not - an error/blank frame still ends the wait), so a caller can
+		// tell when the "returned to the app but nothing rendered yet" gap
+		// is over. See onViewResumed().
+		default void onFirstFrameAfterResume() {
+		}
 	}
 
 	// Reports tile-by-tile progress during captureHighResScreenshot()
@@ -177,6 +185,20 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile float sum;
 	private volatile float samples;
 	private volatile int lastFps;
+	// See setFragmentShader()/onViewResumed()/onDrawFrame().
+	private volatile boolean pendingReload;
+	private volatile boolean pendingReconfigure;
+	private volatile boolean pendingFirstFrameNotify;
+	// See setBreathingRoom()/applyBreathingRoom().
+	private volatile float breathingRoomFactor = 0f;
+	private volatile boolean continuousRendering;
+	private long lastFrameStartNanos;
+	// Auto mode: below 20fps a frame is long enough that the UI and
+	// system are visibly waiting on it; above that, leave the shader be.
+	private static final long AUTO_BREATHING_SLOW_FRAME_NANOS = 50_000_000L;
+	private static final float AUTO_BREATHING_FACTOR = 1.25f;
+	private static final long BREATHING_MAX_MEASURED_NANOS = 5_000_000_000L;
+	private static final long BREATHING_MAX_SLEEP_NANOS = 2_000_000_000L;
 	private volatile float refreshRate = DEFAULT_REFRESH_RATE;
 	private volatile long lastCompileNanos = -1;
 	private volatile boolean lastCompileSucceeded = false;
@@ -205,6 +227,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		this.shaderId = shaderId;
 		programManager.setFragmentShader(source);
 		resetFps();
+		// Compiled on the GL thread's next frame (see onDrawFrame()) rather
+		// than relying on ShaderView's onPause()/onResume() to recreate the
+		// whole EGL context - ShaderView preserves it across pauses now
+		// (see setPreserveEGLContextOnPause() there), so onSurfaceCreated()
+		// only still runs when the system genuinely discarded it.
+		pendingReload = true;
+	}
+
+	// Called from ShaderView.onResume() - every pause runs release()
+	// (unregistering sensors/camera/audio and clearing BuiltinUniforms'
+	// per-program configuration, see unregisterListeners()), which used to
+	// be restored for free by the context recreation that always followed.
+	// With the context preserved there's no onSurfaceCreated() to do that,
+	// so the next frame re-runs just the configure step - no recompile.
+	public void onViewResumed() {
+		pendingReconfigure = true;
+		pendingFirstFrameNotify = true;
 	}
 
 	// Supplies the persisted compiled-program cache - see
@@ -304,6 +343,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.setMediaProjection(mediaProjection);
 	}
 
+	public void setLocalPlaybackAudioSession(int audioSessionId) {
+		builtinUniforms.setLocalPlaybackAudioSession(audioSessionId);
+	}
+
 	// Clears the "already asked for system audio consent" guard. Safe to
 	// call from any thread (see BuiltinAudioUniforms.resetConsentGuard).
 	// Called ahead of refreshAudioCaptureSource(), separately and not
@@ -364,6 +407,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			submitErrors(thumbnailErrors);
 		}
 
+		pendingReload = false;
+		pendingReconfigure = false;
+		reloadProgram();
+	}
+
+	// Compile (or load from the binary cache) the current prepared shader
+	// and configure BuiltinUniforms for it - GL thread only. Shared by
+	// onSurfaceCreated() (fresh context) and onDrawFrame()'s pendingReload
+	// path (shader changed on a preserved context).
+	private void reloadProgram() {
 		if (programManager.hasPreparedShader()) {
 			resetFps();
 
@@ -433,6 +486,100 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	@Override
 	public void onDrawFrame(GL10 gl) {
+		applyBreathingRoom();
+		try {
+			drawFrame();
+		} finally {
+			if (pendingFirstFrameNotify) {
+				pendingFirstFrameNotify = false;
+				if (onRendererListener != null) {
+					onRendererListener.onFirstFrameAfterResume();
+				}
+			}
+		}
+	}
+
+	// Sets how much idle time the live preview leaves the GPU between
+	// frames, as a multiple of the previous frame's own render time: 1.0
+	// adds nothing, 1.1 adds 10% of each frame's time as a gap (so ~9%
+	// of the GPU's time is left free), 2.0 halves the frame rate and
+	// leaves half the GPU free. A phone GPU largely runs one draw at a
+	// time, so the app's own UI and the system's (status bar, task
+	// switcher...) can only draw in the gaps a heavy shader leaves -
+	// without any, they queue up behind it and everything feels frozen.
+	// <= 0 means automatic: no gap at all while frames are quick enough
+	// not to be starving anything (see AUTO_BREATHING_SLOW_FRAME_NANOS),
+	// AUTO_BREATHING_FACTOR once they aren't. Only applied while
+	// rendering continuously (see setContinuousRendering()) - a paused
+	// view's frames are rare and on demand, nothing to pace.
+	public void setBreathingRoom(float factor) {
+		breathingRoomFactor = factor;
+	}
+
+	// Kept in sync with GLSurfaceView's own render mode by ShaderView.
+	public void setContinuousRendering(boolean continuous) {
+		continuousRendering = continuous;
+		lastFrameStartNanos = 0;
+	}
+
+	// In continuous mode the GL thread loops draw -> swap -> draw, and
+	// eglSwapBuffers() blocks once the GPU falls behind, so the gap
+	// between one frame starting and the next is (in steady state) how
+	// long the GPU actually spent on a frame - which is exactly what the
+	// breathing room needs to scale with, without forcing a pipeline-
+	// stalling glFinish() of its own. Measured from the end of the
+	// previous sleep, so the sleep itself never feeds back into the next
+	// frame's estimate.
+	private void applyBreathingRoom() {
+		long now = System.nanoTime();
+		long previous = lastFrameStartNanos;
+		lastFrameStartNanos = now;
+		if (!continuousRendering || previous == 0) {
+			return;
+		}
+		long workNanos = now - previous;
+		if (workNanos <= 0 || workNanos > BREATHING_MAX_MEASURED_NANOS) {
+			// A stall unrelated to rendering (a queued capture, a
+			// reload) - not a frame time worth scaling.
+			return;
+		}
+		float factor = breathingRoomFactor > 0f
+				? breathingRoomFactor
+				: workNanos > AUTO_BREATHING_SLOW_FRAME_NANOS ? AUTO_BREATHING_FACTOR : 1f;
+		long sleepNanos = Math.min((long) ((factor - 1f) * workNanos), BREATHING_MAX_SLEEP_NANOS);
+		if (sleepNanos < 1_000_000L) {
+			return;
+		}
+		try {
+			Thread.sleep(sleepNanos / 1_000_000L, (int) (sleepNanos % 1_000_000L));
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+		lastFrameStartNanos = System.nanoTime();
+	}
+
+	private void drawFrame() {
+		// See setFragmentShader()/onViewResumed() - the preserved-context
+		// counterparts of what onSurfaceCreated() does for a fresh one.
+		if (pendingReload) {
+			pendingReload = false;
+			pendingReconfigure = false;
+			programManager.releaseForReload(device);
+			// The new shader's backbuffer parameters (size/filtering) may
+			// differ from the old one's - ensureTargets() below rebuilds.
+			renderPipeline.releaseTargets();
+			reloadProgram();
+		} else if (pendingReconfigure) {
+			pendingReconfigure = false;
+			var program = programManager.getMainProgram();
+			if (program != null) {
+				builtinUniforms.configure(
+						device,
+						program,
+						programManager.getFTimeMax(),
+						programManager.getTextureResources());
+			}
+		}
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -728,10 +875,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// paused (e.g. the user adjusted the view with a gesture while
 		// already paused) before this sequence started.
 		builtinUniforms.clearTouchState();
-		// Bucket size (unlike tile order) isn't live-changeable mid-
-		// sequence, so singlePass eligibility is fixed for the whole
-		// run - safe to decide once, up front, whether a
-		// SequenceFeedback is worth allocating at all. Null either way
+		// Target size is fixed for the whole run, so safe to decide once,
+		// up front, whether a SequenceFeedback is worth allocating at
+		// all - see HighResScreenshotCapture.isFeedbackEligible()'s own
+		// doc for why this is a texture-size question, not a singlePass-
+		// only one: HighResScreenshotCapture.renderTiles() now writes
+		// each tile directly into this texture at its own position
+		// whenever one exists, tiled or not, so most tiled sequences
+		// (anything that isn't tiled specifically because the
+		// resolution itself exceeds GL_MAX_TEXTURE_SIZE) still get full
+		// persistent high-res feedback accumulation. Null either way
 		// this returns false (not eligible, so every frame would just
 		// ignore it anyway - see captureHighResScreenshot()'s own
 		// feedback-is-null behavior) or if allocation itself failed
@@ -740,8 +893,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// without the persistent high-res feedback a healthy allocation
 		// would have given them.
 		HighResScreenshotCapture.SequenceFeedback feedback =
-				HighResScreenshotCapture.isSinglePassEligible(
-						device, width * oversample, height * oversample, bucketSize, oversample == 1)
+				HighResScreenshotCapture.isFeedbackEligible(device, width * oversample, height * oversample)
 						? HighResScreenshotCapture.SequenceFeedback.create(
 								device, width * oversample, height * oversample)
 						: null;
@@ -755,7 +907,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 			}
 			for (int i = 0; i < numFrames; ++i) {
-				if (i > 0 || skipFrames > 0) {
+				// Deliberately not "i > 0 || skipFrames > 0" - the skip
+				// phase above already did exactly skipFrames steps on
+				// its own; stepping again here before capturing frame 0
+				// would make the first saved frame skipFrames + 1 steps
+				// in instead of exactly skipFrames, same off-by-one the
+				// no-skip case never had (i == 0 there already means
+				// "capture at the current, not-yet-stepped state").
+				if (i > 0) {
 					stepSimulationFrame(deltaSeconds);
 				}
 				if (sequenceProgressListener != null &&

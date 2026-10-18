@@ -1,0 +1,15 @@
+<resources>
+	<string-array name="gpu_priority_names">
+		<item>@string/gpu_priority_default</item>
+		<item>@string/gpu_priority_low</item>
+		<item>@string/gpu_priority_medium</item>
+		<item>@string/gpu_priority_high</item>
+	</string-array>
+	<!-- Preferences.GPU_PRIORITY_* -->
+	<string-array name="gpu_priority_values">
+		<item>0</item>
+		<item>1</item>
+		<item>2</item>
+		<item>3</item>
+	</string-array>
+</resources>

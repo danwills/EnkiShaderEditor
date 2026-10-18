@@ -61,6 +61,18 @@
 	<string name="higher_res_oversample">Oversampling (x) - renders bigger then resizes down for antialiasing</string>
 	<string name="higher_res_tile_order">Tile Order</string>
 	<string name="higher_res_bucket_size">Bucket Size</string>
+	<string name="higher_res_auto_detect_tile_size_label">Auto-Detect Safe Tile Size</string>
+	<string name="higher_res_auto_detect_tile_size">Auto-Detect Safe Tile Size - before rendering, test progressively larger tile sizes in a disposable background process and use the largest one that renders this shader without crashing, overriding Bucket Size above. Adds some up-front testing time, but can find a bigger (so faster) safe tile size than Bucket Size alone, and recovers automatically from a tile size that would otherwise crash the capture</string>
+	<string name="auto_detect_tile_size_title">Determining Safe Tile Size</string>
+	<string name="auto_detect_tile_size_testing">Testing %1$s tile size (attempt %2$d of %3$d)…</string>
+	<string name="auto_detect_tile_size_failed_title">No Safe Tile Size Found</string>
+	<string name="auto_detect_tile_size_failed_message">Even the smallest tile size crashed while testing this shader at this resolution - it may be too expensive to render here at all. Rendering was not started.</string>
+	<string name="auto_detect_tile_size_result">Safe tile size found: %1$s</string>
+	<string name="auto_detect_tile_size_whole_frame_label">Whole Frame</string>
+	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d (%5$d×)</string>
+	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d (%5$d×) · Tile: %6$s</string>
+	<string name="progress_tile_whole_frame">Whole Frame (no tiling)</string>
+	<string name="progress_tile_named">%1$s (%2$dpx)</string>
 	<string name="higher_res_capturing_tiles">Rendering tile %1$d of %2$d…</string>
 	<string name="higher_res_render_sequence">Render a Sequence of Frames</string>
 	<string name="higher_res_sequence_frame_count">Number of Frames</string>
@@ -90,7 +102,7 @@
 	<string name="higher_res_sequence_cancelled_deleted">Cancelled — deleted the partial frames</string>
 	<string name="interrupt_make_video_button">Interrupt and Make Partial Video</string>
 	<string name="status_interrupted_making_video">Stopping early — making a video from %1$d frame(s)…</string>
-	<string name="status_interrupting_after_frame">Interrupting after this frame…</string>
+	<string name="status_interrupting_after_frame">Interrupting after frame %1$d / %2$d…</string>
 	<string name="progress_timing_tile">Avg %1$.2fs/tile · ETA %2$s</string>
 	<string name="progress_timing_frame">Avg %1$.1fs/frame · ETA %2$s</string>
 	<string name="progress_footage_length">%1$.4fs of footage rendered so far</string>
@@ -188,6 +200,19 @@
 	<string name="editor">Editor</string>
 	<string name="run_mode">Run Mode</string>
 	<string name="update_delay">Update Delay</string>
+	<string name="update_delay_summary">%1$s after you stop typing: refresh syntax highlighting and, if Run Mode is \"Auto Run on Change\", recompile and run the shader</string>
+	<string name="performance">Performance</string>
+	<string name="gpu_priority">GPU Priority</string>
+	<string name="gpu_priority_default">Default (don\'t ask)</string>
+	<string name="gpu_priority_low">Low</string>
+	<string name="gpu_priority_medium">Medium</string>
+	<string name="gpu_priority_high">High</string>
+	<string name="gpu_priority_summary">%1$s - how hard the shader preview competes with the rest of the screen for the GPU. Low lets the app\'s controls and the system (e.g. app switching) stay responsive while a heavy shader runs, on devices that support it. Takes effect next time the app starts.</string>
+	<string name="breathing_room">Breathing Room</string>
+	<string name="breathing_room_summary_auto">Auto - pauses briefly between frames only when a shader is slow enough to make everything else lag. Type a number to set it yourself: 1.0 = off, 1.1 = a little, 2.0 = half speed (cooler, easier on the battery).</string>
+	<string name="breathing_room_summary_value">%1$s× - after each frame, waits %2$d%% of that frame\'s render time before the next, leaving the GPU free for the rest of the screen. Clear it for Auto.</string>
+	<string name="breathing_room_dialog" formatted="false">Each frame\'s render time is multiplied by this, and the extra is left as idle time so the rest of the screen stays responsive. Leave blank for Auto. 1.0 = off · 1.1 = 10% extra · 2.0 = half speed, easy on the battery.</string>
+	<string name="breathing_room_auto_hint">Auto</string>
 	<string name="text_size">Text Size</string>
 	<string name="font">Font</string>
 	<string name="use_ligatures">Use Ligatures</string>
@@ -394,6 +419,10 @@
 	<!-- Hotkey-toast feature (see MainActivity.showHotkeyToast()) -->
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">Quality Picker</string>
+	<!-- Risky quality-increase confirmation (see ShaderViewManager.confirmRiskyIncreaseIfNeeded()) -->
+	<string name="quality_increase_risky_title">Increase Quality?</string>
+	<string name="quality_increase_risky_message">This shader is already running at around %1$d fps. Increasing quality from here is a big jump in GPU cost, and can crash the app on some devices. Continue anyway?</string>
+	<string name="quality_increase_risky_proceed">Increase Anyway</string>
 	<string name="back">Back</string>
 	<string name="toggle_sidebar">Toggle Shader Sidebar</string>
 	<string name="history_back">Back in History</string>
@@ -435,6 +464,14 @@
 	<string name="color_picker_saturation">S</string>
 	<string name="color_picker_value">V</string>
 	<string name="color_picker_intensity">Intensity (for HDR colors above 1.0)</string>
+	<string name="play_local_music">Play Local Music</string>
+	<string name="local_music_title">Local Music</string>
+	<string name="local_music_previous">Previous Track</string>
+	<string name="local_music_play_pause">Play/Pause</string>
+	<string name="local_music_next">Next Track</string>
+	<string name="local_music_change_folder">Change Folder</string>
+	<string name="local_music_no_track">No track loaded</string>
+	<string name="local_music_no_tracks_found">No MP3 files found in that folder</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d match</item>

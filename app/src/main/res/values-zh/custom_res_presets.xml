@@ -10,6 +10,10 @@
 		<item>2× 设备分辨率</item>
 		<item>4× 设备分辨率</item>
 		<item>8× 设备分辨率</item>
+		<item>正方形 16×16</item>
+		<item>正方形 32×32</item>
+		<item>正方形 64×64</item>
+		<item>正方形 128×128</item>
 		<item>正方形 256×256</item>
 		<item>正方形 512×512</item>
 		<item>正方形 1024×1024</item>

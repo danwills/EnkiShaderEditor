@@ -322,6 +322,45 @@ public class ShaderDao {
 						compileTimeMs, id});
 	}
 
+	// Records the most recently observed live fps for this shader at
+	// this quality - called on every settled fps reading while the
+	// shader is actually live (see ShaderViewManager), so a later
+	// caller can know how slow this exact shader was last running
+	// without needing it to be the currently-live one. Deliberately
+	// doesn't touch MODIFIED - this is pure runtime telemetry, not a
+	// user edit.
+	public void updateLastFps(long id, float quality, int fps) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		var cv = new ContentValues();
+		cv.put(DatabaseContract.ShaderColumns.LAST_FPS, fps);
+		cv.put(DatabaseContract.ShaderColumns.LAST_FPS_QUALITY, quality);
+		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
+				DatabaseContract.ShaderColumns._ID + " = ?", new String[]{String.valueOf(id)});
+	}
+
+	// -1 if this shader has never recorded a live fps at exactly this
+	// quality (including a brand new shader, or one only ever seen at a
+	// different quality) - callers should treat that as "no data",
+	// same as a genuinely unknown fps, not as "fast".
+	public int getLastFps(long id, float quality) {
+		SQLiteDatabase db = dbHelper.getReadableDatabase();
+		try (var cursor = db.rawQuery(
+				"SELECT " + DatabaseContract.ShaderColumns.LAST_FPS + ", " +
+						DatabaseContract.ShaderColumns.LAST_FPS_QUALITY +
+						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						" WHERE " + DatabaseContract.ShaderColumns._ID + " = ?",
+				new String[]{String.valueOf(id)})) {
+			if (cursor.moveToFirst()) {
+				Integer fps = CursorHelpers.getIntOrNull(cursor, DatabaseContract.ShaderColumns.LAST_FPS);
+				if (fps != null &&
+						CursorHelpers.getFloat(cursor, DatabaseContract.ShaderColumns.LAST_FPS_QUALITY) == quality) {
+					return fps;
+				}
+			}
+		}
+		return -1;
+	}
+
 	public void removeShader(long id) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		db.delete(DatabaseContract.ShaderColumns.TABLE_NAME,
@@ -405,6 +444,13 @@ public class ShaderDao {
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " INTEGER;");
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME;");
 	}
+
+	// Nothing to backfill - starts null for every existing row and gets
+	// populated the next time each shader actually renders a live frame.
+	private static void addLastFpsTracking(@NonNull SQLiteDatabase db) {
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.LAST_FPS + " INTEGER;");
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.LAST_FPS_QUALITY + " REAL;");
+	}
 	// endregion
 
 	// region Private helpers
@@ -437,6 +483,9 @@ public class ShaderDao {
 				if (oldVersion < 8) {
 					addCompileTimeTracking(db);
 				}
+				if (oldVersion < 9) {
+					addLastFpsTracking(db);
+				}
 			}
 
 			@Override
@@ -462,7 +511,9 @@ public class ShaderDao {
 						DatabaseContract.ShaderColumns.COMPILED_BINARY_DRIVER_SIG + " TEXT," +
 						DatabaseContract.ShaderColumns.COMPILE_TIME_MS + " INTEGER," +
 						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " INTEGER," +
-						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME);");
+						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME," +
+						DatabaseContract.ShaderColumns.LAST_FPS + " INTEGER," +
+						DatabaseContract.ShaderColumns.LAST_FPS_QUALITY + " REAL);");
 				insertInitialShaders(db);
 			}
 

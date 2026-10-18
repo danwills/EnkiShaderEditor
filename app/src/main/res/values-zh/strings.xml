@@ -60,6 +60,18 @@
 	<string name="higher_res_oversample">过采样倍数 (x) - 以更大尺寸渲染后再缩小以实现抗锯齿</string>
 	<string name="higher_res_tile_order">分块顺序</string>
 	<string name="higher_res_bucket_size">分块大小</string>
+	<string name="higher_res_auto_detect_tile_size_label">自动检测安全分块大小</string>
+	<string name="higher_res_auto_detect_tile_size">自动检测安全分块大小 - 渲染前会在一个独立的后台进程中依次测试更大的分块大小，并使用能让此着色器成功渲染而不崩溃的最大值，覆盖上方的分块大小设置。会增加一些前期测试时间，但可能找到比手动设置更大（因而更快）的安全分块大小，并能自动从本会导致渲染崩溃的分块大小中恢复</string>
+	<string name="auto_detect_tile_size_title">正在确定安全分块大小</string>
+	<string name="auto_detect_tile_size_testing">正在测试 %1$s 分块大小（第 %2$d / %3$d 次尝试）…</string>
+	<string name="auto_detect_tile_size_failed_title">未找到安全的分块大小</string>
+	<string name="auto_detect_tile_size_failed_message">即使是最小的分块大小在测试此着色器时也崩溃了 - 此分辨率下它可能根本无法渲染。渲染未开始。</string>
+	<string name="auto_detect_tile_size_result">已找到安全的分块大小：%1$s</string>
+	<string name="auto_detect_tile_size_whole_frame_label">整帧</string>
+	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d（%5$d×）</string>
+	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d（%5$d×）· 分块：%6$s</string>
+	<string name="progress_tile_whole_frame">整帧（不分块）</string>
+	<string name="progress_tile_named">%1$s（%2$dpx）</string>
 	<string name="higher_res_capturing_tiles">正在渲染第 %1$d / %2$d 块…</string>
 	<string name="higher_res_render_sequence">渲染一系列帧</string>
 	<string name="higher_res_sequence_frame_count">帧数</string>
@@ -88,7 +100,7 @@
 	<string name="higher_res_sequence_cancelled_kept">已取消 - 保留了 %1$d 帧</string>
 	<string name="higher_res_sequence_cancelled_deleted">已取消 - 已删除部分帧</string>
 	<string name="interrupt_make_video_button">中断并生成部分视频</string>
-	<string name="status_interrupting_after_frame">将在本帧后中断…</string>
+	<string name="status_interrupting_after_frame">将在第 %1$d / %2$d 帧后中断…</string>
 	<string name="progress_timing_tile">平均每块 %1$.2f 秒 · 预计剩余 %2$s</string>
 	<string name="progress_timing_frame">平均每帧 %1$.1f 秒 · 预计剩余 %2$s</string>
 	<string name="progress_footage_length">目前已渲染 %1$.4f 秒的片段</string>
@@ -185,6 +197,19 @@
 	<string name="editor">编辑器</string>
 	<string name="run_mode">调试运行模式</string>
 	<string name="update_delay">自动运行延迟</string>
+	<string name="update_delay_summary">停止输入 %1$s 后：刷新语法高亮；若运行模式为修改时重新编译，则重新编译着色器</string>
+	<string name="performance">性能</string>
+	<string name="gpu_priority">GPU 优先级</string>
+	<string name="gpu_priority_default">默认（不请求）</string>
+	<string name="gpu_priority_low">低</string>
+	<string name="gpu_priority_medium">中</string>
+	<string name="gpu_priority_high">高</string>
+	<string name="gpu_priority_summary">%1$s - 着色器预览与屏幕其余部分争夺 GPU 的程度。设为低可让应用控件和系统（如切换应用）在运行重型着色器时保持流畅（需设备支持）。下次启动应用时生效。</string>
+	<string name="breathing_room">喘息空间</string>
+	<string name="breathing_room_summary_auto">自动 - 仅当着色器慢到导致其他操作卡顿时，在帧之间短暂暂停。输入数字可手动设置：1.0 = 关闭，1.1 = 少许，2.0 = 半速（更凉快、更省电）。</string>
+	<string name="breathing_room_summary_value">%1$s× - 每帧之后等待该帧渲染时间的 %2$d%%，让 GPU 为屏幕其余部分留出空闲。清空即为自动。</string>
+	<string name="breathing_room_dialog" formatted="false">每帧的渲染时间乘以此值，多出的部分作为空闲时间，使屏幕其余部分保持流畅。留空为自动。1.0 = 关闭 · 1.1 = 多 10% · 2.0 = 半速，省电。</string>
+	<string name="breathing_room_auto_hint">自动</string>
 	<string name="text_size">字体大小</string>
 	<string name="font">字体风格</string>
 	<string name="use_ligatures">启用连字 (Ligatures)</string>
@@ -376,6 +401,9 @@
 	<string name="find_shader_hotkey_hint">Enter：搜索／下一个匹配项 · Ctrl+Enter：载入当前匹配项 · ←/→：切换匹配项</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">质量选择器</string>
+	<string name="quality_increase_risky_title">提高质量？</string>
+	<string name="quality_increase_risky_message">此着色器目前已经只能以约 %1$d fps 运行。从这里再提高质量会大幅增加 GPU 负载，在某些设备上可能导致应用崩溃。仍要继续吗？</string>
+	<string name="quality_increase_risky_proceed">仍然提高</string>
 	<string name="back">返回</string>
 	<string name="toggle_sidebar">切换着色器侧边栏</string>
 	<string name="history_back">历史后退</string>
@@ -415,6 +443,14 @@
 	<string name="color_picker_saturation">S</string>
 	<string name="color_picker_value">V</string>
 	<string name="color_picker_intensity">强度（用于高于 1.0 的 HDR 颜色）</string>
+	<string name="play_local_music">播放本地音乐</string>
+	<string name="local_music_title">本地音乐</string>
+	<string name="local_music_previous">上一曲</string>
+	<string name="local_music_play_pause">播放/暂停</string>
+	<string name="local_music_next">下一曲</string>
+	<string name="local_music_change_folder">更改文件夹</string>
+	<string name="local_music_no_track">未加载曲目</string>
+	<string name="local_music_no_tracks_found">该文件夹中未找到 MP3 文件</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="other">找到 %1$d 个匹配项</item>

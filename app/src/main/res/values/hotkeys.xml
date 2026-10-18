@@ -16,14 +16,15 @@
 		<item>F11 — Toggle Fullscreen</item>
 		<item>Up — Play/Pause (outside the source editor)</item>
 		<item>Ctrl+Up — Rewind (outside the source editor)</item>
-		<item>Left — First Shader in the list, respecting any active filter (outside the source editor)</item>
-		<item>Right — Random Shader (outside the source editor)</item>
+		<item>Left / Right — Previous/Next Shader, respecting any active filter (outside the source editor)</item>
+		<item>Shift+Left — First Shader in the list, respecting any active filter (outside the source editor)</item>
+		<item>Shift+Right — Random Shader (outside the source editor)</item>
 		<item>Ctrl+Left / Ctrl+Right — Back/Forward through the last 20 shaders visited, browser-history-style, wrapping around at either end</item>
 		<item>Tab — Show/Hide the shader sidebar (outside the source editor)</item>
 		<item>Ctrl+Z — Undo</item>
 		<item>Ctrl+Y or Ctrl+Shift+Z — Redo</item>
 		<item>Ctrl+Shift+E — While Fullscreen: toggle the source editor and pause, to switch between snappy editing and a fullscreen view</item>
-		<item>Ctrl+Shift+R — Pause and open the quality picker; Up/Down to browse resolutions, Enter to confirm and unpause</item>
+		<item>Ctrl+Shift+R — Pause and open the quality picker dialog; picking one unpauses</item>
 		<item>Ctrl+Q — Quit (saves the current shader first if needed)</item>
 		<item>Enter (in Find Shader/Find in Shader) — Searches, then cycles through matches on each further press; Ctrl+Enter loads the currently shown match (Find Shader only)</item>
 		<item>Left/Right (in Find Shader) — Cycles through matches</item>

@@ -7,9 +7,17 @@
 		<item>正在渲染第 %1$d / %2$d 块…</item>
 		<item>第 %1$d / %2$d 块 — 像素可不会自己画出来</item>
 	</string-array>
+	<string-array name="status_tile_single_onepass">
+		<item>正在渲染…</item>
+		<item>一次性渲染完成，无需分块…</item>
+	</string-array>
 	<string-array name="status_tile_sequence">
 		<item>第 %1$d / %2$d 帧，第 %3$d / %4$d 块…</item>
 		<item>第 %1$d / %2$d 帧，第 %3$d / %4$d 块 — 像拼拼图一样拼接像素</item>
+	</string-array>
+	<string-array name="status_frame_sequence_onepass">
+		<item>第 %1$d / %2$d 帧…</item>
+		<item>第 %1$d / %2$d 帧 — 一次性渲染完成，无需分块</item>
 	</string-array>
 	<string-array name="status_encoding">
 		<item>正在将第 %1$d / %2$d 帧编码进视频…</item>

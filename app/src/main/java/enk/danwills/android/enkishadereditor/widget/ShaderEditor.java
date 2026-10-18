@@ -127,7 +127,7 @@ public class ShaderEditor extends LineNumberEditText {
 	private OnEditPausedListener onEditPausedListener;
 	@Nullable
 	private CodeCompletionListener codeCompletionListener;
-	private int updateDelay = 1000;
+	private int updateDelay = 2000;
 	@NonNull
 	private List<ShaderError> shaderErrors = Collections.emptyList();
 	private boolean isUserInteraction = true;

@@ -199,6 +199,10 @@ final class BuiltinUniforms {
 		audioUniforms.setMediaProjection(mediaProjection);
 	}
 
+	void setLocalPlaybackAudioSession(int audioSessionId) {
+		audioUniforms.setLocalPlaybackAudioSession(audioSessionId);
+	}
+
 	@NonNull
 	SurfaceState updateSurface(int width, int height, long now) {
 		runtimeClock.pause();

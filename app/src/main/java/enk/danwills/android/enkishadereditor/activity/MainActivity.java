@@ -27,7 +27,10 @@ import android.os.Environment;
 import android.os.Process;
 import android.provider.MediaStore;
 import android.text.Editable;
+import android.text.Spannable;
+import android.text.SpannableStringBuilder;
 import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -67,6 +70,7 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
@@ -85,6 +89,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.R;
@@ -103,6 +108,7 @@ import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.hardware.LocalMusicPlayer;
 import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
@@ -117,6 +123,7 @@ import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
 import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
+import enk.danwills.android.enkishadereditor.service.TileSizeProber;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
@@ -233,6 +240,15 @@ public class MainActivity extends AppCompatActivity {
 	private int trackedFindMatchStart = -1;
 	private int trackedFindMatchLength = 0;
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
+	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
+	@Nullable
+	private LocalMusicPlayer localMusicPlayer;
+	// Non-null only while showLocalMusicPlayerDialog()'s own dialog is
+	// up - lets the periodic position-polling Runnable it schedules stop
+	// itself on dismiss (see that method), without needing a dedicated
+	// field just to hold a "still showing" boolean.
+	@Nullable
+	private AlertDialog localMusicPlayerDialog;
 	private SharedPreferences.OnSharedPreferenceChangeListener audioPreferenceListener;
 	// Steps back through the UI one layer at a time instead of the
 	// normal "exit the app" back action: closes the sidebar if it's
@@ -271,6 +287,9 @@ public class MainActivity extends AppCompatActivity {
 		mediaProjectionLauncher = registerForActivityResult(
 				new ActivityResultContracts.StartActivityForResult(),
 				this::onMediaProjectionResult);
+		localMusicDirectoryLauncher = registerForActivityResult(
+				new ActivityResultContracts.OpenDocumentTree(),
+				this::onLocalMusicDirectoryPicked);
 		getOnBackPressedDispatcher().addCallback(this, specialModeBackCallback);
 		setContentView(R.layout.activity_main);
 		SystemBarMetrics.initMainLayout(this, null);
@@ -294,20 +313,6 @@ public class MainActivity extends AppCompatActivity {
 				qualitySpinnerView,
 				dataSource,
 				createShaderViewListener());
-		// Ctrl+Shift+R (see dispatchKeyEvent()) focuses this spinner so
-		// its own native hardware-keyboard handling can browse qualities
-		// with Up/Down directly - nothing needed here for that part.
-		// Only Enter needs its default action (opening the dropdown)
-		// overridden, to instead just confirm (unpause) whatever
-		// Up/Down already live-applied by the time Enter is pressed.
-		qualitySpinnerView.setOnKeyListener((v, keyCode, event) -> {
-			if (event.getAction() == KeyEvent.ACTION_DOWN &&
-					(keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
-				setShaderPaused(false);
-				return true;
-			}
-			return false;
-		});
 		audioPreferenceListener = (preferences, key) -> {
 			if (Preferences.USE_SYSTEM_AUDIO.equals(key)) {
 				shaderViewManager.refreshAudioCaptureSource();
@@ -558,8 +563,13 @@ public class MainActivity extends AppCompatActivity {
 				if (editorFocused) {
 					return false;
 				}
-				navigateToFirstShader();
-				showHotkeyToast("Left", R.string.first_shader);
+				if (shift) {
+					navigateToFirstShader();
+					showHotkeyToast("Shift+Left", R.string.first_shader);
+				} else {
+					navigateShader(-1);
+					showHotkeyToast("Left", R.string.previous_shader);
+				}
 				return true;
 			case KeyEvent.KEYCODE_DPAD_RIGHT:
 				if (ctrl) {
@@ -570,8 +580,13 @@ public class MainActivity extends AppCompatActivity {
 				if (editorFocused) {
 					return false;
 				}
-				randomShader();
-				showHotkeyToast("Right", R.string.random_shader);
+				if (shift) {
+					randomShader();
+					showHotkeyToast("Shift+Right", R.string.random_shader);
+				} else {
+					navigateShader(1);
+					showHotkeyToast("Right", R.string.next_shader);
+				}
 				return true;
 			case KeyEvent.KEYCODE_TAB:
 				if (editorFocused) {
@@ -639,15 +654,45 @@ public class MainActivity extends AppCompatActivity {
 				Toast.LENGTH_SHORT).show();
 	}
 
-	// Pauses, then focuses the quality spinner so a hardware keyboard's
-	// own Up/Down keys can browse it directly (standard AdapterView
-	// behavior once focused - nothing further needed here for that
-	// part); see the key listener on qualitySpinnerView, set up right
-	// after it's assigned in onCreate(), for what makes Enter confirm
-	// (unpause) instead of opening the dropdown.
+	// Pauses, then shows a single-choice list dialog of the same
+	// qualities the toolbar's own quality spinner offers (see
+	// R.array.quality_names/quality_values, the same pair
+	// ShaderViewManager.initQualitySpinner() reads). Originally this
+	// just focused the spinner itself, relying on its native hardware-
+	// keyboard Up/Down handling - but a focused Spinner with no dropdown
+	// open gives no visible indication of what it's even showing, let
+	// alone that Up/Down will change it; a real dialog is both more
+	// discoverable and consistent with every other hotkey-triggered
+	// action in this app already being one.
 	private void openQualityPickerViaHotkey() {
 		setShaderPaused(true);
-		qualitySpinnerView.requestFocus();
+		showQualityPickerDialog();
+	}
+
+	private void showQualityPickerDialog() {
+		String[] names = getResources().getStringArray(R.array.quality_names);
+		String[] valueStrings = getResources().getStringArray(R.array.quality_values);
+		float[] values = new float[valueStrings.length];
+		for (int i = 0; i < valueStrings.length; ++i) {
+			values[i] = Float.parseFloat(valueStrings[i]);
+		}
+		float current = shaderViewManager.getQuality();
+		int checked = 0;
+		for (int i = 0; i < values.length; ++i) {
+			if (values[i] == current) {
+				checked = i;
+				break;
+			}
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.quality_picker)
+				.setSingleChoiceItems(names, checked, (d, which) -> {
+					shaderViewManager.setQuality(values[which]);
+					d.dismiss();
+				})
+				.setNegativeButton(R.string.dismiss, null)
+				.setOnDismissListener(d -> setShaderPaused(false))
+				.show();
 	}
 
 	private void quitApp() {
@@ -763,6 +808,10 @@ public class MainActivity extends AppCompatActivity {
 	@Override
 	protected void onDestroy() {
 		stopService(new Intent(this, AudioCaptureForegroundService.class));
+		if (localMusicPlayer != null) {
+			localMusicPlayer.release();
+			localMusicPlayer = null;
+		}
 		if (shaderListManager != null) {
 			shaderListManager.destroy();
 		}
@@ -907,6 +956,24 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onRequestAudioCapture() {
 				runOnUiThread(MainActivity.this::requestAudioCapture);
+			}
+
+			// Only shown if the wait outlasts this - a cheap shader is back
+			// on screen within a frame or two of returning, and a spinner
+			// flashing up for that would be more distracting than helpful.
+			private static final long RESUME_INDICATOR_DELAY_MS = 150;
+			private final View resumeIndicator = findViewById(R.id.resume_render_indicator);
+			private final Runnable showResumeIndicator =
+					() -> resumeIndicator.setVisibility(View.VISIBLE);
+
+			@Override
+			public void onResumeRenderPending(boolean pending) {
+				resumeIndicator.removeCallbacks(showResumeIndicator);
+				if (pending) {
+					resumeIndicator.postDelayed(showResumeIndicator, RESUME_INDICATOR_DELAY_MS);
+				} else {
+					resumeIndicator.setVisibility(View.GONE);
+				}
 			}
 
 			// Touch dispatch (unlike rendering) already runs on the UI
@@ -1131,6 +1198,11 @@ public class MainActivity extends AppCompatActivity {
 			public void onAdjustDefines() {
 				showAdjustDefinesDialog();
 			}
+
+			@Override
+			public void onPlayLocalMusic() {
+				openLocalMusicPlayer();
+			}
 		};
 	}
 
@@ -1196,6 +1268,8 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		String pastedSource = text.toString();
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
 		new MaterialAlertDialogBuilder(this)
 				.setIcon(R.drawable.ic_warning)
 				.setTitle(R.string.paste_over_warning_title)
@@ -1205,6 +1279,7 @@ public class MainActivity extends AppCompatActivity {
 					shaderManager.saveShader(true);
 				})
 				.setNegativeButton(android.R.string.cancel, null)
+				.setOnDismissListener(d -> setShaderPaused(wasPaused))
 				.show();
 	}
 
@@ -1232,6 +1307,8 @@ public class MainActivity extends AppCompatActivity {
 			}
 		}
 
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.paste_shader_title)
 				.setView(view)
@@ -1250,6 +1327,7 @@ public class MainActivity extends AppCompatActivity {
 					shaderManager.saveShader(true);
 				})
 				.setNegativeButton(android.R.string.cancel, null)
+				.setOnDismissListener(d -> setShaderPaused(wasPaused))
 				.show();
 	}
 
@@ -1327,6 +1405,176 @@ public class MainActivity extends AppCompatActivity {
 		} catch (RuntimeException e) {
 			Log.e(AUDIO_CAPTURE_TAG, "Could not bring task to front", e);
 		}
+	}
+
+	// Entry point for the "Play Local Music" menu item - drives the
+	// audioSpectrum uniform from an in-app MP3 player instead of system/
+	// mic audio capture, so visuals can sync to chosen music without the
+	// MediaProjection consent prompt above needing to be granted at all.
+	// If a folder's already been picked in an earlier session, reuses it
+	// directly; otherwise asks via the SAF folder picker first. See
+	// LocalMusicPlayer's own doc comment for why playback survives this
+	// dialog closing but not the app being backgrounded.
+	private void openLocalMusicPlayer() {
+		if (localMusicPlayer == null) {
+			localMusicPlayer = new LocalMusicPlayer(this);
+		}
+		if (localMusicPlayer.getTrackCount() > 0) {
+			showLocalMusicPlayerDialog();
+			return;
+		}
+		String remembered = ShaderEditorApp.preferences.getLocalPlaybackDirectory();
+		if (remembered != null) {
+			Uri treeUri = Uri.parse(remembered);
+			if (localMusicPlayer.loadDirectory(treeUri)) {
+				onLocalMusicDirectoryLoaded();
+				return;
+			}
+			Log.i(AUDIO_CAPTURE_TAG, "openLocalMusicPlayer: remembered folder no longer usable"
+					+ ", asking again");
+		}
+		localMusicDirectoryLauncher.launch(null);
+	}
+
+	private void onLocalMusicDirectoryPicked(@Nullable Uri treeUri) {
+		if (treeUri == null || localMusicPlayer == null) {
+			return;
+		}
+		getContentResolver().takePersistableUriPermission(
+				treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+		if (!localMusicPlayer.loadDirectory(treeUri)) {
+			Toast.makeText(this, R.string.local_music_no_tracks_found, Toast.LENGTH_LONG).show();
+			return;
+		}
+		ShaderEditorApp.preferences.setLocalPlaybackDirectory(treeUri.toString());
+		onLocalMusicDirectoryLoaded();
+	}
+
+	// A fresh (or freshly re-picked) folder loaded successfully - wires
+	// this player into the audioSpectrum pipeline, turns its preference
+	// on (see Preferences.USE_LOCAL_PLAYBACK_AUDIO's own comment on why
+	// that's only ever set from here, not a settings toggle), starts
+	// playback, and shows the control dialog.
+	private void onLocalMusicDirectoryLoaded() {
+		if (localMusicPlayer == null) {
+			return;
+		}
+		shaderViewManager.setLocalPlaybackAudioSession(localMusicPlayer.getAudioSessionId());
+		ShaderEditorApp.preferences.setUseLocalPlaybackAudio(true);
+		localMusicPlayer.play();
+		showLocalMusicPlayerDialog();
+	}
+
+	// Track name, play/pause, previous/next, and a seek bar - see
+	// dialog_local_music_player.xml. Dismissing this (back press,
+	// outside tap, or switching to another shader/dialog) never stops
+	// playback - only the position-polling Runnable below, which has
+	// nothing left to usefully update once it's gone.
+	private void showLocalMusicPlayerDialog() {
+		LocalMusicPlayer player = localMusicPlayer;
+		if (player == null) {
+			return;
+		}
+		View view = getLayoutInflater().inflate(R.layout.dialog_local_music_player, null);
+		TextView trackName = view.findViewById(R.id.local_music_track_name);
+		TextView positionText = view.findViewById(R.id.local_music_position_text);
+		TextView durationText = view.findViewById(R.id.local_music_duration_text);
+		SeekBar seek = view.findViewById(R.id.local_music_seek);
+		MaterialButton playPause = view.findViewById(R.id.local_music_play_pause);
+		Button previous = view.findViewById(R.id.local_music_previous);
+		Button next = view.findViewById(R.id.local_music_next);
+		Button changeFolder = view.findViewById(R.id.local_music_change_folder);
+
+		String currentTrack = player.getCurrentTrackName();
+		trackName.setText(currentTrack != null ? currentTrack : getString(R.string.local_music_no_track));
+		playPause.setIcon(ContextCompat.getDrawable(this,
+				player.isPlaying() ? R.drawable.ic_pause : R.drawable.ic_play_arrow));
+
+		player.setListener(new LocalMusicPlayer.Listener() {
+			@Override
+			public void onTrackChanged(@NonNull String name) {
+				runOnUiThread(() -> trackName.setText(name));
+			}
+
+			@Override
+			public void onPlaybackStateChanged(boolean playing) {
+				runOnUiThread(() -> playPause.setIcon(ContextCompat.getDrawable(
+						MainActivity.this, playing ? R.drawable.ic_pause : R.drawable.ic_play_arrow)));
+			}
+		});
+		playPause.setOnClickListener(v -> player.togglePlayPause());
+		previous.setOnClickListener(v -> player.previous());
+		next.setOnClickListener(v -> player.next());
+		changeFolder.setOnClickListener(v -> {
+			if (localMusicPlayerDialog != null) {
+				localMusicPlayerDialog.dismiss();
+			}
+			localMusicDirectoryLauncher.launch(null);
+		});
+
+		boolean[] userIsSeeking = {false};
+		seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				if (fromUser) {
+					positionText.setText(formatTrackTime(progress));
+				}
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+				userIsSeeking[0] = true;
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+				userIsSeeking[0] = false;
+				player.seekTo(seekBar.getProgress());
+			}
+		});
+
+		// Polls position/duration every half second while this exact
+		// dialog instance is the current one - simpler and plenty smooth
+		// enough for a seek bar than wiring a push-based position
+		// listener through LocalMusicPlayer for something this coarse-
+		// grained. Compares against thisDialog (not just "is
+		// localMusicPlayerDialog null") so that if this dialog's closed
+		// and a new one opened before this particular tick fires, it
+		// recognizes it's stale and stops instead of ticking forever
+		// alongside the new one.
+		AlertDialog[] thisDialog = new AlertDialog[1];
+		Runnable[] tick = new Runnable[1];
+		tick[0] = () -> {
+			if (localMusicPlayerDialog != thisDialog[0]) {
+				return;
+			}
+			int duration = player.getDuration();
+			if (!userIsSeeking[0]) {
+				seek.setMax(Math.max(duration, 1));
+				seek.setProgress(player.getCurrentPosition());
+				positionText.setText(formatTrackTime(player.getCurrentPosition()));
+				durationText.setText(formatTrackTime(duration));
+			}
+			view.postDelayed(tick[0], 500);
+		};
+
+		localMusicPlayerDialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.local_music_title)
+				.setView(view)
+				.setNegativeButton(R.string.dismiss, null)
+				.setOnDismissListener(d -> {
+					localMusicPlayerDialog = null;
+					player.setListener(null);
+				})
+				.show();
+		thisDialog[0] = localMusicPlayerDialog;
+		tick[0].run();
+	}
+
+	@NonNull
+	private static String formatTrackTime(int ms) {
+		int totalSeconds = ms / 1000;
+		return String.format(Locale.US, "%d:%02d", totalSeconds / 60, totalSeconds % 60);
 	}
 
 	private void copyShaderToClipboard() {
@@ -1485,7 +1733,7 @@ public class MainActivity extends AppCompatActivity {
 		// tapping outside) is the end of the flow, and needs to restore
 		// it here instead.
 		boolean[] proceeding = {false};
-		new MaterialAlertDialogBuilder(this)
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.adjust_defines)
 				.setView(view)
 				.setNegativeButton(android.R.string.cancel, null)
@@ -1499,6 +1747,12 @@ public class MainActivity extends AppCompatActivity {
 					}
 				})
 				.show();
+		// So typing a filter can start immediately, same rationale/pattern
+		// as the Find Shader dialog's query field above.
+		filterView.requestFocus();
+		if (dialog.getWindow() != null) {
+			dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+		}
 	}
 
 	private void showAdjustDefinesConfirmDialog(@NonNull String originalSource,
@@ -2309,6 +2563,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_OVERSAMPLE = "custom_res_oversample";
 	private static final String PREF_CUSTOM_RES_TILE_ORDER = "custom_res_tile_order";
 	private static final String PREF_CUSTOM_RES_BUCKET_SIZE = "custom_res_bucket_size";
+	private static final String PREF_CUSTOM_RES_AUTO_DETECT_TILE_SIZE = "custom_res_auto_detect_tile_size";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_ENABLED = "custom_res_sequence_enabled";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_FRAMES = "custom_res_sequence_frames";
 	private static final String PREF_CUSTOM_RES_SEQUENCE_FPS = "custom_res_sequence_fps";
@@ -2326,13 +2581,34 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	// Subtly marks whichever of these buttons was clicked last time this
-	// exact dialog was shown (bold text, nothing more dramatic) - purely
-	// a visual memory aid, not read anywhere else.
-	private void highlightLastUsedButton(@NonNull String prefKey, @NonNull Button... buttons) {
+	// exact dialog was shown (bold text, nothing more dramatic) - a
+	// visual memory aid, and also now what Enter actually acts on: with
+	// a hardware keyboard, pressing Enter the moment this kind of dialog
+	// opens reads as "do what I did last time" far more naturally than
+	// it does nothing, so the bold button isn't *just* decorative.
+	private void highlightLastUsedButton(
+			@NonNull AlertDialog dialog, @NonNull String prefKey, @NonNull Button... buttons) {
 		int lastUsedId = dialogPrefs().getInt(prefKey, -1);
+		Button lastUsedButton = null;
 		for (Button button : buttons) {
-			button.setTypeface(null, button.getId() == lastUsedId ? Typeface.BOLD : Typeface.NORMAL);
+			boolean isLastUsed = button.getId() == lastUsedId;
+			button.setTypeface(null, isLastUsed ? Typeface.BOLD : Typeface.NORMAL);
+			if (isLastUsed) {
+				lastUsedButton = button;
+			}
 		}
+		if (lastUsedButton == null) {
+			return;
+		}
+		Button target = lastUsedButton;
+		dialog.setOnKeyListener((d, keyCode, event) -> {
+			if (event.getAction() != KeyEvent.ACTION_DOWN ||
+					(keyCode != KeyEvent.KEYCODE_ENTER && keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+				return false;
+			}
+			target.performClick();
+			return true;
+		});
 	}
 
 	private void rememberLastUsedButton(@NonNull String prefKey, int buttonId) {
@@ -2356,6 +2632,10 @@ public class MainActivity extends AppCompatActivity {
 	private static final float[] CUSTOM_RES_SCREEN_MULTIPLIERS =
 			{1 / 32f, 1 / 16f, 1 / 8f, 1 / 4f, 0.5f, 1f, 2f, 4f, 8f};
 	private static final int[][] CUSTOM_RES_FIXED_PRESETS = {
+			{16, 16},
+			{32, 32},
+			{64, 64},
+			{128, 128},
 			{256, 256},
 			{512, 512},
 			{1024, 1024},
@@ -2527,6 +2807,10 @@ public class MainActivity extends AppCompatActivity {
 		Spinner bucketSizeSpinner = view.findViewById(R.id.custom_bucket_size);
 		bucketSizeSpinner.setSelection(prefs.getInt(
 				PREF_CUSTOM_RES_BUCKET_SIZE, TileBucketSize.NORMAL.ordinal()));
+		CheckBox autoDetectTileSizeBox = view.findViewById(R.id.custom_auto_detect_tile_size);
+		autoDetectTileSizeBox.setChecked(
+				prefs.getBoolean(PREF_CUSTOM_RES_AUTO_DETECT_TILE_SIZE, false));
+		explainOnLongPress(autoDetectTileSizeBox, R.string.higher_res_auto_detect_tile_size);
 		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
 		preserveBackbufferBox.setChecked(
 				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
@@ -2695,12 +2979,14 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 				return;
 			}
+			boolean autoDetectTileSize = autoDetectTileSizeBox.isChecked();
 			SharedPreferences.Editor prefsEditor = dialogPrefs().edit()
 					.putInt(PREF_CUSTOM_RES_WIDTH, width)
 					.putInt(PREF_CUSTOM_RES_HEIGHT, height)
 					.putInt(PREF_CUSTOM_RES_OVERSAMPLE, oversample)
 					.putInt(PREF_CUSTOM_RES_TILE_ORDER, tileOrder.ordinal())
 					.putInt(PREF_CUSTOM_RES_BUCKET_SIZE, bucketSize.ordinal())
+					.putBoolean(PREF_CUSTOM_RES_AUTO_DETECT_TILE_SIZE, autoDetectTileSize)
 					.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
 							matchAppResBox.isChecked())
@@ -2729,21 +3015,194 @@ public class MainActivity extends AppCompatActivity {
 								sequenceViews.cleanupImagesBox.isChecked())
 						.apply();
 				dialog.dismiss();
-				runFrameSequenceCapture(width, height, oversample, preserveBackbufferBox.isChecked(),
-						bucketSize, tileOrder, skipFrames, frameCount, fps,
-						sequenceViews.createVideoBox.isChecked(), videoQuality, videoScale,
-						sequenceViews.cleanupImagesBox.isChecked(), wasPaused);
+				proceedWithCustomResCapture(width, height, oversample, autoDetectTileSize, bucketSize,
+						wasPaused,
+						resolvedBucketSize -> runFrameSequenceCapture(width, height, oversample,
+								preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder, skipFrames,
+								frameCount, fps, sequenceViews.createVideoBox.isChecked(), videoQuality,
+								videoScale, sequenceViews.cleanupImagesBox.isChecked(), wasPaused));
 				return;
 			}
 			prefsEditor.apply();
 			dialog.dismiss();
-			runHighResCapture(width, height, oversample, preserveBackbufferBox.isChecked(), bucketSize,
-					tileOrder, wasPaused);
+			proceedWithCustomResCapture(width, height, oversample, autoDetectTileSize, bucketSize, wasPaused,
+					resolvedBucketSize -> runHighResCapture(width, height, oversample,
+							preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder, wasPaused));
 		});
 		view.findViewById(R.id.custom_res_cancel).setOnClickListener(v -> {
 			dialog.dismiss();
 			setShaderPaused(wasPaused);
 		});
+	}
+
+	// Shared by both showCustomResolutionDialog() OK-button branches
+	// (single capture and sequence) - skips straight to startCapture with
+	// the spinner's own bucketSize when auto-detection wasn't requested,
+	// otherwise runs it first (see runTileSizeAutoDetect() below) and
+	// only calls startCapture if it actually found something safe.
+	private void proceedWithCustomResCapture(int width, int height, int oversample,
+			boolean autoDetectTileSize, @NonNull TileBucketSize fallbackBucketSize, boolean wasPaused,
+			@NonNull Consumer<TileBucketSize> startCapture) {
+		if (!autoDetectTileSize) {
+			startCapture.accept(fallbackBucketSize);
+			return;
+		}
+		runTileSizeAutoDetect(width, height, oversample, wasPaused, startCapture);
+	}
+
+	// Runs TileSizeProber's step-up search against the shader currently in
+	// the editor, on its own background thread (it blocks for the whole
+	// search - see that class's own doc), narrating progress - including
+	// a running, colour-coded history of every attempt so far (green for
+	// safe, red for unsafe) on the timing line a real capture would
+	// otherwise use for its Avg/ETA text - on a reused dialog_progress
+	// instance. Calls onDetected with whatever it finds safe (reporting
+	// MAX when the whole, untiled frame itself turned out safe - see
+	// TileSizeProber.SearchResult's own doc for why that alone is enough
+	// to make the real capture skip tiling entirely) and lets the caller
+	// take it from there, straight into the real capture unchanged - or,
+	// if cancelled or nothing came back safe at all, restores wasPaused
+	// and stops here instead, the same way every other capture dialog's
+	// own Cancel does.
+	private void runTileSizeAutoDetect(int width, int height, int oversample, boolean wasPaused,
+			@NonNull Consumer<TileBucketSize> onDetected) {
+		String fragmentSource = editorFragment.getText();
+		// Matches exactly what the real capture itself binds `resolution`
+		// to and gates singlePass eligibility on - see
+		// ShaderRenderer.captureHighResScreenshot()/
+		// HighResScreenshotCapture.isSinglePassEligible(). Probing against
+		// the dialog's own pre-oversample width/height would test the
+		// wrong (smaller) resolution entirely whenever oversample > 1.
+		int targetWidth = width * oversample;
+		int targetHeight = height * oversample;
+		boolean singlePassPossible = oversample == 1;
+		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
+		TextView resolutionInfo = progressView.findViewById(R.id.progress_resolution_info);
+		TextView statusMessage = progressView.findViewById(R.id.status_message);
+		TextView historyView = progressView.findViewById(R.id.progress_timing);
+		ProgressBar overallBar = progressView.findViewById(R.id.progress_overall);
+		Button cancelButton = progressView.findViewById(R.id.progress_cancel);
+		resolutionInfo.setText(buildResolutionInfoLine(width, height, oversample, null));
+		resolutionInfo.setVisibility(View.VISIBLE);
+		statusMessage.setText(R.string.auto_detect_tile_size_title);
+		overallBar.setIndeterminate(true);
+		SpannableStringBuilder history = new SpannableStringBuilder();
+		historyView.setText(history);
+		historyView.setVisibility(View.VISIBLE);
+		AtomicBoolean cancelRequested = new AtomicBoolean(false);
+		AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.auto_detect_tile_size_title)
+				.setView(progressView)
+				.setCancelable(false)
+				.show();
+		cancelButton.setOnClickListener(v -> {
+			cancelRequested.set(true);
+			cancelButton.setEnabled(false);
+		});
+		TileSizeProber.Listener listener = new TileSizeProber.Listener() {
+			@Override
+			public void onAttemptStarting(@NonNull String label, int attempt, int total) {
+				runOnUiThread(() -> {
+					if (overallBar.isIndeterminate()) {
+						overallBar.setIndeterminate(false);
+						overallBar.setMax(total);
+					}
+					overallBar.setProgress(attempt - 1);
+					statusMessage.setText(getString(R.string.auto_detect_tile_size_testing,
+							tileSizeLabelForDisplay(label), attempt, total));
+				});
+			}
+
+			@Override
+			public void onAttemptFinished(@NonNull String label, boolean safe) {
+				runOnUiThread(() -> {
+					if (history.length() > 0) {
+						history.append("   ");
+					}
+					int start = history.length();
+					history.append(tileSizeLabelForDisplay(label));
+					history.setSpan(
+							new ForegroundColorSpan(ContextCompat.getColor(MainActivity.this, safe
+									? R.color.auto_detect_tile_size_safe
+									: R.color.auto_detect_tile_size_unsafe)),
+							start, history.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+					historyView.setText(history);
+				});
+			}
+		};
+		new Thread(() -> {
+			TileSizeProber.SearchResult result = TileSizeProber.findMaxSafeTileSize(
+					getApplicationContext(), fragmentSource, targetWidth, targetHeight, singlePassPossible,
+					listener, cancelRequested::get);
+			runOnUiThread(() -> {
+				progressDialog.dismiss();
+				if (cancelRequested.get()) {
+					setShaderPaused(wasPaused);
+				} else if (result.safeBucketSize() == null) {
+					new MaterialAlertDialogBuilder(this)
+							.setTitle(R.string.auto_detect_tile_size_failed_title)
+							.setMessage(R.string.auto_detect_tile_size_failed_message)
+							.setPositiveButton(android.R.string.ok, null)
+							.setOnDismissListener(d -> setShaderPaused(wasPaused))
+							.show();
+				} else {
+					// A clear, non-transient confirmation of exactly what
+					// was found - the colour-coded history on the dialog
+					// just dismissed is otherwise the only record of it,
+					// and disappears the instant the real capture's own
+					// progress dialog (which also shows this same tile
+					// description - see tileDescriptionFor()) replaces it.
+					Toast.makeText(this,
+							getString(R.string.auto_detect_tile_size_result,
+									tileDescriptionFor(result.safeBucketSize(), result.wholeFrameSafe())),
+							Toast.LENGTH_LONG).show();
+					onDetected.accept(result.safeBucketSize());
+				}
+			});
+		}).start();
+	}
+
+	// "WHOLE_FRAME" is TileSizeProber's one synthetic rung, not a real
+	// TileBucketSize - see that class's own doc.
+	@NonNull
+	private String tileSizeLabelForDisplay(@NonNull String label) {
+		if ("WHOLE_FRAME".equals(label)) {
+			return getString(R.string.auto_detect_tile_size_whole_frame_label);
+		}
+		try {
+			TileBucketSize size = TileBucketSize.valueOf(label);
+			return getResources().getStringArray(R.array.bucket_size_names)[size.ordinal()];
+		} catch (IllegalArgumentException e) {
+			return label;
+		}
+	}
+
+	// Base resolution and the oversampled target it actually maps to -
+	// shown with no tile info yet (the auto-detect dialog's own use,
+	// before a size is known) when tileDescription is null.
+	@NonNull
+	private String buildResolutionInfoLine(int width, int height, int oversample,
+			@Nullable String tileDescription) {
+		int targetWidth = width * oversample;
+		int targetHeight = height * oversample;
+		return tileDescription == null
+				? getString(R.string.progress_resolution_only, width, height, targetWidth, targetHeight,
+						oversample)
+				: getString(R.string.progress_resolution_and_tile, width, height, targetWidth, targetHeight,
+						oversample, tileDescription);
+	}
+
+	// "Whole Frame (no tiling)" once singlePass is actually what the real
+	// capture will do (see HighResScreenshotCapture's own `singlePass`
+	// branch), otherwise the bucket size's own display name and pixel
+	// size - e.g. "Large (1024px)".
+	@NonNull
+	private String tileDescriptionFor(@NonNull TileBucketSize bucketSize, boolean singlePass) {
+		if (singlePass) {
+			return getString(R.string.progress_tile_whole_frame);
+		}
+		String name = getResources().getStringArray(R.array.bucket_size_names)[bucketSize.ordinal()];
+		return getString(R.string.progress_tile_named, name, bucketSize.pixels);
 	}
 
 	// Long-press hint for a shortened label - shows its full explanation
@@ -3012,6 +3471,7 @@ public class MainActivity extends AppCompatActivity {
 			@NonNull TileRenderOrder tileOrder, boolean wasPaused) {
 		setShaderPaused(true);
 		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
+		TextView resolutionInfo = progressView.findViewById(R.id.progress_resolution_info);
 		TextView statusMessage = progressView.findViewById(R.id.status_message);
 		TextView timingView = progressView.findViewById(R.id.progress_timing);
 		ProgressBar overallBar = progressView.findViewById(R.id.progress_overall);
@@ -3029,6 +3489,9 @@ public class MainActivity extends AppCompatActivity {
 		// GL thread falls back to tiling anyway just means this ends up
 		// showing the untiled layout for a tiled capture, not a crash.
 		boolean singlePass = bucketSize == TileBucketSize.MAX && oversample == 1;
+		resolutionInfo.setText(buildResolutionInfoLine(width, height, oversample,
+				tileDescriptionFor(bucketSize, singlePass)));
+		resolutionInfo.setVisibility(View.VISIBLE);
 		ShaderRenderer.TilePreviewListener tilePreviewListener =
 				createTilePreviewListener(tilePreviewView, previewBitmap, lastTileView, singlePass);
 		AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
@@ -3085,13 +3548,18 @@ public class MainActivity extends AppCompatActivity {
 					overallBar.setMax(PROGRESS_COMPILE_UNITS + totalTiles);
 					subtaskBar.setVisibility(View.VISIBLE);
 					subtaskBar.setMax(totalTiles);
-					tileVariant[0] = pickRandomStatus(R.array.status_tile_single);
+					// "Tile 1 of 1" is true but meaningless whenever the
+					// capture didn't actually need tiling (a single pass) -
+					// see status_tile_single_onepass's own doc.
+					tileVariant[0] = pickRandomStatus(
+							totalTiles > 1 ? R.array.status_tile_single : R.array.status_tile_single_onepass);
 					captureStartNanos[0] = System.nanoTime();
 				}
 				overallBar.setProgress(PROGRESS_COMPILE_UNITS + tilesDone);
 				subtaskBar.setProgress(tilesDone);
-				statusMessage.setText(
-						String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
+				statusMessage.setText(totalTiles > 1
+						? String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles)
+						: tileVariant[0]);
 				updateTimingEstimate(timingView, R.string.progress_timing_tile,
 						captureStartNanos[0], tilesDone, totalTiles - tilesDone);
 				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
@@ -3212,6 +3680,7 @@ public class MainActivity extends AppCompatActivity {
 		String baseShaderName = sanitizeFilename(shader != null ? shader.getTitle() : "shader");
 
 		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
+		TextView resolutionInfo = progressView.findViewById(R.id.progress_resolution_info);
 		TextView statusMessage = progressView.findViewById(R.id.status_message);
 		TextView timingView = progressView.findViewById(R.id.progress_timing);
 		ProgressBar overallBar = progressView.findViewById(R.id.progress_overall);
@@ -3224,6 +3693,9 @@ public class MainActivity extends AppCompatActivity {
 		tilePreviewView.setImageBitmap(previewBitmap);
 		// Same approximation as runHighResCapture()'s own copy of this.
 		boolean singlePass = bucketSize == TileBucketSize.MAX && oversample == 1;
+		resolutionInfo.setText(buildResolutionInfoLine(width, height, oversample,
+				tileDescriptionFor(bucketSize, singlePass)));
+		resolutionInfo.setVisibility(View.VISIBLE);
 		ShaderRenderer.TilePreviewListener tilePreviewListener =
 				createTilePreviewListener(tilePreviewView, previewBitmap, lastTileView, singlePass);
 		// Live-changeable mid-sequence (see TileOrderSupplier's own doc) -
@@ -3395,8 +3867,15 @@ public class MainActivity extends AppCompatActivity {
 					tilesPerFrame[0] = totalTiles;
 					overallBar.setMax(PROGRESS_COMPILE_UNITS + skipFrames +
 							numFrames * tilesPerFrame[0] + (createVideo ? numFrames : 0));
-					tileVariant[0] = pickRandomStatus(
-							numFrames > 1 ? R.array.status_tile_sequence : R.array.status_tile_single);
+					// "Tile 1 of 1" is true but meaningless whenever a
+					// frame didn't actually need tiling (a single pass) -
+					// see status_tile_single_onepass's own doc. Takes
+					// priority over the numFrames check below: even a
+					// one-frame "sequence" shouldn't say it.
+					tileVariant[0] = totalTiles <= 1
+							? pickRandomStatus(R.array.status_frame_sequence_onepass)
+							: pickRandomStatus(
+									numFrames > 1 ? R.array.status_tile_sequence : R.array.status_tile_single);
 				}
 				if (tilesDone == 1) {
 					frameStartNanos[0] = System.nanoTime();
@@ -3413,11 +3892,15 @@ public class MainActivity extends AppCompatActivity {
 				// cycle through the normal randomized tile-progress text
 				// as if nothing had changed.
 				statusMessage.setText(interruptRequested.get()
-						? getString(R.string.status_interrupting_after_frame)
-						: numFrames > 1
+						? getString(R.string.status_interrupting_after_frame,
+								currentFrameIndex[0] + 1, numFrames)
+						: totalTiles <= 1
 								? String.format(Locale.getDefault(), tileVariant[0],
-										currentFrameIndex[0] + 1, numFrames, tilesDone, totalTiles)
-								: String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
+										currentFrameIndex[0] + 1, numFrames)
+								: numFrames > 1
+										? String.format(Locale.getDefault(), tileVariant[0],
+												currentFrameIndex[0] + 1, numFrames, tilesDone, totalTiles)
+										: String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles));
 				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 			});
 			// Deliberately cancelRequested-only, unlike
@@ -3694,7 +4177,7 @@ public class MainActivity extends AppCompatActivity {
 		Button saveButton = view.findViewById(R.id.screenshot_save);
 		Button saveAndOpenButton = view.findViewById(R.id.screenshot_save_and_open);
 		Button higherResButton = view.findViewById(R.id.screenshot_higher_res);
-		highlightLastUsedButton(PREF_LAST_SCREENSHOT_ACTION,
+		highlightLastUsedButton(dialog, PREF_LAST_SCREENSHOT_ACTION,
 				copyButton, saveButton, saveAndOpenButton, higherResButton);
 		copyButton.setOnClickListener(v -> {
 			rememberLastUsedButton(PREF_LAST_SCREENSHOT_ACTION, R.id.screenshot_copy);

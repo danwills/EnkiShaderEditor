@@ -61,6 +61,18 @@
 	<string name="higher_res_oversample">Передискретизация (x) - рендер в большем размере с последующим уменьшением для сглаживания</string>
 	<string name="higher_res_tile_order">Порядок плиток</string>
 	<string name="higher_res_bucket_size">Размер блока</string>
+	<string name="higher_res_auto_detect_tile_size_label">Автоопределение безопасного размера блока</string>
+	<string name="higher_res_auto_detect_tile_size">Автоопределение безопасного размера блока - перед рендерингом тестирует постепенно увеличивающиеся размеры блока в отдельном фоновом процессе и использует наибольший, который рендерит этот шейдер без сбоя, переопределяя указанный выше размер блока. Требует дополнительного времени на тестирование, но может найти больший (а значит, более быстрый) безопасный размер блока, чем просто заданный размер блока, и автоматически восстанавливается после размера блока, который иначе привёл бы к сбою захвата</string>
+	<string name="auto_detect_tile_size_title">Определение безопасного размера блока</string>
+	<string name="auto_detect_tile_size_testing">Тестирование размера блока %1$s (попытка %2$d из %3$d)…</string>
+	<string name="auto_detect_tile_size_failed_title">Безопасный размер блока не найден</string>
+	<string name="auto_detect_tile_size_failed_message">Даже наименьший размер блока вызвал сбой при тестировании этого шейдера с этим разрешением - возможно, его слишком затратно рендерить здесь вообще. Рендеринг не запущен.</string>
+	<string name="auto_detect_tile_size_result">Найден безопасный размер блока: %1$s</string>
+	<string name="auto_detect_tile_size_whole_frame_label">Весь кадр</string>
+	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d (%5$d×)</string>
+	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d (%5$d×) · Блок: %6$s</string>
+	<string name="progress_tile_whole_frame">Весь кадр (без разбиения на блоки)</string>
+	<string name="progress_tile_named">%1$s (%2$dпикс)</string>
 	<string name="higher_res_capturing_tiles">Рендеринг тайла %1$d из %2$d…</string>
 	<string name="higher_res_render_sequence">Рендерить последовательность кадров</string>
 	<string name="higher_res_sequence_frame_count">Количество кадров</string>
@@ -89,7 +101,7 @@
 	<string name="higher_res_sequence_cancelled_kept">Отменено — сохранено %1$d кадр(ов)</string>
 	<string name="higher_res_sequence_cancelled_deleted">Отменено — частичные кадры удалены</string>
 	<string name="interrupt_make_video_button">Прервать и создать частичное видео</string>
-	<string name="status_interrupting_after_frame">Прерывание после этого кадра…</string>
+	<string name="status_interrupting_after_frame">Прерывание после кадра %1$d / %2$d…</string>
 	<string name="progress_timing_tile">Сред. %1$.2fс/плитка · Осталось %2$s</string>
 	<string name="progress_timing_frame">Сред. %1$.1fс/кадр · Осталось %2$s</string>
 	<string name="progress_footage_length">Отрендерено %1$.4fс материала</string>
@@ -188,6 +200,19 @@
 	<string name="editor">Редактор</string>
 	<string name="run_mode">Режим исполнения</string>
 	<string name="update_delay">Задержка в обновлении</string>
+	<string name="update_delay_summary">%1$s после окончания ввода: обновить подсветку синтаксиса и, если режим запуска перекомпилирует при изменении, перекомпилировать шейдер</string>
+	<string name="performance">Производительность</string>
+	<string name="gpu_priority">Приоритет GPU</string>
+	<string name="gpu_priority_default">По умолчанию (не запрашивать)</string>
+	<string name="gpu_priority_low">Низкий</string>
+	<string name="gpu_priority_medium">Средний</string>
+	<string name="gpu_priority_high">Высокий</string>
+	<string name="gpu_priority_summary">%1$s - насколько активно предпросмотр шейдера конкурирует за GPU с остальным экраном. Низкий позволяет элементам приложения и системе (например, переключению приложений) оставаться отзывчивыми при тяжёлом шейдере, если устройство это поддерживает. Вступает в силу при следующем запуске приложения.</string>
+	<string name="breathing_room">Передышка</string>
+	<string name="breathing_room_summary_auto">Авто - делает короткие паузы между кадрами, только когда шейдер настолько медленный, что всё остальное тормозит. Введите число, чтобы задать вручную: 1.0 = выкл., 1.1 = немного, 2.0 = половина скорости (меньше нагрев и расход батареи).</string>
+	<string name="breathing_room_summary_value">%1$s× - после каждого кадра ждёт %2$d%% времени его отрисовки, оставляя GPU свободным для остального экрана. Очистите для режима Авто.</string>
+	<string name="breathing_room_dialog" formatted="false">Время отрисовки каждого кадра умножается на это число, а лишнее время остаётся простоем, чтобы остальной экран оставался отзывчивым. Оставьте пустым для Авто. 1.0 = выкл. · 1.1 = +10% · 2.0 = половина скорости, бережёт батарею.</string>
+	<string name="breathing_room_auto_hint">Авто</string>
 	<string name="text_size">Размер шрифта</string>
 	<string name="font">Шрифт</string>
 	<string name="use_ligatures">Использовать лигатуры</string>
@@ -393,6 +418,9 @@
 	<string name="find_shader_hotkey_hint">Enter: поиск / следующее совпадение · Ctrl+Enter: загрузить показанное совпадение · ←/→: переключение совпадений</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">Выбор качества</string>
+	<string name="quality_increase_risky_title">Повысить качество?</string>
+	<string name="quality_increase_risky_message">Этот шейдер уже работает со скоростью около %1$d кадров/с. Повышение качества отсюда - это значительный скачок нагрузки на GPU и может привести к сбою приложения на некоторых устройствах. Продолжить?</string>
+	<string name="quality_increase_risky_proceed">Повысить всё равно</string>
 	<string name="back">Назад</string>
 	<string name="toggle_sidebar">Показать/скрыть панель шейдеров</string>
 	<string name="history_back">Назад по истории</string>
@@ -435,6 +463,14 @@
 	<string name="color_picker_saturation">S</string>
 	<string name="color_picker_value">V</string>
 	<string name="color_picker_intensity">Интенсивность (для HDR-цветов выше 1.0)</string>
+	<string name="play_local_music">Воспроизвести локальную музыку</string>
+	<string name="local_music_title">Локальная музыка</string>
+	<string name="local_music_previous">Предыдущий трек</string>
+	<string name="local_music_play_pause">Воспроизведение/пауза</string>
+	<string name="local_music_next">Следующий трек</string>
+	<string name="local_music_change_folder">Сменить папку</string>
+	<string name="local_music_no_track">Трек не загружен</string>
+	<string name="local_music_no_tracks_found">В этой папке не найдено MP3-файлов</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d совпадение</item>

@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.CheckBox;
@@ -20,6 +21,7 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.FragmentActivity;
+import androidx.preference.EditTextPreference;
 import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.PreferenceCategory;
@@ -27,6 +29,8 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceGroup;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.util.Locale;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
@@ -97,6 +101,15 @@ public class PreferencesFragment
 	public void onCreatePreferences(Bundle state, String rootKey) {
 		setPreferencesFromResource(R.xml.preferences, rootKey);
 		wireImportExport();
+		EditTextPreference breathingRoom = findPreference(Preferences.BREATHING_ROOM);
+		if (breathingRoom != null) {
+			breathingRoom.setOnBindEditTextListener(editText -> {
+				editText.setInputType(InputType.TYPE_CLASS_NUMBER |
+						InputType.TYPE_NUMBER_FLAG_DECIMAL);
+				editText.setHint(R.string.breathing_room_auto_hint);
+				editText.setSelection(editText.getText().length());
+			});
+		}
 	}
 
 	@Override
@@ -168,6 +181,25 @@ public class PreferencesFragment
 					? ShaderEditorApp.preferences.getWallpaperShader()
 					: ShaderEditorApp.preferences.getDefaultNewShader();
 			preference.setSummary(getShaderSummary(id));
+		} else if (Preferences.GPU_PRIORITY.equals(preference.getKey()) &&
+				preference instanceof ListPreference listPreference) {
+			preference.setSummary(getString(R.string.gpu_priority_summary, listPreference.getEntry()));
+		} else if (Preferences.BREATHING_ROOM.equals(preference.getKey())) {
+			// What's stored is the raw text (blank = Auto) - summarise the
+			// value it actually parses to, so a typo or out-of-range number
+			// shows what will really be used, not what was typed.
+			float factor = ShaderEditorApp.preferences.getBreathingRoom();
+			preference.setSummary(factor <= 0f
+					? getString(R.string.breathing_room_summary_auto)
+					: getString(R.string.breathing_room_summary_value,
+							String.format(Locale.getDefault(), "%.2f", factor),
+							Math.round((factor - 1f) * 100f)));
+		} else if (Preferences.UPDATE_DELAY.equals(preference.getKey()) &&
+				preference instanceof ListPreference listPreference) {
+			// The bare "1.0s" every other ListPreference gets says nothing
+			// about *what* is delayed - spell it out (see ShaderEditor's
+			// updateRunnable and MainActivity's OnEditPausedListener).
+			preference.setSummary(getString(R.string.update_delay_summary, listPreference.getEntry()));
 		} else if (preference instanceof ListPreference) {
 			preference.setSummary(((ListPreference) preference).getEntry());
 		} else if (preference instanceof PreferenceGroup) {

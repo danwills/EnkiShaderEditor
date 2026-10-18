@@ -4,5 +4,6 @@
 		<item>正常</item>
 		<item>大</item>
 		<item>最大</item>
+		<item>极小</item>
 	</string-array>
 </resources>

@@ -5,6 +5,7 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 final class RendererProgramManager {
@@ -74,6 +75,9 @@ final class RendererProgramManager {
 	private String sourceText;
 	@NonNull
 	private PreparedShaderSource preparedShaderSource = PreparedShaderSource.empty();
+	// See prepareShaderSource()/releaseForReload().
+	@NonNull
+	private final List<ShaderTextureResources> staleTextureResources = new ArrayList<>();
 	@NonNull
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
@@ -171,6 +175,26 @@ final class RendererProgramManager {
 	void discardContextResources() {
 		clearPrograms();
 		textureResources.discard();
+		// The context these belonged to is already gone - nothing left
+		// to delete, just references to drop.
+		staleTextureResources.clear();
+	}
+
+	// Deletes (not just drops) the current programs and any texture sets
+	// replaced by setFragmentShader() since the last reload, on a context
+	// that's still alive - the preserved-context counterpart of
+	// discardContextResources(), called right before reload() whenever
+	// ShaderRenderer recompiles without onSurfaceCreated() (see its
+	// pendingReload). Skipping this would leak one program pair plus every
+	// texture the previous shader sampled, on every single shader switch.
+	void releaseForReload(@NonNull GlDevice device) {
+		device.deleteProgram(surfaceProgram);
+		device.deleteProgram(mainProgram);
+		clearPrograms();
+		for (var stale : staleTextureResources) {
+			stale.release(device);
+		}
+		staleTextureResources.clear();
 	}
 
 	@Nullable
@@ -212,6 +236,10 @@ final class RendererProgramManager {
 	}
 
 	private void prepareShaderSource(@Nullable String source) {
+		// Kept so releaseForReload() can delete its GL textures later, on
+		// the GL thread - this runs on the UI thread, with the GL thread
+		// paused, so it can't touch GL itself.
+		staleTextureResources.add(textureResources);
 		preparedShaderSource = ShaderSourcePreparer.prepare(
 				source,
 				version,

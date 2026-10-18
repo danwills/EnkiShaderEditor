@@ -26,6 +26,18 @@ public class Preferences {
 	public static final String SENSOR_DELAY = "sensor_delay";
 	public static final String USE_MICROPHONE_AUDIO = "use_microphone_audio";
 	public static final String USE_SYSTEM_AUDIO = "use_system_audio";
+	// See MainActivity.showLocalMusicPlayerDialog() - a third
+	// audioSpectrum source (an in-app MP3 player, so visuals sync to
+	// chosen music without needing the system-audio-capture consent
+	// prompt). Deliberately no entry in preferences.xml - there's
+	// nothing to toggle until a folder's actually been picked, so this
+	// is set/cleared entirely from that dialog's own code, not a
+	// user-facing settings switch like the other two.
+	public static final String USE_LOCAL_PLAYBACK_AUDIO = "use_local_playback_audio";
+	// The last folder (SAF tree document URI, as a string) picked for
+	// local MP3 playback - remembered so reopening the player doesn't
+	// need to ask again every time.
+	public static final String LOCAL_PLAYBACK_DIRECTORY = "local_playback_directory";
 	public static final String AUDIO_SPECTRUM_SHADERTOY_COMPATIBLE =
 			"audio_spectrum_shadertoy_compatible";
 	public static final String TEXT_SIZE = "text_size";
@@ -53,6 +65,14 @@ public class Preferences {
 	public static final String ICON_SIZE = "icon_size";
 	public static final String WARN_SLOW_COMPILE = "warn_slow_compile";
 	public static final String CAPTURE_THREAD_PRIORITY = "capture_thread_priority";
+	public static final String GPU_PRIORITY = "gpu_priority";
+	public static final String BREATHING_ROOM = "breathing_room";
+
+	// GPU_PRIORITY levels - see getGpuPriorityLevel().
+	public static final int GPU_PRIORITY_DEFAULT = 0;
+	public static final int GPU_PRIORITY_LOW = 1;
+	public static final int GPU_PRIORITY_MEDIUM = 2;
+	public static final int GPU_PRIORITY_HIGH = 3;
 
 	private static final String WALLPAPER_RUNTIME = "wallpaper_runtime_";
 
@@ -105,10 +125,13 @@ public class Preferences {
 	private boolean saveBattery = true;
 	private boolean sortByLastModification = true;
 	private int runMode = RUN_AUTO;
-	private int updateDelay = 1000;
+	private int updateDelay = 2000;
 	private int sensorDelay = SensorManager.SENSOR_DELAY_NORMAL;
 	private boolean useMicrophoneAudio = true;
 	private boolean useSystemAudio = false;
+	private boolean useLocalPlaybackAudio = false;
+	@Nullable
+	private String localPlaybackDirectory = null;
 	private boolean audioSpectrumShaderToyCompatible = false;
 	private int textSize = 12;
 	private @NonNull Typeface font = Typeface.MONOSPACE;
@@ -134,6 +157,8 @@ public class Preferences {
 	private long pendingCrashShaderId = 0;
 	private int iconSize = ICON_SIZE_NORMAL;
 	private int captureThreadPriority = CAPTURE_PRIORITY_NORMAL;
+	private int gpuPriority = GPU_PRIORITY_LOW;
+	private float breathingRoom = 0f;
 
 	public void init(Context context) {
 		systemBarColor = ContextCompat.getColor(
@@ -182,6 +207,12 @@ public class Preferences {
 		useSystemAudio = preferences.getBoolean(
 				USE_SYSTEM_AUDIO,
 				useSystemAudio);
+		useLocalPlaybackAudio = preferences.getBoolean(
+				USE_LOCAL_PLAYBACK_AUDIO,
+				useLocalPlaybackAudio);
+		localPlaybackDirectory = preferences.getString(
+				LOCAL_PLAYBACK_DIRECTORY,
+				localPlaybackDirectory);
 		audioSpectrumShaderToyCompatible = preferences.getBoolean(
 				AUDIO_SPECTRUM_SHADERTOY_COMPATIBLE,
 				audioSpectrumShaderToyCompatible);
@@ -243,7 +274,45 @@ public class Preferences {
 		captureThreadPriority = parseInt(
 				preferences.getString(CAPTURE_THREAD_PRIORITY, null),
 				captureThreadPriority);
+		gpuPriority = parseInt(
+				preferences.getString(GPU_PRIORITY, null),
+				gpuPriority);
+		breathingRoom = parseBreathingRoom(preferences.getString(BREATHING_ROOM, null));
 	}
+
+	// One of the GPU_PRIORITY_* levels - what the live preview's EGL
+	// context asks for via EGL_IMG_context_priority (see ShaderView's
+	// context factory), when the driver supports it at all.
+	public int getGpuPriorityLevel() {
+		return gpuPriority;
+	}
+
+	// The live preview's frame-time multiplier - see
+	// ShaderRenderer.setBreathingRoom(). 0 means automatic; anything else
+	// is >= 1.0 (1.0 = no idle time added at all).
+	public float getBreathingRoom() {
+		return breathingRoom;
+	}
+
+	// Blank, "auto" or anything unparseable means automatic (0); numbers
+	// below 1 are clamped up to 1 (no breathing room), and the top end
+	// is capped so a typo like "20" can't make the preview look frozen.
+	static float parseBreathingRoom(@Nullable String s) {
+		if (s == null || s.isBlank()) {
+			return 0f;
+		}
+		try {
+			float value = Float.parseFloat(s.trim());
+			if (Float.isNaN(value)) {
+				return 0f;
+			}
+			return Math.max(1f, Math.min(MAX_BREATHING_ROOM, value));
+		} catch (NumberFormatException e) {
+			return 0f;
+		}
+	}
+
+	public static final float MAX_BREATHING_ROOM = 10f;
 
 	public boolean autoHideExtraKeys() {
 		return autoHideExtraKeys;
@@ -384,6 +453,31 @@ public class Preferences {
 
 	public boolean useSystemAudio() {
 		return useSystemAudio;
+	}
+
+	public boolean useLocalPlaybackAudio() {
+		return useLocalPlaybackAudio;
+	}
+
+	// Set directly from MainActivity's local-music-player dialog (see
+	// USE_LOCAL_PLAYBACK_AUDIO's own comment on why this has no
+	// preferences.xml entry of its own) - not read back from
+	// SharedPreferences on its own on the next update() pass the way a
+	// real user-facing preference's field normally would be, since nothing
+	// else ever changes it underneath this call.
+	public void setUseLocalPlaybackAudio(boolean use) {
+		useLocalPlaybackAudio = use;
+		preferences.edit().putBoolean(USE_LOCAL_PLAYBACK_AUDIO, use).apply();
+	}
+
+	@Nullable
+	public String getLocalPlaybackDirectory() {
+		return localPlaybackDirectory;
+	}
+
+	public void setLocalPlaybackDirectory(@Nullable String treeUri) {
+		localPlaybackDirectory = treeUri;
+		preferences.edit().putString(LOCAL_PLAYBACK_DIRECTORY, treeUri).apply();
 	}
 
 	public boolean audioSpectrumShaderToyCompatible() {

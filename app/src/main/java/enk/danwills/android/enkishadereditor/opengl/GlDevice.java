@@ -74,6 +74,22 @@ final class GlDevice {
 		stateCache.viewportHeight = height;
 	}
 
+	// Used by HighResScreenshotCapture.renderTiles() to keep one tile's
+	// margin (rendered only so screen-space derivatives see real
+	// neighbouring fragments) from being written into a shared,
+	// persistent feedback texture where it would corrupt whichever
+	// neighbouring tile's content actually owns those pixels - not
+	// state-cached like setViewport() above, since this is only ever
+	// toggled on then off again once per tile, not worth tracking.
+	void setScissor(int x, int y, int width, int height) {
+		GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+		GLES20.glScissor(x, y, width, height);
+	}
+
+	void disableScissor() {
+		GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+	}
+
 	// Largest single dimension (width or height) a 2D texture/renderbuffer
 	// can have on this GPU/driver - used to size tiles for the high-res
 	// screenshot capture, since a target resolution can otherwise easily

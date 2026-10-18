@@ -1,10 +1,13 @@
 <resources>
 	<!-- Index-aligned with TileBucketSize's own enum ordinal order
-	     (SMALL, NORMAL, LARGE, MAX). -->
+	     (SMALL, NORMAL, LARGE, MAX, TINY - TINY last despite being the
+	     smallest, to keep existing stored preference ordinals meaning
+	     what they already meant, see that enum's own doc). -->
 	<string-array name="bucket_size_names">
 		<item>Small</item>
 		<item>Normal</item>
 		<item>Large</item>
 		<item>Max</item>
+		<item>Tiny</item>
 	</string-array>
 </resources>

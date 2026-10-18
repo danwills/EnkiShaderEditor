@@ -46,6 +46,16 @@ public final class DatabaseContract {
 		String COMPILE_TIME_MS = "compile_time_ms";
 		String COMPILE_TIME_SOURCE_LENGTH = "compile_time_source_length";
 		String COMPILE_TIME_SOURCE_MODIFIED = "compile_time_source_modified";
+		// The most recently observed live fps for this shader, and the
+		// quality it was observed at - null until the shader has
+		// actually rendered a live frame at least once. Lets a later
+		// caller (the risky-quality-increase confirmation in
+		// ShaderViewManager) know how slow a shader was running even
+		// before switching to it this session, rather than only trusting
+		// whatever shader happened to be live a moment ago - see
+		// ShaderDao.updateLastFps()/getLastFps().
+		String LAST_FPS = "last_fps";
+		String LAST_FPS_QUALITY = "last_fps_quality";
 	}
 
 	/**

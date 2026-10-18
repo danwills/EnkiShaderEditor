@@ -167,10 +167,13 @@ final class HighResScreenshotCapture {
 	// #extension GL_OES_standard_derivatives) have real neighboring
 	// fragments near tile edges instead of the tile's own boundary -
 	// mitigates (doesn't perfectly eliminate) faint seams at tile
-	// boundaries for such shaders.
-	private static final int TILE_MARGIN = 4;
+	// boundaries for such shaders. Package-visible (not private) so
+	// TileSafetyProbe can size its own throwaway single-tile render
+	// buffer identically to a real capture's.
+	static final int TILE_MARGIN = 4;
 
-	private static final String TILE_OFFSET_PRELUDE = """
+	// Package-visible for TileSafetyProbe - see TILE_MARGIN above.
+	static final String TILE_OFFSET_PRELUDE = """
 			uniform vec2 _tileOffset;
 			#define gl_FragCoord vec4(gl_FragCoord.xy + _tileOffset, gl_FragCoord.zw)
 			""";
@@ -193,40 +196,31 @@ final class HighResScreenshotCapture {
 	// resolution-mismatched) sampling - a known limitation there, not
 	// fixable without texelFetch.
 	//
-	// The blit output is deliberately sized targetWidth x (one tile's
-	// own height), not tile-sized in both dimensions: a shader reading
-	// backbuffer via a position-*independent* UV (a fixed small
-	// constant like (idx+0.5)/resolution, not derived from gl_FragCoord
-	// at all - the "persistent state packed at pixel index idx, row 0"
-	// pattern) computes that UV against the *bound texture's own size* -
-	// if that's merely tile-sized, the same tiny UV that was meant to
-	// select "pixel idx" instead lands on whatever texel idx maps to
-	// once rescaled by (tileWidth / targetWidth), silently reading a
-	// *different* packed state field than the one asked for. Matching
-	// the blit output's width to the shader's own `resolution.x` keeps
-	// that arithmetic honest without needing the full *height* too,
-	// since every such read's Y component is equally tiny (near 0) -
-	// i.e. "row 0" - regardless of which tile is rendering, so only the
-	// bottommost (GL-native row 0) tile's own blit pass ever satisfies
-	// the row-band condition below, and that's the one tile that
-	// actually has true row-0 data to offer. The band spans the *entire*
-	// target width, not just some fixed-size corner of it - any
-	// column could be where a shader's "state packed at pixel index
-	// idx, row 0" pattern stashes its data, not just the first few - so
-	// restricting the exact copy to a narrow corner would silently
-	// corrupt every index beyond that corner's width back to blurred
-	// resampling, which is exactly the bug this was fixed from (a
-	// 64x64-square version of this band let most of row 0 fall through
-	// to proportional mapping instead). Within the row band the copy is
-	// a direct, *unscaled* 1:1 mapping (not proportional to the
+	// The blit output is a full targetWidth x targetHeight texture (see
+	// its allocation in capture() below), written one row-band at a
+	// time (one draw per distinct tile row, viewport-positioned at that
+	// row's own true global Y - see the `canBlitBackbuffer` block in
+	// renderTiles()) rather than tile-sized or row-band-sized: the
+	// *tile program* (the user's own shader, compiled separately below)
+	// samples this texture back via its own ordinary UV math, always
+	// normalized against the full `resolution` uniform regardless of
+	// which tile is currently rendering - and GL always resolves a UV
+	// against the texture actually bound, not whatever size the shader
+	// author had in mind. A texture shorter than the full target height
+	// would silently mis-map *every* such read for any row but the
+	// first (only row 0's own blit happens to start at global Y 0,
+	// matching a short texture's own origin by coincidence) - not just
+	// the position-independent "packed state at pixel index idx, row 0"
+	// pattern this file was first built to protect, but perfectly
+	// ordinary position-dependent visual feedback sampling too. Full
+	// width for the same reason an index-packed read might land at any
+	// column, not just a narrow corner. Within the true row-0 band the
+	// copy is a direct, *unscaled* 1:1 mapping (not proportional to the
 	// capture's resolution multiplier) - precisely because discrete
 	// packed state at a specific index must not be resampled, unlike
-	// ordinary visual content. Outside the row band (any
-	// gl_FragCoord-relative visual feedback read, not the index-based
-	// state pattern) falls back to a proportional mapping against the
-	// true global Y - correct for any tile, since this blit already
-	// covers the full target width and only needs the tile's own Y
-	// offset.
+	// ordinary visual content. Outside that band (any gl_FragCoord-
+	// relative visual feedback read, not the index-based state pattern)
+	// falls back to a proportional mapping against the true global Y.
 	//
 	// Separately: when the capture's target resolution is *exactly* the
 	// live backbuffer's own size (e.g. capturing at the same resolution
@@ -256,20 +250,20 @@ final class HighResScreenshotCapture {
 			#version 300 es
 			precision highp float;
 			uniform sampler2D srcBackbuffer;
-			uniform float _tileOffsetY;
 			uniform vec2 targetResolution;
 			uniform float _rowBandHeight;
 			out vec4 fragColor;
 			void main() {
 				ivec2 srcSize = textureSize(srcBackbuffer, 0);
 				ivec2 srcCoord;
-				if (srcSize == ivec2(targetResolution)) {
-					srcCoord = ivec2(gl_FragCoord.x, gl_FragCoord.y + _tileOffsetY);
-				} else if (gl_FragCoord.y < _rowBandHeight) {
+				// Both an exact size match and the true row-0 band want
+				// the same unscaled 1:1 copy now that gl_FragCoord is
+				// already the global position either way - see this
+				// file's own class-level doc for why each needs it.
+				if (srcSize == ivec2(targetResolution) || gl_FragCoord.y < _rowBandHeight) {
 					srcCoord = ivec2(gl_FragCoord.xy);
 				} else {
-					vec2 globalPixel = vec2(gl_FragCoord.x, gl_FragCoord.y + _tileOffsetY);
-					vec2 uv = globalPixel / targetResolution;
+					vec2 uv = gl_FragCoord.xy / targetResolution;
 					srcCoord = ivec2(floor(uv * vec2(srcSize)));
 				}
 				srcCoord = clamp(srcCoord, ivec2(0), srcSize - ivec2(1));
@@ -294,8 +288,10 @@ final class HighResScreenshotCapture {
 	// preprocessor tokens" compile error. Skipping the whole header
 	// first avoids that regardless of where the shader's own #extension
 	// line happens to sit.
+	// Package-visible (not private) so TileSafetyProbe can prepend the
+	// same TILE_OFFSET_PRELUDE a real capture's tile program gets.
 	@NonNull
-	private static PreparedShaderInput insertAfterShaderHeader(
+	static PreparedShaderInput insertAfterShaderHeader(
 			@NonNull PreparedShaderInput input, @NonNull String directive) {
 		String source = input.getSource();
 		String[] lines = source.split("\n", -1);
@@ -330,17 +326,33 @@ final class HighResScreenshotCapture {
 				input.getLineMapping().addInsertedLinesAfterSourceLine(headerLines, insertedLines));
 	}
 
-	// Exposed separately (not just computed inline in capture() below) so
-	// ShaderRenderer.captureHighResScreenshotSequence() can decide, before
-	// the frame loop even starts, whether it's worth allocating a
-	// SequenceFeedback at all - allocating one for a sequence that's
-	// never actually going to render singlePass would just be dead
-	// weight (and the wrong size, since singlePass is what guarantees
-	// targetWidth/targetHeight themselves fit in one texture).
+	// Whether capture() below will skip tiling entirely and render the
+	// whole image in one draw (see that method's own doc for why that's
+	// only ever offered at 1x oversample with MAX bucket size).
 	static boolean isSinglePassEligible(@NonNull GlDevice device, int targetWidth, int targetHeight,
 			@NonNull TileBucketSize bucketSize, boolean allowSinglePass) {
 		return allowSinglePass && bucketSize == TileBucketSize.MAX &&
 				targetWidth <= device.getMaxTextureSize() && targetHeight <= device.getMaxTextureSize();
+	}
+
+	// Whether a SequenceFeedback is even possible to allocate at this
+	// target size - its one texture has to hold the *whole* image
+	// (there's nowhere else for a persistent, whole-image feedback
+	// trail to live), so this is purely a texture-size question,
+	// independent of whether tiling happens. Deliberately broader than
+	// isSinglePassEligible() above: renderTiles() below writes each
+	// tile directly into the (shared, persistent) feedback texture at
+	// its own true position - via a scissor-clipped viewport, see the
+	// `usingOwnFeedback` branch there - whenever one exists, tiled or
+	// not, so a merely-tiled-for-TDR-safety sequence (the common case;
+	// only a resolution that outright exceeds GL_MAX_TEXTURE_SIZE
+	// can't) still gets full persistent high-res feedback accumulation,
+	// not just singlePass. Exposed separately (not just computed inline
+	// in capture() below) so ShaderRenderer.captureHighResScreenshotSequence()
+	// can decide, before the frame loop even starts, whether it's worth
+	// allocating a SequenceFeedback at all.
+	static boolean isFeedbackEligible(@NonNull GlDevice device, int targetWidth, int targetHeight) {
+		return targetWidth <= device.getMaxTextureSize() && targetHeight <= device.getMaxTextureSize();
 	}
 
 	// Null on any failure (no prepared shader, compile failure, OOM,
@@ -425,13 +437,14 @@ final class HighResScreenshotCapture {
 		// many. So this respects preserveBackbufferEdges here exactly
 		// like the tiled path does, not a reason singlePass gets to skip
 		// it - see BACKBUFFER_BLIT_FRAGMENT_3's own doc for the row-band
-		// mechanics that actually do the exact copy. The blit
-		// output needs to be targetWidth wide (see that same comment) -
-		// skip it entirely if that alone wouldn't fit as a single
-		// texture, rather than silently falling back to a tile-sized one
-		// that would mis-map any index-based state read.
+		// mechanics that actually do the exact copy. The blit output is
+		// now a full targetWidth x targetHeight texture (see the
+		// allocation below) - skip it entirely if that wouldn't fit,
+		// rather than silently falling back to a smaller one that would
+		// mis-map every UV-based read, not just the index-based ones.
 		if (needsBlit && glVersion >= 3 && preserveBackbufferEdges &&
-				targetWidth <= device.getMaxTextureSize()) {
+				targetWidth <= device.getMaxTextureSize() &&
+				targetHeight <= device.getMaxTextureSize()) {
 			var blitResult = device.createProgram(
 					BACKBUFFER_BLIT_VERTEX_3, BACKBUFFER_BLIT_FRAGMENT_3, ShaderLineMapping.identity());
 			if (blitResult.succeeded() && blitResult.getProgram() != null) {
@@ -500,11 +513,18 @@ final class HighResScreenshotCapture {
 		GlTexture2D backbufferTileTexture = null;
 		GlFramebuffer backbufferTileFramebuffer = null;
 		if (blitProgram != null && framebufferOk) {
-			// targetWidth wide (not renderBufferWidth - see the comment
-			// on BACKBUFFER_BLIT_FRAGMENT_3), one tile's own height tall
-			// (the whole image's height, for a single pass).
+			// Full target size, not just one row-band tall - see
+			// BACKBUFFER_BLIT_FRAGMENT_3's own doc for why: the *tile
+			// program* (the user's own shader) samples this texture via
+			// its own normal UV math, normalized against the full
+			// `resolution` uniform (targetWidth x targetHeight) - GL
+			// always resolves a UV against the texture it's actually
+			// bound to, so anything shorter than the full target height
+			// here would silently mis-map every such read regardless of
+			// which row is being rendered (only row 0's own blit would
+			// ever land right, by coincidence of both starting at 0).
 			backbufferTileTexture = device.createTexture2D();
-			device.allocateTexture2D(backbufferTileTexture, targetWidth, renderBufferHeight);
+			device.allocateTexture2D(backbufferTileTexture, targetWidth, targetHeight);
 			device.applyTextureParameters(backbufferTileTexture, new TextureParameters(
 					GLES20.GL_NEAREST, GLES20.GL_NEAREST,
 					GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
@@ -600,6 +620,18 @@ final class HighResScreenshotCapture {
 		if (usingOwnFeedback) {
 			bindings.setTexture(ShaderRenderer.UNIFORM_BACKBUFFER, feedback.getBackTexture());
 		}
+		// Distinct from usingOwnFeedback above: tileFramebuffer/tileTexture
+		// are feedback's own whole-image texture whenever feedback exists
+		// at all (see their assignment below), including the sequence's
+		// very first (not-yet-seeded) frame - usingOwnFeedback is only
+		// about what this frame reads as *input* (its own prior output
+		// vs a fresh blit from the live backbuffer), which is a separate
+		// question from where this frame's *output* needs to land. Using
+		// usingOwnFeedback for the viewport/scissor/readback positioning
+		// below instead of this would render every tile of the seeding
+		// frame at (0, 0) instead of its real position, silently
+		// corrupting the texture every later frame then reads from.
+		boolean renderingIntoFeedback = feedback != null;
 
 		boolean canBlitBackbuffer = !usingOwnFeedback && blitProgram != null &&
 				backbufferTileFramebuffer != null &&
@@ -620,6 +652,8 @@ final class HighResScreenshotCapture {
 		int totalTiles = tilesX * tilesY;
 		int tilesDone = 0;
 		boolean cancelled = false;
+		// See the per-tile fatal-error check below.
+		boolean aborted = false;
 		float[] tileOffset = new float[2];
 		Mesh fullScreenQuad = Mesh.fullScreenQuad();
 		// Only redone when the tile about to render is in a different
@@ -650,17 +684,25 @@ final class HighResScreenshotCapture {
 
 			// The blit output spans the full target width (see the
 			// comment on BACKBUFFER_BLIT_FRAGMENT_3), so it only depends
-			// on this tile's row.
+			// on this tile's row. Positioned at this row's own true
+			// global Y (renderY0), not (0,0) - backbufferTileTexture is
+			// now a full targetWidth x targetHeight texture (see its
+			// allocation above), and this is what actually puts each
+			// row's content at the same coordinates the tile program's
+			// own UV math (normalized against the full `resolution`
+			// uniform) will look for it at. gl_FragCoord inside the blit
+			// shader is therefore already the true global position for
+			// every row, not just row 0 - no `_tileOffsetY` needed
+			// there any more to reconstruct it.
 			if (canBlitBackbuffer && tileRow != blitRow) {
 				blitRow = tileRow;
 				blitBindings.clear();
 				blitBindings.setTexture("srcBackbuffer", originalBackbuffer);
-				blitBindings.setFloat("_tileOffsetY", renderY0);
 				blitBindings.setFloat2("targetResolution",
 						new float[]{targetWidth, targetHeight});
 				blitBindings.setFloat("_rowBandHeight", ROW_BAND_HEIGHT);
 				device.bindFramebuffer(backbufferTileFramebuffer);
-				device.setViewport(0, 0, targetWidth, renderH);
+				device.setViewport(0, renderY0, targetWidth, renderH);
 				device.applyBindings(blitBindings);
 				device.draw(fullScreenQuad, blitProgram);
 				bindings.setTexture(ShaderRenderer.UNIFORM_BACKBUFFER, backbufferTileTexture);
@@ -673,16 +715,53 @@ final class HighResScreenshotCapture {
 			int renderX1 = Math.min(targetWidth, contentX0 + contentW + margin);
 			int renderW = renderX1 - renderX0;
 
-			tileOffset[0] = renderX0;
-			tileOffset[1] = renderY0;
+			// renderingIntoFeedback places the viewport at this tile's
+			// true global position (renderX0, renderY0) directly within
+			// the shared feedback texture (see below) - gl_FragCoord is
+			// therefore *already* the correct global position by the
+			// time the shader's own TILE_OFFSET_PRELUDE macro reads it,
+			// and adding renderX0/renderY0 again on top would double it
+			// for every tile except the one already at (0, 0) - which,
+			// not coincidentally, was the only one that ever looked
+			// right. The private-scratch-buffer branch (renderingIntoFeedback
+			// false) still renders at a *local* (0, 0)-relative viewport
+			// (see below), where gl_FragCoord only goes up to renderW/
+			// renderH and genuinely needs renderX0/renderY0 added to
+			// recover the global position - this is the one case that
+			// still needs a real offset.
+			tileOffset[0] = renderingIntoFeedback ? 0 : renderX0;
+			tileOffset[1] = renderingIntoFeedback ? 0 : renderY0;
 
 			bindings.setFloat2("_tileOffset", tileOffset);
 
 			device.bindFramebuffer(tileFramebuffer);
-			device.setViewport(0, 0, renderW, renderH);
+			// renderingIntoFeedback means tileFramebuffer is feedback's
+			// own whole-image texture (see its assignment above), not a
+			// small scratch buffer private to this one tile - rendering
+			// (and clearing) at the viewport's true global position
+			// (renderX0, renderY0) is what puts each tile where it
+			// actually belongs in that shared texture, instead of every
+			// tile overwriting the same (0, 0) corner. The scissor rect
+			// (this tile's own *content* box, smaller than the viewport
+			// by `margin` on every side) keeps the margin - rendered
+			// only so dFdx/dFdy see real neighbouring fragments, never
+			// meant to be kept - from ever reaching the shared texture
+			// and corrupting whichever neighbouring tile's content
+			// actually owns those pixels; the scratch-buffer path below
+			// doesn't need this, since its margin pixels simply never
+			// get read back into the result Bitmap at all.
+			if (renderingIntoFeedback) {
+				device.setScissor(contentX0, contentY0, contentW, contentH);
+				device.setViewport(renderX0, renderY0, renderW, renderH);
+			} else {
+				device.setViewport(0, 0, renderW, renderH);
+			}
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
 			device.applyBindings(bindings);
 			device.draw(fullScreenQuad, tileProgram);
+			if (renderingIntoFeedback) {
+				device.disableScissor();
+			}
 			if (tilesDone == 0) {
 				int glError = GLES20.glGetError();
 				if (glError != GLES20.GL_NO_ERROR) {
@@ -691,10 +770,32 @@ final class HighResScreenshotCapture {
 				}
 			}
 
-			int contentLocalX0 = contentX0 - renderX0;
-			int contentLocalY0 = contentY0 - renderY0;
+			// Reading back from a shared whole-image texture
+			// (renderingIntoFeedback) needs this tile's true global
+			// position - unlike the small scratch buffer the other
+			// branch uses, there's no per-tile local origin to translate
+			// against; the texture's own pixel at (contentX0, contentY0)
+			// already *is* this tile's content origin.
+			int contentLocalX0 = renderingIntoFeedback ? contentX0 : contentX0 - renderX0;
+			int contentLocalY0 = renderingIntoFeedback ? contentY0 : contentY0 - renderY0;
 			int[] argb = renderPipeline.readPixelsFlippedToArgb(
 					contentLocalX0, contentLocalY0, contentW, contentH);
+			// Checked after the readback (which forces the draw to actually
+			// complete), every tile: a draw that hit the driver's per-draw
+			// deadline resets the GPU, after which every further GL call
+			// on this context fails (GL_INVALID_FRAMEBUFFER_OPERATION is
+			// what the dev device reports) and carrying on just feeds
+			// garbage tiles into the result - and, left long enough, has
+			// taken the whole process down with a native crash. Stopping
+			// here at least fails the capture cleanly instead.
+			int tileError = GLES20.glGetError();
+			if (isFatalGlError(tileError)) {
+				Log.e(TAG, "renderTiles: fatal GL error 0x" + Integer.toHexString(tileError) +
+						" at tile " + tilesDone + " of " + totalTiles + " - likely a GPU reset from a " +
+						"draw that hit the driver's deadline; aborting capture");
+				aborted = true;
+				break;
+			}
 			// readPixelsFlippedToArgb() already flipped this tile's
 			// own rows top-down local to itself; its row 0 is this
 			// tile's highest GL-native row, which belongs at bitmap
@@ -724,8 +825,30 @@ final class HighResScreenshotCapture {
 			feedback.markSeeded();
 			feedback.swap();
 		}
-		return cancelled ? null : result;
+		// Pairs with beginFrame() at the top of this method, same as
+		// every other render path (the live loop, stepSimulationFrame())
+		// already does - without this, UNIFORM_FRAME_NUMBER ("frame")
+		// never advanced across a capture, tiled or not, staying stuck
+		// at whatever it was when the sequence was paused. Unconditional
+		// (not skipped on `cancelled`) for the same reason the feedback
+		// swap above is: this frame's render already physically happened.
+		builtinUniforms.endFrame();
+		return cancelled || aborted ? null : result;
 	}
+
+	// Errors that mean the context itself is no longer usable (a GPU
+	// reset, or out of memory) - unlike e.g. a stray GL_INVALID_VALUE
+	// from an unrelated earlier call, which renderTiles() has always
+	// tolerated without harm.
+	private static boolean isFatalGlError(int error) {
+		return error == GLES20.GL_OUT_OF_MEMORY ||
+				error == GLES20.GL_INVALID_FRAMEBUFFER_OPERATION ||
+				error == GL_CONTEXT_LOST;
+	}
+
+	// GLES 3.2 / KHR_robustness's GL_CONTEXT_LOST - not in GLES20's
+	// constants, and this file only targets GLES 2/3.0 APIs otherwise.
+	private static final int GL_CONTEXT_LOST = 0x0507;
 
 	// Downsamples `src` to dstWidth x dstHeight by averaging every source
 	// pixel that falls under each destination pixel (a true box filter,

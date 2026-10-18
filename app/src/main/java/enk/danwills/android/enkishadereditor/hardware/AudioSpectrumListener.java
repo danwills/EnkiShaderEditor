@@ -7,6 +7,7 @@ import android.media.AudioFormat;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.Visualizer;
 import android.media.projection.MediaProjection;
 import android.os.Build;
 import android.os.Handler;
@@ -24,8 +25,11 @@ import java.nio.ByteBuffer;
  * Produces a 512x2 RGBA texture matching ShaderToy's audio input layout:
  * row 0 (v near 0.25) is the FFT magnitude spectrum across frequency bins,
  * row 1 (v near 0.75) is the raw waveform, both encoded 0..255 in every
- * channel. Can capture from the microphone or, on API 29+, from whatever
- * the device is currently playing back via a {@link MediaProjection}.
+ * channel. Can capture from the microphone, from whatever the device is
+ * currently playing back via a {@link MediaProjection} (API 29+), or from
+ * one specific audio session (e.g. this app's own in-app MP3 player) via
+ * a {@link Visualizer} - the latter needs no system-wide capture consent,
+ * just the same RECORD_AUDIO permission the microphone path already does.
  */
 public class AudioSpectrumListener {
 	private static final String TAG = "AudioSpectrumListener";
@@ -80,6 +84,8 @@ public class AudioSpectrumListener {
 	private MediaProjection mediaProjection;
 	@Nullable
 	private MediaProjection.Callback mediaProjectionCallback;
+	@Nullable
+	private Visualizer visualizer;
 	private volatile boolean running = false;
 	private volatile ByteBuffer spectrumPixels;
 
@@ -164,6 +170,69 @@ public class AudioSpectrumListener {
 		return true;
 	}
 
+	// Captures raw PCM from one specific audio session (this app's own
+	// in-app MP3 player, typically - see MainActivity's local-music-
+	// player dialog) via a Visualizer, instead of a system-wide capture -
+	// no MediaProjection consent needed, just RECORD_AUDIO (same as
+	// registerMicrophone() above, and checked by the same caller before
+	// either is ever tried). Visualizer's own waveform capture is
+	// periodic (not a continuous stream) and 8-bit unsigned, unlike
+	// AudioRecord's 16-bit signed - converted in processVisualizerWaveform()
+	// before feeding the same sliding window + FFT every other source
+	// already uses, so the visual result looks consistent regardless of
+	// which source produced it. Its own built-in FFT capture is
+	// deliberately unused for that same reason.
+	public boolean registerVisualizer(int audioSessionId) {
+		if (running) {
+			return true;
+		}
+		try {
+			Visualizer v = new Visualizer(audioSessionId);
+			int[] captureSizeRange = Visualizer.getCaptureSizeRange();
+			v.setCaptureSize(captureSizeRange[1]);
+			v.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
+				@Override
+				public void onWaveFormDataCapture(
+						Visualizer visualizer, byte[] waveform, int samplingRate) {
+					processVisualizerWaveform(waveform);
+				}
+
+				@Override
+				public void onFftDataCapture(Visualizer visualizer, byte[] fft, int samplingRate) {
+					// Unused - see this method's own doc comment above.
+				}
+			}, Visualizer.getMaxCaptureRate() / 2, true, false);
+			v.setEnabled(true);
+			visualizer = v;
+		} catch (RuntimeException e) {
+			Log.e(TAG, "registerVisualizer failed", e);
+			visualizer = null;
+			return false;
+		}
+		running = true;
+		return true;
+	}
+
+	private void processVisualizerWaveform(@NonNull byte[] waveform) {
+		int count = waveform.length;
+		short[] samples = new short[count];
+		for (int i = 0; i < count; ++i) {
+			samples[i] = (short) (((waveform[i] & 0xFF) - 128) << 8);
+		}
+		updateHealthSignal(samples, count);
+		if (fullInterval) {
+			appendIntervalSamples(samples, count);
+			return;
+		}
+		int shift = Math.min(count, FFT_SIZE);
+		int keep = FFT_SIZE - shift;
+		if (keep > 0) {
+			System.arraycopy(window, shift, window, 0, keep);
+		}
+		System.arraycopy(samples, count - shift, window, keep, shift);
+		computeAndPublish();
+	}
+
 	public boolean isRunning() {
 		return running;
 	}
@@ -223,6 +292,10 @@ public class AudioSpectrumListener {
 		mediaProjection = null;
 		mediaProjectionCallback = null;
 		audioRecord = null;
+		if (visualizer != null) {
+			visualizer.release();
+			visualizer = null;
+		}
 	}
 
 	@NonNull

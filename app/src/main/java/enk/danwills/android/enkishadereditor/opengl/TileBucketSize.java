@@ -20,7 +20,17 @@ public enum TileBucketSize {
 	SMALL(256),
 	NORMAL(512),
 	LARGE(1024),
-	MAX(2048);
+	MAX(2048),
+	// Appended after MAX (not inserted before SMALL, where it'd read
+	// more naturally size-wise) so existing stored
+	// Preferences.PREF_CUSTOM_RES_BUCKET_SIZE ordinal values (an int,
+	// positional against this enum/bucket_size_names.xml - see
+	// MainActivity's use of values()[...]) keep meaning what they
+	// already meant, rather than silently remapping to a different
+	// size on upgrade. 16x fewer fragments per draw call than SMALL -
+	// for a shader heavy enough that even SMALL still trips the GPU
+	// watchdog (see this enum's own class doc above).
+	TINY(64);
 
 	public final int pixels;
 

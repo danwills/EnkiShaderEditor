@@ -60,6 +60,18 @@
 	<string name="higher_res_oversample">超取樣倍數 (x) - 以更大尺寸算繪後再縮小以達到反鋸齒效果</string>
 	<string name="higher_res_tile_order">區塊順序</string>
 	<string name="higher_res_bucket_size">區塊大小</string>
+	<string name="higher_res_auto_detect_tile_size_label">自動偵測安全區塊大小</string>
+	<string name="higher_res_auto_detect_tile_size">自動偵測安全區塊大小 - 算繪前會在獨立的背景處理程序中依序測試更大的區塊大小，並使用能讓此著色器成功算繪而不當機的最大值，覆寫上方的區塊大小設定。會增加一些前置測試時間，但可能找到比手動設定更大（因而更快）的安全區塊大小，並能自動從原本會導致擷取當機的區塊大小中復原</string>
+	<string name="auto_detect_tile_size_title">正在決定安全區塊大小</string>
+	<string name="auto_detect_tile_size_testing">正在測試 %1$s 區塊大小（第 %2$d / %3$d 次嘗試）…</string>
+	<string name="auto_detect_tile_size_failed_title">找不到安全的區塊大小</string>
+	<string name="auto_detect_tile_size_failed_message">即使是最小的區塊大小在測試此著色器時也當機了 - 此解析度下它可能根本無法算繪。算繪未開始。</string>
+	<string name="auto_detect_tile_size_result">已找到安全的區塊大小：%1$s</string>
+	<string name="auto_detect_tile_size_whole_frame_label">整個畫面</string>
+	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d（%5$d×）</string>
+	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d（%5$d×）· 區塊：%6$s</string>
+	<string name="progress_tile_whole_frame">整個畫面（不分塊）</string>
+	<string name="progress_tile_named">%1$s（%2$dpx）</string>
 	<string name="higher_res_capturing_tiles">正在算繪第 %1$d / %2$d 區塊…</string>
 	<string name="higher_res_render_sequence">算繪一系列影格</string>
 	<string name="higher_res_sequence_frame_count">影格數</string>
@@ -88,7 +100,7 @@
 	<string name="higher_res_sequence_cancelled_kept">已取消 - 保留了 %1$d 張畫面</string>
 	<string name="higher_res_sequence_cancelled_deleted">已取消 - 已刪除部分畫面</string>
 	<string name="interrupt_make_video_button">中斷並產生部分影片</string>
-	<string name="status_interrupting_after_frame">將在本畫面後中斷…</string>
+	<string name="status_interrupting_after_frame">將在第 %1$d / %2$d 畫面後中斷…</string>
 	<string name="progress_timing_tile">平均每塊 %1$.2f 秒 · 預計剩餘 %2$s</string>
 	<string name="progress_timing_frame">平均每畫面 %1$.1f 秒 · 預計剩餘 %2$s</string>
 	<string name="progress_footage_length">目前已算繪 %1$.4f 秒的片段</string>
@@ -185,6 +197,19 @@
 	<string name="editor">編輯器</string>
 	<string name="run_mode">執行模式</string>
 	<string name="update_delay">更新延遲</string>
+	<string name="update_delay_summary">停止輸入 %1$s 後：重新整理語法醒目提示；若執行模式為變更時重新編譯，則重新編譯著色器</string>
+	<string name="performance">效能</string>
+	<string name="gpu_priority">GPU 優先順序</string>
+	<string name="gpu_priority_default">預設（不要求）</string>
+	<string name="gpu_priority_low">低</string>
+	<string name="gpu_priority_medium">中</string>
+	<string name="gpu_priority_high">高</string>
+	<string name="gpu_priority_summary">%1$s - 著色器預覽與畫面其餘部分爭奪 GPU 的程度。設為低可讓應用程式控制項和系統（如切換應用程式）在執行重型著色器時保持流暢（需裝置支援）。下次啟動應用程式時生效。</string>
+	<string name="breathing_room">喘息空間</string>
+	<string name="breathing_room_summary_auto">自動 - 僅在著色器慢到導致其他操作卡頓時，於影格之間短暫暫停。輸入數字可手動設定：1.0 = 關閉，1.1 = 少許，2.0 = 半速（更涼爽、更省電）。</string>
+	<string name="breathing_room_summary_value">%1$s× - 每個影格之後等待該影格算繪時間的 %2$d%%，讓 GPU 為畫面其餘部分留出空閒。清空即為自動。</string>
+	<string name="breathing_room_dialog" formatted="false">每個影格的算繪時間乘以此值，多出的部分作為空閒時間，使畫面其餘部分保持流暢。留空為自動。1.0 = 關閉 · 1.1 = 多 10% · 2.0 = 半速，省電。</string>
+	<string name="breathing_room_auto_hint">自動</string>
 	<string name="text_size">字型大小</string>
 	<string name="font">字型</string>
 	<string name="use_ligatures">啟用連字 (Ligatures)</string>
@@ -376,6 +401,9 @@
 	<string name="find_shader_hotkey_hint">Enter：搜尋／下一個相符項目 · Ctrl+Enter：載入目前相符項目 · ←/→：切換相符項目</string>
 	<string name="hotkey_toast_format">%1$s: %2$s</string>
 	<string name="quality_picker">品質選擇器</string>
+	<string name="quality_increase_risky_title">提高品質？</string>
+	<string name="quality_increase_risky_message">此著色器目前已經只能以約 %1$d fps 執行。從這裡再提高品質會大幅增加 GPU 負載，在某些裝置上可能導致應用程式當機。仍要繼續嗎？</string>
+	<string name="quality_increase_risky_proceed">仍然提高</string>
 	<string name="back">返回</string>
 	<string name="toggle_sidebar">切換著色器側邊欄</string>
 	<string name="history_back">歷史記錄後退</string>
@@ -415,6 +443,14 @@
 	<string name="color_picker_saturation">S</string>
 	<string name="color_picker_value">V</string>
 	<string name="color_picker_intensity">強度（用於高於 1.0 的 HDR 顏色）</string>
+	<string name="play_local_music">播放本機音樂</string>
+	<string name="local_music_title">本機音樂</string>
+	<string name="local_music_previous">上一首</string>
+	<string name="local_music_play_pause">播放/暫停</string>
+	<string name="local_music_next">下一首</string>
+	<string name="local_music_change_folder">變更資料夾</string>
+	<string name="local_music_no_track">未載入曲目</string>
+	<string name="local_music_no_tracks_found">該資料夾中找不到 MP3 檔案</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="other">找到 %1$d 個相符項目</item>

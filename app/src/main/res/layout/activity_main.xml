@@ -119,6 +119,19 @@
 			android:visibility="gone"
 			android:alpha="0"/>
 
+		<!-- Shown while returning to the app with the live render not
+		     yet back on screen - see MainActivity's
+		     onResumeRenderPending(). Only appears if that takes longer
+		     than a moment, so a fast shader never flashes it. -->
+		<ProgressBar
+			android:id="@+id/resume_render_indicator"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="center"
+			android:indeterminate="true"
+			android:elevation="8dp"
+			android:visibility="gone"/>
+
 		<!-- Fullscreen-exit gesture's "release to exit" cue -->
 		<TextView
 			android:id="@+id/fullscreen_exit_hint"

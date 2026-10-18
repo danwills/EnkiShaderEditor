@@ -18,4 +18,6 @@
 	<color name="crop_bound">#8fff</color>
 	<color name="cube_face_selected">#ffff</color>
 	<color name="cube_face_text">#fff</color>
+	<color name="auto_detect_tile_size_safe">#4CAF50</color>
+	<color name="auto_detect_tile_size_unsafe">#F44336</color>
 </resources>

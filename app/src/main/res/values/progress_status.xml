@@ -12,9 +12,26 @@
 		<item>Rendering tile %1$d of %2$d…</item>
 		<item>Tile %1$d of %2$d — pixels don\'t paint themselves, you know</item>
 	</string-array>
+	<!-- Used instead of status_tile_single above whenever the capture
+	     didn't need tiling at all (a single pass covers the whole
+	     image in one draw - see TileBucketSize's own doc) - "tile 1 of
+	     1" would be true but meaningless, so this just says so is
+	     happening without a tile count. -->
+	<string-array name="status_tile_single_onepass">
+		<item>Rendering…</item>
+		<item>One clean pass, no tiling needed…</item>
+	</string-array>
 	<string-array name="status_tile_sequence">
 		<item>Frame %1$d of %2$d, tile %3$d of %4$d…</item>
 		<item>Frame %1$d of %2$d, tile %3$d of %4$d — assembling pixels like a jigsaw puzzle</item>
+	</string-array>
+	<!-- Used instead of status_tile_sequence above whenever a sequence
+	     frame didn't need tiling - same reasoning as
+	     status_tile_single_onepass, just with the frame count a
+	     sequence still has even in that case. -->
+	<string-array name="status_frame_sequence_onepass">
+		<item>Frame %1$d of %2$d…</item>
+		<item>Frame %1$d of %2$d — one clean pass, no tiling needed</item>
 	</string-array>
 	<string-array name="status_encoding">
 		<item>Encoding frame %1$d of %2$d into the video…</item>

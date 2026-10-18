@@ -37,6 +37,13 @@ final class BuiltinAudioUniforms {
 	private ShaderTextureResources.SamplerTextureBinding spectrumTextureBinding;
 	@Nullable
 	private MediaProjection mediaProjection;
+	// The in-app local-music-player's current MediaPlayer audio session,
+	// or 0 when nothing's playing (a properly initialized MediaPlayer
+	// never has session id 0 itself) - see setLocalPlaybackAudioSession().
+	// Takes priority over system/mic audio in openListenerIfNeeded()
+	// whenever it's set and useLocalPlaybackAudio() is on, since the
+	// user specifically opened that player to drive the visuals from it.
+	private int localPlaybackAudioSessionId = 0;
 	private boolean needsAudioCaptureConsent;
 	// Set once releaseMediaProjection() has run (Activity being destroyed
 	// for good) - see setMediaProjection() below for why this is needed
@@ -132,6 +139,17 @@ final class BuiltinAudioUniforms {
 		}
 	}
 
+	// sessionId 0 means local playback has stopped/isn't active (see the
+	// field's own doc) - reopens against system/mic audio in that case if
+	// either of those is still wanted, same fallback behavior
+	// setMediaProjection() above already has for the system-audio path.
+	synchronized void setLocalPlaybackAudioSession(int sessionId) {
+		Log.i(TAG, "setLocalPlaybackAudioSession: " + sessionId);
+		localPlaybackAudioSessionId = sessionId;
+		unregisterListener();
+		openListenerIfNeeded();
+	}
+
 	synchronized boolean consumeNeedsAudioCaptureConsent() {
 		boolean needs = needsAudioCaptureConsent;
 		needsAudioCaptureConsent = false;
@@ -193,12 +211,14 @@ final class BuiltinAudioUniforms {
 			return;
 		}
 
+		boolean wantsLocalPlayback = ShaderEditorApp.preferences.useLocalPlaybackAudio()
+				&& localPlaybackAudioSessionId != 0;
 		boolean wantsMicrophone = ShaderEditorApp.preferences.useMicrophoneAudio();
 		boolean wantsSystemAudio = ShaderEditorApp.preferences.useSystemAudio() &&
 				Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
 
-		if (!wantsMicrophone && !wantsSystemAudio) {
-			// Both sources off - stay silent, no permission needed.
+		if (!wantsLocalPlayback && !wantsMicrophone && !wantsSystemAudio) {
+			// All sources off - stay silent, no permission needed.
 			consentAlreadyRequested = false;
 			return;
 		}
@@ -211,6 +231,21 @@ final class BuiltinAudioUniforms {
 		}
 
 		boolean fullInterval = !ShaderEditorApp.preferences.audioSpectrumShaderToyCompatible();
+
+		// Tried first and, if it works, exclusively - the user opened the
+		// local-music player specifically to drive the visuals from it,
+		// so it should win over system/mic audio whenever it's actually
+		// playing something, not just be one more fallback in the chain.
+		if (wantsLocalPlayback) {
+			var listener = new AudioSpectrumListener();
+			listener.setFullIntervalMode(fullInterval);
+			if (listener.registerVisualizer(localPlaybackAudioSessionId)) {
+				audioSpectrumListener = listener;
+				return;
+			}
+			// Attaching to that session failed (e.g. it's gone stale) -
+			// fall through to system/mic, if either is wanted too.
+		}
 
 		if (wantsSystemAudio) {
 			if (mediaProjection != null) {

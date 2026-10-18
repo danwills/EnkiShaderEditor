@@ -7,9 +7,17 @@
 		<item>Рендеринг тайла %1$d з %2$d…</item>
 		<item>Тайл %1$d з %2$d — пікселі самі себе не намалюють</item>
 	</string-array>
+	<string-array name="status_tile_single_onepass">
+		<item>Рендеринг…</item>
+		<item>Один прохід, без тайлів…</item>
+	</string-array>
 	<string-array name="status_tile_sequence">
 		<item>Кадр %1$d з %2$d, тайл %3$d з %4$d…</item>
 		<item>Кадр %1$d з %2$d, тайл %3$d з %4$d — складаємо пікселі, як пазл</item>
+	</string-array>
+	<string-array name="status_frame_sequence_onepass">
+		<item>Кадр %1$d з %2$d…</item>
+		<item>Кадр %1$d з %2$d — один прохід, без тайлів</item>
 	</string-array>
 	<string-array name="status_encoding">
 		<item>Кодування кадру %1$d з %2$d у відео…</item>

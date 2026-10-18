@@ -182,6 +182,20 @@
 			android:entries="@array/bucket_size_names" />
 
 		<!-- Long-press for the full explanation (see
+		     higher_res_auto_detect_tile_size). When checked, the bucket
+		     size spinner above is overridden - not hidden, so its last
+		     setting stays visible/remembered for next time - and Render
+		     first spends some up-front time testing progressively larger
+		     tile sizes in an isolated disposable process (see
+		     TileSizeProber) before continuing straight into the real
+		     capture at whatever came out safe. -->
+		<CheckBox
+			android:id="@+id/custom_auto_detect_tile_size"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:text="@string/higher_res_auto_detect_tile_size_label" />
+
+		<!-- Long-press for the full explanation (see
 		     higher_res_preserve_backbuffer). -->
 		<CheckBox
 			android:id="@+id/preserve_backbuffer_edges"

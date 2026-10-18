@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.media.projection.MediaProjection;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
+import android.view.Choreographer;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -13,6 +14,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -42,6 +45,12 @@ public class ShaderViewManager {
 
 		void onRequestAudioCapture();
 
+		// true right as the app comes back to the foreground with the
+		// live render deferred (see resumeAfterUiFrames()), false once the
+		// shader's first frame after that is actually on screen - or the
+		// view was paused again first. Always on the UI thread.
+		void onResumeRenderPending(boolean pending);
+
 		// Fired as the fullscreen-exit gesture changes phase (3+ fingers
 		// down, then back to exactly 1 held and PENDING, then ARMED once
 		// held long enough) and when it actually triggers (that last
@@ -62,8 +71,32 @@ public class ShaderViewManager {
 	@NonNull
 	private final FullscreenExitGestureDetector fullscreenExitGestureDetector;
 	@NonNull
+	private final DataSource dataSource;
+	@NonNull
 	private float[] qualityValues;
 	private float quality = 1f;
+	// The shaders._id row currently live, or 0 for a session with none
+	// (a loose imported file, a scratch/unsaved project) - mirrors
+	// ShaderProjectSession's own shaderId, see setProjectSession()/
+	// setFragmentShader() below. Used to key fpsAtCurrentQuality's own
+	// persistence, same as ProgramBinaryCache keys the compiled-binary
+	// cache.
+	private long currentShaderId = 0;
+	// The known fps for currentShaderId at exactly `quality` - either a
+	// fresh live reading (while this exact shader is actually rendering
+	// at this exact quality, kept current by initShaderView()'s
+	// onFramesPerSecond forwarding below) or a value looked up from
+	// ShaderDao.getLastFps() the moment the shader or quality last
+	// changed (refreshKnownFps() below) - -1 if neither is available.
+	// Deliberately NOT ShaderRenderer.getLastFps() directly: that field
+	// only ever reflects whatever shader happened to be live a moment
+	// ago, with nothing resetting it on a shader switch - using it
+	// directly here was exactly what let confirmRiskyIncreaseIfNeeded()
+	// compare a quality increase against the *previous* shader's fps
+	// right after switching to a new one.
+	private volatile int fpsAtCurrentQuality = -1;
+	// See refreshKnownFps().
+	private volatile int fpsGeneration = 0;
 	private boolean paused = false;
 	private boolean needsRealResume = false;
 	private boolean backgroundCaptureActive = false;
@@ -99,6 +132,7 @@ public class ShaderViewManager {
 		this.activity = activity;
 		this.shaderView = shaderView;
 		this.qualitySpinner = qualitySpinner;
+		this.dataSource = dataSource;
 		this.listener = listener;
 		this.fullscreenExitGestureDetector = new FullscreenExitGestureDetector(
 				new FullscreenExitGestureDetector.Listener() {
@@ -158,6 +192,8 @@ public class ShaderViewManager {
 	}
 
 	public void onPause() {
+		++resumeGeneration;
+		listener.onResumeRenderPending(false);
 		if (shaderView.getVisibility() == View.VISIBLE) {
 			// If we're already manually paused, the GL thread is only idling
 			// (see setPaused() below), not actually stopped, so this real
@@ -202,7 +238,40 @@ public class ShaderViewManager {
 			}
 			return;
 		}
-		shaderView.onResume();
+		resumeAfterUiFrames();
+	}
+
+	// How many UI frames to let draw before restarting the live render
+	// on resume - one to lay out and draw the restored UI, one more so
+	// that frame has actually reached the screen before the GL thread
+	// starts competing with it for the GPU. A heavy shader's first frames
+	// (or a full recompile, when the system discarded the preserved EGL
+	// context - see ShaderView) otherwise land right on top of the app's
+	// own return-to-foreground drawing and make the whole UI stutter.
+	private static final int RESUME_DEFER_UI_FRAMES = 2;
+
+	// Bumped by onPause() so a deferred resume still waiting on its frame
+	// callbacks gives up instead of resuming a view that's since been
+	// paused again (e.g. a quick back-out right after returning).
+	private int resumeGeneration = 0;
+
+	private void resumeAfterUiFrames() {
+		int generation = ++resumeGeneration;
+		listener.onResumeRenderPending(true);
+		postAfterFrames(RESUME_DEFER_UI_FRAMES, () -> {
+			if (generation == resumeGeneration && !destroyed) {
+				shaderView.onResume();
+			}
+		});
+	}
+
+	private static void postAfterFrames(int frames, @NonNull Runnable action) {
+		if (frames <= 0) {
+			action.run();
+			return;
+		}
+		Choreographer.getInstance().postFrameCallback(
+				frameTimeNanos -> postAfterFrames(frames - 1, action));
 	}
 
 	public boolean isPaused() {
@@ -307,6 +376,8 @@ public class ShaderViewManager {
 		if (paused) {
 			return;
 		}
+		currentShaderId = 0;
+		refreshKnownFps();
 		shaderView.setFragmentShader(src, quality, 0);
 	}
 
@@ -314,11 +385,52 @@ public class ShaderViewManager {
 		if (paused) {
 			return;
 		}
+		// Before setQuality() below - setQuality()/applyQuality() is a
+		// no-op when the new shader happens to share its predecessor's
+		// quality value, which would otherwise leave fpsAtCurrentQuality
+		// holding the *previous* shader's reading for that same quality
+		// value instead of this one's.
+		currentShaderId = projectSession.getShaderId();
+		refreshKnownFps();
 		setQuality(projectSession.getQuality());
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				projectSession.getQuality(),
 				projectSession.getShaderId());
+	}
+
+	// Reseeds fpsAtCurrentQuality from this shader's own persisted
+	// history for `quality` - called whenever currentShaderId or
+	// quality changes, so a stale reading from whichever shader/quality
+	// was live a moment ago is never mistaken for this one's. -1 (no
+	// data) for a session with no backing shader row.
+	//
+	// The lookup itself runs on binaryCacheExecutor, not the UI thread
+	// (StrictMode flags even this one small read there) - so until it
+	// lands, fpsAtCurrentQuality reads -1 ("no data", which never warns)
+	// rather than the previous shader's value. fpsGeneration makes sure a
+	// lookup that lands late can't overwrite a newer one, or a live
+	// reading that arrived first.
+	private void refreshKnownFps() {
+		int generation = ++fpsGeneration;
+		fpsAtCurrentQuality = -1;
+		long shaderId = currentShaderId;
+		float lookupQuality = quality;
+		if (shaderId == 0) {
+			return;
+		}
+		try {
+			binaryCacheExecutor.execute(() -> {
+				int fps = dataSource.shader.getLastFps(shaderId, lookupQuality);
+				activity.runOnUiThread(() -> {
+					if (generation == fpsGeneration) {
+						fpsAtCurrentQuality = fps;
+					}
+				});
+			});
+		} catch (RejectedExecutionException e) {
+			// Shut down (destroy() ran) - nothing left to warn about.
+		}
 	}
 
 	public void setVisibility(boolean visible) {
@@ -650,6 +762,17 @@ public class ShaderViewManager {
 				shaderView.getRenderer().setMediaProjection(mediaProjection));
 	}
 
+	// audioSessionId 0 means local playback stopped (see
+	// BuiltinAudioUniforms.localPlaybackAudioSessionId's own doc) - no
+	// leak-prone resource is involved the way a MediaProjection is, so
+	// unlike setMediaProjection() above this doesn't need its own
+	// destroyed-flag fast path; a dropped queueEvent() after the GL
+	// thread is gone for good is harmless here.
+	public void setLocalPlaybackAudioSession(int audioSessionId) {
+		shaderView.queueEvent(() ->
+				shaderView.getRenderer().setLocalPlaybackAudioSession(audioSessionId));
+	}
+
 	// Call when the "use system playback audio" preference changes, so
 	// re-enabling it (after a prior denial, or after toggling it off and
 	// back on) is asked about again instead of silently staying on the
@@ -686,13 +809,118 @@ public class ShaderViewManager {
 				shaderView.getRenderer().setCropBorderPixel(cropBorderPixel));
 	}
 
+	// Below this fps at the CURRENT quality, a further quality increase
+	// is treated as risky enough to confirm first rather than apply
+	// silently - every quality step is a 2x linear (so 4x pixel-count)
+	// jump, and pushing an already-struggling shader even heavier is
+	// exactly the scenario that can trip a GPU driver's own hang-
+	// detection watchdog and silently kill the whole process outright,
+	// with no catchable exception anywhere in Java/native code. 10fps
+	// is comfortably below anything a shader running acceptably should
+	// ever show, so this shouldn't fire during ordinary use.
+	private static final int RISKY_QUALITY_INCREASE_FPS_THRESHOLD = 10;
+
+	public float getQuality() {
+		return quality;
+	}
+
+	// Syncs the spinner's own displayed selection to `quality` and
+	// actually applies it - setSelection() alone doesn't reliably do
+	// the latter: Spinner.OnItemSelectedListener (see initQualitySpinner()
+	// below) isn't guaranteed to fire synchronously (or at all) for a
+	// programmatic setSelection() call the way it does for a genuine
+	// user interaction, so this calls the same applyQuality() that
+	// listener calls directly instead of depending on it to. Also runs
+	// the same risky-increase confirmation the listener does below -
+	// this is itself a genuine user action (MainActivity's Ctrl+Shift+R
+	// quality-picker dialog), just arriving through a different widget,
+	// not an automatic/programmatic one - see confirmRiskyIncreaseIfNeeded().
 	public void setQuality(float quality) {
+		confirmRiskyIncreaseIfNeeded(quality, () -> setQualityDirect(quality), () -> {
+		});
+	}
+
+	// The non-interactive half of setQuality() above, without the
+	// confirmation gate - used by setProjectSession() below, where a
+	// "decline" wouldn't actually prevent anything anyway (the project's
+	// own fragment shader load a few lines down applies its stored
+	// quality unconditionally regardless of what this call does), so
+	// showing a confirmation whose Cancel button is inert would just be
+	// confusing - this is also exactly the "swapping between two
+	// different shaders" case the risky-increase check needs to stay
+	// out of, since its basis (fpsAtCurrentQuality) is only ever
+	// meaningful for a genuine live quality change, not a fresh load.
+	private void setQualityDirect(float quality) {
 		for (int i = 0; i < qualityValues.length; ++i) {
 			if (qualityValues[i] == quality) {
 				qualitySpinner.setSelection(i);
-				this.quality = quality;
+				applyQuality(quality);
 				return;
 			}
+		}
+	}
+
+	// Confirms before a quality increase that looks risky given how
+	// slow the shader is already running (see
+	// RISKY_QUALITY_INCREASE_FPS_THRESHOLD above), otherwise runs
+	// onProceed immediately - including when this isn't an increase at
+	// all, or there's no known fps for the CURRENT shader at its
+	// CURRENT quality (fpsAtCurrentQuality reads -1 until either a live
+	// frame has actually rendered this session, or this shader's own
+	// persisted history has a reading for this exact quality - see that
+	// field's own doc) - nothing to judge risk against yet, so nothing
+	// to warn about. onDecline runs only if the user actually backs out
+	// of a shown confirmation, to undo anything the caller already did
+	// in anticipation of proceeding (e.g. the spinner's own already-moved
+	// selection, in initQualitySpinner() below).
+	private void confirmRiskyIncreaseIfNeeded(float q, @NonNull Runnable onProceed,
+			@NonNull Runnable onDecline) {
+		int fps = fpsAtCurrentQuality;
+		if (q <= quality || fps <= 0 || fps >= RISKY_QUALITY_INCREASE_FPS_THRESHOLD) {
+			onProceed.run();
+			return;
+		}
+		new MaterialAlertDialogBuilder(activity)
+				.setTitle(R.string.quality_increase_risky_title)
+				.setMessage(activity.getString(R.string.quality_increase_risky_message, fps))
+				.setPositiveButton(R.string.quality_increase_risky_proceed, (d, w) -> onProceed.run())
+				.setNegativeButton(android.R.string.cancel, (d, w) -> onDecline.run())
+				.setOnCancelListener(d -> onDecline.run())
+				.show();
+	}
+
+	// The actual "make this quality take effect" logic, shared by
+	// setQuality() above (a programmatic change, e.g. from
+	// MainActivity's Ctrl+Shift+R quality-picker dialog) and the
+	// spinner's own OnItemSelectedListener below (a genuine user
+	// interaction) - see setQuality()'s own comment for why this can't
+	// just live inside that listener alone.
+	private void applyQuality(float q) {
+		if (q == quality) {
+			return;
+		}
+		quality = q;
+		refreshKnownFps();
+		listener.onQualityChanged(quality);
+		shaderView.getRenderer().setQuality(quality);
+		// The resize this needs only actually happens via a real
+		// onSurfaceChanged(), hence the forced recreate below -
+		// deliberately unconditional on `paused`: the Ctrl+Shift+R
+		// dialog soft-pauses before this ever runs, and soft pause's
+		// own resume (setPaused(false) below) doesn't itself recreate
+		// the surface, so gating this on `paused` meant a quality
+		// picked from that dialog silently never took effect until
+		// some unrelated real pause/resume (e.g. backgrounding the
+		// app) happened to come along and pick it up. GLSurfaceView's
+		// renderMode survives this recreate, so a soft-paused view
+		// stays soft-paused (WHEN_DIRTY) throughout - this doesn't
+		// resume live playback on its own. Still skipped during an
+		// active background capture, same as everywhere else in this
+		// class that touches the real GL lifecycle - see
+		// setBackgroundCaptureActive().
+		if (!backgroundCaptureActive) {
+			shaderView.onPause();
+			shaderView.onResume();
 		}
 	}
 
@@ -705,6 +933,31 @@ public class ShaderViewManager {
 		shaderView.getRenderer().setOnRendererListener(new ShaderRenderer.OnRendererListener() {
 			@Override
 			public void onFramesPerSecond(int fps) {
+				if (fps > 0) {
+					// The freshest possible reading for the shader that's
+					// actually live right now, at its actually-live
+					// quality - always more trustworthy than whatever's
+					// persisted, so this wins over refreshKnownFps()'s
+					// lookup without needing to compare the two. Persisted
+					// off-thread (binaryCacheExecutor, same as the
+					// compiled-binary cache below) so this shader's
+					// history survives being switched away from - capture
+					// shaderId/quality now, not inside the lambda, since
+					// both can change before it actually runs.
+					++fpsGeneration;
+					fpsAtCurrentQuality = fps;
+					long fpsShaderId = currentShaderId;
+					float fpsQuality = quality;
+					if (fpsShaderId != 0) {
+						try {
+							binaryCacheExecutor.execute(() ->
+									dataSource.shader.updateLastFps(fpsShaderId, fpsQuality, fps));
+						} catch (RejectedExecutionException e) {
+							// The executor was already shut down (destroy()
+							// ran) - nothing worth persisting to at this point.
+						}
+					}
+				}
 				listener.onFramesPerSecond(fps);
 			}
 
@@ -716,6 +969,11 @@ public class ShaderViewManager {
 			@Override
 			public void onRequestAudioCapture() {
 				listener.onRequestAudioCapture();
+			}
+
+			@Override
+			public void onFirstFrameAfterResume() {
+				activity.runOnUiThread(() -> listener.onResumeRenderPending(false));
 			}
 		});
 	}
@@ -740,21 +998,26 @@ public class ShaderViewManager {
 			public void onItemSelected(AdapterView<?> parent, View view,
 					int position, long id) {
 				float q = qualityValues[position];
-				if (q == quality) {
-					return;
-				}
-				quality = q;
-				listener.onQualityChanged(quality);
-				// Refresh renderer with new quality
-				shaderView.getRenderer().setQuality(quality);
-				if (!paused) {
-					shaderView.onPause();
-					shaderView.onResume();
-				}
+				// The spinner's own displayed selection has already
+				// moved to `position` by the time this fires (that's
+				// what triggered it) - a decline needs to move it back
+				// to whatever's still actually applied, not leave it
+				// showing a quality that was never applied.
+				confirmRiskyIncreaseIfNeeded(q, () -> applyQuality(q),
+						this::revertSelectionToCurrentQuality);
 			}
 
 			@Override
 			public void onNothingSelected(AdapterView<?> parent) {
+			}
+
+			private void revertSelectionToCurrentQuality() {
+				for (int i = 0; i < qualityValues.length; ++i) {
+					if (qualityValues[i] == quality) {
+						qualitySpinner.setSelection(i);
+						return;
+					}
+				}
 			}
 		});
 	}
