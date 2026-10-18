@@ -9,23 +9,63 @@
 		android:orientation="vertical"
 		android:padding="16dp">
 
-		<Spinner
-			android:id="@+id/custom_res_preset"
+		<!-- Up here (not grouped with Cancel's old spot down at the
+		     bottom) so confirming doesn't need a scroll through every
+		     option below first - see showCustomResolutionDialog()'s own
+		     comment on why these are plain custom buttons, not
+		     AlertDialog's built-in slots. Cancel to the left, Start
+		     Render to the right (brighter/accent-colored - see
+		     toggle_active - so it reads as the one actually-committing
+		     action in the row) mirrors how the two read left-to-right
+		     either way. -->
+		<LinearLayout
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:entries="@array/custom_res_presets" />
+			android:orientation="horizontal"
+			android:gravity="center_vertical">
 
-		<!-- Only affects what picking one of the "x Device Res" presets
-		     above does - see MainActivity's own wiring - never touches
-		     anything for "Resolution" (the no-op placeholder) or a fixed
-		     pixel-size preset. -->
+			<Button
+				android:id="@+id/custom_res_cancel"
+				style="@style/BarButton"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:text="@android:string/cancel" />
+
+			<Button
+				android:id="@+id/custom_res_ok"
+				style="@style/BarButton"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:gravity="end|center_vertical"
+				android:textColor="@color/toggle_active"
+				android:text="@string/start_render" />
+
+		</LinearLayout>
+
+		<!-- Long-press for the full explanation (see
+		     higher_res_match_device_playback). -->
 		<CheckBox
 			android:id="@+id/custom_match_device_playback"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:layout_marginTop="4dp"
+			android:layout_marginTop="12dp"
 			android:checked="false"
-			android:text="@string/higher_res_match_device_playback" />
+			android:text="@string/higher_res_match_device_playback_label" />
+
+		<!-- Only affects what picking one of the "x Device Res" presets
+		     does - see MainActivity's own wiring; never touches
+		     anything for "Resolution" (the no-op placeholder) or a
+		     fixed pixel-size preset. Disabled as a whole (not just the
+		     fields below it) while custom_match_device_playback above
+		     is checked - see updateMatchAppResEnablement. -->
+		<Spinner
+			android:id="@+id/custom_res_preset"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="4dp"
+			android:entries="@array/custom_res_presets" />
 
 		<LinearLayout
 			android:layout_width="match_parent"
@@ -67,12 +107,14 @@
 		     under "Render a Sequence of Frames" -> "Create Video from
 		     Frames" - it only ever does anything when a video actually
 		     gets made, but editing it doesn't depend on either being
-		     checked. -->
+		     checked. Long-press for the full explanation (see
+		     higher_res_sequence_video_scale). -->
 		<TextView
+			android:id="@+id/sequence_video_scale_label"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:layout_marginTop="12dp"
-			android:text="@string/higher_res_sequence_video_scale"
+			android:text="@string/higher_res_sequence_video_scale_label"
 			android:textAppearance="?attr/textAppearanceCaption" />
 
 		<EditText
@@ -86,12 +128,14 @@
 		<!-- A persistent label, not just the EditText's own hint - the
 		     hint never actually shows since the field always starts
 		     pre-filled with "1", not blank (same issue as
-		     sequence_skip_frames below). -->
+		     sequence_skip_frames below). Long-press for the full
+		     explanation (see higher_res_oversample). -->
 		<TextView
+			android:id="@+id/custom_oversample_label"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:layout_marginTop="12dp"
-			android:text="@string/higher_res_oversample"
+			android:text="@string/higher_res_oversample_label"
 			android:textAppearance="?attr/textAppearanceCaption" />
 
 		<EditText
@@ -137,13 +181,15 @@
 			android:layout_height="wrap_content"
 			android:entries="@array/bucket_size_names" />
 
+		<!-- Long-press for the full explanation (see
+		     higher_res_preserve_backbuffer). -->
 		<CheckBox
 			android:id="@+id/preserve_backbuffer_edges"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
 			android:layout_marginTop="12dp"
 			android:checked="true"
-			android:text="@string/higher_res_preserve_backbuffer" />
+			android:text="@string/higher_res_preserve_backbuffer_label" />
 
 		<CheckBox
 			android:id="@+id/render_sequence"
@@ -253,34 +299,6 @@
 			</LinearLayout>
 
 		</LinearLayout>
-
-		<com.google.android.material.divider.MaterialDivider
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_marginVertical="12dp" />
-
-		<!-- Plain custom buttons, not AlertDialog's built-in positive/
-		     negative/neutral slots - those reorder depending on whether
-		     Android lays them out in a row or stacks them vertically
-		     (not reliably under our control), which made "highlight
-		     last used" unreliable via setPositiveButton/etc. alone. -->
-		<Button
-			android:id="@+id/custom_res_ok"
-			style="@style/BarButton"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_gravity="end"
-			android:gravity="end|center_vertical"
-			android:text="@android:string/ok" />
-
-		<Button
-			android:id="@+id/custom_res_cancel"
-			style="@style/BarButton"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:layout_gravity="end"
-			android:gravity="end|center_vertical"
-			android:text="@android:string/cancel" />
 
 	</LinearLayout>
 </ScrollView>

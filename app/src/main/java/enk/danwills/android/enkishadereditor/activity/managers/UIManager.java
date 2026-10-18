@@ -269,14 +269,37 @@ public class UIManager {
 
 	public void updateUiToPreferences() {
 		applyStatusBarVisibility();
+		applyToolbarButtonVisibility();
+		boolean runInBackground =
+				ShaderEditorApp.preferences.doesRunInBackground();
+		if (!runInBackground && !editorFragment.isCodeVisible()) {
+			toggleCodeVisibility();
+		}
+		extraKeysManager.updateVisibility();
+		editorFragment.setShowLineNumbers(
+				ShaderEditorApp.preferences.showLineNumbers());
+		editorFragment.updateHighlighting();
+		activity.invalidateOptionsMenu();
+	}
+
+	// Just the subset of updateUiToPreferences() above that affects the
+	// action-buttons FlowLayout's own line-wrapping (toggle_code/
+	// run_code/reacquire_audio's visibility, every button's size) -
+	// split out so MainActivity.onCreate() can apply it before the
+	// toolbar is ever actually drawn, not just from onResume() (which
+	// runs after the very first layout pass, since it only fires once
+	// the Activity's already on its way to becoming visible). Safe to
+	// call that early specifically because it never touches
+	// editorFragment - unlike the rest of updateUiToPreferences() above,
+	// its view isn't guaranteed to exist yet at that point (the
+	// fragment transaction that creates it is merely queued at the
+	// point onCreate() needs this, not yet executed).
+	public void applyToolbarButtonVisibility() {
 		boolean runInBackground =
 				ShaderEditorApp.preferences.doesRunInBackground();
 		shaderViewManager.setVisibility(runInBackground);
 		activity.findViewById(R.id.toggle_code).setVisibility(
 				runInBackground ? View.VISIBLE : View.GONE);
-		if (!runInBackground && !editorFragment.isCodeVisible()) {
-			toggleCodeVisibility();
-		}
 		activity.findViewById(R.id.run_code).setVisibility(
 				!ShaderEditorApp.preferences.doesRunOnChange()
 						? View.VISIBLE
@@ -284,11 +307,6 @@ public class UIManager {
 		activity.findViewById(R.id.reacquire_audio).setVisibility(
 				ShaderEditorApp.preferences.useSystemAudio() ? View.VISIBLE : View.GONE);
 		applyIconSize();
-		extraKeysManager.updateVisibility();
-		editorFragment.setShowLineNumbers(
-				ShaderEditorApp.preferences.showLineNumbers());
-		editorFragment.updateHighlighting();
-		activity.invalidateOptionsMenu();
 	}
 
 	// Resizes every button (and the quality spinner's height) in the

@@ -146,6 +146,15 @@ public class EditorFragment extends Fragment {
 		return undoRedo.canRedo();
 	}
 
+	// Used by MainActivity's global hotkey dispatch to tell "the cursor
+	// is in the shader source area" (several shortcuts - Up/Down,
+	// Left/Right, Tab - need to behave normally for cursor movement and
+	// text entry there instead of being hijacked as a shortcut) from
+	// everywhere else in the UI.
+	public boolean isSourceEditorFocused() {
+		return shaderEditor.hasFocus();
+	}
+
 	public boolean hasErrors() {
 		return shaderEditor.hasErrors();
 	}

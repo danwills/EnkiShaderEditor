@@ -28,6 +28,7 @@ import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -52,6 +53,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
@@ -181,6 +183,21 @@ public class MainActivity extends AppCompatActivity {
 	private NavigationManager navigationManager;
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
+	// Browser-style shader navigation history: every shader selectShader()
+	// actually switches *to* (not away from) gets appended here, capped at
+	// SHADER_HISTORY_MAX entries (oldest dropped first), with
+	// shaderHistoryIndex tracking "where we are" so Ctrl+Left/Ctrl+Right
+	// (see dispatchKeyEvent()) can step back/forward through it, wrapping
+	// around at either end. navigatingHistory suppresses re-recording a
+	// new entry while a Ctrl+Left/Right-driven selectShader() call is in
+	// flight, so revisiting history doesn't also rewrite it.
+	private final java.util.ArrayList<Long> shaderHistory = new java.util.ArrayList<>();
+	private int shaderHistoryIndex = -1;
+	private static final int SHADER_HISTORY_MAX = 20;
+	private boolean navigatingHistory = false;
+	// See dispatchKeyEvent()'s Ctrl+Shift+R handling, and its own
+	// key listener set up right after this is assigned, in onCreate().
+	private Spinner qualitySpinnerView;
 	// Tracked manually (rather than relying on isFinishing()/the
 	// lifecycle API) so a HighResCaptureService capture finishing while
 	// backgrounded can tell whether it's safe to act on its result right
@@ -261,11 +278,26 @@ public class MainActivity extends AppCompatActivity {
 		}
 
 		navigationManager = new NavigationManager(this);
+		qualitySpinnerView = findViewById(R.id.quality);
 		shaderViewManager = new ShaderViewManager(this,
 				findViewById(R.id.preview),
-				findViewById(R.id.quality),
+				qualitySpinnerView,
 				dataSource,
 				createShaderViewListener());
+		// Ctrl+Shift+R (see dispatchKeyEvent()) focuses this spinner so
+		// its own native hardware-keyboard handling can browse qualities
+		// with Up/Down directly - nothing needed here for that part.
+		// Only Enter needs its default action (opening the dropdown)
+		// overridden, to instead just confirm (unpause) whatever
+		// Up/Down already live-applied by the time Enter is pressed.
+		qualitySpinnerView.setOnKeyListener((v, keyCode, event) -> {
+			if (event.getAction() == KeyEvent.ACTION_DOWN &&
+					(keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+				setShaderPaused(false);
+				return true;
+			}
+			return false;
+		});
 		audioPreferenceListener = (preferences, key) -> {
 			if (Preferences.USE_SYSTEM_AUDIO.equals(key)) {
 				shaderViewManager.refreshAudioCaptureSource();
@@ -325,6 +357,23 @@ public class MainActivity extends AppCompatActivity {
 		uiManager.setupScreenshotButton(v -> takeScreenshot());
 		uiManager.setupAudioNavRow(v -> shaderViewManager.reacquireSystemAudio());
 
+		// updateUiToPreferences() itself also runs every onResume() (to
+		// pick up e.g. a Settings change made while away), but that's
+		// after the very first layout pass - every toolbar button above
+		// just got inflated with its layout XML's own default visibility
+		// (several are "visible" there, since the XML has no way to know
+		// the user's actual preferences), not necessarily what the
+		// user's prefs say should actually show. Without applying that
+		// subset here too, the very first frame (and every subsequent
+		// cold start) briefly shows that XML-default set of buttons -
+		// sometimes wrapping the FlowLayout above to an extra row - and
+		// then reflows the instant onResume() runs moments later and
+		// corrects it, which can shift a button out from under a tap
+		// aimed at the wrong-looking toolbar. Only this narrower subset
+		// (not the full updateUiToPreferences()) is safe to call this
+		// early - see its own doc for why.
+		uiManager.applyToolbarButtonVisibility();
+
 		shaderManager.handleSendText(getIntent());
 
 		if (state == null) {
@@ -352,6 +401,231 @@ public class MainActivity extends AppCompatActivity {
 		});
 		editorFragment.setCodeCompletionListener(extraKeysManager::setCompletions);
 		editorFragment.setOnScrollChangedListener(this::repositionFindMatchRing);
+	}
+
+	// Global hotkeys, for anyone with a hardware/Bluetooth keyboard
+	// attached - see R.array.hotkeys_list (shown via the More Options
+	// menu's own "Hotkeys" entry) for the full, user-facing list; keep
+	// the two in sync if either changes. Intercepted here (rather than
+	// e.g. individual View.setOnKeyListener calls) so they work
+	// regardless of which view currently has focus, as long as no
+	// dialog is showing - a dialog's own window gets first claim on its
+	// own key events before this Activity's dispatchKeyEvent() ever
+	// sees them, so these never fight a dialog's own text fields/
+	// shortcuts (see e.g. showFindShaderDialog()'s own Enter/Ctrl+Enter
+	// handling).
+	@Override
+	public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+		if (event.getAction() == KeyEvent.ACTION_DOWN && handleHotkeyDown(event)) {
+			return true;
+		}
+		return super.dispatchKeyEvent(event);
+	}
+
+	// True if this key (plus whichever modifiers were held) was handled
+	// as a hotkey and should be consumed - false lets it fall through to
+	// normal dispatch (typing into whatever's focused, scrolling, the
+	// system's own handling, etc). Every case here that doesn't actually
+	// match its own modifier/focus requirements falls through to a
+	// plain `return false` for exactly that reason - e.g. a bare "R"
+	// keypress (no Ctrl) must still type the letter normally.
+	private boolean handleHotkeyDown(@NonNull KeyEvent event) {
+		boolean ctrl = event.isCtrlPressed();
+		boolean shift = event.isShiftPressed();
+		// Several shortcuts below (Up, Left/Right, Tab) are repurposed
+		// from their normal meaning only outside the source editor, so
+		// typing/cursor movement there is never hijacked - this one
+		// check covers all of them, computed once since none of it
+		// changes mid-call.
+		boolean editorFocused = editorFragment.isSourceEditorFocused();
+		switch (event.getKeyCode()) {
+			case KeyEvent.KEYCODE_R:
+				if (ctrl && shift) {
+					openQualityPickerViaHotkey();
+					showHotkeyToast("Ctrl+Shift+R", R.string.quality_picker);
+					return true;
+				}
+				if (ctrl) {
+					openRenderDialogViaHotkey();
+					showHotkeyToast("Ctrl+R", R.string.open_render_dialog);
+					return true;
+				}
+				return false;
+			case KeyEvent.KEYCODE_F:
+				if (!ctrl) {
+					return false;
+				}
+				// Find in Shader only when the cursor's actually in the
+				// source - Find Shader otherwise (fullscreen, label-only,
+				// shader sidebar already showing, or any other mode),
+				// since that's the broadly useful default and Find in
+				// Shader only makes sense while actively editing source.
+				if (editorFocused) {
+					showFindInShaderDialog();
+					showHotkeyToast("Ctrl+F", R.string.find_in_shader);
+				} else {
+					showFindShaderDialog();
+					showHotkeyToast("Ctrl+F", R.string.find_shader);
+				}
+				return true;
+			case KeyEvent.KEYCODE_S:
+				if (ctrl && shift) {
+					pasteAsNewShader();
+					showHotkeyToast("Ctrl+Shift+S", R.string.paste_as_new_shader);
+					return true;
+				}
+				if (ctrl) {
+					shaderManager.saveShader();
+					showHotkeyToast("Ctrl+S", R.string.save_shader);
+					return true;
+				}
+				return false;
+			case KeyEvent.KEYCODE_ESCAPE:
+				getOnBackPressedDispatcher().onBackPressed();
+				showHotkeyToast("Esc", R.string.back);
+				return true;
+			case KeyEvent.KEYCODE_F11:
+				setFullscreen(!uiManager.isFullscreen());
+				showHotkeyToast("F11", R.string.fullscreen);
+				return true;
+			case KeyEvent.KEYCODE_DPAD_UP:
+				// Never while the quality spinner itself has focus (see
+				// openQualityPickerViaHotkey()) - it needs Up for its
+				// own native browse-by-focus handling instead.
+				if (qualitySpinnerView.isFocused() || editorFocused) {
+					return false;
+				}
+				if (ctrl) {
+					restartShader();
+					showHotkeyToast("Ctrl+Up", R.string.restart_shader);
+				} else {
+					// Deliberately setShaderPaused(), not
+					// togglePauseShader() - that one additionally blanks
+					// the screen on pause (see its own doc), which is
+					// exactly right for the manual pause *button* but
+					// not for this key, which should just freeze on
+					// whatever's currently showing and keep showing it.
+					boolean pausing = !shaderViewManager.isPaused();
+					setShaderPaused(pausing);
+					showHotkeyToast("Up", pausing ? R.string.pause_shader : R.string.resume_shader);
+				}
+				return true;
+			case KeyEvent.KEYCODE_DPAD_LEFT:
+				if (ctrl) {
+					navigateShaderHistory(-1);
+					showHotkeyToast("Ctrl+Left", R.string.history_back);
+					return true;
+				}
+				if (editorFocused) {
+					return false;
+				}
+				navigateToFirstShader();
+				showHotkeyToast("Left", R.string.first_shader);
+				return true;
+			case KeyEvent.KEYCODE_DPAD_RIGHT:
+				if (ctrl) {
+					navigateShaderHistory(1);
+					showHotkeyToast("Ctrl+Right", R.string.history_forward);
+					return true;
+				}
+				if (editorFocused) {
+					return false;
+				}
+				randomShader();
+				showHotkeyToast("Right", R.string.random_shader);
+				return true;
+			case KeyEvent.KEYCODE_TAB:
+				if (editorFocused) {
+					return false;
+				}
+				if (uiManager.isDrawerOpen()) {
+					uiManager.closeDrawer();
+				} else {
+					uiManager.openDrawer();
+				}
+				showHotkeyToast("Tab", R.string.toggle_sidebar);
+				return true;
+			case KeyEvent.KEYCODE_Z:
+				if (!ctrl) {
+					return false;
+				}
+				if (shift) {
+					if (editorFragment.canRedo()) {
+						editorFragment.redo();
+						showHotkeyToast("Ctrl+Shift+Z", R.string.redo);
+					}
+				} else if (editorFragment.canUndo()) {
+					editorFragment.undo();
+					showHotkeyToast("Ctrl+Z", R.string.undo);
+				}
+				return true;
+			case KeyEvent.KEYCODE_Y:
+				if (!ctrl) {
+					return false;
+				}
+				if (editorFragment.canRedo()) {
+					editorFragment.redo();
+					showHotkeyToast("Ctrl+Y", R.string.redo);
+				}
+				return true;
+			case KeyEvent.KEYCODE_E:
+				if (!ctrl || !shift || !uiManager.isFullscreen()) {
+					return false;
+				}
+				uiManager.toggleCodeVisibility();
+				setShaderPaused(editorFragment.isCodeVisible());
+				showHotkeyToast("Ctrl+Shift+E", R.string.toggle_editor_and_pause);
+				return true;
+			case KeyEvent.KEYCODE_Q:
+				if (!ctrl) {
+					return false;
+				}
+				// No toast here - quitApp() finishes the activity right
+				// away, so there'd be nothing left to show it on.
+				quitApp();
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	// Shows a brief toast naming the hotkey and action it just triggered
+	// - see the user-facing request behind this in handleHotkeyDown()'s
+	// own commit: makes it easier to learn/keep track of the hotkeys as
+	// they're used. combo is deliberately a literal, untranslated string
+	// (matching R.array.hotkeys_list's own convention) rather than a
+	// string resource - see hotkeys.xml's own comment for why.
+	private void showHotkeyToast(@NonNull String combo, @StringRes int actionNameRes) {
+		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo, getString(actionNameRes)),
+				Toast.LENGTH_SHORT).show();
+	}
+
+	// Mirrors the camera button's own pause/restore bookkeeping (see
+	// takeScreenshot()) but skips straight to the Custom Res/Seq dialog
+	// itself, rather than the screenshot-actions dialog it's normally
+	// one tap further in behind.
+	private void openRenderDialogViaHotkey() {
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
+		showCustomResolutionDialog(wasPaused);
+	}
+
+	// Pauses, then focuses the quality spinner so a hardware keyboard's
+	// own Up/Down keys can browse it directly (standard AdapterView
+	// behavior once focused - nothing further needed here for that
+	// part); see the key listener on qualitySpinnerView, set up right
+	// after it's assigned in onCreate(), for what makes Enter confirm
+	// (unpause) instead of opening the dropdown.
+	private void openQualityPickerViaHotkey() {
+		setShaderPaused(true);
+		qualitySpinnerView.requestFocus();
+	}
+
+	private void quitApp() {
+		if (ShaderEditorApp.preferences.autoSave()) {
+			shaderManager.saveShader();
+		}
+		finishAffinity();
 	}
 
 	// Keeps the Find-in-Shader ring aligned with its match as the editor
@@ -801,6 +1075,11 @@ public class MainActivity extends AppCompatActivity {
 			public void onPlayRecentRecordings() {
 				showRecentRecordingsDialog();
 			}
+
+			@Override
+			public void onShowHotkeys() {
+				showHotkeysDialog();
+			}
 		};
 	}
 
@@ -1224,6 +1503,18 @@ public class MainActivity extends AppCompatActivity {
 			findNext.run();
 			return true;
 		});
+		// See the twin dialog's own copy of this (showFindShaderDialog())
+		// for why - same reasoning, minus the Ctrl+Enter-to-load case,
+		// which doesn't apply here (a match is a position within the
+		// shader already open, not a separate shader to load).
+		queryView.setOnKeyListener((v, keyCode, event) -> {
+			if (event.getAction() != KeyEvent.ACTION_DOWN ||
+					(keyCode != KeyEvent.KEYCODE_ENTER && keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+				return false;
+			}
+			findNext.run();
+			return true;
+		});
 	}
 
 	// Below this, no warning - a handful of seconds isn't worth
@@ -1236,6 +1527,9 @@ public class MainActivity extends AppCompatActivity {
 
 	private void selectShader(long id) {
 		isInitialLoad = false;
+		if (!navigatingHistory) {
+			recordShaderHistory(id);
+		}
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
 		}
@@ -1313,6 +1607,58 @@ public class MainActivity extends AppCompatActivity {
 			selectShader(shader.id());
 			uiManager.showShaderNameOverlay(shader.getTitle());
 			shaderListManager.revealShader(shader.id());
+		}
+	}
+
+	// Jumps straight to the first shader in the currently filtered list
+	// (Down key, see dispatchKeyEvent()) - same reveal/overlay treatment
+	// as navigateShader() above.
+	private void navigateToFirstShader() {
+		var shader = shaderListManager.getFirstShader();
+		if (shader != null) {
+			selectShader(shader.id());
+			uiManager.showShaderNameOverlay(shader.getTitle());
+			shaderListManager.revealShader(shader.id());
+		}
+	}
+
+	// Appends id to the browser-style navigation history unless it's a
+	// no-op re-select of the entry already at the current position,
+	// capping the list at SHADER_HISTORY_MAX (oldest dropped first).
+	private void recordShaderHistory(long id) {
+		if (id <= 0) {
+			return;
+		}
+		if (shaderHistoryIndex >= 0 && shaderHistoryIndex < shaderHistory.size()
+				&& shaderHistory.get(shaderHistoryIndex) == id) {
+			return;
+		}
+		shaderHistory.add(id);
+		if (shaderHistory.size() > SHADER_HISTORY_MAX) {
+			shaderHistory.remove(0);
+		}
+		shaderHistoryIndex = shaderHistory.size() - 1;
+	}
+
+	// Steps back (direction < 0) or forward (direction > 0) through the
+	// navigation history, wrapping around at either end (Ctrl+Left /
+	// Ctrl+Right - see dispatchKeyEvent()).
+	private void navigateShaderHistory(int direction) {
+		if (shaderHistory.isEmpty()) {
+			return;
+		}
+		shaderHistoryIndex = Math.floorMod(shaderHistoryIndex + direction, shaderHistory.size());
+		navigatingHistory = true;
+		try {
+			long id = shaderHistory.get(shaderHistoryIndex);
+			selectShader(id);
+			DataRecords.Shader shader = dataSource.shader.getShader(id);
+			if (shader != null) {
+				uiManager.showShaderNameOverlay(shader.getTitle());
+			}
+			shaderListManager.revealShader(id);
+		} finally {
+			navigatingHistory = false;
 		}
 	}
 
@@ -1539,31 +1885,14 @@ public class MainActivity extends AppCompatActivity {
 		EditText widthView = view.findViewById(R.id.custom_width);
 		EditText heightView = view.findViewById(R.id.custom_height);
 		DisplayMetrics metrics = getResources().getDisplayMetrics();
-		// "1x Device Res" below means "whatever's actually rendering
-		// right now" - read directly from the renderer's own live
-		// surface size rather than re-derived from DisplayMetrics *
-		// quality, since the GLSurfaceView's actual onSurfaceChanged()
-		// dimensions (what quality really scales - see
-		// BuiltinUniforms.updateSurface()) can differ from
-		// DisplayMetrics.widthPixels/heightPixels by however many
-		// pixels system bars/insets eat into, however small - and this
-		// is exactly the resolution a same-size capture needs to match
-		// *exactly* for HighResScreenshotCapture's 1:1 backbuffer-seed
-		// fast path to actually trigger. Falls back to the
-		// DisplayMetrics approximation only if no frame has ever sized
-		// the surface yet (getRenderWidth() still 0).
-		int liveRenderWidth = shaderViewManager.getRenderWidth();
-		int liveRenderHeight = shaderViewManager.getRenderHeight();
-		final int deviceResWidth;
-		final int deviceResHeight;
-		if (liveRenderWidth > 0 && liveRenderHeight > 0) {
-			deviceResWidth = liveRenderWidth;
-			deviceResHeight = liveRenderHeight;
-		} else {
-			float quality = shaderManager.getQuality();
-			deviceResWidth = Math.max(1, Math.round(metrics.widthPixels * quality));
-			deviceResHeight = Math.max(1, Math.round(metrics.heightPixels * quality));
-		}
+		// "1x Device Res" below means the device's own actual screen
+		// resolution - plain DisplayMetrics, deliberately *not* scaled
+		// by the shader's own quality setting (that's what Match App Res
+		// Setting, further down, is for instead) - so "1x" always means
+		// "full native res, Video Scale 1" regardless of whatever
+		// quality the shader happens to be set to right now.
+		int deviceResWidth = metrics.widthPixels;
+		int deviceResHeight = metrics.heightPixels;
 		// A remembered value (from last time this dialog was actually
 		// used) always wins over the current-mode-resolution default -
 		// that default only applies the very first time, before
@@ -1573,11 +1902,13 @@ public class MainActivity extends AppCompatActivity {
 		heightView.setText(String.valueOf(
 				prefs.getInt(PREF_CUSTOM_RES_HEIGHT, deviceResHeight)));
 		Spinner presetSpinner = view.findViewById(R.id.custom_res_preset);
-		CheckBox matchDevicePlaybackBox = view.findViewById(R.id.custom_match_device_playback);
-		matchDevicePlaybackBox.setChecked(
+		CheckBox matchAppResBox = view.findViewById(R.id.custom_match_device_playback);
+		matchAppResBox.setChecked(
 				prefs.getBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK, false));
+		explainOnLongPress(matchAppResBox, R.string.higher_res_match_device_playback);
 		EditText oversampleView = view.findViewById(R.id.custom_oversample);
 		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
+		explainOnLongPress(view.findViewById(R.id.custom_oversample_label), R.string.higher_res_oversample);
 		Spinner tileOrderSpinner = view.findViewById(R.id.custom_tile_order);
 		tileOrderSpinner.setSelection(prefs.getInt(
 				PREF_CUSTOM_RES_TILE_ORDER, TileRenderOrder.HILBERT.ordinal()));
@@ -1587,25 +1918,67 @@ public class MainActivity extends AppCompatActivity {
 		CheckBox preserveBackbufferBox = view.findViewById(R.id.preserve_backbuffer_edges);
 		preserveBackbufferBox.setChecked(
 				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
+		explainOnLongPress(preserveBackbufferBox, R.string.higher_res_preserve_backbuffer);
 		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
+		explainOnLongPress(view.findViewById(R.id.sequence_video_scale_label),
+				R.string.higher_res_sequence_video_scale);
 
-		// While Match Device Playback is on, oversampling/bucket
-		// size/video scale are entirely driven by whichever "x Device
-		// Res" preset is picked (see the preset spinner's own listener
-		// below) - disabled here so it's visually obvious they're not
-		// free to edit right now, rather than silently overwriting
-		// whatever the user just typed the next time a preset is
-		// re-picked. Turning the checkbox back off immediately frees
-		// them up again, still holding whatever value they last had.
-		Runnable updateMatchDeviceEnablement = () -> {
-			boolean matching = matchDevicePlaybackBox.isChecked();
+		// While Match App Res Setting is on, every parameter below it is
+		// entirely computed from the shader's own current live
+		// resolution/quality setting (see applyMatchAppResSetting
+		// below), ignoring the preset dropdown entirely - disabled here
+		// (dropdown included) so it's visually obvious none of them are
+		// free to hand-edit or pick a preset right now, rather than
+		// silently overwriting whatever the user just set the next time
+		// this re-applies. Turning the checkbox back off immediately
+		// frees everything up again, still holding whatever values they
+		// last had.
+		Runnable updateMatchAppResEnablement = () -> {
+			boolean matching = matchAppResBox.isChecked();
+			presetSpinner.setEnabled(!matching);
+			widthView.setEnabled(!matching);
+			heightView.setEnabled(!matching);
 			oversampleView.setEnabled(!matching);
 			bucketSizeSpinner.setEnabled(!matching);
 			sequenceViews.videoScaleView.setEnabled(!matching);
 		};
-		updateMatchDeviceEnablement.run();
-		matchDevicePlaybackBox.setOnCheckedChangeListener(
-				(button, checked) -> updateMatchDeviceEnablement.run());
+		// Mirrors the shader's own current live resolution exactly
+		// (reading the renderer's actual surface size directly, not
+		// re-deriving it from DisplayMetrics * quality - see
+		// ShaderRenderer.getRenderWidth()'s own doc for why that's not
+		// quite the same thing) - oversampling/bucket size are fixed
+		// (1/Max) since there's no tiling overhead concern once the
+		// target is already this close to the live render size; Video
+		// Scale is the reciprocal of the live quality, landing back on
+		// the device's actual native resolution for 1:1 fullscreen
+		// playback, same idea as a "x Device Res" preset below but
+		// anchored to the *current* quality instead of a fixed
+		// multiplier of it.
+		Runnable applyMatchAppResSetting = () -> {
+			int liveRenderWidth = shaderViewManager.getRenderWidth();
+			int liveRenderHeight = shaderViewManager.getRenderHeight();
+			float quality = shaderManager.getQuality();
+			int matchWidth = liveRenderWidth > 0
+					? liveRenderWidth : Math.max(1, Math.round(deviceResWidth * quality));
+			int matchHeight = liveRenderHeight > 0
+					? liveRenderHeight : Math.max(1, Math.round(deviceResHeight * quality));
+			widthView.setText(String.valueOf(matchWidth));
+			heightView.setText(String.valueOf(matchHeight));
+			oversampleView.setText("1");
+			bucketSizeSpinner.setSelection(TileBucketSize.MAX.ordinal());
+			sequenceViews.videoScaleView.setText(
+					String.valueOf(Math.max(1, Math.round(1f / quality))));
+		};
+		updateMatchAppResEnablement.run();
+		if (matchAppResBox.isChecked()) {
+			applyMatchAppResSetting.run();
+		}
+		matchAppResBox.setOnCheckedChangeListener((button, checked) -> {
+			updateMatchAppResEnablement.run();
+			if (checked) {
+				applyMatchAppResSetting.run();
+			}
+		});
 
 		presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
@@ -1616,39 +1989,33 @@ public class MainActivity extends AppCompatActivity {
 				boolean isDeviceResPreset = position <= CUSTOM_RES_SCREEN_MULTIPLIERS.length;
 				int presetWidth;
 				int presetHeight;
+				// Video Scale is set by every preset here - a "x Device
+				// Res" preset sets it to whatever reciprocal lands back
+				// on the device's own native resolution (so the saved
+				// video plays back fullscreen 1:1 by default), a fixed
+				// pixel-size preset resets it to 1 (no scaling - there's
+				// no "native resolution" relationship to aim for with an
+				// arbitrary fixed size). Always stays editable
+				// afterward - this listener can't even fire while Match
+				// App Res Setting has the preset spinner disabled (see
+				// updateMatchAppResEnablement above), so there's no
+				// mode-dependent branching needed here any more.
+				int videoScale;
 				if (isDeviceResPreset) {
 					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
 					presetWidth = Math.round(deviceResWidth * multiplier);
 					presetHeight = Math.round(deviceResHeight * multiplier);
+					videoScale = Math.max(1, Math.round(1f / multiplier));
 				} else {
 					int[] fixed = CUSTOM_RES_FIXED_PRESETS[
 							position - 1 - CUSTOM_RES_SCREEN_MULTIPLIERS.length];
 					presetWidth = fixed[0];
 					presetHeight = fixed[1];
+					videoScale = 1;
 				}
 				widthView.setText(String.valueOf(presetWidth));
 				heightView.setText(String.valueOf(presetHeight));
-				// Only for the "x Device Res" presets, and only while
-				// Match Device Playback is checked (see
-				// updateMatchDeviceEnablement above - those fields are
-				// disabled whenever this would apply, so there's
-				// nothing to clobber either way); a fixed pixel-size
-				// preset leaves oversampling/bucket size/video scale
-				// exactly as they already were.
-				if (isDeviceResPreset && matchDevicePlaybackBox.isChecked()) {
-					float multiplier = CUSTOM_RES_SCREEN_MULTIPLIERS[position - 1];
-					float quality = shaderManager.getQuality();
-					// Capture resolution is already (device res *
-					// quality * multiplier) - scaling the saved video
-					// up by the reciprocal of that whole product lands
-					// back on exactly the device's own native
-					// resolution, regardless of which multiplier was
-					// picked, so the result plays back fullscreen 1:1.
-					int videoScale = Math.max(1, Math.round(1f / (quality * multiplier)));
-					oversampleView.setText("1");
-					bucketSizeSpinner.setSelection(TileBucketSize.MAX.ordinal());
-					sequenceViews.videoScaleView.setText(String.valueOf(videoScale));
-				}
+				sequenceViews.videoScaleView.setText(String.valueOf(videoScale));
 			}
 
 			@Override
@@ -1724,7 +2091,7 @@ public class MainActivity extends AppCompatActivity {
 					.putInt(PREF_CUSTOM_RES_BUCKET_SIZE, bucketSize.ordinal())
 					.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
-							matchDevicePlaybackBox.isChecked())
+							matchAppResBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
 			if (sequenceViews.sequenceBox.isChecked()) {
 				int frameCount = parsePositiveInt(sequenceViews.frameCountView.getText().toString());
@@ -1764,6 +2131,18 @@ public class MainActivity extends AppCompatActivity {
 		view.findViewById(R.id.custom_res_cancel).setOnClickListener(v -> {
 			dialog.dismiss();
 			setShaderPaused(wasPaused);
+		});
+	}
+
+	// Long-press hint for a shortened label - shows its full explanation
+	// as a Toast rather than android:tooltipText, since the system
+	// tooltip popup can clip long text against this dialog's own window
+	// bounds instead of reliably wrapping to fit it all. A Toast always
+	// sizes itself to its full (wrapped) content instead.
+	private void explainOnLongPress(@NonNull View view, @StringRes int explanationResId) {
+		view.setOnLongClickListener(v -> {
+			Toast.makeText(this, explanationResId, Toast.LENGTH_LONG).show();
+			return true;
 		});
 	}
 
@@ -3093,6 +3472,21 @@ public class MainActivity extends AppCompatActivity {
 				.show();
 	}
 
+	// AlertDialog's own message TextView already scrolls on its own once
+	// its content overflows the dialog's height, so a plain joined
+	// string is enough here - no custom ScrollView/list layout needed
+	// for this static, short reference list. See R.array.hotkeys_list
+	// (and keep it in sync with dispatchKeyEvent() below if either
+	// changes).
+	private void showHotkeysDialog() {
+		String[] hotkeys = getResources().getStringArray(R.array.hotkeys_list);
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.hotkeys)
+				.setMessage(String.join("\n\n", hotkeys))
+				.setPositiveButton(android.R.string.ok, null)
+				.show();
+	}
+
 	// Counts uniform sampler2D/samplerCube declarations that aren't one
 	// of the builtin sampler uniforms (audioSpectrum, backbuffer,
 	// cameraFront, cameraBack) - i.e. textures the shader binds itself.
@@ -3218,7 +3612,7 @@ public class MainActivity extends AppCompatActivity {
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.find_shader)
 				.setView(view)
-				.setNegativeButton(android.R.string.cancel, null)
+				.setNegativeButton(R.string.dismiss, null)
 				.setOnDismissListener(d -> {
 					SoftKeyboard.hide(this, queryView);
 					state.query = queryView.getText().toString();
@@ -3226,17 +3620,29 @@ public class MainActivity extends AppCompatActivity {
 					state.fuzzy = fuzzyBox.isChecked();
 				})
 				.show();
+		// So typing can start immediately, without an extra tap into the
+		// field first - selectAll() above only pre-selects its text, it
+		// doesn't focus it or raise the keyboard on its own. Declaring
+		// this on the dialog's own window (rather than a direct
+		// SoftKeyboard.show() call right here) lets the window manager
+		// raise the keyboard once the window actually finishes gaining
+		// focus, instead of racing it - calling showSoftInput()
+		// immediately after show() is a well-known no-op more often
+		// than not, since the dialog's window hasn't necessarily
+		// finished attaching yet at that exact point.
+		queryView.requestFocus();
+		if (dialog.getWindow() != null) {
+			dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+		}
 
-		Runnable showCurrentMatch = () -> {
+		// Just the dialog's own inline preview (icon/name/position, and
+		// what Load/Ctrl+Enter actually loads) - no drawer side effect,
+		// so it's cheap enough to call on every keystroke (see
+		// updateLiveCount below), not just on an explicit next/
+		// previous/Enter. showCurrentMatch below adds the drawer reveal
+		// on top, for those explicit navigation actions.
+		Runnable showMatchPreview = () -> {
 			DataRecords.ShaderInfo match = state.matches.get(state.index);
-			// Opened (not just scrolled) so the reveal+highlight below is
-			// actually visible - otherwise it happens behind a closed
-			// drawer the user never sees move. Deferred until the drawer
-			// has actually finished opening (not just requested to) -
-			// scrolling the list to a row while the drawer's open
-			// animation is still mid-flight races its own layout pass
-			// and silently has no visible effect.
-			uiManager.openDrawer(() -> shaderListManager.revealAndHighlightShader(match.id()));
 			matchCount.setVisibility(View.GONE);
 			resultRow.setVisibility(View.VISIBLE);
 			resultTitle.setText(match.getTitle());
@@ -3252,6 +3658,18 @@ public class MainActivity extends AppCompatActivity {
 				selectShader(match.id());
 				dialog.dismiss();
 			});
+		};
+		Runnable showCurrentMatch = () -> {
+			showMatchPreview.run();
+			DataRecords.ShaderInfo match = state.matches.get(state.index);
+			// Opened (not just scrolled) so the reveal+highlight below is
+			// actually visible - otherwise it happens behind a closed
+			// drawer the user never sees move. Deferred until the drawer
+			// has actually finished opening (not just requested to) -
+			// scrolling the list to a row while the drawer's open
+			// animation is still mid-flight races its own layout pass
+			// and silently has no visible effect.
+			uiManager.openDrawer(() -> shaderListManager.revealAndHighlightShader(match.id()));
 		};
 		// Re-runs the search if the query/options changed since the last
 		// match was shown. Returns false (and hides the result UI) when
@@ -3276,10 +3694,15 @@ public class MainActivity extends AppCompatActivity {
 			}
 			return true;
 		};
-		// Live match count, updated as the query/options change - shown
-		// even before the user explicitly searches. Reverts from a
-		// shown result_row back to this whenever the query/options
-		// change underneath it, since the previously-shown match's
+		// Updated as the query/options change, even before the user
+		// explicitly searches - shows the actual first match's preview
+		// (icon/name/position, same as showMatchPreview above) the
+		// instant there's anything to show, not just a bare count, so
+		// there's always something concrete visible for Load/Ctrl+Enter
+		// to act on. Only falls back to a plain count when there's
+		// nothing matched yet (nothing typed) or nothing matched at all.
+		// Resets to the first match (index 0) whenever the query/options
+		// actually change underneath an already-shown one, since its
 		// position within the new result set is no longer meaningful.
 		Runnable updateLiveCount = () -> {
 			String query = queryView.getText().toString();
@@ -3296,15 +3719,19 @@ public class MainActivity extends AppCompatActivity {
 			String key = query + ' ' + searchSource + ' ' + fuzzy;
 			if (!key.equals(state.key)) {
 				state.matches = shaderListManager.findMatches(query, searchSource, fuzzy);
-				state.index = -1;
+				state.index = 0;
 				state.key = key;
 			}
-			resultRow.setVisibility(View.GONE);
-			matchCount.setVisibility(View.VISIBLE);
-			matchCount.setText(state.matches.isEmpty()
-					? getString(R.string.no_matches_found)
-					: getResources().getQuantityString(R.plurals.match_count,
-							state.matches.size(), state.matches.size()));
+			if (state.matches.isEmpty()) {
+				resultRow.setVisibility(View.GONE);
+				matchCount.setVisibility(View.VISIBLE);
+				matchCount.setText(getString(R.string.no_matches_found));
+				return;
+			}
+			if (state.index < 0 || state.index >= state.matches.size()) {
+				state.index = 0;
+			}
+			showMatchPreview.run();
 		};
 
 		Runnable findNext = () -> {
@@ -3349,6 +3776,56 @@ public class MainActivity extends AppCompatActivity {
 			findNext.run();
 			return true;
 		});
+		// Belt-and-suspenders alongside the editor-action listener above
+		// (which fires reliably for the on-screen IME's own "Search"
+		// action, but not always for a physical/Bluetooth keyboard's
+		// Enter key on every device) - catches Enter directly regardless
+		// of source. findNext already does "search if nothing's been
+		// searched yet, otherwise advance" (see ensureMatches above), so
+		// repeated Enter presses naturally cycle through matches once a
+		// search is active. Ctrl+Enter loads whatever match is currently
+		// shown instead, same as tapping Load on it directly. Left/Right
+		// also cycle through matches directly - see
+		// R.string.find_shader_hotkey_hint, shown in the dialog itself.
+		//
+		// Attached to *every* focusable control in this dialog, not just
+		// queryView - a View's own setOnKeyListener is checked before
+		// its own default key handling, so without this a CheckBox that
+		// happens to have focus (e.g. tabbed to from a hardware
+		// keyboard) would consume Enter itself first, toggling the
+		// checkbox instead of ever reaching here. This also means
+		// queryView's own Left/Right cursor movement is sacrificed while
+		// this listener is attached - an acceptable trade for a single-
+		// line query field.
+		View.OnKeyListener enterKeyListener = (v, keyCode, event) -> {
+			if (event.getAction() != KeyEvent.ACTION_DOWN) {
+				return false;
+			}
+			switch (keyCode) {
+				case KeyEvent.KEYCODE_ENTER:
+				case KeyEvent.KEYCODE_NUMPAD_ENTER:
+					if (event.isCtrlPressed() && resultRow.getVisibility() == View.VISIBLE) {
+						resultLoad.performClick();
+					} else {
+						findNext.run();
+					}
+					return true;
+				case KeyEvent.KEYCODE_DPAD_LEFT:
+					findPrevious.run();
+					return true;
+				case KeyEvent.KEYCODE_DPAD_RIGHT:
+					findNext.run();
+					return true;
+				default:
+					return false;
+			}
+		};
+		queryView.setOnKeyListener(enterKeyListener);
+		searchSourceBox.setOnKeyListener(enterKeyListener);
+		fuzzyBox.setOnKeyListener(enterKeyListener);
+		previousButton.setOnKeyListener(enterKeyListener);
+		randomButton.setOnKeyListener(enterKeyListener);
+		nextButton.setOnKeyListener(enterKeyListener);
 		queryView.addTextChangedListener(new TextWatcher() {
 			@Override
 			public void beforeTextChanged(CharSequence s, int start, int count, int after) {

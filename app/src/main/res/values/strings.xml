@@ -52,8 +52,12 @@
 	<string name="higher_res_custom_width">Width</string>
 	<string name="higher_res_custom_height">Height</string>
 	<string name="higher_res_custom_invalid">Enter a width and height</string>
+	<string name="start_render">Start Render</string>
+	<string name="higher_res_preserve_backbuffer_label">Support Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">Preserve backbuffer-stored values (e.g. row 0) across tiles</string>
-	<string name="higher_res_match_device_playback">Match Device Playback - picking an "x Device Res" preset above also sets Oversampling to 1, Bucket Size to Max, and Video Scale so the saved video plays back at the device\'s full resolution</string>
+	<string name="higher_res_match_device_playback_label">Match App Res Setting</string>
+	<string name="higher_res_match_device_playback">Match App Res Setting - ignores every parameter above and instead mirrors the app\'s own current resolution setting: sets Resolution, Oversampling to 1, Bucket Size to Max, and Video Scale so the saved video plays back at the device\'s full resolution</string>
+	<string name="higher_res_oversample_label">Oversampling</string>
 	<string name="higher_res_oversample">Oversampling (x) - renders bigger then resizes down for antialiasing</string>
 	<string name="higher_res_tile_order">Tile Order</string>
 	<string name="higher_res_bucket_size">Bucket Size</string>
@@ -74,6 +78,7 @@
 	<string name="higher_res_sequence_video_quality">Video quality: %1$d%%</string>
 	<string name="higher_res_sequence_duration">≈ %1$s seconds of video</string>
 	<string name="higher_res_sequence_cleanup">Delete Image Files after Creating the Video</string>
+	<string name="higher_res_sequence_video_scale_label">Video Scale</string>
 	<string name="higher_res_sequence_video_scale">Video Scale (x) - leaves the resolution above as-is and only enlarges the saved video file afterwards, with nearest-neighbor filtering for a pixelly look</string>
 	<string name="cancel_capture_title">Cancel Rendering?</string>
 	<string name="cancel_capture_message">You can keep the frames already rendered, or delete them.</string>
@@ -375,6 +380,8 @@
 	<!-- LoadSampleFragment -->
 	<string name="load_sample">Load Sample</string>
 	<string name="find_shader">Find Shader</string>
+	<string name="hotkeys">Hotkeys</string>
+	<string name="dismiss">Dismiss</string>
 	<string name="load">Load</string>
 	<string name="search_shader_source">Also Search Shader Source</string>
 	<string name="fuzzy_matching">Fuzzy Matching</string>
@@ -382,6 +389,17 @@
 	<string name="find_next">Find Next</string>
 	<string name="find_previous">Find Previous</string>
 	<string name="find_random">Find Random</string>
+	<string name="find_shader_hotkey_hint">Enter: search / next match · Ctrl+Enter: load shown match · ←/→: cycle matches</string>
+	<!-- Hotkey-toast feature (see MainActivity.showHotkeyToast()) -->
+	<string name="hotkey_toast_format">%1$s: %2$s</string>
+	<string name="open_render_dialog">Open Render Dialog</string>
+	<string name="quality_picker">Quality Picker</string>
+	<string name="back">Back</string>
+	<string name="toggle_sidebar">Toggle Shader Sidebar</string>
+	<string name="history_back">Back in History</string>
+	<string name="history_forward">Forward in History</string>
+	<string name="toggle_editor_and_pause">Toggle Editor and Pause</string>
+	<string name="first_shader">First Shader</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d match</item>

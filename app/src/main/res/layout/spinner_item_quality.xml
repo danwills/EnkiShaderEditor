@@ -4,12 +4,23 @@
      is what made the spinner reserve ~140dp of mostly-empty space once
      it sat mid-flow instead of alone at the end of a full-width
      toolbar row - this drops that, so wrap_content actually wraps
-     tightly to the "N/N" quality labels (@array/quality_names). -->
+     tightly to the "N/N" quality labels (@array/quality_names).
+     minEms=4 then pins that tight width to the *widest* label ("1/32")
+     regardless of which one is actually showing - without it, the
+     spinner starts at whatever its default (position 0, "1/32") looks
+     like, then shrinks the instant the shader's own saved quality
+     loads and re-selects a narrower label (e.g. "1/8") moments later,
+     visibly reflowing the whole toolbar's line-wrapping (see
+     FlowLayout in toolbar_main.xml) out from under a tap aimed at
+     whatever used to be there. Expressed in ems (scales with
+     textSize), not a guessed dp width, so it stays correct if either
+     ever changes. -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
 	android:id="@android:id/text1"
 	android:layout_width="wrap_content"
 	android:layout_height="wrap_content"
 	android:minWidth="0dp"
+	android:minEms="4"
 	android:minHeight="0dp"
 	android:paddingStart="4dp"
 	android:paddingEnd="4dp"

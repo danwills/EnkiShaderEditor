@@ -1,0 +1,23 @@
+<resources>
+	<string-array name="hotkeys_list">
+		<item>Ctrl+R — 打开渲染对话框</item>
+		<item>Ctrl+F — 显示着色器侧栏时查找着色器，光标在源代码编辑区时在着色器中查找</item>
+		<item>Ctrl+S — 保存着色器</item>
+		<item>Ctrl+Shift+S — 粘贴为新着色器</item>
+		<item>Esc — 相当于返回按钮</item>
+		<item>F11 — 切换全屏</item>
+		<item>Up — 播放/暂停（在源代码编辑区之外）</item>
+		<item>Ctrl+Up — 倒回（在源代码编辑区之外）</item>
+		<item>Left — 列表中的第一个着色器，遵循当前筛选条件（在源代码编辑区之外）</item>
+		<item>Right — 随机着色器（在源代码编辑区之外）</item>
+		<item>Ctrl+Left / Ctrl+Right — 像浏览器那样在最近访问的 20 个着色器历史中后退/前进，两端循环</item>
+		<item>Tab — 显示/隐藏着色器侧栏（在源代码编辑区之外）</item>
+		<item>Ctrl+Z — 撤销</item>
+		<item>Ctrl+Y 或 Ctrl+Shift+Z — 重做</item>
+		<item>Ctrl+Shift+E — 全屏时：切换源代码编辑器并暂停，便于在快速编辑和全屏查看之间切换</item>
+		<item>Ctrl+Shift+R — 暂停并打开质量选择器；Up/Down 浏览分辨率，Enter 确认并取消暂停</item>
+		<item>Ctrl+Q — 退出（如有需要会先保存当前着色器）</item>
+		<item>Enter（在查找着色器/在着色器中查找对话框中）— 执行搜索，之后每次按下循环切换匹配项；Ctrl+Enter 载入当前显示的匹配项（仅查找着色器）</item>
+		<item>Left/Right（在查找着色器对话框中）— 循环切换匹配项</item>
+	</string-array>
+</resources>

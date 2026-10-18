@@ -51,6 +51,22 @@
 			app:icon="@drawable/ic_play_arrow"
 			app:iconSize="24dp" />
 
+		<!-- Starts gone, not visible - see MainActivity's
+		     ShaderViewManager.Listener.onInfoLog(), which is the only
+		     thing that ever actually sets this (visible exactly when
+		     editorFragment.hasErrors(), after the shader's first
+		     real compile on the GL thread finishes - necessarily some
+		     time after this button is first laid out, however briefly).
+		     Starting visible-by-default and waiting for that callback to
+		     hide it again (the overwhelmingly common case, any shader
+		     that compiles cleanly) meant this button reliably popped in
+		     then out again a few hundred ms into every single app
+		     launch, each time reflowing the whole FlowLayout above by a
+		     full row - visibly shifting every button after it out from
+		     under a tap aimed at the toolbar's initial (wrong) layout.
+		     Starting gone instead matches that common case from the very
+		     first frame; onInfoLog() still reveals it immediately if the
+		     shader genuinely has errors. -->
 		<Button
 			android:id="@+id/show_errors"
 			style="@style/IconButton"
@@ -58,6 +74,7 @@
 			android:layout_height="48dp"
 			android:layout_marginEnd="2dp"
 			android:layout_marginBottom="4dp"
+			android:visibility="gone"
 			app:icon="@drawable/ic_error"
 			app:iconSize="24dp" />
 

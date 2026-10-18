@@ -442,6 +442,14 @@ public class ShaderListManager {
 		return shaders.get(nextIndex);
 	}
 
+	// The first shader in the currently displayed list - follows
+	// whatever filtering is active, same as getAdjacentShader() above.
+	@Nullable
+	public ShaderInfo getFirstShader() {
+		List<ShaderInfo> shaders = shaderAdapter.getShaders();
+		return shaders.isEmpty() ? null : shaders.get(0);
+	}
+
 	@Nullable
 	public ShaderInfo getRandomShader(long excludeId) {
 		List<ShaderInfo> shaders = shaderAdapter.getShaders();

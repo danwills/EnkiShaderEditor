@@ -52,8 +52,12 @@
 	<string name="higher_res_custom_width">Ширина</string>
 	<string name="higher_res_custom_height">Высота</string>
 	<string name="higher_res_custom_invalid">Введите ширину и высоту</string>
+	<string name="start_render">Начать рендер</string>
+	<string name="higher_res_preserve_backbuffer_label">Поддержка Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">Сохранять значения из backbuffer (напр. строка 0) между тайлами</string>
-	<string name="higher_res_match_device_playback">Соответствие воспроизведению на устройстве - выбор пресета "x разрешения устройства" выше также задаёт передискретизацию 1, размер блока Max и масштаб видео так, чтобы сохранённое видео воспроизводилось в полном разрешении устройства</string>
+	<string name="higher_res_match_device_playback_label">Соответствие настройке приложения</string>
+	<string name="higher_res_match_device_playback">Соответствие настройке приложения - игнорирует все параметры выше и вместо этого отражает текущую настройку разрешения самого приложения: задаёт разрешение, передискретизацию 1, размер блока Max и масштаб видео так, чтобы сохранённое видео воспроизводилось в полном разрешении устройства</string>
+	<string name="higher_res_oversample_label">Передискретизация</string>
 	<string name="higher_res_oversample">Передискретизация (x) - рендер в большем размере с последующим уменьшением для сглаживания</string>
 	<string name="higher_res_tile_order">Порядок плиток</string>
 	<string name="higher_res_bucket_size">Размер блока</string>
@@ -74,6 +78,7 @@
 	<string name="higher_res_sequence_video_quality">Качество видео: %1$d%%</string>
 	<string name="higher_res_sequence_duration">≈ %1$s секунд видео</string>
 	<string name="higher_res_sequence_cleanup">Удалить файлы изображений после создания видео</string>
+	<string name="higher_res_sequence_video_scale_label">Масштаб видео</string>
 	<string name="higher_res_sequence_video_scale">Масштаб видео (x) - не меняет разрешение рендера выше, а только увеличивает сохранённый файл видео с использованием ближайшего соседа для пикселизированного вида</string>
 	<string name="cancel_capture_title">Отменить рендеринг?</string>
 	<string name="cancel_capture_message">Можно сохранить уже отрендеренные кадры или удалить их.</string>
@@ -375,6 +380,8 @@
 	<!-- LoadSampleFragment -->
 	<string name="load_sample">Загрузить пример</string>
 	<string name="find_shader">Найти шейдер</string>
+	<string name="hotkeys">Горячие клавиши</string>
+	<string name="dismiss">Закрыть</string>
 	<string name="load">Загрузить</string>
 	<string name="search_shader_source">Искать также в исходном коде шейдера</string>
 	<string name="fuzzy_matching">Нечёткое совпадение</string>
@@ -382,6 +389,16 @@
 	<string name="find_next">Найти далее</string>
 	<string name="find_previous">Найти предыдущий</string>
 	<string name="find_random">Найти случайный</string>
+	<string name="find_shader_hotkey_hint">Enter: поиск / следующее совпадение · Ctrl+Enter: загрузить показанное совпадение · ←/→: переключение совпадений</string>
+	<string name="hotkey_toast_format">%1$s: %2$s</string>
+	<string name="open_render_dialog">Открыть диалог рендера</string>
+	<string name="quality_picker">Выбор качества</string>
+	<string name="back">Назад</string>
+	<string name="toggle_sidebar">Показать/скрыть панель шейдеров</string>
+	<string name="history_back">Назад по истории</string>
+	<string name="history_forward">Вперёд по истории</string>
+	<string name="toggle_editor_and_pause">Переключить редактор и пауза</string>
+	<string name="first_shader">Первый шейдер</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="one">%1$d совпадение</item>

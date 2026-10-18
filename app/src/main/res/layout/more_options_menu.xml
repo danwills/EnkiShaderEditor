@@ -67,6 +67,14 @@
 			app:dividerInsetStart="8dp" />
 
 		<Button
+			android:id="@+id/hotkeys"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/hotkeys"
+			app:icon="@drawable/ic_keyboard_tab" />
+
+		<Button
 			android:id="@+id/faq"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

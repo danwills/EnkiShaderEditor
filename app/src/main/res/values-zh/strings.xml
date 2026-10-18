@@ -51,8 +51,12 @@
 	<string name="higher_res_custom_width">宽度</string>
 	<string name="higher_res_custom_height">高度</string>
 	<string name="higher_res_custom_invalid">请输入宽度和高度</string>
+	<string name="start_render">开始渲染</string>
+	<string name="higher_res_preserve_backbuffer_label">支持 Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">跨图块保留 backbuffer 中存储的值（例如第 0 行）</string>
-	<string name="higher_res_match_device_playback">匹配设备播放 - 选择上方的"x 设备分辨率"预设时，同时将过采样倍数设为 1、分块大小设为 Max、视频缩放倍数设为可让保存的视频以设备完整分辨率播放</string>
+	<string name="higher_res_match_device_playback_label">匹配应用分辨率设置</string>
+	<string name="higher_res_match_device_playback">匹配应用分辨率设置 - 忽略上方所有参数，改为镜像应用本身当前的分辨率设置：设置分辨率、过采样倍数为 1、分块大小为 Max、视频缩放倍数为可让保存的视频以设备完整分辨率播放</string>
+	<string name="higher_res_oversample_label">过采样</string>
 	<string name="higher_res_oversample">过采样倍数 (x) - 以更大尺寸渲染后再缩小以实现抗锯齿</string>
 	<string name="higher_res_tile_order">分块顺序</string>
 	<string name="higher_res_bucket_size">分块大小</string>
@@ -73,6 +77,7 @@
 	<string name="higher_res_sequence_video_quality">视频质量：%1$d%%</string>
 	<string name="higher_res_sequence_duration">≈ %1$s 秒视频</string>
 	<string name="higher_res_sequence_cleanup">生成视频后删除图片文件</string>
+	<string name="higher_res_sequence_video_scale_label">视频缩放</string>
 	<string name="higher_res_sequence_video_scale">视频缩放倍数 (x) - 不改变上方的渲染分辨率，只是之后使用邻近采样放大保存的视频文件，呈现像素化效果</string>
 	<string name="cancel_capture_title">取消渲染？</string>
 	<string name="cancel_capture_message">可以保留已渲染的帧，也可以删除它们。</string>
@@ -358,6 +363,8 @@
 
 	<string name="load_sample">加载示例</string>
 	<string name="find_shader">查找着色器</string>
+	<string name="hotkeys">快捷键</string>
+	<string name="dismiss">关闭</string>
 	<string name="load">加载</string>
 	<string name="search_shader_source">同时搜索着色器源代码</string>
 	<string name="fuzzy_matching">模糊匹配</string>
@@ -365,6 +372,16 @@
 	<string name="find_next">查找下一个</string>
 	<string name="find_previous">查找上一个</string>
 	<string name="find_random">查找随机</string>
+	<string name="find_shader_hotkey_hint">Enter：搜索／下一个匹配项 · Ctrl+Enter：载入当前匹配项 · ←/→：切换匹配项</string>
+	<string name="hotkey_toast_format">%1$s: %2$s</string>
+	<string name="open_render_dialog">打开渲染对话框</string>
+	<string name="quality_picker">质量选择器</string>
+	<string name="back">返回</string>
+	<string name="toggle_sidebar">切换着色器侧边栏</string>
+	<string name="history_back">历史后退</string>
+	<string name="history_forward">历史前进</string>
+	<string name="toggle_editor_and_pause">切换编辑器并暂停</string>
+	<string name="first_shader">第一个着色器</string>
 	<string name="match_position_format">%1$d / %2$d</string>
 	<plurals name="match_count">
 		<item quantity="other">找到 %1$d 个匹配项</item>
