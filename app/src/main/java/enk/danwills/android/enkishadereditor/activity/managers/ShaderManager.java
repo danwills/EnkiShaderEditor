@@ -2,8 +2,10 @@ package enk.danwills.android.enkishadereditor.activity.managers;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -12,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +29,6 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.project.LegacyShaderProjectSource;
 import enk.danwills.android.enkishadereditor.project.LooseShaderFileProjectSource;
-import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 
 public class ShaderManager {
@@ -277,48 +279,87 @@ public class ShaderManager {
 				: PreviewActivity.renderStatus.getThumbnail();
 	}
 
-	public void handleSendText(@Nullable Intent intent) {
-		if (intent == null || intent.getAction() == null) {
-			return;
-		}
-		if (!Intent.ACTION_SEND.equals(intent.getAction()) &&
-				!Intent.ACTION_VIEW.equals(intent.getAction())) {
-			return;
-		}
+	// Text that came in from outside - a .glsl/.frag/text file opened
+	// with the app, or a file or plain text shared to it - plus a
+	// suggested shader name (the file's name without its extension), if
+	// there is one.
+	public record SharedText(@NonNull String text, @Nullable String name) {
+	}
 
-		Uri uri = intent.getData();
+	// The text an ACTION_VIEW/ACTION_SEND intent carries, or null if it
+	// carries none (or isn't one). Consumes the intent's action, so the
+	// same intent isn't handled twice (e.g. on recreation).
+	@Nullable
+	public SharedText readSharedText(@Nullable Intent intent) {
+		if (intent == null || intent.getAction() == null) {
+			return null;
+		}
+		String action = intent.getAction();
+		if (!Intent.ACTION_SEND.equals(action) &&
+				!Intent.ACTION_VIEW.equals(action)) {
+			return null;
+		}
+		intent.setAction(null);
+
+		Uri uri = Intent.ACTION_SEND.equals(action)
+				? intent.getParcelableExtra(Intent.EXTRA_STREAM)
+				: intent.getData();
 		if (uri == null) {
-			return;
+			CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+			return text != null && !text.toString().isBlank()
+					? new SharedText(text.toString(), null)
+					: null;
 		}
 
 		try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
 			if (in == null) {
-				return;
+				return null;
 			}
 			byte[] buffer = new byte[4096];
 			int len;
-			var sb = new StringBuilder();
+			var out = new ByteArrayOutputStream();
 			while ((len = in.read(buffer)) != -1) {
-				sb.append(new String(buffer, 0, len, StandardCharsets.UTF_8));
+				out.write(buffer, 0, len);
 			}
-			// A multipass shader shared as one file - see MultipassSource.
-			var parsed = MultipassSource.parse(sb.toString());
-			ShaderProjectSession projectSession = new LooseShaderFileProjectSource(uri,
-					parsed != null ? parsed.imageSource() : sb.toString(), 1f)
-					.openSession();
-			if (parsed != null) {
-				projectSession = projectSession.withBufferSources(parsed.bufferSources());
+			String text = out.toString(StandardCharsets.UTF_8.name());
+			if (text.isBlank()) {
+				return null;
 			}
-			PreviewActivity.renderStatus.reset();
-			intent.setAction(null);
-			applyProjectSession(NO_SHADER,
-					projectSession,
-					projectSession.getProject().getTitle());
-			setModified(true);
-		} catch (IOException e) {
+			return new SharedText(text, getNameWithoutExtension(uri));
+		} catch (IOException | SecurityException e) {
 			Toast.makeText(activity, R.string.unsuitable_text,
 					Toast.LENGTH_SHORT).show();
+			return null;
 		}
+	}
+
+	@Nullable
+	private String getNameWithoutExtension(@NonNull Uri uri) {
+		String name = null;
+		try (Cursor cursor = activity.getContentResolver().query(uri,
+				new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+			if (cursor != null && cursor.moveToFirst()) {
+				name = cursor.getString(0);
+			}
+		} catch (RuntimeException e) {
+			// No display name on offer - fall back to the path below.
+		}
+		if (name == null) {
+			name = uri.getLastPathSegment();
+		}
+		if (name == null) {
+			return null;
+		}
+		int slash = name.lastIndexOf('/');
+		if (slash >= 0) {
+			name = name.substring(slash + 1);
+		}
+		int dot = name.lastIndexOf('.');
+		if (dot > 0) {
+			name = name.substring(0, dot);
+		}
+		name = name.trim();
+		return name.isEmpty() ? null : name;
 	}
 
 	public long duplicateShader(long shaderId) {

@@ -399,16 +399,16 @@ public class MainActivity extends AppCompatActivity {
 		// early - see its own doc for why.
 		uiManager.applyToolbarButtonVisibility();
 
-		shaderManager.handleSendText(getIntent());
-
+		// The usual shader loads as normal, with any text opened with or
+		// shared to the app offered on top as Paste as New Shader.
 		if (state == null) {
-			Intent intent = getIntent();
-			String action = intent != null ? intent.getAction() : null;
-			if (!Intent.ACTION_SEND.equals(action) &&
-					!Intent.ACTION_VIEW.equals(action)) {
-				isInitialLoad = true;
-			}
+			isInitialLoad = true;
 		}
+		// Posted, so it runs once start-up has finished - the dialog
+		// pauses the shader and reads the editor, whose view doesn't
+		// exist yet during onCreate().
+		Intent launchIntent = getIntent();
+		getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 
 		editorFragment.setOnEditPausedListener(text -> {
 			if (ShaderEditorApp.preferences.doesRunOnChange()) {
@@ -874,7 +874,7 @@ public class MainActivity extends AppCompatActivity {
 	@Override
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
-		shaderManager.handleSendText(intent);
+		offerSharedText(intent);
 	}
 
 	@Override
@@ -1370,7 +1370,20 @@ public class MainActivity extends AppCompatActivity {
 				.show();
 	}
 
+	private void offerSharedText(@Nullable Intent intent) {
+		ShaderManager.SharedText shared = shaderManager.readSharedText(intent);
+		if (shared != null) {
+			showQualityPickerDialog(shared.text(), shared.name());
+		}
+	}
+
 	private void showQualityPickerDialog(@NonNull String shaderSource) {
+		showQualityPickerDialog(shaderSource, null);
+	}
+
+	// suggestedName: pre-filled into the name field, e.g. an opened file's.
+	private void showQualityPickerDialog(@NonNull String shaderSource,
+			@Nullable String suggestedName) {
 		String[] qualityNames = getResources().getStringArray(R.array.quality_names);
 		String[] qualityValues = getResources().getStringArray(R.array.quality_values);
 		int defaultIndex = 0;
@@ -1383,6 +1396,9 @@ public class MainActivity extends AppCompatActivity {
 
 		View view = getLayoutInflater().inflate(R.layout.dialog_paste_shader, null);
 		EditText nameView = view.findViewById(R.id.paste_shader_name);
+		if (suggestedName != null) {
+			nameView.setText(suggestedName);
+		}
 		RadioGroup qualityGroup = view.findViewById(R.id.paste_shader_quality_options);
 		for (int i = 0; i < qualityNames.length; ++i) {
 			RadioButton button = new RadioButton(this);
@@ -1415,6 +1431,9 @@ public class MainActivity extends AppCompatActivity {
 					if (parsed != null && newId > 0) {
 						dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
 					}
+					// Don't let the start-up load (if it's still pending -
+					// see isInitialLoad) switch away from it afterwards.
+					isInitialLoad = false;
 					shaderManager.selectShader(newId);
 					shaderManager.saveShader(true);
 				})
