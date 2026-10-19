@@ -179,6 +179,11 @@ public class ShaderManager {
 	}
 
 	@NonNull
+	public String getEntryFilePath() {
+		return getCurrentProjectSession().getProject().getEntryFilePath();
+	}
+
+	@NonNull
 	public String getActiveFilePath() {
 		return getCurrentProjectSession().getActiveFilePath();
 	}

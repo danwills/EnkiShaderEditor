@@ -12,6 +12,7 @@
 		<item>Ctrl+S — Save Shader</item>
 		<item>Ctrl+V — Paste as New Shader</item>
 		<item>Ctrl+Shift+D — Open the Adjust Defines tool</item>
+		<item>Ctrl+PageUp / Ctrl+PageDown — Previous/Next pass tab (shaders with offscreen buffers)</item>
 		<item>Esc — Same as the back button</item>
 		<item>F11 — Toggle Fullscreen</item>
 		<item>Up — Play/Pause (outside the source editor)</item>

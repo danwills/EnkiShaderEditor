@@ -553,4 +553,21 @@
 	<string name="storage_not_writeable">Не удалось записать в базу данных</string>
 	<string name="successfully_exported">Экспортированно в загрузки</string>
 	<string name="successfully_imported">База данных импортирована</string>
+	<string name="offscreen_buffers">Внеэкранные буферы</string>
+	<string name="offscreen_buffers_none">Нет</string>
+	<string name="offscreen_buffers_remove_title">Удалить буферы?</string>
+	<string name="offscreen_buffers_remove_message">Код в %1$s будет удалён.</string>
+	<string name="offscreen_buffers_remove">Удалить</string>
+	<string name="pass_tab_image">Изоб</string>
+	<string name="pass_tab_buffer">Буфер %1$s</string>
+	<string name="channel_slot">iChannel%1$d %2$s</string>
+	<string name="channel_none">Нет</string>
+	<string name="channel_buffer">Буфер %1$s</string>
+	<string name="channel_filter_linear">Линейная фильтрация</string>
+	<string name="channel_filter_nearest">Ближайший пиксель</string>
+	<string name="channel_filter_mipmap">Мип-карты</string>
+	<string name="channel_wrap_clamp">Обрезка</string>
+	<string name="channel_wrap_repeat">Повтор</string>
+	<string name="buffers_capture_unsupported">Произвольное разрешение и последовательности пока не поддерживают шейдеры с внеэкранными буферами</string>
+	<string name="buffers_export_image_only">Включён только проход Image - внеэкранные буферы пока не экспортируются</string>
 </resources>

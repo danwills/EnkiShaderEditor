@@ -18,7 +18,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 public class ErrorAdapter extends ListAdapter<ShaderError, ErrorAdapter.ViewHolder> {
 	@FunctionalInterface
 	public interface OnItemClickListener {
-		void onItemClick(int lineNumber);
+		void onItemClick(@NonNull ShaderError error);
 	}
 
 	@NonNull
@@ -55,15 +55,25 @@ public class ErrorAdapter extends ListAdapter<ShaderError, ErrorAdapter.ViewHold
 		}
 
 		public void update(@NonNull ShaderError error, ErrorAdapter.OnItemClickListener listener) {
+			// Which buffer of a multipass shader it's in, if not the
+			// Image pass - tapping it switches to that buffer's tab.
+			String pass = error.getPass() == ShaderError.IMAGE_PASS
+					? ""
+					: (char) ('A' + error.getPass()) + " ";
 			if (error.hasLine()) {
-				errorLine.setText(String.format(Locale.getDefault(), "%d: ", error.getLine()));
+				errorLine.setVisibility(View.VISIBLE);
+				errorLine.setText(String.format(Locale.getDefault(), "%s%d: ", pass,
+						error.getLine()));
+			} else if (!pass.isEmpty()) {
+				errorLine.setVisibility(View.VISIBLE);
+				errorLine.setText(pass);
 			} else {
 				errorLine.setVisibility(View.GONE);
 			}
 
 			errorMessage.setText(error.getMessage());
 
-			itemView.setOnClickListener(v -> listener.onItemClick(error.getLine()));
+			itemView.setOnClickListener(v -> listener.onItemClick(error));
 		}
 	}
 

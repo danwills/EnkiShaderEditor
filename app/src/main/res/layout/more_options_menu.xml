@@ -52,6 +52,14 @@
 			app:icon="@drawable/ic_edit" />
 
 		<Button
+			android:id="@+id/offscreen_buffers"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/offscreen_buffers"
+			app:icon="@drawable/ic_layers" />
+
+		<Button
 			android:id="@+id/play_recent_recordings"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

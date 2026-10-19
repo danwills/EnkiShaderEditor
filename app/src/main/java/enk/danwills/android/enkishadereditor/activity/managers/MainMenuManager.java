@@ -75,6 +75,8 @@ public class MainMenuManager {
 
 		void onAdjustDefines();
 
+		void onOffscreenBuffers();
+
 		void onPlayLocalMusic();
 	}
 
@@ -157,6 +159,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
 		setMoreOptionsClickListener(R.id.hotkeys, navigationActions::onShowHotkeys);
 		setMoreOptionsClickListener(R.id.adjust_defines, navigationActions::onAdjustDefines);
+		setMoreOptionsClickListener(R.id.offscreen_buffers, navigationActions::onOffscreenBuffers);
 		setMoreOptionsClickListener(R.id.play_local_music, navigationActions::onPlayLocalMusic);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 

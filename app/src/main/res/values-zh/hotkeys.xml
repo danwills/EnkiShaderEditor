@@ -6,6 +6,7 @@
 		<item>Ctrl+S — 保存着色器</item>
 		<item>Ctrl+V — 粘贴为新着色器</item>
 		<item>Ctrl+Shift+D — 打开调整 Defines 工具</item>
+		<item>Ctrl+PageUp / Ctrl+PageDown — 上一个/下一个通道标签（带离屏缓冲区的着色器）</item>
 		<item>Esc — 相当于返回按钮</item>
 		<item>F11 — 切换全屏</item>
 		<item>Up — 播放/暂停（在源代码编辑区之外）</item>

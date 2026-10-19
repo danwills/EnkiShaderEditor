@@ -51,6 +51,7 @@ import android.widget.RadioGroup;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.PopupMenu;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -114,7 +115,10 @@ import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
+import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
+import enk.danwills.android.enkishadereditor.opengl.ChannelParameters;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.project.ShaderProjectPaths;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
@@ -341,7 +345,12 @@ public class MainActivity extends AppCompatActivity {
 				uiManager,
 				dataSource,
 				createShaderViewListener());
-		shaderManager.setOnShaderSwitchedListener(this::clearFindMatchRing);
+		shaderManager.setOnShaderSwitchedListener(() -> {
+			clearFindMatchRing();
+			refreshPassTabs();
+		});
+		editorFragment.setOnPassSelectedListener(this::switchToPass);
+		editorFragment.setOnChannelClickListener(this::showChannelMenu);
 		uiManager.setOnDrawerOpenedListener(this::clearFindMatchRing);
 
 		MainMenuManager mainMenuManager = new MainMenuManager(
@@ -545,6 +554,13 @@ public class MainActivity extends AppCompatActivity {
 			case KeyEvent.KEYCODE_ESCAPE:
 				getOnBackPressedDispatcher().onBackPressed();
 				showHotkeyToast("Esc", R.string.back);
+				return true;
+			case KeyEvent.KEYCODE_PAGE_UP:
+			case KeyEvent.KEYCODE_PAGE_DOWN:
+				if (!ctrl || !editorFragment.hasBufferPasses()) {
+					return false;
+				}
+				cyclePass(event.getKeyCode() == KeyEvent.KEYCODE_PAGE_DOWN ? 1 : -1);
 				return true;
 			case KeyEvent.KEYCODE_F11:
 				setFullscreen(!uiManager.isFullscreen());
@@ -1180,7 +1196,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onShareShader() {
-				navigationManager.shareShader(editorFragment.getText());
+				navigationManager.shareShader(getImagePassSourceNotingBuffers());
 			}
 
 			@Override
@@ -1252,6 +1268,11 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onAdjustDefines() {
 				showAdjustDefinesDialog();
+			}
+
+			@Override
+			public void onOffscreenBuffers() {
+				showOffscreenBuffersDialog();
 			}
 
 			@Override
@@ -1638,7 +1659,222 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		clipboard.setPrimaryClip(ClipData.newPlainText(
-				getString(R.string.app_name), editorFragment.getText()));
+				getString(R.string.app_name), getImagePassSourceNotingBuffers()));
+	}
+
+	// The Image pass's source - what sharing/copying a shader passes on,
+	// whichever pass's tab is showing - with a heads-up that a multipass
+	// shader's buffers don't come along (yet).
+	@NonNull
+	private String getImagePassSourceNotingBuffers() {
+		if (editorFragment.hasBufferPasses()) {
+			Toast.makeText(this, R.string.buffers_export_image_only, Toast.LENGTH_LONG).show();
+		}
+		return shaderManager.getEditedProjectSession().getEntryPointSource();
+	}
+
+	// Offscreen buffers (ShaderToy-style multipass) - see EditorFragment's
+	// pass tabs and ShaderRenderer's buffer passes.
+	private static final String BUFFER_TEMPLATE = """
+			// Buffer %1$c runs before the Image pass every frame. Any pass can
+			// read it through an iChannel slot set to %1$c (tap the iChannel row
+			// above the code). Reading itself, as here, gives its previous frame.
+			uniform sampler2D iChannel0;///buf:%1$c;
+
+			void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+				vec2 uv = fragCoord / iResolution.xy;
+				vec3 previous = texture(iChannel0, uv).rgb;
+				float paint = iMouse.z > 0.0
+						? smoothstep(40.0, 0.0, length(fragCoord - iMouse.xy))
+						: 0.0;
+				fragColor = vec4(max(previous * 0.98, vec3(paint)), 1.0);
+			}
+			""";
+
+	private void refreshPassTabs() {
+		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
+		boolean[] present = new boolean[buffers.length];
+		for (int i = 0; i < buffers.length; ++i) {
+			present[i] = buffers[i] != null;
+		}
+		editorFragment.setPassTabs(present);
+	}
+
+	private void switchToPass(int pass) {
+		String path = pass == ShaderError.IMAGE_PASS
+				? shaderManager.getEntryFilePath()
+				: ShaderProjectPaths.getBufferPath(pass);
+		editorFragment.switchToPass(pass, shaderManager.setActiveFile(path));
+		clearFindMatchRing();
+	}
+
+	private void cyclePass(int direction) {
+		var passes = new ArrayList<Integer>();
+		passes.add(ShaderError.IMAGE_PASS);
+		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
+		for (int i = 0; i < buffers.length; ++i) {
+			if (buffers[i] != null) {
+				passes.add(i);
+			}
+		}
+		if (passes.size() < 2) {
+			return;
+		}
+		int index = passes.indexOf(editorFragment.getActivePass());
+		int next = ((index < 0 ? 0 : index) + direction + passes.size()) % passes.size();
+		switchToPass(passes.get(next));
+	}
+
+	private void showOffscreenBuffersDialog() {
+		String[] current = shaderManager.getEditedProjectSession().getProject().getBufferSources();
+		int count = 0;
+		for (int i = 0; i < current.length; ++i) {
+			if (current[i] != null) {
+				count = i + 1;
+			}
+		}
+		String[] items = new String[current.length + 1];
+		items[0] = getString(R.string.offscreen_buffers_none);
+		StringBuilder letters = new StringBuilder();
+		for (int i = 0; i < current.length; ++i) {
+			if (i > 0) {
+				letters.append(", ");
+			}
+			letters.append(ShaderProjectPaths.getBufferLetter(i));
+			items[i + 1] = letters.toString();
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.offscreen_buffers)
+				.setSingleChoiceItems(items, count, (dialog, which) -> {
+					dialog.dismiss();
+					setBufferCount(which, current);
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	private void setBufferCount(int count, @NonNull String[] current) {
+		String[] next = new String[current.length];
+		var removed = new ArrayList<String>();
+		for (int i = 0; i < current.length; ++i) {
+			if (i < count) {
+				next[i] = current[i] != null
+						? current[i]
+						: String.format(Locale.US, BUFFER_TEMPLATE,
+								ShaderProjectPaths.getBufferLetter(i));
+			} else if (current[i] != null) {
+				removed.add(getString(R.string.pass_tab_buffer,
+						String.valueOf(ShaderProjectPaths.getBufferLetter(i))));
+			}
+		}
+		if (removed.isEmpty()) {
+			applyBufferSources(next);
+			return;
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.offscreen_buffers_remove_title)
+				.setMessage(getString(R.string.offscreen_buffers_remove_message,
+						String.join(", ", removed)))
+				.setPositiveButton(R.string.offscreen_buffers_remove,
+						(dialog, which) -> applyBufferSources(next))
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	private void applyBufferSources(@NonNull String[] sources) {
+		int active = editorFragment.getActivePass();
+		if (active != ShaderError.IMAGE_PASS &&
+				(active >= sources.length || sources[active] == null)) {
+			// Off the tab that's about to go first, so its (doomed) text
+			// can't end up committed into another file.
+			switchToPass(ShaderError.IMAGE_PASS);
+		}
+		shaderManager.setBufferSources(sources);
+		refreshPassTabs();
+		shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+	}
+
+	private static final int CHANNEL_MENU_NONE = 1;
+	private static final int CHANNEL_MENU_BUFFER = 10;
+	private static final int CHANNEL_MENU_LINEAR = 20;
+	private static final int CHANNEL_MENU_NEAREST = 21;
+	private static final int CHANNEL_MENU_MIPMAP = 22;
+	private static final int CHANNEL_MENU_CLAMP = 30;
+	private static final int CHANNEL_MENU_REPEAT = 31;
+
+	// What one iChannel slot of the shown pass reads, and how - edits the
+	// pass's declaration of it (undoably, like typing it).
+	private void showChannelMenu(int channel, @NonNull View anchor) {
+		String source = editorFragment.getText();
+		ChannelParameters current = ChannelDeclarations.find(source, channel);
+		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
+		var popup = new PopupMenu(this, anchor);
+		var menu = popup.getMenu();
+		menu.add(1, CHANNEL_MENU_NONE, 0, R.string.channel_none);
+		for (int i = 0; i < buffers.length; ++i) {
+			if (buffers[i] != null) {
+				menu.add(1, CHANNEL_MENU_BUFFER + i, 0, getString(R.string.channel_buffer,
+						String.valueOf(ShaderProjectPaths.getBufferLetter(i))));
+			}
+		}
+		menu.setGroupCheckable(1, true, true);
+		int buffer = current != null ? current.getBuffer() : ChannelParameters.NO_BUFFER;
+		var checked = menu.findItem(buffer == ChannelParameters.NO_BUFFER
+				? CHANNEL_MENU_NONE
+				: CHANNEL_MENU_BUFFER + buffer);
+		if (checked != null) {
+			checked.setChecked(true);
+		}
+		if (current != null) {
+			menu.add(2, CHANNEL_MENU_LINEAR, 1, R.string.channel_filter_linear);
+			menu.add(2, CHANNEL_MENU_NEAREST, 1, R.string.channel_filter_nearest);
+			menu.add(2, CHANNEL_MENU_MIPMAP, 1, R.string.channel_filter_mipmap);
+			menu.setGroupCheckable(2, true, true);
+			String min = current.getMinShortcut();
+			menu.findItem(min.length() > 1
+					? CHANNEL_MENU_MIPMAP
+					: "n".equals(min) ? CHANNEL_MENU_NEAREST : CHANNEL_MENU_LINEAR)
+					.setChecked(true);
+			menu.add(3, CHANNEL_MENU_CLAMP, 2, R.string.channel_wrap_clamp);
+			menu.add(3, CHANNEL_MENU_REPEAT, 2, R.string.channel_wrap_repeat);
+			menu.setGroupCheckable(3, true, true);
+			menu.findItem("c".equals(current.getWrapSShortcut())
+					? CHANNEL_MENU_CLAMP
+					: CHANNEL_MENU_REPEAT).setChecked(true);
+		}
+		popup.setOnMenuItemClickListener(item -> {
+			int id = item.getItemId();
+			ChannelParameters parameters = current != null
+					? new ChannelParameters(current.toString())
+					: new ChannelParameters();
+			if (id == CHANNEL_MENU_NONE) {
+				parameters = null;
+			} else if (id >= CHANNEL_MENU_BUFFER && id < CHANNEL_MENU_BUFFER + buffers.length) {
+				parameters.setBuffer(id - CHANNEL_MENU_BUFFER);
+			} else if (id == CHANNEL_MENU_LINEAR) {
+				parameters.set("l", "l", parameters.getWrapSShortcut(),
+						parameters.getWrapTShortcut());
+			} else if (id == CHANNEL_MENU_NEAREST) {
+				parameters.set("n", "n", parameters.getWrapSShortcut(),
+						parameters.getWrapTShortcut());
+			} else if (id == CHANNEL_MENU_MIPMAP) {
+				parameters.set("ll", "l", parameters.getWrapSShortcut(),
+						parameters.getWrapTShortcut());
+			} else if (id == CHANNEL_MENU_CLAMP || id == CHANNEL_MENU_REPEAT) {
+				String wrap = id == CHANNEL_MENU_CLAMP ? "c" : "r";
+				parameters.set(parameters.getMinShortcut(), parameters.getMagShortcut(),
+						wrap, wrap);
+			} else {
+				return false;
+			}
+			String updated = ChannelDeclarations.withChannel(
+					editorFragment.getText(), channel, parameters);
+			if (!updated.equals(editorFragment.getText())) {
+				editorFragment.replaceAll(updated);
+			}
+			return true;
+		});
+		popup.show();
 	}
 
 	private void copyDefinesToClipboard() {
@@ -4265,6 +4501,13 @@ public class MainActivity extends AppCompatActivity {
 			handleScreenshotAction(png, ScreenshotAction.SAVE_AND_OPEN);
 		});
 		higherResButton.setOnClickListener(v -> {
+			if (editorFragment.hasBufferPasses()) {
+				// Those render the Image pass on its own, tile by tile -
+				// not the buffer chain it depends on (yet).
+				Toast.makeText(this, R.string.buffers_capture_unsupported,
+						Toast.LENGTH_LONG).show();
+				return;
+			}
 			rememberLastUsedButton(PREF_LAST_SCREENSHOT_ACTION, R.id.screenshot_higher_res);
 			// Listener cleared first - the dismiss below would otherwise
 			// restore pause state to whatever it was before this whole

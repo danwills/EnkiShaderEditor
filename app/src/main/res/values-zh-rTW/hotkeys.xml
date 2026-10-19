@@ -6,6 +6,7 @@
 		<item>Ctrl+S — 儲存著色器</item>
 		<item>Ctrl+V — 貼上為新著色器</item>
 		<item>Ctrl+Shift+D — 開啟調整 Defines 工具</item>
+		<item>Ctrl+PageUp / Ctrl+PageDown — 上一個/下一個通道分頁（帶離屏緩衝區的著色器）</item>
 		<item>Esc — 相當於返回按鈕</item>
 		<item>F11 — 切換全螢幕</item>
 		<item>Up — 播放/暫停（在原始碼編輯區之外）</item>

@@ -520,4 +520,21 @@
 	<string name="storage_not_writeable">无法写入数据库</string>
 	<string name="successfully_exported">已成功导出至下载目录</string>
 	<string name="successfully_imported">数据库已成功导入</string>
+	<string name="offscreen_buffers">离屏缓冲区</string>
+	<string name="offscreen_buffers_none">无</string>
+	<string name="offscreen_buffers_remove_title">删除缓冲区？</string>
+	<string name="offscreen_buffers_remove_message">这将删除 %1$s 中的代码。</string>
+	<string name="offscreen_buffers_remove">删除</string>
+	<string name="pass_tab_image">图像</string>
+	<string name="pass_tab_buffer">缓冲区 %1$s</string>
+	<string name="channel_slot">iChannel%1$d %2$s</string>
+	<string name="channel_none">无</string>
+	<string name="channel_buffer">缓冲区 %1$s</string>
+	<string name="channel_filter_linear">线性过滤</string>
+	<string name="channel_filter_nearest">最近邻过滤</string>
+	<string name="channel_filter_mipmap">Mipmap 过滤</string>
+	<string name="channel_wrap_clamp">钳制</string>
+	<string name="channel_wrap_repeat">重复</string>
+	<string name="buffers_capture_unsupported">自定义分辨率和序列暂不支持带离屏缓冲区的着色器</string>
+	<string name="buffers_export_image_only">只包含 Image 通道 - 离屏缓冲区暂不导出</string>
 </resources>

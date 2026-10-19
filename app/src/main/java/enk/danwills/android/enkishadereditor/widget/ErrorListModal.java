@@ -32,8 +32,8 @@ public class ErrorListModal extends BottomSheetDialogFragment {
 	public ErrorListModal(@NonNull List<ShaderError> errors,
 			@NonNull ErrorAdapter.OnItemClickListener onItemClickListener) {
 		this.errors = errors;
-		this.onItemClickListener = (lineNumber) -> {
-			onItemClickListener.onItemClick(lineNumber);
+		this.onItemClickListener = (error) -> {
+			onItemClickListener.onItemClick(error);
 			dismiss();
 		};
 	}

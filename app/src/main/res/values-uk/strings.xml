@@ -557,4 +557,21 @@
 	<string name="storage_not_writeable">Не вдається записати в базу даних</string>
 	<string name="successfully_exported">Експортовано до Завантаження</string>
 	<string name="successfully_imported">Базу даних імпортовано</string>
+	<string name="offscreen_buffers">Позаекранні буфери</string>
+	<string name="offscreen_buffers_none">Немає</string>
+	<string name="offscreen_buffers_remove_title">Видалити буфери?</string>
+	<string name="offscreen_buffers_remove_message">Код у %1$s буде видалено.</string>
+	<string name="offscreen_buffers_remove">Видалити</string>
+	<string name="pass_tab_image">Зобр</string>
+	<string name="pass_tab_buffer">Буфер %1$s</string>
+	<string name="channel_slot">iChannel%1$d %2$s</string>
+	<string name="channel_none">Немає</string>
+	<string name="channel_buffer">Буфер %1$s</string>
+	<string name="channel_filter_linear">Лінійна фільтрація</string>
+	<string name="channel_filter_nearest">Найближчий піксель</string>
+	<string name="channel_filter_mipmap">Міп-карти</string>
+	<string name="channel_wrap_clamp">Обрізання</string>
+	<string name="channel_wrap_repeat">Повтор</string>
+	<string name="buffers_capture_unsupported">Довільна роздільність і послідовності поки не підтримують шейдери з позаекранними буферами</string>
+	<string name="buffers_export_image_only">Включено лише прохід Image - позаекранні буфери поки не експортуються</string>
 </resources>

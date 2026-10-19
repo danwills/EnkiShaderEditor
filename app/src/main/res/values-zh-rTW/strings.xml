@@ -520,4 +520,21 @@
 	<string name="storage_not_writeable">無法寫入資料庫</string>
 	<string name="successfully_exported">已成功匯出至下載目錄</string>
 	<string name="successfully_imported">資料庫已成功匯入</string>
+	<string name="offscreen_buffers">離屏緩衝區</string>
+	<string name="offscreen_buffers_none">無</string>
+	<string name="offscreen_buffers_remove_title">刪除緩衝區？</string>
+	<string name="offscreen_buffers_remove_message">這將刪除 %1$s 中的程式碼。</string>
+	<string name="offscreen_buffers_remove">刪除</string>
+	<string name="pass_tab_image">圖像</string>
+	<string name="pass_tab_buffer">緩衝區 %1$s</string>
+	<string name="channel_slot">iChannel%1$d %2$s</string>
+	<string name="channel_none">無</string>
+	<string name="channel_buffer">緩衝區 %1$s</string>
+	<string name="channel_filter_linear">線性過濾</string>
+	<string name="channel_filter_nearest">最近鄰過濾</string>
+	<string name="channel_filter_mipmap">Mipmap 過濾</string>
+	<string name="channel_wrap_clamp">鉗制</string>
+	<string name="channel_wrap_repeat">重複</string>
+	<string name="buffers_capture_unsupported">自訂解析度和序列暫不支援帶離屏緩衝區的著色器</string>
+	<string name="buffers_export_image_only">只包含 Image 通道 - 離屏緩衝區暫不匯出</string>
 </resources>

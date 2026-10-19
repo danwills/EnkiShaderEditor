@@ -110,7 +110,7 @@ public class UndoRedo {
 
 	private final EditTextChangeListener changeListener =
 			new EditTextChangeListener();
-	private final EditHistory editHistory;
+	private EditHistory editHistory;
 	private final TextView textView;
 
 	/**
@@ -129,6 +129,17 @@ public class UndoRedo {
 
 	public UndoRedo(TextView textView) {
 		this(textView, new EditHistory());
+	}
+
+	// Swaps in another history without touching either - so one editor
+	// can keep a separate undo history per file it shows (see
+	// EditorFragment.switchToFile()).
+	public EditHistory getEditHistory() {
+		return editHistory;
+	}
+
+	public void setEditHistory(EditHistory editHistory) {
+		this.editHistory = editHistory;
 	}
 
 	public void listenForChanges() {
