@@ -1,0 +1,129 @@
+---
+import Base from '../layouts/Base.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+const base = import.meta.env.BASE_URL;
+
+const apk = {
+  file: 'enki-shader-editor-2.36.3.apk',
+  version: '2.36.3',
+  versionCode: 94,
+  size: '3.8 MB',
+  date: '19 October 2026',
+  sha256: '956e0bd3a20a5a8d6109df11f827af5387b6f06000981b6e90276923a15b0949',
+  certSha256: 'af67c89c0759a81f94c26695b61e55e823e434fc67c26f1d92a6790470de0772',
+};
+---
+
+<Base
+  title="Enki Shader Editor — Download"
+  description="Download the Enki Shader Editor APK: a fork of ShaderEditor with progressive rendering, tiled high-res capture and video export."
+>
+  <Nav />
+  <main>
+    <section class="section enki-section">
+      <div class="container">
+        <span class="section-label">Enki Shader Editor</span>
+        <h1 class="section-title">Download the APK</h1>
+        <p class="section-desc">
+          Enki Shader Editor is a fork of Markus Fisch's ShaderEditor. It adds
+          progressive live rendering for slow shaders, tiled high-resolution
+          stills, frame-sequence and MP4 export, global keyboard hotkeys, an
+          Adjust Defines tool, and shader state that survives pauses and
+          resolution changes. It installs alongside the original app.
+        </p>
+
+        <div class="enki-actions">
+          <a href={`${base}downloads/${apk.file}`} class="btn btn-primary" download>
+            Download {apk.file}
+          </a>
+          <a
+            href="https://github.com/danwills/EnkiShaderEditor/blob/master/docs/enki-since-markus.md"
+            class="btn btn-secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            What's new since ShaderEditor
+          </a>
+        </div>
+
+        <dl class="enki-meta">
+          <dt>Version</dt><dd>{apk.version} (build {apk.versionCode})</dd>
+          <dt>Built</dt><dd>{apk.date}</dd>
+          <dt>Size</dt><dd>{apk.size}</dd>
+          <dt>Requires</dt><dd>Android 6.0+</dd>
+          <dt>Package</dt><dd><code>enk.danwills.android.enkishadereditor</code></dd>
+          <dt>APK SHA-256</dt><dd><code>{apk.sha256}</code></dd>
+          <dt>Signing certificate SHA-256</dt><dd><code>{apk.certSha256}</code></dd>
+        </dl>
+
+        <p class="enki-note">
+          To install, open the downloaded file on your phone and allow your
+          browser or file manager to install unknown apps when Android asks.
+          Future builds are signed with the same certificate, so they install
+          as updates and keep your shaders.
+        </p>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .enki-section {
+    padding-top: 9rem;
+  }
+
+  .enki-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin: 2rem 0 2.5rem;
+  }
+
+  .enki-meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.5rem 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .enki-meta dt {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    padding-top: 0.2rem;
+  }
+
+  .enki-meta dd {
+    margin: 0;
+    color: var(--text-secondary);
+    min-width: 0;
+  }
+
+  .enki-meta code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .enki-note {
+    max-width: 40rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+
+  @media (max-width: 600px) {
+    .enki-meta {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+    }
+
+    .enki-meta dd {
+      margin-bottom: 0.75rem;
+    }
+  }
+</style>
