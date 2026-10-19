@@ -573,5 +573,4 @@
 	<string name="channel_wrap_clamp">Обрізання</string>
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Довільна роздільність і послідовності поки не підтримують шейдери з позаекранними буферами</string>
-	<string name="buffers_export_image_only">Включено лише прохід Image - позаекранні буфери поки не експортуються</string>
 </resources>

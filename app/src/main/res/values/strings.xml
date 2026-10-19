@@ -564,5 +564,4 @@
 	<string name="channel_wrap_clamp">Clamp</string>
 	<string name="channel_wrap_repeat">Repeat</string>
 	<string name="buffers_capture_unsupported">Custom resolutions and sequences don\'t support shaders with offscreen buffers yet</string>
-	<string name="buffers_export_image_only">Only the Image pass is included - offscreen buffers aren\'t exported yet</string>
 </resources>

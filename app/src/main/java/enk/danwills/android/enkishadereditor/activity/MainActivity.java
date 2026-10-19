@@ -118,6 +118,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
 import enk.danwills.android.enkishadereditor.opengl.ChannelParameters;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectPaths;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
@@ -1196,7 +1197,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onShareShader() {
-				navigationManager.shareShader(getImagePassSourceNotingBuffers());
+				navigationManager.shareShader(getWholeShaderSource());
 			}
 
 			@Override
@@ -1351,8 +1352,18 @@ public class MainActivity extends AppCompatActivity {
 				.setTitle(R.string.paste_over_warning_title)
 				.setMessage(R.string.sure_paste_over_shader)
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-					editorFragment.setText(pastedSource);
+					// Off any buffer tab first, so the paste lands in the
+					// Image pass. Multipass text (see MultipassSource)
+					// replaces the buffers too; plain text leaves them be.
+					switchToPass(ShaderError.IMAGE_PASS);
+					var parsed = MultipassSource.parse(pastedSource);
+					if (parsed != null) {
+						shaderManager.setBufferSources(parsed.bufferSources());
+					}
+					editorFragment.setText(parsed != null ? parsed.imageSource() : pastedSource);
+					refreshPassTabs();
 					shaderManager.saveShader(true);
+					shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.setOnDismissListener(d -> setShaderPaused(wasPaused))
@@ -1397,8 +1408,13 @@ public class MainActivity extends AppCompatActivity {
 					// DataRecords.ShaderInfo.getTitle()), rather than
 					// saving an empty-string name.
 					String name = nameView.getText().toString().trim();
+					var parsed = MultipassSource.parse(shaderSource);
 					long newId = dataSource.shader.insertShader(
-							shaderSource, name.isEmpty() ? null : name, null, quality);
+							parsed != null ? parsed.imageSource() : shaderSource,
+							name.isEmpty() ? null : name, null, quality);
+					if (parsed != null && newId > 0) {
+						dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
+					}
 					shaderManager.selectShader(newId);
 					shaderManager.saveShader(true);
 				})
@@ -1659,18 +1675,18 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		clipboard.setPrimaryClip(ClipData.newPlainText(
-				getString(R.string.app_name), getImagePassSourceNotingBuffers()));
+				getString(R.string.app_name), getWholeShaderSource()));
 	}
 
-	// The Image pass's source - what sharing/copying a shader passes on,
-	// whichever pass's tab is showing - with a heads-up that a multipass
-	// shader's buffers don't come along (yet).
+	// Every pass of the shader as one piece of text, whichever pass's tab
+	// is showing - see MultipassSource; just the source for a shader
+	// without buffers. What copying/sharing a shader passes on, and what
+	// pasting/opening one reads back.
 	@NonNull
-	private String getImagePassSourceNotingBuffers() {
-		if (editorFragment.hasBufferPasses()) {
-			Toast.makeText(this, R.string.buffers_export_image_only, Toast.LENGTH_LONG).show();
-		}
-		return shaderManager.getEditedProjectSession().getEntryPointSource();
+	private String getWholeShaderSource() {
+		var session = shaderManager.getEditedProjectSession();
+		return MultipassSource.join(session.getEntryPointSource(),
+				session.getProject().getBufferSources());
 	}
 
 	// Offscreen buffers (ShaderToy-style multipass) - see EditorFragment's

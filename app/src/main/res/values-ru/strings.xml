@@ -569,5 +569,4 @@
 	<string name="channel_wrap_clamp">Обрезка</string>
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Произвольное разрешение и последовательности пока не поддерживают шейдеры с внеэкранными буферами</string>
-	<string name="buffers_export_image_only">Включён только проход Image - внеэкранные буферы пока не экспортируются</string>
 </resources>

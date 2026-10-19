@@ -26,6 +26,7 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.project.LegacyShaderProjectSource;
 import enk.danwills.android.enkishadereditor.project.LooseShaderFileProjectSource;
+import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 
 public class ShaderManager {
@@ -300,9 +301,14 @@ public class ShaderManager {
 			while ((len = in.read(buffer)) != -1) {
 				sb.append(new String(buffer, 0, len, StandardCharsets.UTF_8));
 			}
-			ShaderProjectSession projectSession =
-					new LooseShaderFileProjectSource(uri, sb.toString(), 1f)
-							.openSession();
+			// A multipass shader shared as one file - see MultipassSource.
+			var parsed = MultipassSource.parse(sb.toString());
+			ShaderProjectSession projectSession = new LooseShaderFileProjectSource(uri,
+					parsed != null ? parsed.imageSource() : sb.toString(), 1f)
+					.openSession();
+			if (parsed != null) {
+				projectSession = projectSession.withBufferSources(parsed.bufferSources());
+			}
 			PreviewActivity.renderStatus.reset();
 			intent.setAction(null);
 			applyProjectSession(NO_SHADER,

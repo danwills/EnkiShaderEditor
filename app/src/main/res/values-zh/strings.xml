@@ -536,5 +536,4 @@
 	<string name="channel_wrap_clamp">钳制</string>
 	<string name="channel_wrap_repeat">重复</string>
 	<string name="buffers_capture_unsupported">自定义分辨率和序列暂不支持带离屏缓冲区的着色器</string>
-	<string name="buffers_export_image_only">只包含 Image 通道 - 离屏缓冲区暂不导出</string>
 </resources>
