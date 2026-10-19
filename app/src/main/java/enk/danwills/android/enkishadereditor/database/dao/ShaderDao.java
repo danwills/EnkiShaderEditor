@@ -366,6 +366,7 @@ public class ShaderDao {
 		db.delete(DatabaseContract.ShaderColumns.TABLE_NAME,
 				DatabaseContract.ShaderColumns._ID + " = ?",
 				new String[]{String.valueOf(id)});
+		BufferDao.deleteBuffers(db, id);
 	}
 	// endregion
 
@@ -579,7 +580,9 @@ public class ShaderDao {
 							sourceModifiedDate,
 							cursor.getBlob(thumbIndex),
 							cursor.getFloat(qualityIndex));
-					if (shaderId < 1) {
+					if (shaderId < 1 || !BufferDao.importBuffers(dst, src,
+							CursorHelpers.getLong(cursor, DatabaseContract.ShaderColumns._ID),
+							shaderId)) {
 						success = false;
 						break;
 					}

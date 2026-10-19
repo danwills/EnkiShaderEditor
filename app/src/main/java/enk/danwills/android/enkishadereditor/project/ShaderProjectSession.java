@@ -91,6 +91,20 @@ public final class ShaderProjectSession implements Serializable {
 				shaderId);
 	}
 
+	// See ShaderProject.withBufferSources(). Falls back to the entry file
+	// as the active one if the active buffer was just removed.
+	@NonNull
+	public ShaderProjectSession withBufferSources(@NonNull String[] sources) {
+		ShaderProject updated = project.withBufferSources(sources);
+		return new ShaderProjectSession(
+				updated,
+				updated.hasFile(activeFilePath)
+						? activeFilePath
+						: updated.getEntryFilePath(),
+				quality,
+				shaderId);
+	}
+
 	@NonNull
 	public ShaderProjectSession withFileSource(@NonNull String path,
 			@NonNull String source) {

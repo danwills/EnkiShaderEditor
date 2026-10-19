@@ -59,6 +59,26 @@ public final class DatabaseContract {
 	}
 
 	/**
+	 * Defines the contents of the 'shader_buffers' table: the offscreen
+	 * buffer passes (Buffer A-D) of a multipass shader, one row each.
+	 * The shaders row holds the Image pass. A shader with no rows here
+	 * is an ordinary single-pass one.
+	 */
+	public interface BufferColumns extends BaseColumns {
+		String TABLE_NAME = "shader_buffers";
+		String SHADER_ID = "shader_id";
+		// 0..3 for Buffer A..D.
+		String BUFFER = "buffer";
+		String SOURCE = "source";
+		// Same meaning as ShaderColumns' COMPILED_BINARY_*, for this
+		// buffer's own program - see BufferDao.getCompiledBinary().
+		String COMPILED_BINARY = "compiled_binary";
+		String COMPILED_BINARY_FORMAT = "compiled_binary_format";
+		String COMPILED_BINARY_SOURCE_HASH = "compiled_binary_source_hash";
+		String COMPILED_BINARY_DRIVER_SIG = "compiled_binary_driver_sig";
+	}
+
+	/**
 	 * Defines the contents of the 'textures' table.
 	 */
 	public interface TextureColumns extends BaseColumns {

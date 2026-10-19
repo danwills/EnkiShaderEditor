@@ -8,6 +8,12 @@ import java.util.Objects;
 
 public final class ShaderProjectPaths {
 	public static final String DEFAULT_ENTRY_FILE = "main.glsl";
+	// Offscreen buffer passes (Buffer A-D) live at these reserved paths
+	// beside the entry file, which is always the Image pass - see
+	// ShaderProject.getBufferSources().
+	public static final int MAX_BUFFERS = 4;
+	private static final String BUFFER_DIRECTORY = "buffers/";
+	private static final String BUFFER_EXTENSION = ".glsl";
 
 	private ShaderProjectPaths() {
 	}
@@ -52,6 +58,26 @@ public final class ShaderProjectPaths {
 			}
 		}
 		return builder.toString();
+	}
+
+	@NonNull
+	public static String getBufferPath(int buffer) {
+		return BUFFER_DIRECTORY + getBufferLetter(buffer) + BUFFER_EXTENSION;
+	}
+
+	// 0..MAX_BUFFERS - 1 for a buffer pass's path, -1 for anything else.
+	public static int getBufferIndex(@NonNull String path) {
+		String normalized = normalize(path);
+		for (int buffer = 0; buffer < MAX_BUFFERS; ++buffer) {
+			if (getBufferPath(buffer).equals(normalized)) {
+				return buffer;
+			}
+		}
+		return -1;
+	}
+
+	public static char getBufferLetter(int buffer) {
+		return (char) ('A' + buffer);
 	}
 
 	@NonNull

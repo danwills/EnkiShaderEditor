@@ -110,6 +110,46 @@ public final class ShaderProject implements Serializable {
 		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
 	}
 
+	// Indexed by buffer (0 = A), null where the project has no such
+	// buffer - see ShaderProjectPaths.getBufferPath().
+	@NonNull
+	public String[] getBufferSources() {
+		String[] sources = new String[ShaderProjectPaths.MAX_BUFFERS];
+		for (int buffer = 0; buffer < sources.length; ++buffer) {
+			ShaderProjectFile file = filesByPath.get(ShaderProjectPaths.getBufferPath(buffer));
+			sources[buffer] = file != null ? file.source() : null;
+		}
+		return sources;
+	}
+
+	public boolean hasBuffers() {
+		for (String source : getBufferSources()) {
+			if (source != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Replaces every buffer file with `sources` (same layout as
+	// getBufferSources()), keeping all other files as they are.
+	@NonNull
+	public ShaderProject withBufferSources(@NonNull String[] sources) {
+		ArrayList<ShaderProjectFile> updatedFiles = new ArrayList<>(files.size());
+		for (ShaderProjectFile file : files) {
+			if (ShaderProjectPaths.getBufferIndex(file.path()) < 0) {
+				updatedFiles.add(file);
+			}
+		}
+		for (int buffer = 0; buffer < ShaderProjectPaths.MAX_BUFFERS; ++buffer) {
+			if (buffer < sources.length && sources[buffer] != null) {
+				updatedFiles.add(new ShaderProjectFile(
+						ShaderProjectPaths.getBufferPath(buffer), sources[buffer]));
+			}
+		}
+		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
+	}
+
 	@NonNull
 	private static String requireText(String value, String name) {
 		String text = Objects.requireNonNull(value, name).trim();

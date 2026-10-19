@@ -190,7 +190,8 @@ public class ShaderWallpaperService extends WallpaperService {
 				ShaderEditorApp.preferences.setWallpaperShader(shader.id());
 			}
 
-			return new LegacyShaderProjectSource(shader).openSession();
+			return new LegacyShaderProjectSource(shader,
+					dataSource.buffer.getBufferSources(shader.id())).openSession();
 		}
 
 		private class ShaderWallpaperView extends ShaderView {

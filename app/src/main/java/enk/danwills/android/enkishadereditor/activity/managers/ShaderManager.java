@@ -166,12 +166,40 @@ public class ShaderManager {
 		return getEditedProjectSession(editorFragment.getText());
 	}
 
+	// `editorText` is what the editor currently shows, which is the
+	// *active* file's source - the entry (Image pass) file's only while
+	// that's the one open, see setActiveFile().
 	@NonNull
 	public ShaderProjectSession getEditedProjectSession(
-			@NonNull String entryPointSource) {
-		return getCurrentProjectSession()
-				.withEntryPointSource(entryPointSource)
+			@NonNull String editorText) {
+		ShaderProjectSession session = getCurrentProjectSession();
+		return session
+				.withFileSource(session.getActiveFilePath(), editorText)
 				.withQuality(quality);
+	}
+
+	@NonNull
+	public String getActiveFilePath() {
+		return getCurrentProjectSession().getActiveFilePath();
+	}
+
+	// Commits the editor's text into the active file, then makes `path`
+	// the active one and returns its source for the editor to show.
+	@NonNull
+	public String setActiveFile(@NonNull String path) {
+		currentProjectSession = getEditedProjectSession().withActiveFile(path);
+		return currentProjectSession.getActiveFile().source();
+	}
+
+	// Adds/removes offscreen buffers, see ShaderProject.withBufferSources().
+	// The editor's text is committed first, and if the active file was a
+	// buffer that's now gone the entry file becomes active - the caller
+	// should then show getActiveFile()'s source.
+	@NonNull
+	public ShaderProjectSession setBufferSources(@NonNull String[] sources) {
+		currentProjectSession = getEditedProjectSession().withBufferSources(sources);
+		setModified(true);
+		return currentProjectSession;
 	}
 
 	public void selectShader(long id) {
@@ -191,8 +219,8 @@ public class ShaderManager {
 			return;
 		}
 
-		ShaderProjectSession projectSession =
-				new LegacyShaderProjectSource(shader).openSession();
+		ShaderProjectSession projectSession = new LegacyShaderProjectSource(shader,
+				dataSource.buffer.getBufferSources(id)).openSession();
 		ShaderEditorApp.preferences.setLastOpenedShader(id);
 		applyProjectSession(id,
 				projectSession,
@@ -208,7 +236,8 @@ public class ShaderManager {
 			return;
 		}
 
-		String src = editorFragment.getText();
+		ShaderProjectSession edited = getEditedProjectSession();
+		String src = edited.getEntryPointSource();
 		if (src.trim().isEmpty() && selectedShaderId <= 0) {
 			return;
 		}
@@ -222,8 +251,13 @@ public class ShaderManager {
 					src, null, thumbnail, quality);
 			shaderListManager.setSelectedShaderId(selectedShaderId);
 		}
+		dataSource.buffer.setBufferSources(selectedShaderId,
+				edited.getProject().getBufferSources());
 
-		currentProjectSession = loadSavedProjectSession(selectedShaderId, src);
+		ShaderProjectSession saved = loadSavedProjectSession(selectedShaderId, src);
+		currentProjectSession = saved.getProject().hasFile(edited.getActiveFilePath())
+				? saved.withActiveFile(edited.getActiveFilePath())
+				: saved;
 		updatePendingCrashShaderId();
 		setModified(false);
 		shaderListManager.loadShadersAsync();
@@ -282,11 +316,15 @@ public class ShaderManager {
 			return NO_SHADER;
 		}
 		var thumbnail = dataSource.shader.getThumbnail(shaderId);
-		return dataSource.shader.insertShader(
+		long newId = dataSource.shader.insertShader(
 				shader.fragmentShader(),
 				null,
 				thumbnail,
 				shader.quality());
+		if (newId > 0) {
+			dataSource.buffer.copyBuffers(shaderId, newId);
+		}
+		return newId;
 	}
 
 	public void deleteShader(long shaderId) {
@@ -318,7 +356,8 @@ public class ShaderManager {
 			@NonNull String fallbackSource) {
 		var shader = dataSource.shader.getShader(shaderId);
 		return shader != null
-				? new LegacyShaderProjectSource(shader).openSession()
+				? new LegacyShaderProjectSource(shader,
+						dataSource.buffer.getBufferSources(shaderId)).openSession()
 				: createScratchProjectSession(fallbackSource, quality);
 	}
 
@@ -328,7 +367,7 @@ public class ShaderManager {
 		selectedShaderId = shaderId;
 		currentProjectSession = projectSession;
 		quality = projectSession.getQuality();
-		editorFragment.setText(projectSession.getEntryPointSource());
+		editorFragment.setText(projectSession.getActiveFile().source());
 		uiManager.setToolbarTitle(toolbarTitle);
 		shaderListManager.setSelectedShaderId(selectedShaderId);
 		shaderViewManager.setProjectSession(projectSession);

@@ -15,8 +15,18 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 	@NonNull
 	private final String title;
 
+	// Indexed by buffer, see ShaderProject.getBufferSources().
+	@NonNull
+	private final String[] bufferSources;
+
 	public LegacyShaderProjectSource(@NonNull DataRecords.Shader shader) {
+		this(shader, new String[ShaderProjectPaths.MAX_BUFFERS]);
+	}
+
+	public LegacyShaderProjectSource(@NonNull DataRecords.Shader shader,
+			@NonNull String[] bufferSources) {
 		this.shader = Objects.requireNonNull(shader);
+		this.bufferSources = Objects.requireNonNull(bufferSources);
 		title = getTitle(shader);
 		origin = new ShaderProjectOrigin(
 				ShaderProjectOrigin.Type.LEGACY_DB,
@@ -39,7 +49,8 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 				ShaderProjectPaths.DEFAULT_ENTRY_FILE,
 				List.of(new ShaderProjectFile(
 						ShaderProjectPaths.DEFAULT_ENTRY_FILE,
-						shader.fragmentShader())));
+						shader.fragmentShader())))
+				.withBufferSources(bufferSources);
 		return new ShaderProjectSession(
 				project,
 				project.getEntryFilePath(),
