@@ -35,7 +35,7 @@ code: |-
   	gl_FragColor = vec4(color, 1.0);
   }
 ---
-ShaderEditor provides up to 10 simultaneous touch points through the `pointers[10]` array (each a `vec3` with x, y in pixels, z = pressure) and `pointerCount` (how many are active).
+ShaderEditor provides up to 10 simultaneous touch points through the `pointers[10]` array (each a `vec3` with x, y in pixels, z = the size of the touch) and `pointerCount` (how many are active).
 
 The background is a smooth UV gradient animated by `time`. For each active pointer, the shader computes the `distance()` from the current pixel to the touch position, wraps it through `sin()` to create rings, then blends it into the background using `mix()` with a **negative factor** (`-0.5`). Negative mix factors extrapolate rather than interpolate, creating the characteristic dark ripple inversion.
 

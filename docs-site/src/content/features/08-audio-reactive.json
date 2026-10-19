@@ -1,9 +1,9 @@
 {
   "order": 8,
   "icon": "volume-2",
-  "title": "Audio Reactive",
-  "desc": "Microphone amplitude and media volume drive your visuals.",
-  "detail": "Read microphone input as a 0–1 amplitude value, or tap into the current media volume each frame. Build music visualizers, audio-reactive art, or live VJ tools.",
+  "title": "Sound",
+  "desc": "Let sound move the picture.",
+  "detail": "micAmplitude gives the microphone level and mediaVolume the current media volume. audioSpectrum is a ShaderToy-style 512×2 texture of the spectrum and waveform, taken from the microphone or, on Android 10 and later, from audio playing on the phone.",
   "media": "media/feat-audio.webm",
   "mediaType": "video",
   "poster": "media/feat-audio.webp",

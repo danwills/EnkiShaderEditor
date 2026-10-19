@@ -1,9 +1,9 @@
 {
   "order": 6,
   "icon": "code",
-  "title": "Editor Power Features",
-  "desc": "Undo/redo, completions, bracket pairing, and ShaderToy import.",
-  "detail": "Completions appear above the keyboard as you type. Auto-indenting and bracket pairing keep your code tidy. Paste ShaderToy code and it auto-converts to ShaderEditor uniforms. Several coding fonts with ligature support are included.",
+  "title": "Editor Comforts",
+  "desc": "Undo/redo, keyword completions and auto-indent.",
+  "detail": "Completions for GLSL keywords and built-ins appear above the keyboard, beside keys for Tab and pausing the shader. New lines keep the current indent. Several coding fonts are included, some with optional ligatures. With a hardware keyboard, hotkeys cover saving, finding, undo, screenshots and more.",
   "media": "media/feat-editor.webm",
   "mediaType": "video",
   "poster": "media/feat-editor.webp",

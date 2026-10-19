@@ -2,7 +2,7 @@
   "group": "editing",
   "order": 1,
   "title": "Live editing",
-  "desc": "Type GLSL and watch the shader update behind the editor in real-time.",
+  "desc": "Type GLSL and the shader updates behind the editor.",
   "icon": "code",
   "accent": "cyan",
   "src": "media/screen-editor.webm",

@@ -12,16 +12,21 @@ const base = import.meta.env.BASE_URL;
 
   <div class="container hero-content">
     <div class="hero-text">
+      <p class="hero-fork animate-in">
+        A fork of <a href="https://github.com/markusfisch/ShaderEditor" target="_blank" rel="noopener noreferrer">ShaderEditor</a> by Markus Fisch
+      </p>
       <h1 class="hero-title animate-in">
-        <span class="hero-title-line">Write shaders.</span>
-        <span class="hero-title-line hero-title-gradient">See them live.</span>
-        <span class="hero-title-line">Wear them.</span>
+        <span class="hero-title-line">Sketch with shaders.</span>
+        <span class="hero-title-line hero-title-gradient">Nudge a number.</span>
+        <span class="hero-title-line">See what happens.</span>
       </h1>
 
       <p class="hero-desc animate-in delay-1">
-        A full GLSL editor for Android with instant preview, syntax highlighting,
-        40+ built-in uniforms for sensors, camera, touch and more &mdash;
-        plus live wallpaper support. Free &amp; open source.
+        A GLSL editor for Android where the shader runs behind your code while
+        you write it. Shaders can read touch, motion sensors, the camera, sound
+        and their own previous frame, so there's plenty to poke at. Keep one as
+        your live wallpaper, or save stills, frame sequences and MP4s of what
+        you find. Free and open source.
       </p>
 
       <div class="hero-actions animate-in delay-2">
@@ -29,7 +34,7 @@ const base = import.meta.env.BASE_URL;
           <Icon name="download" size={18} />
           Download
         </a>
-        <a href="https://github.com/markusfisch/ShaderEditor" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">
+        <a href="https://github.com/danwills/EnkiShaderEditor" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">
           <GitHubIcon size={18} />
           Source Code
         </a>
@@ -42,13 +47,13 @@ const base = import.meta.env.BASE_URL;
         </div>
         <div class="hero-stat-sep"></div>
         <div class="hero-stat">
-          <span class="hero-stat-value">10+</span>
+          <span class="hero-stat-value">10</span>
           <span class="hero-stat-label">Sensors</span>
         </div>
         <div class="hero-stat-sep"></div>
         <div class="hero-stat">
-          <span class="hero-stat-value">GLES 2–3.2</span>
-          <span class="hero-stat-label">Supported</span>
+          <span class="hero-stat-value">GLSL ES 1.0 &amp; 3.x</span>
+          <span class="hero-stat-label">Shaders</span>
         </div>
         <div class="hero-stat-sep"></div>
         <div class="hero-stat">
@@ -108,6 +113,19 @@ const base = import.meta.env.BASE_URL;
     gap: 4rem;
     align-items: center;
     position: relative; z-index: 1;
+  }
+
+  .hero-fork {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 1.25rem;
+  }
+
+  .hero-fork a {
+    color: var(--text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 
   .hero-title {

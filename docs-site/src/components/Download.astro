@@ -9,10 +9,17 @@ const base = import.meta.env.BASE_URL;
       <div class="download-glow-2 gradient-orb"></div>
 
       <span class="section-label">Download</span>
-      <h2 class="section-title">Get ShaderEditor</h2>
+      <h2 class="section-title">Get Enki Shader Editor</h2>
       <p class="download-desc">
-        Free and open source. Available on F-Droid and Google Play.
-        Looking for the Enki fork? <a href={`${base}enki/`}>Download the Enki Shader Editor APK</a>.
+        Free and open source. For now, Enki is available as a direct APK download.
+      </p>
+
+      <div class="download-primary">
+        <a href={`${base}enki/`} class="btn btn-primary">Download the Enki APK</a>
+      </div>
+
+      <p class="download-original">
+        The original ShaderEditor by Markus Fisch is on F-Droid and Google Play:
       </p>
 
       <div class="download-badges">
@@ -43,7 +50,7 @@ const base = import.meta.env.BASE_URL;
       <div class="download-meta">
         <div class="meta-item">
           <span class="meta-label">Version</span>
-          <span class="meta-value">2.36.1</span>
+          <span class="meta-value">2.36.3</span>
         </div>
         <div class="meta-divider"></div>
         <div class="meta-item">
@@ -58,7 +65,13 @@ const base = import.meta.env.BASE_URL;
       </div>
 
       <div class="download-support">
-        <p class="support-text">Support the developer:</p>
+        <p class="support-text">Support Enki development:</p>
+        <div class="support-links">
+          <a href="https://www.patreon.com/ultraiterator" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-small">
+            Patreon
+          </a>
+        </div>
+        <p class="support-text support-text-original">Support Markus Fisch, the original author:</p>
         <div class="support-links">
           <a href="https://www.buymeacoffee.com/markusfisch" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-small">
             ☕ Buy me a coffee
@@ -122,6 +135,22 @@ const base = import.meta.env.BASE_URL;
     color: var(--text-secondary);
     margin-bottom: 2.5rem;
     position: relative;
+  }
+
+  .download-primary {
+    margin-bottom: 2.5rem;
+    position: relative;
+  }
+
+  .download-original {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    position: relative;
+  }
+
+  .support-text-original {
+    margin-top: 1.5rem;
   }
 
   .download-badges {

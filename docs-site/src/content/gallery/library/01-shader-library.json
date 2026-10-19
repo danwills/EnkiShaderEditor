@@ -2,7 +2,7 @@
   "group": "library",
   "order": 1,
   "title": "Shader library",
-  "desc": "Side drawer with saved shaders and live-rendered thumbnails.",
+  "desc": "A side drawer of your saved shaders with thumbnails, grouped by name.",
   "icon": "library",
   "accent": "lime",
   "src": "media/screen-shaderlist.webm",

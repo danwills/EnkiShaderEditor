@@ -1,8 +1,8 @@
 {
   "group": "editing",
   "order": 2,
-  "title": "Smart completions",
-  "desc": "Context-aware completions above the keyboard with bracket keys and identifiers.",
+  "title": "Completions",
+  "desc": "GLSL keyword completions above the keyboard, next to Tab and pause keys.",
   "icon": "keyboard",
   "accent": "magenta",
   "src": "media/screen-keyboard.webm",
