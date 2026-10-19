@@ -18,8 +18,11 @@
 		<item>正方形 512×512</item>
 		<item>正方形 1024×1024</item>
 		<item>正方形 2048×2048</item>
+		<item>正方形 4096×4096</item>
+		<item>正方形 8192×8192</item>
 		<item>HD 720 (1280×720)</item>
 		<item>HD 1080 (1920×1080)</item>
 		<item>4K (3840×2160)</item>
+		<item>8K (7680×4320)</item>
 	</string-array>
 </resources>
