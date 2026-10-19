@@ -39,6 +39,7 @@ import enk.danwills.android.enkishadereditor.adapter.ShaderTreeAdapter;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 import enk.danwills.android.enkishadereditor.database.DataSource;
+import enk.danwills.android.enkishadereditor.shaderorg.ShaderNameNode;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 
@@ -63,6 +64,10 @@ public class ShaderListManager {
 		void onConfigureSimilarShaders();
 
 		void onFindShader();
+
+		// Long-pressing a group in the name tree: build a shader pack
+		// starting from every shader in it.
+		void onBuildShaderPack(@NonNull List<Long> shaderIds);
 	}
 
 	private final Activity activity;
@@ -98,6 +103,15 @@ public class ShaderListManager {
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final CoalescingReloadGate reloadGate = new CoalescingReloadGate();
 
+	private static void collectShaderIds(@NonNull ShaderNameNode node, @NonNull List<Long> ids) {
+		if (node.shader != null) {
+			ids.add(node.shader.id());
+		}
+		for (var child : node.children.values()) {
+			collectShaderIds(child, ids);
+		}
+	}
+
 	public ShaderListManager(@NonNull Activity activity,
 			@NonNull ListView listView,
 			@NonNull DataSource dataSource,
@@ -129,6 +143,11 @@ public class ShaderListManager {
 				var row = shaderTreeAdapter.getRow(position);
 				var shader = row.node().shader;
 				if (shader == null) {
+					var ids = new ArrayList<Long>();
+					collectShaderIds(row.node(), ids);
+					if (!ids.isEmpty()) {
+						listener.onBuildShaderPack(ids);
+					}
 					return true;
 				}
 				var title = shader.getTitle();

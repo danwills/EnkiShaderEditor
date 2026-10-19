@@ -60,6 +60,14 @@
 			app:icon="@drawable/ic_layers" />
 
 		<Button
+			android:id="@+id/build_shader_pack"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/build_shader_pack"
+			app:icon="@drawable/ic_pack" />
+
+		<Button
 			android:id="@+id/play_recent_recordings"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

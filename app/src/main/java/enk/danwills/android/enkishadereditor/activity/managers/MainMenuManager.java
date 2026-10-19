@@ -77,6 +77,8 @@ public class MainMenuManager {
 
 		void onOffscreenBuffers();
 
+		void onBuildShaderPack();
+
 		void onPlayLocalMusic();
 	}
 
@@ -160,6 +162,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.hotkeys, navigationActions::onShowHotkeys);
 		setMoreOptionsClickListener(R.id.adjust_defines, navigationActions::onAdjustDefines);
 		setMoreOptionsClickListener(R.id.offscreen_buffers, navigationActions::onOffscreenBuffers);
+		setMoreOptionsClickListener(R.id.build_shader_pack, navigationActions::onBuildShaderPack);
 		setMoreOptionsClickListener(R.id.play_local_music, navigationActions::onPlayLocalMusic);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 

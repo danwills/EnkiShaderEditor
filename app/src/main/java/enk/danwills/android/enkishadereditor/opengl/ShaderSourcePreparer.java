@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,6 +29,8 @@ final class ShaderSourcePreparer {
 	private static final Pattern PATTERN_FTIME = Pattern.compile(
 			"^#define[ \\t]+FTIME_PERIOD[ \\t]+([0-9.]+)[ \\t]*$",
 			Pattern.MULTILINE);
+	private static final Pattern PATTERN_PRESET = Pattern.compile(
+			"[;/]p:(" + AbstractSamplerPropertiesFragment.TEXTURE_NAME_PATTERN + ")");
 	private static final Pattern PATTERN_GLES3_VERSION = Pattern.compile(
 			"^#version 3[0-9]{2} es$",
 			Pattern.MULTILINE);
@@ -247,6 +250,30 @@ final class ShaderSourcePreparer {
 				input.getLineMapping().addInsertedLinesAfterSourceLine(
 						countSourceLines(source, end),
 						countLines(text)));
+	}
+
+	// Adds every saved-texture name `source` refers to: its sampler
+	// declarations (other than the backbuffer and iChannel slots) and any
+	// backbuffer preset (`///p:name;`) - see TextureReferences.
+	static void collectTextureNames(@Nullable String source, @NonNull Set<String> names) {
+		if (source == null) {
+			return;
+		}
+		for (Matcher matcher = PATTERN_SAMPLER.matcher(source); matcher.find(); ) {
+			String name = matcher.group(2);
+			if (name == null || ChannelParameters.getChannelIndex(name) >= 0) {
+				continue;
+			}
+			if (ShaderRenderer.UNIFORM_BACKBUFFER.equals(name)) {
+				Matcher preset = PATTERN_PRESET.matcher(
+						matcher.group(3) != null ? matcher.group(3) : "");
+				if (preset.find()) {
+					names.add(preset.group(1));
+				}
+				continue;
+			}
+			names.add(name);
+		}
 	}
 
 	private static float parseFTime(@Nullable String source) {

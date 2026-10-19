@@ -134,6 +134,7 @@ import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
+import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 
 public class MainActivity extends AppCompatActivity {
 	private static final String CODE_VISIBLE = "code_visible";
@@ -924,6 +925,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onBuildShaderPack(@NonNull List<Long> shaderIds) {
+				ShaderPackBuilderDialog.show(MainActivity.this, shaderIds);
+			}
+
+			@Override
 			public void onConfigureSimilarShaders() {
 				showSimilarShadersConfigDialog();
 			}
@@ -1274,6 +1280,11 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onOffscreenBuffers() {
 				showOffscreenBuffersDialog();
+			}
+
+			@Override
+			public void onBuildShaderPack() {
+				ShaderPackBuilderDialog.show(MainActivity.this, List.of());
 			}
 
 			@Override

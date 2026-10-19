@@ -540,4 +540,19 @@
 	<plurals name="shader_pack_installed">
 		<item quantity="other">已安装 %1$s：%2$d 个着色器</item>
 	</plurals>
+	<string name="build_shader_pack">创建着色器包</string>
+	<string name="pack_title_hint">包标题</string>
+	<string name="pack_id_hint">包 ID</string>
+	<string name="pack_version_hint">版本</string>
+	<string name="pack_author_hint">作者</string>
+	<string name="pack_description_hint">描述 - 包里有什么，供考虑获取它的人参考</string>
+	<string name="pack_filter_hint">筛选着色器</string>
+	<string name="save_shader_pack">保存包</string>
+	<string name="pack_needs_title">请为包输入标题</string>
+	<string name="pack_needs_shaders">请至少选择一个着色器</string>
+	<string name="shader_pack_saved">已将 %1$s 保存到下载</string>
+	<string name="shader_pack_save_failed">无法保存包：%1$s</string>
+	<plurals name="pack_selected_count">
+		<item quantity="other">已选择 %d 个着色器</item>
+	</plurals>
 </resources>

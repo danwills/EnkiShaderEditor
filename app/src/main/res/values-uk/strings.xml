@@ -580,4 +580,22 @@
 		<item quantity="many">%1$s встановлено: %2$d шейдерів</item>
 		<item quantity="other">%1$s встановлено: %2$d шейдера</item>
 	</plurals>
+	<string name="build_shader_pack">Зібрати набір шейдерів</string>
+	<string name="pack_title_hint">Назва набору</string>
+	<string name="pack_id_hint">ID набору</string>
+	<string name="pack_version_hint">Версія</string>
+	<string name="pack_author_hint">Автор</string>
+	<string name="pack_description_hint">Опис - що в наборі, для тих, хто вирішує, чи брати його</string>
+	<string name="pack_filter_hint">Фільтр шейдерів</string>
+	<string name="save_shader_pack">Зберегти набір</string>
+	<string name="pack_needs_title">Дайте набору назву</string>
+	<string name="pack_needs_shaders">Виберіть хоча б один шейдер</string>
+	<string name="shader_pack_saved">%1$s збережено в Завантаження</string>
+	<string name="shader_pack_save_failed">Не вдалося зберегти набір: %1$s</string>
+	<plurals name="pack_selected_count">
+		<item quantity="one">Вибрано %d шейдер</item>
+		<item quantity="few">Вибрано %d шейдери</item>
+		<item quantity="many">Вибрано %d шейдерів</item>
+		<item quantity="other">Вибрано %d шейдера</item>
+	</plurals>
 </resources>

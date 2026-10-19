@@ -569,4 +569,20 @@
 		<item quantity="one">%1$s installed: %2$d shader</item>
 		<item quantity="other">%1$s installed: %2$d shaders</item>
 	</plurals>
+	<string name="build_shader_pack">Build Shader Pack</string>
+	<string name="pack_title_hint">Pack title</string>
+	<string name="pack_id_hint">Pack id</string>
+	<string name="pack_version_hint">Version</string>
+	<string name="pack_author_hint">Author</string>
+	<string name="pack_description_hint">Description - what\'s in the pack, for anyone deciding whether to get it</string>
+	<string name="pack_filter_hint">Filter shaders</string>
+	<string name="save_shader_pack">Save Pack</string>
+	<string name="pack_needs_title">Give the pack a title</string>
+	<string name="pack_needs_shaders">Pick at least one shader</string>
+	<string name="shader_pack_saved">Saved %1$s to Downloads</string>
+	<string name="shader_pack_save_failed">Couldn\'t save the pack: %1$s</string>
+	<plurals name="pack_selected_count">
+		<item quantity="one">%d shader selected</item>
+		<item quantity="other">%d shaders selected</item>
+	</plurals>
 </resources>

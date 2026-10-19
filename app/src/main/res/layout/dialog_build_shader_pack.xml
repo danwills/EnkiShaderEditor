@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- See ShaderPackBuilderDialog. The shader checklist scrolls on its own,
+	so the dialog itself doesn't. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:paddingHorizontal="20dp"
+	android:paddingTop="8dp">
+
+	<EditText
+		android:id="@+id/pack_title"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:hint="@string/pack_title_hint"
+		android:importantForAutofill="no"
+		android:inputType="textCapWords"
+		android:maxLines="1" />
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="horizontal">
+
+		<EditText
+			android:id="@+id/pack_id"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:hint="@string/pack_id_hint"
+			android:importantForAutofill="no"
+			android:inputType="text"
+			android:maxLines="1" />
+
+		<EditText
+			android:id="@+id/pack_version"
+			android:layout_width="96dp"
+			android:layout_height="wrap_content"
+			android:hint="@string/pack_version_hint"
+			android:importantForAutofill="no"
+			android:inputType="number"
+			android:maxLines="1" />
+	</LinearLayout>
+
+	<EditText
+		android:id="@+id/pack_author"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:hint="@string/pack_author_hint"
+		android:importantForAutofill="no"
+		android:inputType="textPersonName"
+		android:maxLines="1" />
+
+	<EditText
+		android:id="@+id/pack_description"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="top"
+		android:hint="@string/pack_description_hint"
+		android:importantForAutofill="no"
+		android:inputType="textMultiLine|textCapSentences"
+		android:maxLines="6"
+		android:minLines="3" />
+
+	<EditText
+		android:id="@+id/pack_filter"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:hint="@string/pack_filter_hint"
+		android:importantForAutofill="no"
+		android:inputType="text"
+		android:maxLines="1" />
+
+	<TextView
+		android:id="@+id/pack_selected_count"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingTop="8dp"
+		android:textAppearance="?attr/textAppearanceCaption" />
+
+	<ListView
+		android:id="@+id/pack_shaders"
+		android:layout_width="match_parent"
+		android:layout_height="220dp"
+		android:choiceMode="multipleChoice" />
+
+</LinearLayout>
