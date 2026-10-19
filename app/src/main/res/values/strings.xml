@@ -607,4 +607,5 @@
 	<string name="pack_author_label">Author</string>
 	<string name="pack_description_label">Description - shown when browsing packs</string>
 	<string name="pack_shaders_label">Shaders in the pack</string>
+	<string name="filter_shaders_packs">Packs</string>
 </resources>

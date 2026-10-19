@@ -40,6 +40,10 @@ public class ShaderTreeAdapter extends BaseAdapter {
 
 	private final int textColorSelected;
 	private final int textColorUnselected;
+	private final int textColorPack;
+	// Whether pack shaders' names get their own colour - see
+	// setHighlightPacks().
+	private boolean highlightPacks = true;
 	private final int textColorGroup;
 	private final Drawable highlightRing;
 	private final int indentPx;
@@ -70,6 +74,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	public ShaderTreeAdapter(Context context) {
 		textColorSelected = ContextCompat.getColor(context, R.color.accent);
 		textColorUnselected = ContextCompat.getColor(context, R.color.drawer_text_unselected);
+		textColorPack = ContextCompat.getColor(context, R.color.pack_shader);
 		// `secondary_text` is a dark color meant for light surfaces; the
 		// drawer background here is dark, so group labels need a light
 		// color like the other drawer text, just a bit dimmer.
@@ -82,6 +87,13 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	public void setData(@NonNull List<ShaderInfo> shaders) {
 		root = ShaderNameTreeBuilder.build(shaders, unnamedGroupLabel);
 		rebuildVisibleRows();
+		notifyDataSetChanged();
+	}
+
+	// Shaders installed from a shader pack are named in their own colour
+	// to tell them apart - not needed while only pack shaders are shown.
+	public void setHighlightPacks(boolean highlightPacks) {
+		this.highlightPacks = highlightPacks;
 		notifyDataSetChanged();
 	}
 
@@ -293,17 +305,23 @@ public class ShaderTreeAdapter extends BaseAdapter {
 				} else {
 					icon.setImageResource(R.drawable.thumbnail_new_shader);
 				}
-				title.setText(row.node().token);
+				title.setText(row.node().getLabel());
 				if (shader.id() == highlightedShaderId) {
 					root.setForeground(highlightRing);
 				}
 				title.setTextColor(shader.id() == selectedShaderId
 						? textColorSelected
-						: textColorUnselected);
+						: highlightPacks && shader.isFromPack()
+								? textColorPack
+								: textColorUnselected);
 			} else {
-				icon.setImageResource(R.drawable.ic_quick_reference_all);
-				title.setText(row.node().token);
-				title.setTextColor(textColorGroup);
+				icon.setImageResource(row.node().isPack()
+						? R.drawable.ic_pack
+						: R.drawable.ic_quick_reference_all);
+				title.setText(row.node().getLabel());
+				title.setTextColor(highlightPacks && row.node().isPack()
+						? textColorPack
+						: textColorGroup);
 			}
 		}
 	}

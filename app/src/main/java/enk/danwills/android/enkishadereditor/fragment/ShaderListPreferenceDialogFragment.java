@@ -116,6 +116,7 @@ public class ShaderListPreferenceDialogFragment
 				getString(R.string.no_shader_selected),
 				null,
 				null,
+				null,
 				null
 		));
 		listWithEmpty.addAll(shaders);

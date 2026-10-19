@@ -96,6 +96,8 @@ public class ShaderListManager {
 	private long similarityReferenceId = 0;
 	private double similarityThreshold = ShaderSimilarity.DEFAULT_THRESHOLD;
 	private boolean textFilterEnabled = false;
+	// Only shaders installed from shader packs - see refreshDisplayedAdapters().
+	private boolean packsOnly;
 	@NonNull
 	private String textFilterQuery = "";
 
@@ -145,7 +147,7 @@ public class ShaderListManager {
 				var shader = row.node().shader;
 				var ids = new ArrayList<Long>();
 				collectShaderIds(row.node(), ids);
-				Runnable buildPack = () -> listener.onBuildShaderPack(ids, row.node().token);
+				Runnable buildPack = () -> listener.onBuildShaderPack(ids, row.node().getLabel());
 				if (shader == null) {
 					// A group only: building a pack is all there is to do.
 					if (!ids.isEmpty()) {
@@ -210,6 +212,16 @@ public class ShaderListManager {
 		Button findShaderButton = activity.findViewById(R.id.find_shader);
 		if (findShaderButton != null) {
 			findShaderButton.setOnClickListener(v -> listener.onFindShader());
+		}
+
+		CheckBox packsOnlyBox = activity.findViewById(R.id.filter_shaders_packs);
+		if (packsOnlyBox != null) {
+			packsOnlyBox.setOnCheckedChangeListener((box, checked) -> {
+				packsOnly = checked;
+				shaderAdapter.setHighlightPacks(!checked);
+				shaderTreeAdapter.setHighlightPacks(!checked);
+				refreshDisplayedAdapters();
+			});
 		}
 
 		CheckBox filterEnabledBox = activity.findViewById(R.id.filter_shaders_enabled);
@@ -352,6 +364,15 @@ public class ShaderListManager {
 			} else {
 				data = similar;
 			}
+		}
+		if (packsOnly) {
+			List<ShaderInfo> packShaders = new ArrayList<>();
+			for (ShaderInfo shader : data) {
+				if (shader.isFromPack()) {
+					packShaders.add(shader);
+				}
+			}
+			data = packShaders;
 		}
 		if (textFilterEnabled && !textFilterQuery.isEmpty()) {
 			List<ShaderInfo> filtered = new ArrayList<>();

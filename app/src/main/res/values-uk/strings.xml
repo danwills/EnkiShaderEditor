@@ -622,4 +622,5 @@
 	<string name="pack_author_label">Автор</string>
 	<string name="pack_description_label">Опис - видно під час перегляду наборів</string>
 	<string name="pack_shaders_label">Шейдери в наборі</string>
+	<string name="filter_shaders_packs">Набори</string>
 </resources>

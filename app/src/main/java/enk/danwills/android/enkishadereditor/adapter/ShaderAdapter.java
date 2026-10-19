@@ -23,6 +23,10 @@ import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 public class ShaderAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
+	private final int textColorPack;
+	// Whether pack shaders' names get their own colour - see
+	// setHighlightPacks().
+	private boolean highlightPacks = true;
 	private final Drawable highlightRing;
 	private final List<ShaderInfo> shaders = new ArrayList<>();
 	private long selectedShaderId = 0;
@@ -31,6 +35,7 @@ public class ShaderAdapter extends BaseAdapter {
 	public ShaderAdapter(Context context) {
 		this.textColorSelected = ContextCompat.getColor(context, R.color.accent);
 		this.textColorUnselected = ContextCompat.getColor(context, R.color.drawer_text_unselected);
+		this.textColorPack = ContextCompat.getColor(context, R.color.pack_shader);
 		this.highlightRing = ContextCompat.getDrawable(context, R.drawable.search_match_ring);
 	}
 
@@ -64,6 +69,13 @@ public class ShaderAdapter extends BaseAdapter {
 		}
 		holder.bindTo(shaders.get(position));
 		return convertView;
+	}
+
+	// Shaders installed from a shader pack are named in their own colour
+	// to tell them apart - not needed while only pack shaders are shown.
+	public void setHighlightPacks(boolean highlightPacks) {
+		this.highlightPacks = highlightPacks;
+		notifyDataSetChanged();
 	}
 
 	public void setSelectedId(long id) {
@@ -114,6 +126,7 @@ public class ShaderAdapter extends BaseAdapter {
 
 			title.setText(shader.getTitle());
 			title.setTextColor(shader.id() == selectedShaderId ? textColorSelected :
+					highlightPacks && shader.isFromPack() ? textColorPack :
 					textColorUnselected);
 			root.setBackgroundResource(R.drawable.drawer_item_selector);
 			root.setForeground(shader.id() == highlightedShaderId ? highlightRing : null);

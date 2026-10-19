@@ -83,6 +83,14 @@
 				android:maxLines="1"
 				android:importantForAutofill="no"
 				android:enabled="false"/>
+
+			<!-- Show only shaders installed from shader packs - see
+			     ShaderListManager. -->
+			<CheckBox
+				android:id="@+id/filter_shaders_packs"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:text="@string/filter_shaders_packs"/>
 		</LinearLayout>
 
 		<ListView

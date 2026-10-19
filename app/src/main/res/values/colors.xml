@@ -10,6 +10,8 @@
 	<color name="background_editor">#8000</color>
 	<color name="background_item_pressed">#8222</color>
 	<color name="toggle_active">#ffc107</color>
+	<!-- Names of shaders installed from a shader pack, in the sidebar. -->
+	<color name="pack_shader">#c7a6ff</color>
 	<color name="background_progress">#8000</color>
 	<color name="editor_text">#fff</color>
 	<color name="editor_line_numbers">#8888</color>

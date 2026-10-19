@@ -35,8 +35,19 @@ public final class DataRecords {
 			@Nullable
 			String sourceModified,
 			@Nullable
-			byte[] thumb
+			byte[] thumb,
+			// The shader pack it was installed from, or null for the
+			// user's own.
+			@Nullable
+			String packId
 	) implements WithTitle {
+		// Pack shaders are named "<Pack Title>: <name>" - see ShaderDao's
+		// import.
+		public static final String PACK_NAME_SEPARATOR = ": ";
+
+		public boolean isFromPack() {
+			return packId != null && !packId.isEmpty();
+		}
 	}
 
 	/**

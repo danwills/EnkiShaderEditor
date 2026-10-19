@@ -75,7 +75,7 @@ public class ShaderDao {
 	public List<DataRecords.ShaderInfo> getShaders(boolean sortByLastModification) {
 		List<DataRecords.ShaderInfo> shaders = new ArrayList<>();
 		String query =
-				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.THUMB + "," + DatabaseContract.ShaderColumns.NAME + "," + DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED +
+				"SELECT " + DatabaseContract.ShaderColumns._ID + "," + DatabaseContract.ShaderColumns.THUMB + "," + DatabaseContract.ShaderColumns.NAME + "," + DatabaseContract.ShaderColumns.MODIFIED + "," + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + "," + DatabaseContract.ShaderColumns.PACK_ID +
 						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME + " ORDER BY " + (sortByLastModification ?
 						// Sorts by actual code changes, not any save
 						// (autosave can bump MODIFIED with no source edit).
@@ -93,7 +93,9 @@ public class ShaderDao {
 									DatabaseContract.ShaderColumns.MODIFIED),
 							CursorHelpers.getString(cursor,
 									DatabaseContract.ShaderColumns.SOURCE_MODIFIED),
-							CursorHelpers.getBlob(cursor, DatabaseContract.ShaderColumns.THUMB)));
+							CursorHelpers.getBlob(cursor, DatabaseContract.ShaderColumns.THUMB),
+							cursor.getString(cursor.getColumnIndexOrThrow(
+									DatabaseContract.ShaderColumns.PACK_ID))));
 				} while (cursor.moveToNext());
 			}
 		}
@@ -503,6 +505,9 @@ public class ShaderDao {
 					db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " +
 							DatabaseContract.ShaderColumns.PACK_ID + " = NULL;");
 				}
+				if (oldVersion == 12) {
+					renamePackShaders(db);
+				}
 			}
 
 			@Override
@@ -562,7 +567,7 @@ public class ShaderDao {
 
 	// packId: importing a shader pack - each of its shaders becomes a new
 	// shader of its own, tagged with the pack and named
-	// "<PackTitle>.<name>" (so it can't be confused with, or grouped among,
+	// "<Pack Title>: <name>" (so it can't be confused with, or grouped among,
 	// the user's shaders of the same name), unless this pack already
 	// installed that same shader. The user's own shaders are never
 	// touched. Otherwise (a backup), shaders already here (same
@@ -611,7 +616,8 @@ public class ShaderDao {
 					String name = cursor.getString(nameIndex);
 					if (namePrefix != null) {
 						// An unnamed shader goes by its date, as it would here.
-						name = namePrefix + "." + (name == null || name.trim().isEmpty()
+						name = namePrefix + DataRecords.ShaderInfo.PACK_NAME_SEPARATOR +
+								(name == null || name.trim().isEmpty()
 								? createdDate
 								: name.trim());
 					}
@@ -664,8 +670,7 @@ public class ShaderDao {
 		}
 	}
 
-	// The pack's title as one PascalCase word ("Slime Studies" ->
-	// "SlimeStudies"), from the pack file's own pack_info - the id if it
+	// The pack's title, from the pack file's own pack_info - the id if it
 	// has no usable title.
 	@NonNull
 	private static String packNamePrefix(SQLiteDatabase src, String packId) {
@@ -678,13 +683,37 @@ public class ShaderDao {
 		} catch (SQLiteException e) {
 			// No pack_info - use the id.
 		}
-		var prefix = new StringBuilder();
-		for (String word : (title != null ? title : packId).split("[^A-Za-z0-9]+")) {
-			if (!word.isEmpty()) {
-				prefix.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+		// Never containing the separator itself, so the name splits back
+		// into pack and shader unambiguously.
+		String prefix = (title != null ? title : packId)
+				.replace(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.trim(), "").trim();
+		return prefix.isEmpty() ? packId : prefix;
+	}
+
+	// v12 named pack shaders "<PackTitleInPascalCase>.<name>" - rename
+	// them to the current "<Pack Title>: <name>".
+	private static void renamePackShaders(@NonNull SQLiteDatabase db) {
+		try (Cursor cursor = db.rawQuery("SELECT s." + DatabaseContract.ShaderColumns._ID +
+				", s." + DatabaseContract.ShaderColumns.NAME + ", p." +
+				DatabaseContract.PackColumns.TITLE + " FROM " +
+				DatabaseContract.ShaderColumns.TABLE_NAME + " s JOIN " +
+				DatabaseContract.PackColumns.TABLE_NAME + " p ON s." +
+				DatabaseContract.ShaderColumns.PACK_ID + " = p." +
+				DatabaseContract.PackColumns.PACK_ID, null)) {
+			while (cursor.moveToNext()) {
+				String name = cursor.getString(1);
+				int dot = name != null ? name.indexOf('.') : -1;
+				if (dot < 0) {
+					continue;
+				}
+				var cv = new ContentValues();
+				cv.put(DatabaseContract.ShaderColumns.NAME, cursor.getString(2) +
+						DataRecords.ShaderInfo.PACK_NAME_SEPARATOR + name.substring(dot + 1));
+				db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
+						DatabaseContract.ShaderColumns._ID + " = ?",
+						new String[]{String.valueOf(cursor.getLong(0))});
 			}
 		}
-		return prefix.length() > 0 ? prefix.toString() : "Pack";
 	}
 
 	private static boolean shaderExists(

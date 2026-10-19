@@ -576,4 +576,5 @@
 	<string name="pack_author_label">作者</string>
 	<string name="pack_description_label">描述 - 瀏覽著色器包時顯示</string>
 	<string name="pack_shaders_label">包中的著色器</string>
+	<string name="filter_shaders_packs">著色器包</string>
 </resources>

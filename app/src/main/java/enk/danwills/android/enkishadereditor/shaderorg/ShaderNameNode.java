@@ -19,8 +19,23 @@ public final class ShaderNameNode {
 	public final Map<String, ShaderNameNode> children = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 	@Nullable
 	public ShaderInfo shader;
+	// Set on a shader pack's own top-level node (see
+	// ShaderNameTreeBuilder): what to show instead of `token`, which for
+	// those is a private key, so a pack never merges with a group that
+	// happens to share its name.
+	@Nullable
+	public String label;
 
 	public ShaderNameNode(@NonNull String token) {
 		this.token = token;
+	}
+
+	@NonNull
+	public String getLabel() {
+		return label != null ? label : token;
+	}
+
+	public boolean isPack() {
+		return label != null;
 	}
 }
