@@ -112,12 +112,15 @@ import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.hardware.LocalMusicPlayer;
 import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
+import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
 import enk.danwills.android.enkishadereditor.opengl.ChannelParameters;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackDelivery;
+import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackStore;
 import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectPaths;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
@@ -133,6 +136,7 @@ import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
+import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 
@@ -1288,6 +1292,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onGetShaderPack() {
+				showGetShaderPackDialog();
+			}
+
+			@Override
 			public void onPlayLocalMusic() {
 				openLocalMusicPlayer();
 			}
@@ -1382,10 +1391,56 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void offerSharedText(@Nullable Intent intent) {
+		Uri pack = shaderManager.takeShaderPackUri(intent);
+		if (pack != null) {
+			installShaderPack(pack);
+			return;
+		}
 		ShaderManager.SharedText shared = shaderManager.readSharedText(intent);
 		if (shared != null) {
 			showQualityPickerDialog(shared.text(), shared.name());
 		}
+	}
+
+	// Shader packs - see ShaderPackInstaller and GetShaderPackDialog. The
+	// store and delivery are stand-ins until real ones are wired up.
+	private final ActivityResultLauncher<String[]> installPackLauncher =
+			registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+				if (uri != null) {
+					installShaderPack(uri);
+				}
+			});
+
+	private void showGetShaderPackDialog() {
+		GetShaderPackDialog.show(this,
+				new UnavailableShaderPackStore(),
+				new UnavailableShaderPackDelivery(this),
+				// Any type: pack files often arrive as octet-stream.
+				() -> installPackLauncher.launch(new String[]{"*/*"}),
+				file -> installShaderPack(() -> ShaderPackInstaller.install(this, file)));
+	}
+
+	private void installShaderPack(@NonNull Uri uri) {
+		installShaderPack(() -> ShaderPackInstaller.install(this, uri));
+	}
+
+	// Not java.util.function's Supplier, which needs API 24.
+	private interface PackInstall {
+		@NonNull
+		ShaderPackInstaller.Result run();
+	}
+
+	private void installShaderPack(@NonNull PackInstall install) {
+		Toast.makeText(this, R.string.installing_shader_pack, Toast.LENGTH_SHORT).show();
+		new Thread(() -> {
+			var result = install.run();
+			runOnUiThread(() -> {
+				Toast.makeText(this, result.message(), Toast.LENGTH_LONG).show();
+				if (result.success()) {
+					shaderListManager.loadShadersAsync();
+				}
+			});
+		}).start();
 	}
 
 	private void showQualityPickerDialog(@NonNull String shaderSource) {

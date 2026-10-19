@@ -555,4 +555,18 @@
 	<plurals name="pack_selected_count">
 		<item quantity="other">已選擇 %d 個著色器</item>
 	</plurals>
+	<string name="get_shader_pack">取得著色器包</string>
+	<string name="install_pack_from_file">從檔案安裝…</string>
+	<string name="pack_status_installed">已安裝 v%1$d</string>
+	<string name="pack_status_purchased">已購買</string>
+	<string name="pack_status_available">可取得</string>
+	<string name="pack_get">取得</string>
+	<string name="pack_purchases_unavailable">此版本暫不支援購買著色器包 - 但仍可從檔案安裝著色器包。</string>
+	<string name="pack_by_author">作者：%1$s</string>
+	<string name="no_shader_packs">這裡還沒有著色器包。</string>
+	<string name="pack_installed_from_files">從檔案安裝的</string>
+	<string name="installing_shader_pack">正在安裝著色器包…</string>
+	<plurals name="pack_shader_count">
+		<item quantity="other">%d 個著色器</item>
+	</plurals>
 </resources>

@@ -594,4 +594,21 @@
 		<item quantity="many">Выбрано %d шейдеров</item>
 		<item quantity="other">Выбрано %d шейдера</item>
 	</plurals>
+	<string name="get_shader_pack">Получить набор шейдеров</string>
+	<string name="install_pack_from_file">Установить из файла…</string>
+	<string name="pack_status_installed">Установлен v%1$d</string>
+	<string name="pack_status_purchased">Куплен</string>
+	<string name="pack_status_available">Доступен</string>
+	<string name="pack_get">Получить</string>
+	<string name="pack_purchases_unavailable">Покупка наборов шейдеров в этой версии пока недоступна - но наборы можно установить из файла.</string>
+	<string name="pack_by_author">автор: %1$s</string>
+	<string name="no_shader_packs">Наборов шейдеров пока нет.</string>
+	<string name="pack_installed_from_files">Установлены из файлов</string>
+	<string name="installing_shader_pack">Установка набора шейдеров…</string>
+	<plurals name="pack_shader_count">
+		<item quantity="one">%d шейдер</item>
+		<item quantity="few">%d шейдера</item>
+		<item quantity="many">%d шейдеров</item>
+		<item quantity="other">%d шейдера</item>
+	</plurals>
 </resources>

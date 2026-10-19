@@ -585,4 +585,19 @@
 		<item quantity="one">%d shader selected</item>
 		<item quantity="other">%d shaders selected</item>
 	</plurals>
+	<string name="get_shader_pack">Get Shader Pack</string>
+	<string name="install_pack_from_file">Install from File…</string>
+	<string name="pack_status_installed">Installed v%1$d</string>
+	<string name="pack_status_purchased">Purchased</string>
+	<string name="pack_status_available">Available</string>
+	<string name="pack_get">Get</string>
+	<string name="pack_purchases_unavailable">Buying shader packs isn\'t available in this version yet - packs can still be installed from a file.</string>
+	<string name="pack_by_author">by %1$s</string>
+	<string name="no_shader_packs">No shader packs here yet.</string>
+	<string name="pack_installed_from_files">Installed from files</string>
+	<string name="installing_shader_pack">Installing shader pack…</string>
+	<plurals name="pack_shader_count">
+		<item quantity="one">%d shader</item>
+		<item quantity="other">%d shaders</item>
+	</plurals>
 </resources>

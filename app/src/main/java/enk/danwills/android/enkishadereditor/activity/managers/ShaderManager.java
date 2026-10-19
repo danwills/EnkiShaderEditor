@@ -335,6 +335,54 @@ public class ShaderManager {
 
 	@Nullable
 	private String getNameWithoutExtension(@NonNull Uri uri) {
+		String name = getDisplayName(uri);
+		if (name == null) {
+			return null;
+		}
+		int dot = name.lastIndexOf('.');
+		if (dot > 0) {
+			name = name.substring(0, dot);
+		}
+		name = name.trim();
+		return name.isEmpty() ? null : name;
+	}
+
+	// A shader pack file (see ShaderPackWriter) opened with or shared to
+	// the app, or null if the intent isn't one - consuming the intent, like
+	// readSharedText(), when it is.
+	@Nullable
+	public Uri takeShaderPackUri(@Nullable Intent intent) {
+		if (intent == null || intent.getAction() == null) {
+			return null;
+		}
+		String action = intent.getAction();
+		Uri uri;
+		if (Intent.ACTION_VIEW.equals(action)) {
+			uri = intent.getData();
+		} else if (Intent.ACTION_SEND.equals(action)) {
+			uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+		} else {
+			return null;
+		}
+		if (uri == null) {
+			return null;
+		}
+		String type = intent.getType() != null
+				? intent.getType()
+				: activity.getContentResolver().getType(uri);
+		String name = getDisplayName(uri);
+		boolean pack = (type != null && type.contains("sqlite")) ||
+				(name != null && (name.endsWith(".sqlite") || name.endsWith(".db")));
+		if (!pack) {
+			return null;
+		}
+		intent.setAction(null);
+		return uri;
+	}
+
+	// The file name (no folders) of what `uri` points at, if it has one.
+	@Nullable
+	private String getDisplayName(@NonNull Uri uri) {
 		String name = null;
 		try (Cursor cursor = activity.getContentResolver().query(uri,
 				new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
@@ -354,12 +402,7 @@ public class ShaderManager {
 		if (slash >= 0) {
 			name = name.substring(slash + 1);
 		}
-		int dot = name.lastIndexOf('.');
-		if (dot > 0) {
-			name = name.substring(0, dot);
-		}
-		name = name.trim();
-		return name.isEmpty() ? null : name;
+		return name;
 	}
 
 	public long duplicateShader(long shaderId) {

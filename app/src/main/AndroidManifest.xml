@@ -124,15 +124,24 @@
 				<data android:mimeType="application/glsl"/>
 				<data android:pathPattern=".*\\.glsl"/>
 				<data android:pathPattern=".*\\.frag"/>
+				<data android:pathPattern=".*\\.sqlite"/>
+			</intent-filter>
+			<!-- Shader pack files (see ShaderPackWriter) opened with or shared
+			     to the app - installed, see MainActivity.offerSharedText(). -->
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW"/>
+				<action android:name="android.intent.action.SEND"/>
+				<category android:name="android.intent.category.DEFAULT"/>
+				<data android:mimeType="application/vnd.sqlite3"/>
+				<data android:mimeType="application/x-sqlite3"/>
 			</intent-filter>
 			<intent-filter>
 				<action android:name="android.intent.action.VIEW"/>
 				<category android:name="android.intent.category.DEFAULT"/>
-				<data
-					android:scheme="file"
-					android:mimeType="*/*"
-					android:pathPattern=".*\\.glsl"
-					android:host="*"/>
+				<data android:scheme="file"/>
+				<data android:host="*"/>
+				<data android:mimeType="*/*"/>
+				<data android:pathPattern=".*\\.glsl"/>
 				<data android:pathPattern=".*\\.frag"/>
 			</intent-filter>
 			<!-- Any plain text file opened with, or text/file shared to, the

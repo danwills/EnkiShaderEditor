@@ -95,6 +95,7 @@ This document captures how the app is structured today so you can change it conf
   - Stores user-imported 2D textures and cube maps (ratio differentiates them).
   - Saves both thumbnails (PNG) and full-resolution PNG matrices. Dimensions feed sampler defaults.
 - `DataRecords` (`database/DataRecords.java:1`) holds immutable records used throughout UI/DAOs.
+- Shader packs (curated sets meant to be sold): a pack file is a standalone SQLite database with the app's own tables holding just the pack's shaders, buffers and textures, plus `pack_info` (id, title, blurb, author, version) and `pack_media` (thumbnails now, screenshots later) - written by `io/ShaderPackWriter` via `PackDao.writePackFile()` (Build Shader Pack, or long-press a sidebar name-tree group), installed by `io/ShaderPackInstaller` (Get Shader Pack -> Install from File, or opening/sharing a `.sqlite` file), which tags each shader's `pack_id` and records the pack in the `packs` table (`database/dao/PackDao`). Get Shader Pack lists `assets/packs/*.json` previews (`pack/ShaderPackCatalog`); buying and delivery go through `pack/ShaderPackStore` / `ShaderPackDelivery`, stubbed (`Unavailable*`) until Play Billing / Play Asset Delivery are wired in.
 - Import/export:
   - `ImportExportAsFiles` (`io/ImportExportAsFiles.java:1`) reads/writes `.glsl` files under `Downloads/EnkiShaderEditor`. Uses legacy storage APIs on Android < Q; guarded by runtime permissions from `PreferencesFragment`.
   - `DatabaseImporter` / `DatabaseExporter` support SAF-based SQLite exports/imports.
