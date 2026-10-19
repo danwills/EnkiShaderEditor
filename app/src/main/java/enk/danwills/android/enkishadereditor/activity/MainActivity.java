@@ -408,12 +408,15 @@ public class MainActivity extends AppCompatActivity {
 		// shared to the app offered on top as Paste as New Shader.
 		if (state == null) {
 			isInitialLoad = true;
+			// Posted, so it runs once start-up has finished - the dialog
+			// pauses the shader and reads the editor, whose view doesn't
+			// exist yet during onCreate(). Only on a fresh start: after
+			// being recreated (e.g. the process was killed in the
+			// background) the system hands back the same launch intent,
+			// which was already dealt with.
+			Intent launchIntent = getIntent();
+			getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 		}
-		// Posted, so it runs once start-up has finished - the dialog
-		// pauses the shader and reads the editor, whose view doesn't
-		// exist yet during onCreate().
-		Intent launchIntent = getIntent();
-		getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 
 		editorFragment.setOnEditPausedListener(text -> {
 			if (ShaderEditorApp.preferences.doesRunOnChange()) {
@@ -783,6 +786,11 @@ public class MainActivity extends AppCompatActivity {
 	protected void onRestoreInstanceState(@NonNull Bundle state) {
 		super.onRestoreInstanceState(state);
 		shaderManager.restoreState(state);
+		// Buffer paths map to their buffer, anything else (the entry file)
+		// to -1, i.e. ShaderError.IMAGE_PASS.
+		editorFragment.restoreActivePass(
+				ShaderProjectPaths.getBufferIndex(shaderManager.getActiveFilePath()));
+		refreshPassTabs();
 		if (!state.getBoolean(CODE_VISIBLE, true)) {
 			uiManager.toggleCodeVisibility();
 		}
@@ -929,8 +937,8 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
-			public void onBuildShaderPack(@NonNull List<Long> shaderIds) {
-				ShaderPackBuilderDialog.show(MainActivity.this, shaderIds);
+			public void onBuildShaderPack(@NonNull List<Long> shaderIds, @NonNull String title) {
+				ShaderPackBuilderDialog.show(MainActivity.this, shaderIds, title);
 			}
 
 			@Override
@@ -1288,7 +1296,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onBuildShaderPack() {
-				ShaderPackBuilderDialog.show(MainActivity.this, List.of());
+				ShaderPackBuilderDialog.show(MainActivity.this, List.of(), null);
 			}
 
 			@Override

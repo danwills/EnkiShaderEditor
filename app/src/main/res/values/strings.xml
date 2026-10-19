@@ -600,4 +600,11 @@
 		<item quantity="one">%d shader</item>
 		<item quantity="other">%d shaders</item>
 	</plurals>
+	<string name="build_shader_pack_from_group">Build Shader Pack from Here</string>
+	<string name="pack_title_label">Title</string>
+	<string name="pack_id_label">Pack id - names the file</string>
+	<string name="pack_version_label">Version</string>
+	<string name="pack_author_label">Author</string>
+	<string name="pack_description_label">Description - shown when browsing packs</string>
+	<string name="pack_shaders_label">Shaders in the pack</string>
 </resources>

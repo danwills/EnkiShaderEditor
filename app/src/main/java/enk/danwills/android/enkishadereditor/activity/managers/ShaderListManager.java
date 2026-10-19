@@ -11,6 +11,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -66,8 +67,8 @@ public class ShaderListManager {
 		void onFindShader();
 
 		// Long-pressing a group in the name tree: build a shader pack
-		// starting from every shader in it.
-		void onBuildShaderPack(@NonNull List<Long> shaderIds);
+		// starting from every shader in it, titled after the group.
+		void onBuildShaderPack(@NonNull List<Long> shaderIds, @NonNull String title);
 	}
 
 	private final Activity activity;
@@ -142,16 +143,36 @@ public class ShaderListManager {
 			if (treeMode) {
 				var row = shaderTreeAdapter.getRow(position);
 				var shader = row.node().shader;
+				var ids = new ArrayList<Long>();
+				collectShaderIds(row.node(), ids);
+				Runnable buildPack = () -> listener.onBuildShaderPack(ids, row.node().token);
 				if (shader == null) {
-					var ids = new ArrayList<Long>();
-					collectShaderIds(row.node(), ids);
+					// A group only: building a pack is all there is to do.
 					if (!ids.isEmpty()) {
-						listener.onBuildShaderPack(ids);
+						buildPack.run();
 					}
 					return true;
 				}
 				var title = shader.getTitle();
-				editShaderName(shader.id(), title != null ? title : "");
+				Runnable rename = () -> editShaderName(shader.id(), title != null ? title : "");
+				if (!row.hasChildren()) {
+					rename.run();
+					return true;
+				}
+				// A shader that's also a group: rename it, or build a pack
+				// from it and everything under it.
+				var menu = new PopupMenu(activity, view);
+				menu.getMenu().add(0, 1, 0, R.string.rename_shader);
+				menu.getMenu().add(0, 2, 1, R.string.build_shader_pack_from_group);
+				menu.setOnMenuItemClickListener(item -> {
+					if (item.getItemId() == 1) {
+						rename.run();
+					} else {
+						buildPack.run();
+					}
+					return true;
+				});
+				menu.show();
 			} else {
 				var title = ((ShaderAdapter) parent.getAdapter()).getItem(position).getTitle();
 				editShaderName(id, title != null ? title : "");

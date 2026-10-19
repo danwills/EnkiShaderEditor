@@ -37,6 +37,7 @@ public class ShaderManager {
 	public final ActivityResultLauncher<Intent> previewShaderLauncher;
 
 	private static final String SELECTED_SHADER_ID = "selected_shader_id";
+	private static final String ACTIVE_FILE_PATH = "active_file_path";
 	private static final long NO_SHADER = 0;
 
 	private final AppCompatActivity activity;
@@ -157,11 +158,36 @@ public class ShaderManager {
 
 	public void saveState(@NonNull Bundle outState) {
 		outState.putLong(SELECTED_SHADER_ID, selectedShaderId);
+		if (currentProjectSession != null) {
+			outState.putString(ACTIVE_FILE_PATH, currentProjectSession.getActiveFilePath());
+		}
 	}
 
+	// After the activity was recreated (e.g. the process was killed in
+	// the background), only the editor's text comes back by itself - so
+	// rebuild the shader's session (its buffer passes above all) from the
+	// database, with the same file active as before. Without this, the
+	// session fell back to a scratch one with no buffers, and the next
+	// autosave deleted a multipass shader's buffers.
 	public void restoreState(@NonNull Bundle savedInstanceState) {
 		selectedShaderId = savedInstanceState.getLong(
 				SELECTED_SHADER_ID, NO_SHADER);
+		if (selectedShaderId <= 0) {
+			return;
+		}
+		var shader = dataSource.shader.getShader(selectedShaderId);
+		if (shader == null) {
+			return;
+		}
+		ShaderProjectSession session = new LegacyShaderProjectSource(shader,
+				dataSource.buffer.getBufferSources(selectedShaderId)).openSession();
+		String activePath = savedInstanceState.getString(ACTIVE_FILE_PATH);
+		if (activePath != null && session.getProject().hasFile(activePath)) {
+			session = session.withActiveFile(activePath);
+		}
+		currentProjectSession = session;
+		quality = session.getQuality();
+		shaderListManager.setSelectedShaderId(selectedShaderId);
 	}
 
 	@NonNull
@@ -251,16 +277,25 @@ public class ShaderManager {
 		}
 
 		byte[] thumbnail = getThumbnail();
+		// Only a session loaded from (or saved as) this very shader knows
+		// its buffers - anything else (a scratch session standing in after
+		// some state was lost) must leave them alone rather than save "no
+		// buffers" over them.
+		boolean ownsBuffers;
 		if (selectedShaderId > 0) {
+			ownsBuffers = edited.getShaderId() == selectedShaderId;
 			dataSource.shader.updateShader(
 					selectedShaderId, src, thumbnail, quality);
 		} else {
+			ownsBuffers = true;
 			selectedShaderId = dataSource.shader.insertShader(
 					src, null, thumbnail, quality);
 			shaderListManager.setSelectedShaderId(selectedShaderId);
 		}
-		dataSource.buffer.setBufferSources(selectedShaderId,
-				edited.getProject().getBufferSources());
+		if (ownsBuffers) {
+			dataSource.buffer.setBufferSources(selectedShaderId,
+					edited.getProject().getBufferSources());
+		}
 
 		ShaderProjectSession saved = loadSavedProjectSession(selectedShaderId, src);
 		currentProjectSession = saved.getProject().hasFile(edited.getActiveFilePath())

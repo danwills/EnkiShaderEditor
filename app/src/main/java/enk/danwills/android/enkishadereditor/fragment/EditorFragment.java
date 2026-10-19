@@ -257,6 +257,21 @@ public class EditorFragment extends Fragment {
 		return activePass;
 	}
 
+	// After the activity was recreated: the editor already shows `pass`'s
+	// text again (restored by the EditText itself), so just make the tabs,
+	// undo history and error marks agree - see ShaderManager.restoreState().
+	public void restoreActivePass(int pass) {
+		if (pass == activePass) {
+			buildPassTabs();
+			return;
+		}
+		activePass = pass;
+		if (undoRedo != null) {
+			undoRedo.setEditHistory(historyFor(pass));
+		}
+		buildPassTabs();
+	}
+
 	// Which buffers the shader has (indexed like ShaderError's passes);
 	// with none, the tabs and channel row are hidden entirely.
 	public void setPassTabs(@NonNull boolean[] buffersPresent) {

@@ -15,6 +15,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -41,21 +42,25 @@ public final class ShaderPackBuilderDialog {
 	private ShaderPackBuilderDialog() {
 	}
 
-	public static void show(@NonNull Activity activity, @NonNull Collection<Long> preselected) {
+	// suggestedTitle: e.g. the sidebar group the pack is being built from.
+	public static void show(@NonNull Activity activity, @NonNull Collection<Long> preselected,
+			@Nullable String suggestedTitle) {
 		Context appContext = activity.getApplicationContext();
 		new Thread(() -> {
 			List<DataRecords.ShaderInfo> shaders = Database.getInstance(appContext)
 					.getDataSource().shader.getShaders(false);
 			activity.runOnUiThread(() -> {
 				if (!activity.isFinishing() && !activity.isDestroyed()) {
-					showDialog(activity, shaders, new LinkedHashSet<>(preselected));
+					showDialog(activity, shaders, new LinkedHashSet<>(preselected),
+							suggestedTitle);
 				}
 			});
 		}).start();
 	}
 
 	private static void showDialog(@NonNull Activity activity,
-			@NonNull List<DataRecords.ShaderInfo> shaders, @NonNull Set<Long> checked) {
+			@NonNull List<DataRecords.ShaderInfo> shaders, @NonNull Set<Long> checked,
+			@Nullable String suggestedTitle) {
 		View view = activity.getLayoutInflater().inflate(R.layout.dialog_build_shader_pack,
 				null);
 		EditText titleView = view.findViewById(R.id.pack_title);
@@ -87,7 +92,23 @@ public final class ShaderPackBuilderDialog {
 			}
 		}));
 
-		var adapter = new ShaderChecklistAdapter(shaders, checked);
+		if (suggestedTitle != null && !suggestedTitle.trim().isEmpty()) {
+			titleView.setText(suggestedTitle.trim());
+		}
+
+		// Ticked shaders first, so a group's pre-ticked ones are in view.
+		var ordered = new ArrayList<DataRecords.ShaderInfo>(shaders.size());
+		for (var shader : shaders) {
+			if (checked.contains(shader.id())) {
+				ordered.add(shader);
+			}
+		}
+		for (var shader : shaders) {
+			if (!checked.contains(shader.id())) {
+				ordered.add(shader);
+			}
+		}
+		var adapter = new ShaderChecklistAdapter(ordered, checked);
 		listView.setAdapter(adapter);
 		Runnable updateCount = () -> countView.setText(activity.getResources()
 				.getQuantityString(R.plurals.pack_selected_count, checked.size(),

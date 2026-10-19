@@ -615,4 +615,11 @@
 		<item quantity="many">%d шейдерів</item>
 		<item quantity="other">%d шейдера</item>
 	</plurals>
+	<string name="build_shader_pack_from_group">Зібрати набір звідси</string>
+	<string name="pack_title_label">Назва</string>
+	<string name="pack_id_label">ID набору - ім\'я файлу</string>
+	<string name="pack_version_label">Версія</string>
+	<string name="pack_author_label">Автор</string>
+	<string name="pack_description_label">Опис - видно під час перегляду наборів</string>
+	<string name="pack_shaders_label">Шейдери в наборі</string>
 </resources>

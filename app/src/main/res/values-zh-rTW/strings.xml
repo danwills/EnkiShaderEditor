@@ -569,4 +569,11 @@
 	<plurals name="pack_shader_count">
 		<item quantity="other">%d 個著色器</item>
 	</plurals>
+	<string name="build_shader_pack_from_group">從這裡建立著色器包</string>
+	<string name="pack_title_label">標題</string>
+	<string name="pack_id_label">包 ID - 用作檔名</string>
+	<string name="pack_version_label">版本</string>
+	<string name="pack_author_label">作者</string>
+	<string name="pack_description_label">描述 - 瀏覽著色器包時顯示</string>
+	<string name="pack_shaders_label">包中的著色器</string>
 </resources>

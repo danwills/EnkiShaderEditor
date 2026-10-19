@@ -611,4 +611,11 @@
 		<item quantity="many">%d шейдеров</item>
 		<item quantity="other">%d шейдера</item>
 	</plurals>
+	<string name="build_shader_pack_from_group">Собрать набор отсюда</string>
+	<string name="pack_title_label">Название</string>
+	<string name="pack_id_label">ID набора - имя файла</string>
+	<string name="pack_version_label">Версия</string>
+	<string name="pack_author_label">Автор</string>
+	<string name="pack_description_label">Описание - видно при просмотре наборов</string>
+	<string name="pack_shaders_label">Шейдеры в наборе</string>
 </resources>
