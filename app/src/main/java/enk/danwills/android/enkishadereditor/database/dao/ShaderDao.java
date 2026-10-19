@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.widget.Toast;
 
@@ -495,6 +496,13 @@ public class ShaderDao {
 				if (oldVersion < 11) {
 					addPackId(db);
 				}
+				if (oldVersion < 12) {
+					// v11's pack install tagged the user's own shaders when
+					// a pack held the same ones, instead of adding copies -
+					// only test packs existed then, so just untag everything.
+					db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " +
+							DatabaseContract.ShaderColumns.PACK_ID + " = NULL;");
+				}
 			}
 
 			@Override
@@ -552,9 +560,13 @@ public class ShaderDao {
 		};
 	}
 
-	// packId: importing a shader pack - every shader it brings in, and any
-	// it already had (same created/modified dates, i.e. the same shader),
-	// is tagged with it. Otherwise (a backup) each keeps its own pack_id.
+	// packId: importing a shader pack - each of its shaders becomes a new
+	// shader of its own, tagged with the pack and named
+	// "<PackTitle>.<name>" (so it can't be confused with, or grouped among,
+	// the user's shaders of the same name), unless this pack already
+	// installed that same shader. The user's own shaders are never
+	// touched. Otherwise (a backup), shaders already here (same
+	// created/modified dates) are skipped and the rest keep their pack_id.
 	private static boolean importShaders(
 			SQLiteDatabase dst,
 			SQLiteDatabase src,
@@ -572,6 +584,7 @@ public class ShaderDao {
 			int thumbIndex = cursor.getColumnIndex(DatabaseContract.ShaderColumns.THUMB);
 			int nameIndex = cursor.getColumnIndex(DatabaseContract.ShaderColumns.NAME);
 			int qualityIndex = cursor.getColumnIndex(DatabaseContract.ShaderColumns.QUALITY);
+			String namePrefix = packId != null ? packNamePrefix(src, packId) : null;
 			boolean success = true;
 			if (cursor.moveToFirst()) {
 				do {
@@ -582,10 +595,9 @@ public class ShaderDao {
 					if (createdDate == null || modifiedDate == null) {
 						continue;
 					}
-					if (shaderExists(dst, createdDate, modifiedDate)) {
-						if (packId != null) {
-							tagShaders(dst, createdDate, modifiedDate, packId);
-						}
+					if (packId != null
+							? packShaderExists(dst, createdDate, modifiedDate, packId)
+							: shaderExists(dst, createdDate, modifiedDate)) {
 						continue;
 					}
 					// Falls back to modifiedDate when importing a backup
@@ -596,9 +608,16 @@ public class ShaderDao {
 					if (sourceModifiedDate == null || sourceModifiedDate.isEmpty()) {
 						sourceModifiedDate = modifiedDate;
 					}
+					String name = cursor.getString(nameIndex);
+					if (namePrefix != null) {
+						// An unnamed shader goes by its date, as it would here.
+						name = namePrefix + "." + (name == null || name.trim().isEmpty()
+								? createdDate
+								: name.trim());
+					}
 					long shaderId = insertShader(dst,
 							cursor.getString(shaderIndex),
-							cursor.getString(nameIndex),
+							name,
 							createdDate,
 							modifiedDate,
 							sourceModifiedDate,
@@ -616,7 +635,7 @@ public class ShaderDao {
 							: CursorHelpers.getString(cursor,
 									DatabaseContract.ShaderColumns.PACK_ID);
 					if (rowPackId != null && !rowPackId.isEmpty()) {
-						tagShaders(dst, createdDate, modifiedDate, rowPackId);
+						tagShader(dst, shaderId, rowPackId);
 					}
 				} while (cursor.moveToNext());
 			}
@@ -624,14 +643,48 @@ public class ShaderDao {
 		}
 	}
 
-	private static void tagShaders(SQLiteDatabase db, String createdDate,
-			String modifiedDate, String packId) {
+	private static void tagShader(SQLiteDatabase db, long shaderId, String packId) {
 		var cv = new ContentValues();
 		cv.put(DatabaseContract.ShaderColumns.PACK_ID, packId);
 		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
-				DatabaseContract.ShaderColumns.CREATED + " = ? AND " +
-						DatabaseContract.ShaderColumns.MODIFIED + " = ?",
-				new String[]{createdDate, modifiedDate});
+				DatabaseContract.ShaderColumns._ID + " = ?",
+				new String[]{String.valueOf(shaderId)});
+	}
+
+	private static boolean packShaderExists(SQLiteDatabase db, String createdDate,
+			String modifiedDate, String packId) {
+		try (Cursor cursor = db.rawQuery(
+				"SELECT " + DatabaseContract.ShaderColumns._ID +
+						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						" WHERE " + DatabaseContract.ShaderColumns.CREATED + " = ?" +
+						" AND " + DatabaseContract.ShaderColumns.MODIFIED + " = ?" +
+						" AND " + DatabaseContract.ShaderColumns.PACK_ID + " = ?",
+				new String[]{createdDate, modifiedDate, packId})) {
+			return cursor != null && cursor.moveToFirst();
+		}
+	}
+
+	// The pack's title as one PascalCase word ("Slime Studies" ->
+	// "SlimeStudies"), from the pack file's own pack_info - the id if it
+	// has no usable title.
+	@NonNull
+	private static String packNamePrefix(SQLiteDatabase src, String packId) {
+		String title = null;
+		try (Cursor cursor = src.rawQuery("SELECT " + DatabaseContract.PackInfoColumns.TITLE +
+				" FROM " + DatabaseContract.PackInfoColumns.TABLE_NAME + " LIMIT 1", null)) {
+			if (cursor != null && cursor.moveToFirst()) {
+				title = cursor.getString(0);
+			}
+		} catch (SQLiteException e) {
+			// No pack_info - use the id.
+		}
+		var prefix = new StringBuilder();
+		for (String word : (title != null ? title : packId).split("[^A-Za-z0-9]+")) {
+			if (!word.isEmpty()) {
+				prefix.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+			}
+		}
+		return prefix.length() > 0 ? prefix.toString() : "Pack";
 	}
 
 	private static boolean shaderExists(

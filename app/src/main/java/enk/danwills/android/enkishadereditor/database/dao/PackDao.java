@@ -310,6 +310,11 @@ public class PackDao {
 				if (oldVersion < 11) {
 					createPacksTable(db);
 				}
+				if (oldVersion < 12) {
+					// See ShaderDao's v12 step - those test installs are
+					// forgotten along with their tags.
+					db.execSQL("DELETE FROM " + DatabaseContract.PackColumns.TABLE_NAME + ";");
+				}
 			}
 
 			@Override

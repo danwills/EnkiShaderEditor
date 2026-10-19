@@ -12,11 +12,12 @@ import java.util.regex.Pattern;
 // "Fancy"], "scene3DView" -> ["scene", "3D", "View"] - except the run's
 // last character splits off onto the next token when a lowercase letter
 // immediately follows it, since that's almost always the start of a new
-// word rather than part of an acronym/number. Whitespace also splits
-// tokens and is elided entirely rather than kept as its own token.
+// word rather than part of an acronym/number. Whitespace and dots also
+// split tokens and are elided entirely rather than kept as tokens - so a
+// pack's "SlimeStudies.Physarum" groups under Slime > Studies.
 public final class NameTokenizer {
 	private static final Pattern CAMEL_BOUNDARY = Pattern.compile(
-			"\\s+" +
+			"[\\s.]+" +
 					"|(?<=[a-z])(?=[A-Z0-9])" +
 					"|(?<=[A-Z0-9])(?=[A-Z0-9][a-z])");
 
