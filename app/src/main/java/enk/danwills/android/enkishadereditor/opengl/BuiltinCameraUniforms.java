@@ -35,14 +35,10 @@ final class BuiltinCameraUniforms {
 
 	void configure(
 			@NonNull GlDevice device,
-			@NonNull GlProgram program,
+			@NonNull UniformPresence uniforms,
 			@NonNull ShaderTextureResources textureResources) {
-		hasCameraOrientation = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_CAMERA_ORIENTATION);
-		hasCameraAddent = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_CAMERA_ADDENT);
+		hasCameraOrientation = uniforms.has(ShaderRenderer.UNIFORM_CAMERA_ORIENTATION);
+		hasCameraAddent = uniforms.has(ShaderRenderer.UNIFORM_CAMERA_ADDENT);
 		cameraTextureBinding = textureResources.getFirstBinding(
 				ShaderRenderer.UNIFORM_CAMERA_BACK,
 				ShaderRenderer.UNIFORM_CAMERA_FRONT);

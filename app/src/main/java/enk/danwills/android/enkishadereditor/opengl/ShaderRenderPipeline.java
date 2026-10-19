@@ -308,8 +308,20 @@ final class ShaderRenderPipeline {
 		if (framebuffer == null || targetTexture == null) {
 			return;
 		}
-		int width = targetTexture.getWidth();
-		int height = targetTexture.getHeight();
+		renderPassRows(bindings, program, framebuffer,
+				targetTexture.getWidth(), targetTexture.getHeight(), y0, rows);
+	}
+
+	// The same for any full-screen pass and target - an offscreen buffer
+	// pass of a multipass shader (see BufferPass), whole or in bands.
+	void renderPassRows(
+			@NonNull ProgramBindings bindings,
+			@NonNull GlProgram program,
+			@NonNull GlFramebuffer framebuffer,
+			int width,
+			int height,
+			int y0,
+			int rows) {
 		device.bindFramebuffer(framebuffer);
 		device.setViewport(0, 0, width, height);
 		boolean partial = y0 > 0 || rows < height;

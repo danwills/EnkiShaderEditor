@@ -157,6 +157,7 @@ public class ShaderWallpaperService extends WallpaperService {
 				hasRuntimeShader = true;
 				view.getRenderer().setFragmentShader(
 						projectSession.getEntryPointSource(),
+						projectSession.getProject().getBufferSources(),
 						projectSession.getQuality(),
 						projectSession.getShaderId());
 				if (!isPreview()) {

@@ -6,9 +6,22 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 final class RendererProgramManager {
+	// A buffer pass's program freshly compiled from source this reload,
+	// for the caller to persist - see ReloadResult.freshBinary.
+	record FreshBufferBinary(int buffer, @NonNull String sourceText,
+			@NonNull ProgramBinary binary) {
+	}
+
+	// Looks up a buffer pass's cached program binary, or null.
+	interface BufferBinaryLookup {
+		@Nullable
+		ProgramBinary get(int buffer, @NonNull String sourceText);
+	}
+
 	record ReloadResult(
 			@NonNull List<ShaderError> textureErrors,
 			@NonNull List<ShaderError> programErrors,
@@ -17,11 +30,14 @@ final class RendererProgramManager {
 			// from source this time (as opposed to loaded from a cache
 			// hit) - the caller can persist it so next time's load can
 			// skip straight to createProgramFromBinary().
-			@Nullable ProgramBinary freshBinary) {
+			@Nullable ProgramBinary freshBinary,
+			@NonNull List<FreshBufferBinary> freshBufferBinaries) {
 		@NonNull
 		static ReloadResult success(@NonNull List<ShaderError> textureErrors,
-				@Nullable ProgramBinary freshBinary) {
-			return new ReloadResult(List.copyOf(textureErrors), List.of(), true, freshBinary);
+				@Nullable ProgramBinary freshBinary,
+				@NonNull List<FreshBufferBinary> freshBufferBinaries) {
+			return new ReloadResult(List.copyOf(textureErrors), List.of(), true, freshBinary,
+					List.copyOf(freshBufferBinaries));
 		}
 
 		@NonNull
@@ -32,7 +48,8 @@ final class RendererProgramManager {
 					List.copyOf(textureErrors),
 					List.copyOf(programErrors),
 					false,
-					null);
+					null,
+					List.of());
 		}
 	}
 
@@ -73,8 +90,18 @@ final class RendererProgramManager {
 
 	@Nullable
 	private String sourceText;
+	// Indexed by buffer (0 = A), null where there's no such buffer pass.
+	@Nullable
+	private String[] bufferSourceTexts;
 	@NonNull
 	private PreparedShaderSource preparedShaderSource = PreparedShaderSource.empty();
+	// In buffer order, only the buffers the shader actually has.
+	@NonNull
+	private List<BufferPass> bufferPasses = List.of();
+	// Replaced by prepareShaderSource() and not yet released on the GL
+	// thread - same idea as staleTextureResources.
+	@NonNull
+	private final List<BufferPass> staleBufferPasses = new ArrayList<>();
 	// See prepareShaderSource()/releaseForReload().
 	@NonNull
 	private final List<ShaderTextureResources> staleTextureResources = new ArrayList<>();
@@ -95,12 +122,13 @@ final class RendererProgramManager {
 
 	void setVersion(int version) {
 		this.version = version;
-		prepareShaderSource(sourceText);
+		prepareShaderSource();
 	}
 
-	void setFragmentShader(@Nullable String source) {
+	void setFragmentShader(@Nullable String source, @Nullable String[] bufferSources) {
 		sourceText = source;
-		prepareShaderSource(source);
+		bufferSourceTexts = bufferSources != null ? bufferSources.clone() : null;
+		prepareShaderSource();
 	}
 
 	boolean hasPreparedShader() {
@@ -110,7 +138,8 @@ final class RendererProgramManager {
 
 	@NonNull
 	ReloadResult reload(@NonNull Context context, @NonNull GlDevice device,
-			@Nullable ProgramBinary cachedMainBinary) {
+			@Nullable ProgramBinary cachedMainBinary,
+			@NonNull BufferBinaryLookup bufferBinaries) {
 		clearPrograms();
 
 		var textureErrors = textureResources.load(context, device);
@@ -157,11 +186,98 @@ final class RendererProgramManager {
 			return ReloadResult.failure(textureErrors, mainResult.getInfoLog());
 		}
 
+		var freshBufferBinaries = new ArrayList<FreshBufferBinary>();
+		var bufferErrors = new ArrayList<ShaderError>();
+		for (var pass : bufferPasses) {
+			GlProgram program = buildBufferProgram(device, pass, bufferBinaries,
+					freshBufferBinaries, bufferErrors);
+			pass.setProgram(program);
+		}
+		if (!bufferErrors.isEmpty()) {
+			// A buffer that doesn't compile fails the whole shader, like
+			// any other compile error - there'd be no sensible picture.
+			device.deleteProgram(surfaceResult.getProgram());
+			device.deleteProgram(mainResult.getProgram());
+			for (var pass : bufferPasses) {
+				device.deleteProgram(pass.getProgram());
+				pass.setProgram(null);
+			}
+			return ReloadResult.failure(textureErrors, bufferErrors);
+		}
+
 		surfaceProgram = surfaceResult.getProgram();
 		mainProgram = mainResult.getProgram();
 		surfaceBindings = new ProgramBindings(surfaceProgram);
 		ProgramBinary freshBinary = fromCache ? null : device.getProgramBinary(mainProgram);
-		return ReloadResult.success(textureErrors, freshBinary);
+		return ReloadResult.success(textureErrors, freshBinary, freshBufferBinaries);
+	}
+
+	@Nullable
+	private GlProgram buildBufferProgram(@NonNull GlDevice device, @NonNull BufferPass pass,
+			@NonNull BufferBinaryLookup bufferBinaries,
+			@NonNull List<FreshBufferBinary> freshBufferBinaries,
+			@NonNull List<ShaderError> errors) {
+		var fragmentShader = pass.prepared.getFragmentShader();
+		if (fragmentShader == null) {
+			return null;
+		}
+		ProgramBinary cached = bufferBinaries.get(pass.buffer, pass.sourceText);
+		if (cached != null) {
+			var binaryResult = device.createProgramFromBinary(cached.format(), cached.bytes());
+			if (binaryResult.succeeded() && binaryResult.getProgram() != null) {
+				return binaryResult.getProgram();
+			}
+		}
+		var result = device.createProgram(
+				pass.prepared.getVertexShader(
+						FULL_SCREEN_VERTEX_SHADER,
+						FULL_SCREEN_VERTEX_SHADER_3,
+						version),
+				fragmentShader.getSource(),
+				fragmentShader.getLineMapping());
+		if (!result.succeeded() || result.getProgram() == null) {
+			for (var error : result.getInfoLog()) {
+				errors.add(error.withPass(pass.buffer));
+			}
+			if (result.getInfoLog().isEmpty()) {
+				errors.add(ShaderError.createGeneral("Link failed").withPass(pass.buffer));
+			}
+			return null;
+		}
+		ProgramBinary fresh = device.getProgramBinary(result.getProgram());
+		if (fresh != null) {
+			freshBufferBinaries.add(new FreshBufferBinary(pass.buffer, pass.sourceText, fresh));
+		}
+		return result.getProgram();
+	}
+
+	@NonNull
+	List<BufferPass> getBufferPasses() {
+		return bufferPasses;
+	}
+
+	// Every compiled program the current shader draws with - for
+	// UniformPresence.
+	@NonNull
+	List<GlProgram> getPassPrograms() {
+		var programs = new ArrayList<GlProgram>(bufferPasses.size() + 1);
+		if (mainProgram != null) {
+			programs.add(mainProgram);
+		}
+		for (var pass : bufferPasses) {
+			if (pass.getProgram() != null) {
+				programs.add(pass.getProgram());
+			}
+		}
+		return programs;
+	}
+
+	// Clean source text of a buffer pass, for the binary cache key.
+	@Nullable
+	String getBufferSourceText(int buffer) {
+		return bufferSourceTexts != null && buffer < bufferSourceTexts.length
+				? bufferSourceTexts[buffer]
+				: null;
 	}
 
 	// The exact source text (already cleaned up, see ShaderView) that
@@ -175,9 +291,13 @@ final class RendererProgramManager {
 	void discardContextResources() {
 		clearPrograms();
 		textureResources.discard();
+		for (var pass : bufferPasses) {
+			pass.discard();
+		}
 		// The context these belonged to is already gone - nothing left
 		// to delete, just references to drop.
 		staleTextureResources.clear();
+		staleBufferPasses.clear();
 	}
 
 	// Deletes (not just drops) the current programs and any texture sets
@@ -195,6 +315,13 @@ final class RendererProgramManager {
 			stale.release(device);
 		}
 		staleTextureResources.clear();
+		for (var pass : bufferPasses) {
+			pass.release(device);
+		}
+		for (var stale : staleBufferPasses) {
+			stale.release(device);
+		}
+		staleBufferPasses.clear();
 	}
 
 	@Nullable
@@ -235,17 +362,38 @@ final class RendererProgramManager {
 		return textureResources;
 	}
 
-	private void prepareShaderSource(@Nullable String source) {
+	private void prepareShaderSource() {
 		// Kept so releaseForReload() can delete its GL textures later, on
 		// the GL thread - this runs on the UI thread, with the GL thread
 		// paused, so it can't touch GL itself.
 		staleTextureResources.add(textureResources);
+		staleBufferPasses.addAll(bufferPasses);
 		preparedShaderSource = ShaderSourcePreparer.prepare(
-				source,
+				sourceText,
 				version,
 				maxTextures);
-		textureResources = ShaderTextureResources.create(
-				preparedShaderSource.getSamplers());
+		// One set of textures (saved images, camera, audio) for the whole
+		// shader, shared by name between its passes.
+		var samplers = new LinkedHashMap<String, DiscoveredSampler>();
+		for (var sampler : preparedShaderSource.getSamplers()) {
+			samplers.putIfAbsent(sampler.name(), sampler);
+		}
+		var passes = new ArrayList<BufferPass>();
+		if (bufferSourceTexts != null) {
+			for (int buffer = 0; buffer < bufferSourceTexts.length; ++buffer) {
+				String bufferSource = bufferSourceTexts[buffer];
+				if (bufferSource == null) {
+					continue;
+				}
+				var prepared = ShaderSourcePreparer.prepare(bufferSource, version, maxTextures);
+				passes.add(new BufferPass(buffer, bufferSource, prepared));
+				for (var sampler : prepared.getSamplers()) {
+					samplers.putIfAbsent(sampler.name(), sampler);
+				}
+			}
+		}
+		bufferPasses = List.copyOf(passes);
+		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}
 
 	private void clearPrograms() {

@@ -16,4 +16,16 @@ public interface ProgramBinaryCache {
 	// actually took - never a cache-hit's near-instant load time.
 	void put(long shaderId, @NonNull ProgramBinary binary,
 			@NonNull String sourceHash, @NonNull String driverSignature, long compileTimeMs);
+
+	// The same, for a multipass shader's offscreen buffer passes (0 = A).
+	// An implementation without per-buffer storage just never caches them.
+	@Nullable
+	default ProgramBinary getBuffer(long shaderId, int buffer, @NonNull String sourceHash,
+			@NonNull String driverSignature) {
+		return null;
+	}
+
+	default void putBuffer(long shaderId, int buffer, @NonNull ProgramBinary binary,
+			@NonNull String sourceHash, @NonNull String driverSignature) {
+	}
 }

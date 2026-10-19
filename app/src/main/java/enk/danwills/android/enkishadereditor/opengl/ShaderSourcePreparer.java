@@ -37,6 +37,47 @@ final class ShaderSourcePreparer {
 			"#extension GL_OES_EGL_image_external_essl3 : require\n";
 	private static final String SHADER_EDITOR =
 			"#define SHADER_EDITOR 1\n";
+	// ShaderToy compatibility - see adaptShaderToy().
+	private static final Pattern PATTERN_MAIN_IMAGE = Pattern.compile(
+			"\\bvoid[ \t\n]+mainImage[ \t\n]*\\(");
+	private static final Pattern PATTERN_MAIN = Pattern.compile(
+			"\\bvoid[ \t\n]+main[ \t\n]*\\(");
+	private static final Pattern PATTERN_EXTENSION = Pattern.compile(
+			"^[ \t]*#extension[^\n]*\n",
+			Pattern.MULTILINE);
+	private static final String SHADER_TOY_VERSION = """
+			#version 300 es
+			precision highp float;
+			precision highp int;
+			""";
+	private static final String SHADER_TOY_PRECISION = """
+			#ifdef GL_FRAGMENT_PRECISION_HIGH
+			#define ENKI_HIGHP highp
+			#else
+			#define ENKI_HIGHP mediump
+			#endif
+			""";
+	// Uniforms ShaderToy declares implicitly, in declaration order: the
+	// name, and the declaration added when a source uses it undeclared.
+	private static final String[][] SHADER_TOY_UNIFORMS = {
+			{ShaderRenderer.UNIFORM_ST_RESOLUTION,
+					"uniform ENKI_HIGHP vec3 " + ShaderRenderer.UNIFORM_ST_RESOLUTION + ";"},
+			{ShaderRenderer.UNIFORM_ST_TIME,
+					"uniform ENKI_HIGHP float " + ShaderRenderer.UNIFORM_ST_TIME + ";"},
+			{ShaderRenderer.UNIFORM_ST_TIME_DELTA,
+					"uniform ENKI_HIGHP float " + ShaderRenderer.UNIFORM_ST_TIME_DELTA + ";"},
+			{ShaderRenderer.UNIFORM_ST_FRAME_RATE,
+					"uniform ENKI_HIGHP float " + ShaderRenderer.UNIFORM_ST_FRAME_RATE + ";"},
+			{ShaderRenderer.UNIFORM_ST_FRAME,
+					"uniform int " + ShaderRenderer.UNIFORM_ST_FRAME + ";"},
+			{ShaderRenderer.UNIFORM_ST_MOUSE,
+					"uniform ENKI_HIGHP vec4 " + ShaderRenderer.UNIFORM_ST_MOUSE + ";"},
+			{ShaderRenderer.UNIFORM_ST_DATE,
+					"uniform ENKI_HIGHP vec4 " + ShaderRenderer.UNIFORM_ST_DATE + ";"},
+			{ShaderRenderer.UNIFORM_ST_CHANNEL_RESOLUTION,
+					"uniform ENKI_HIGHP vec3 " + ShaderRenderer.UNIFORM_ST_CHANNEL_RESOLUTION +
+							"[" + ChannelParameters.MAX_CHANNELS + "];"},
+	};
 
 	private ShaderSourcePreparer() {
 	}
@@ -53,15 +94,17 @@ final class ShaderSourcePreparer {
 					fTimeMax,
 					null,
 					new BackBufferParameters(),
-					List.of());
+					List.of(),
+					new ChannelParameters[ChannelParameters.MAX_CHANNELS]);
 		}
 
-		String gles3Version = getGLES3Version(source, version);
-		PreparedShaderInput preparedInput = new PreparedShaderInput(
+		PreparedShaderInput preparedInput = adaptShaderToy(new PreparedShaderInput(
 				source,
-				ShaderLineMapping.identity());
+				ShaderLineMapping.identity()));
+		String gles3Version = getGLES3Version(preparedInput.getSource(), version);
 		BackBufferParameters backBufferParameters = new BackBufferParameters();
 		ArrayList<DiscoveredSampler> samplers = new ArrayList<>();
+		ChannelParameters[] channels = new ChannelParameters[ChannelParameters.MAX_CHANNELS];
 
 		for (Matcher matcher = PATTERN_SAMPLER.matcher(source);
 				matcher.find() && samplers.size() < maxTextures; ) {
@@ -75,6 +118,15 @@ final class ShaderSourcePreparer {
 
 			if (ShaderRenderer.UNIFORM_BACKBUFFER.equals(name)) {
 				backBufferParameters.parse(params);
+				continue;
+			}
+			// Bound by the renderer to an offscreen buffer, not looked up
+			// as a saved texture.
+			int channel = ChannelParameters.getChannelIndex(name);
+			if (channel >= 0) {
+				if (SAMPLER_2D.equals(type)) {
+					channels[channel] = new ChannelParameters(params);
+				}
 				continue;
 			}
 
@@ -111,7 +163,90 @@ final class ShaderSourcePreparer {
 				fTimeMax,
 				gles3Version,
 				backBufferParameters,
-				samplers);
+				samplers,
+				channels);
+	}
+
+	// Lets ShaderToy code run as written: a source that defines
+	// mainImage() but no main() gets ShaderToy's GLSL ES 3.00 setup (if it
+	// doesn't pick its own #version) and a main() that calls mainImage(),
+	// and any of ShaderToy's implicit uniforms (iTime, iChannel0 ...) it
+	// uses without declaring get declared. Lines are only ever inserted
+	// before the user's code via the line-mapped helpers below, or
+	// appended after it, so compile errors still point at the right line.
+	@NonNull
+	private static PreparedShaderInput adaptShaderToy(@NonNull PreparedShaderInput input) {
+		String source = input.getSource();
+		boolean wrap = PATTERN_MAIN_IMAGE.matcher(source).find() &&
+				!PATTERN_MAIN.matcher(source).find();
+		if (wrap && !source.trim().startsWith("#version")) {
+			input = addPreprocessorDirective(input, SHADER_TOY_VERSION);
+		}
+
+		StringBuilder declarations = new StringBuilder();
+		for (String[] uniform : SHADER_TOY_UNIFORMS) {
+			if (usesUndeclared(source, uniform[0])) {
+				declarations.append(uniform[1]).append('\n');
+			}
+		}
+		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+			String name = ChannelParameters.getChannelName(channel);
+			if (usesUndeclared(source, name)) {
+				declarations.append("uniform sampler2D ").append(name).append(";\n");
+			}
+		}
+		if (declarations.length() > 0) {
+			input = insertAfterExtensions(input, SHADER_TOY_PRECISION + declarations);
+		}
+
+		if (wrap) {
+			String adapted = input.getSource();
+			String main = PATTERN_GLES3_VERSION.matcher(adapted).find()
+					? """
+					out highp vec4 enkiFragColor;
+					void main() {
+						mainImage(enkiFragColor, gl_FragCoord.xy);
+					}
+					"""
+					: """
+					void main() {
+						mediump vec4 enkiFragColor;
+						mainImage(enkiFragColor, gl_FragCoord.xy);
+						gl_FragColor = enkiFragColor;
+					}
+					""";
+			input = new PreparedShaderInput(
+					adapted + (adapted.endsWith("\n") ? "" : "\n") + main,
+					input.getLineMapping());
+		}
+		return input;
+	}
+
+	private static boolean usesUndeclared(@NonNull String source, @NonNull String name) {
+		String word = "\\b" + Pattern.quote(name) + "\\b";
+		return Pattern.compile(word).matcher(source).find() &&
+				!Pattern.compile("\\buniform\\b[^;]*" + word).matcher(source).find();
+	}
+
+	// Inserts `text` after the last #extension directive (they must come
+	// before any declaration), or else after #version / at the top.
+	@NonNull
+	private static PreparedShaderInput insertAfterExtensions(
+			@NonNull PreparedShaderInput input,
+			@NonNull String text) {
+		String source = input.getSource();
+		int end = -1;
+		for (Matcher matcher = PATTERN_EXTENSION.matcher(source); matcher.find(); ) {
+			end = matcher.end();
+		}
+		if (end < 0) {
+			return addPreprocessorDirective(input, text);
+		}
+		return new PreparedShaderInput(
+				source.substring(0, end) + text + source.substring(end),
+				input.getLineMapping().addInsertedLinesAfterSourceLine(
+						countSourceLines(source, end),
+						countLines(text)));
 	}
 
 	private static float parseFTime(@Nullable String source) {

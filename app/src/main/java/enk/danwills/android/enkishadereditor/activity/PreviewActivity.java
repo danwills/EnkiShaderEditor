@@ -153,6 +153,7 @@ public class PreviewActivity extends AppCompatActivity {
 
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
+				projectSession.getProject().getBufferSources(),
 				projectSession.getQuality(),
 				projectSession.getShaderId());
 		return true;

@@ -66,27 +66,19 @@ final class BuiltinSensorUniforms {
 
 	void configure(
 			@NonNull GlDevice device,
-			@NonNull GlProgram program) {
-		hasGravity = device.hasUniform(program, ShaderRenderer.UNIFORM_GRAVITY);
-		hasLinear = device.hasUniform(program, ShaderRenderer.UNIFORM_LINEAR);
-		hasGyroscope = device.hasUniform(program, ShaderRenderer.UNIFORM_GYROSCOPE);
-		hasMagnetic = device.hasUniform(program, ShaderRenderer.UNIFORM_MAGNETIC);
-		hasLight = device.hasUniform(program, ShaderRenderer.UNIFORM_LIGHT);
-		hasPressure = device.hasUniform(program, ShaderRenderer.UNIFORM_PRESSURE);
-		hasProximity = device.hasUniform(program, ShaderRenderer.UNIFORM_PROXIMITY);
-		hasRotationVector = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_ROTATION_VECTOR);
-		hasRotationMatrix = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_ROTATION_MATRIX);
-		hasOrientation = device.hasUniform(program, ShaderRenderer.UNIFORM_ORIENTATION);
-		hasInclinationMatrix = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_INCLINATION_MATRIX);
-		hasInclination = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_INCLINATION);
+			@NonNull UniformPresence uniforms) {
+		hasGravity = uniforms.has(ShaderRenderer.UNIFORM_GRAVITY);
+		hasLinear = uniforms.has(ShaderRenderer.UNIFORM_LINEAR);
+		hasGyroscope = uniforms.has(ShaderRenderer.UNIFORM_GYROSCOPE);
+		hasMagnetic = uniforms.has(ShaderRenderer.UNIFORM_MAGNETIC);
+		hasLight = uniforms.has(ShaderRenderer.UNIFORM_LIGHT);
+		hasPressure = uniforms.has(ShaderRenderer.UNIFORM_PRESSURE);
+		hasProximity = uniforms.has(ShaderRenderer.UNIFORM_PROXIMITY);
+		hasRotationVector = uniforms.has(ShaderRenderer.UNIFORM_ROTATION_VECTOR);
+		hasRotationMatrix = uniforms.has(ShaderRenderer.UNIFORM_ROTATION_MATRIX);
+		hasOrientation = uniforms.has(ShaderRenderer.UNIFORM_ORIENTATION);
+		hasInclinationMatrix = uniforms.has(ShaderRenderer.UNIFORM_INCLINATION_MATRIX);
+		hasInclination = uniforms.has(ShaderRenderer.UNIFORM_INCLINATION);
 
 		if (needsGravitySource()) {
 			if (gravityListener == null) {

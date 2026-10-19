@@ -169,6 +169,25 @@ public class ShaderViewManager {
 					// nothing worth caching for at this point.
 				}
 			}
+
+			@Override
+			@Nullable
+			public ProgramBinary getBuffer(long shaderId, int buffer,
+					@NonNull String sourceHash, @NonNull String driverSignature) {
+				return dataSource.buffer.getCompiledBinary(
+						shaderId, buffer, sourceHash, driverSignature);
+			}
+
+			@Override
+			public void putBuffer(long shaderId, int buffer, @NonNull ProgramBinary binary,
+					@NonNull String sourceHash, @NonNull String driverSignature) {
+				try {
+					binaryCacheExecutor.execute(() -> dataSource.buffer.saveCompiledBinary(
+							shaderId, buffer, binary, sourceHash, driverSignature));
+				} catch (RejectedExecutionException e) {
+					// See put().
+				}
+			}
 		});
 	}
 
@@ -395,6 +414,7 @@ public class ShaderViewManager {
 		setQuality(projectSession.getQuality());
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
+				projectSession.getProject().getBufferSources(),
 				projectSession.getQuality(),
 				projectSession.getShaderId());
 	}

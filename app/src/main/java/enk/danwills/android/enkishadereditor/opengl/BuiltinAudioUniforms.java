@@ -74,7 +74,7 @@ final class BuiltinAudioUniforms {
 	// missing stop()/unregisterCallback() call, which already existed.
 	synchronized void configure(
 			@NonNull GlDevice device,
-			@NonNull GlProgram program,
+			@NonNull UniformPresence uniforms,
 			@NonNull ShaderTextureResources textureResources) {
 		spectrumTextureBinding = textureResources.getFirstBinding(
 				ShaderRenderer.UNIFORM_AUDIO_SPECTRUM);

@@ -13,15 +13,35 @@ public class ShaderError {
 	private static final Pattern ERROR_PATTERN = Pattern.compile(
 			"^.*(\\d+):(\\d+):\\s+(.*)$");
 
+	// Which pass of a multipass shader the error belongs to - the Image
+	// pass (the shader's entry file), or an offscreen buffer (0 = A).
+	public static final int IMAGE_PASS = -1;
+
 	private final int sourceStringNumber;
 	private final int errorLine;
 	@NonNull
 	private final String message;
+	private final int pass;
 
 	private ShaderError(int sourceStringNumber, int errorLine, @NonNull String message) {
+		this(sourceStringNumber, errorLine, message, IMAGE_PASS);
+	}
+
+	private ShaderError(int sourceStringNumber, int errorLine, @NonNull String message,
+			int pass) {
 		this.sourceStringNumber = sourceStringNumber;
 		this.errorLine = errorLine;
 		this.message = message;
+		this.pass = pass;
+	}
+
+	@NonNull
+	ShaderError withPass(int pass) {
+		return new ShaderError(sourceStringNumber, errorLine, message, pass);
+	}
+
+	public int getPass() {
+		return pass;
 	}
 
 	public static ShaderError createGeneral(@NonNull String message) {
@@ -115,6 +135,7 @@ public class ShaderError {
 
 		return sourceStringNumber == that.sourceStringNumber &&
 				errorLine == that.errorLine &&
+				pass == that.pass &&
 				message.equals(that.message);
 	}
 
@@ -123,17 +144,19 @@ public class ShaderError {
 		int result = sourceStringNumber;
 		result = 31 * result + errorLine;
 		result = 31 * result + message.hashCode();
+		result = 31 * result + pass;
 		return result;
 	}
 
 	@NonNull
 	@Override
 	public String toString() {
+		String prefix = pass == IMAGE_PASS ? "" : "Buffer " + (char) ('A' + pass) + ": ";
 		if (hasLine()) {
 			return String.format(Locale.getDefault(),
-					"%d: %s", errorLine, message);
+					"%s%d: %s", prefix, errorLine, message);
 		} else {
-			return message;
+			return prefix + message;
 		}
 	}
 }

@@ -19,6 +19,7 @@ import androidx.annotation.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -156,6 +157,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_MIC_AMPLITUDE = "micAmplitude";
 	public static final String UNIFORM_TOUCH = "touch";
 	public static final String UNIFORM_TOUCH_START = "touchStart";
+	// ShaderToy's names, so its code runs with little or no translation -
+	// see BuiltinUniforms.bindShaderToyUniforms() and ShaderSourcePreparer.
+	public static final String UNIFORM_ST_TIME = "iTime";
+	public static final String UNIFORM_ST_TIME_DELTA = "iTimeDelta";
+	public static final String UNIFORM_ST_FRAME_RATE = "iFrameRate";
+	public static final String UNIFORM_ST_FRAME = "iFrame";
+	public static final String UNIFORM_ST_RESOLUTION = "iResolution";
+	public static final String UNIFORM_ST_MOUSE = "iMouse";
+	public static final String UNIFORM_ST_DATE = "iDate";
+	public static final String UNIFORM_ST_CHANNEL_RESOLUTION = "iChannelResolution";
 
 	private static final int MAX_TEXTURES = 32;
 	private static final long FPS_UPDATE_FREQUENCY_NS = 200000000L;
@@ -184,6 +195,15 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private byte[] fullImage;
 	private boolean captureFullImage;
 	private volatile boolean blankFrameRequested;
+	// Multipass shaders - see drawBufferPasses(). A 1x1 black texture for
+	// channels with nothing assigned (ShaderToy reads those as black),
+	// whether this context can render into RGBA16F buffers, and which
+	// buffers some channel samples with a mipmapped filter.
+	@Nullable
+	private GlTexture2D blackTexture;
+	private boolean halfFloatBuffers;
+	private final boolean[] bufferNeedsMipmaps = new boolean[ChannelParameters.MAX_CHANNELS];
+	private final float[] channelResolution = new float[ChannelParameters.MAX_CHANNELS * 3];
 	private volatile long nextFpsUpdate;
 	// See updateFps().
 	private volatile double smoothedFrameNanos;
@@ -298,10 +318,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	public void setFragmentShader(String source, float quality, long shaderId) {
+		setFragmentShader(source, null, quality, shaderId);
+	}
+
+	// bufferSources: a multipass shader's offscreen buffer passes, indexed
+	// by buffer (0 = A), null entries (or a null array) for none.
+	public void setFragmentShader(String source, @Nullable String[] bufferSources,
+			float quality, long shaderId) {
 		builtinUniforms.setRuntimeNanos(0);
 		setQuality(quality);
 		this.shaderId = shaderId;
-		programManager.setFragmentShader(source);
+		programManager.setFragmentShader(source, bufferSources);
 		resetFps();
 		// Compiled on the GL thread's next frame (see onDrawFrame()) rather
 		// than relying on ShaderView's onPause()/onResume() to recreate the
@@ -344,6 +371,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public void restartTime() {
 		builtinUniforms.restart(System.nanoTime());
 		renderPipeline.clearTargets();
+		for (var pass : programManager.getBufferPasses()) {
+			pass.clearTargets(device);
+		}
 		abandonProgressiveFrame();
 	}
 
@@ -479,6 +509,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		device.setClearColor(0f, 0f, 0f, 1f);
 
 		discardContextResources();
+		blackTexture = device.createTexture2D();
+		device.allocateTexture2D(blackTexture, 1, 1);
+		device.updateTexture2D(blackTexture, java.nio.ByteBuffer.allocateDirect(4));
+		halfFloatBuffers = glVersion >= 3 && device.supportsHalfFloatTargets();
 		var thumbnailErrors = renderPipeline.createContextResources();
 		if (!thumbnailErrors.isEmpty()) {
 			submitErrors(thumbnailErrors);
@@ -514,8 +548,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 			}
 
+			final String bufferDriverSignature = driverSignature;
+			RendererProgramManager.BufferBinaryLookup bufferLookup = (buffer, text) ->
+					bufferDriverSignature != null && programBinaryCache != null
+							? programBinaryCache.getBuffer(shaderId, buffer,
+									ProgramBinaryKey.sourceHash(text, glVersion),
+									bufferDriverSignature)
+							: null;
 			long compileStart = System.nanoTime();
-			var reloadResult = programManager.reload(context, device, cachedBinary);
+			var reloadResult = programManager.reload(context, device, cachedBinary,
+					bufferLookup);
 			lastCompileNanos = System.nanoTime() - compileStart;
 			lastCompileSucceeded = reloadResult.succeeded();
 			submitErrors(reloadResult.textureErrors());
@@ -537,11 +579,15 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					// stats display.
 					lastProgramBinaryBytes = queryProgramBinaryBytes(programManager.getMainProgram());
 				}
-				builtinUniforms.configure(
-						device,
-						programManager.getMainProgram(),
-						programManager.getFTimeMax(),
-						programManager.getTextureResources());
+				if (programBinaryCache != null && driverSignature != null) {
+					for (var fresh : reloadResult.freshBufferBinaries()) {
+						programBinaryCache.putBuffer(shaderId, fresh.buffer(), fresh.binary(),
+								ProgramBinaryKey.sourceHash(fresh.sourceText(), glVersion),
+								driverSignature);
+					}
+				}
+				updateBufferMipmapNeeds();
+				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
 						onRendererListener != null) {
 					onRendererListener.onRequestAudioCapture();
@@ -565,6 +611,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// change showed black for however long that took, which for a
 			// slow shader in progressive mode can be several seconds.
 			renderPipeline.releaseTargetsKeepingLastFrame();
+			// Buffers simply restart at the new size, as on ShaderToy.
+			for (var pass : programManager.getBufferPasses()) {
+				pass.releaseTargets(device);
+			}
 			stateRowMigrationPending = true;
 			abandonProgressiveFrame();
 			if (primedFrameNanos > 0) {
@@ -670,11 +720,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			abandonProgressiveFrame();
 			var program = programManager.getMainProgram();
 			if (program != null) {
-				builtinUniforms.configure(
-						device,
-						program,
-						programManager.getFTimeMax(),
-						programManager.getTextureResources());
+				configureUniforms(program);
 			}
 		}
 		if (blankFrameRequested) {
@@ -718,6 +764,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			}
 		}
 
+		ensureBufferTargets();
+
 		if (progressiveAbandonRequested) {
 			progressiveAbandonRequested = false;
 			abandonProgressiveFrame();
@@ -726,7 +774,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			drawProgressiveStep(mainProgram, surfaceProgram, surfaceBindings);
 			return;
 		}
-		checkAutoSwitchToProgressive(renderPipeline.getTargetHeight());
+		checkAutoSwitchToProgressive(getChainRows());
 
 		var frame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
 		if (frame == null) {
@@ -737,7 +785,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			return;
 		}
 
-		renderPipeline.renderMainPass(frame.bindings(), mainProgram);
+		int height = renderPipeline.getTargetHeight();
+		drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(), height);
 		renderPipeline.renderSurfacePass(
 				surfaceBindings,
 				surfaceProgram,
@@ -766,8 +815,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// the GPU for long and the rest of the screen keeps drawing.
 	private void drawProgressiveStep(@NonNull GlProgram mainProgram,
 			@NonNull GlProgram surfaceProgram, @NonNull ProgramBindings surfaceBindings) {
+		// The rows of every pass, buffers first, count as one tall frame
+		// - see getChainRows() - so bands, the countdown dot and AUTO's
+		// estimates all cover the whole chain.
 		int height = renderPipeline.getTargetHeight();
-		adaptProgressiveRows(height);
+		int chainRows = getChainRows();
+		adaptProgressiveRows(chainRows);
 		if (progressiveFrame == null ||
 				builtinUniforms.getBeginFrameCount() != progressiveFrameStamp) {
 			progressiveFrame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
@@ -791,7 +844,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// paused recreates the targets and redraws exactly once - so they
 		// always complete the frame in one go rather than leave it part-
 		// done until some later request that may never come.
-		int remaining = height - progressiveRowsDone;
+		int remaining = chainRows - progressiveRowsDone;
 		// ...except during a conservative start (see
 		// primeConservativeStart()): that's exactly when a whole-frame draw
 		// is the risk being avoided, and the quality change that triggers
@@ -799,12 +852,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		int rows = continuousRendering || conservativeStart
 				? Math.max(1, Math.min(remaining, progressiveRowsPerStep))
 				: remaining;
-		renderPipeline.renderMainPassRows(frame.bindings(), mainProgram, progressiveRowsDone, rows);
+		drawChainRows(frame.bindings(), mainProgram, progressiveRowsDone, rows, height);
 		progressiveRowsDone += rows;
 		progressiveLastRows = rows;
 		++progressiveStepsThisFrame;
-		boolean completed = progressiveRowsDone >= height;
-		progressiveFrameProgress = completed ? 1f : progressiveRowsDone / (float) height;
+		boolean completed = progressiveRowsDone >= chainRows;
+		progressiveFrameProgress = completed ? 1f : progressiveRowsDone / (float) chainRows;
 		if (completed) {
 			renderPipeline.swapTargets();
 			// A real frame at the current size exists now - see
@@ -827,7 +880,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			conservativeStart = false;
 			progressiveFrameWidth = renderPipeline.getTargetWidth();
 			progressiveFrameHeight = height;
-			progressiveAverageBandRows = height / Math.max(1, progressiveStepsThisFrame);
+			progressiveAverageBandRows = chainRows / Math.max(1, progressiveStepsThisFrame);
 			// Progressive frames are slow by definition - refresh the
 			// listener's display on every one, not just when the rounded
 			// fps happens to change, so the band size it shows keeps up
@@ -835,8 +888,151 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (onRendererListener != null && lastFps > 0) {
 				onRendererListener.onFramesPerSecond(lastFps);
 			}
-			checkAutoSwitchToNormal(height);
+			checkAutoSwitchToNormal(chainRows);
 		}
+	}
+
+	// Whether the current shader has offscreen buffer passes - captures
+	// that render the Image pass on its own (tiled, high-res, sequences)
+	// don't support those yet.
+	public boolean hasBufferPasses() {
+		return !programManager.getBufferPasses().isEmpty();
+	}
+
+	// Rows in one whole frame of the pass chain: each buffer pass, then
+	// the Image pass, all at the render size.
+	private int getChainRows() {
+		return renderPipeline.getTargetHeight() * (programManager.getBufferPasses().size() + 1);
+	}
+
+	private void configureUniforms(@NonNull GlProgram mainProgram) {
+		builtinUniforms.configure(
+				device,
+				mainProgram,
+				UniformPresence.of(device, programManager.getPassPrograms()),
+				programManager.getFTimeMax(),
+				programManager.getTextureResources());
+	}
+
+	private void ensureBufferTargets() {
+		int width = renderPipeline.getTargetWidth();
+		int height = renderPipeline.getTargetHeight();
+		List<ShaderError> errors = null;
+		for (var pass : programManager.getBufferPasses()) {
+			if (!pass.hasTargets()) {
+				if (errors == null) {
+					errors = new ArrayList<>();
+				}
+				pass.ensureTargets(device, width, height, halfFloatBuffers, errors);
+			}
+		}
+		if (errors != null && !errors.isEmpty()) {
+			submitErrors(errors);
+		}
+	}
+
+	private void updateBufferMipmapNeeds() {
+		java.util.Arrays.fill(bufferNeedsMipmaps, false);
+		var prepared = new ArrayList<PreparedShaderSource>();
+		prepared.add(programManager.getPreparedShaderSource());
+		for (var pass : programManager.getBufferPasses()) {
+			prepared.add(pass.prepared);
+		}
+		for (var source : prepared) {
+			for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+				var parameters = source.getChannel(channel);
+				if (parameters != null && parameters.getBuffer() != ChannelParameters.NO_BUFFER &&
+						parameters.getBuffer() < bufferNeedsMipmaps.length &&
+						usesMipmaps(parameters.getMinFilter())) {
+					bufferNeedsMipmaps[parameters.getBuffer()] = true;
+				}
+			}
+		}
+	}
+
+	private static boolean usesMipmaps(int minFilter) {
+		return minFilter != GLES20.GL_NEAREST && minFilter != GLES20.GL_LINEAR;
+	}
+
+	// Draws rows [start, start + rows) of the pass chain (see
+	// getChainRows()): buffer passes first, each into its own target,
+	// swapped as soon as its last row is done so every later pass reads
+	// this frame's result - then the Image pass into the main target,
+	// which the caller swaps/presents. The shared bindings are retargeted
+	// at each pass's program and get that pass's channels, and are left
+	// pointing at the Image pass.
+	private void drawChainRows(@NonNull ProgramBindings bindings, @NonNull GlProgram mainProgram,
+			int start, int rows, int height) {
+		var passes = programManager.getBufferPasses();
+		int width = renderPipeline.getTargetWidth();
+		GlTexture2D mainBackTexture = renderPipeline.getBackTexture();
+		for (int done = start, end = start + rows; done < end; ) {
+			int passIndex = done / height;
+			int y0 = done % height;
+			int n = Math.min(end - done, height - y0);
+			if (passIndex < passes.size()) {
+				var pass = passes.get(passIndex);
+				var program = pass.getProgram();
+				var framebuffer = pass.getRenderFramebuffer();
+				if (program != null && framebuffer != null) {
+					bindings.retarget(program);
+					bindChannels(bindings, pass.prepared, passes);
+					// A buffer's own `backbuffer` is its previous frame.
+					bindings.setTexture(UNIFORM_BACKBUFFER, pass.getCurrentTexture());
+					renderPipeline.renderPassRows(bindings, program, framebuffer,
+							width, height, y0, n);
+				}
+				if (y0 + n >= height) {
+					pass.swap();
+					var texture = pass.getCurrentTexture();
+					if (texture != null && pass.buffer < bufferNeedsMipmaps.length &&
+							bufferNeedsMipmaps[pass.buffer]) {
+						device.generateMipmap(texture);
+					}
+				}
+			} else {
+				bindings.retarget(mainProgram);
+				bindChannels(bindings, programManager.getPreparedShaderSource(), passes);
+				bindings.setTexture(UNIFORM_BACKBUFFER, mainBackTexture);
+				renderPipeline.renderMainPassRows(bindings, mainProgram, y0, n);
+			}
+			done += n;
+		}
+		bindings.retarget(mainProgram);
+	}
+
+	private void bindChannels(@NonNull ProgramBindings bindings,
+			@NonNull PreparedShaderSource source, @NonNull List<BufferPass> passes) {
+		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+			var parameters = source.getChannel(channel);
+			GlTexture2D texture = null;
+			if (parameters != null && parameters.getBuffer() != ChannelParameters.NO_BUFFER) {
+				for (var pass : passes) {
+					if (pass.buffer == parameters.getBuffer()) {
+						texture = pass.getCurrentTexture();
+						break;
+					}
+				}
+			}
+			int offset = channel * 3;
+			if (texture != null) {
+				// Filtering/wrapping are per texture object (GLES2 has no
+				// sampler objects), so set this channel's own right before
+				// it's sampled.
+				device.applyTextureParameters(texture, parameters);
+				channelResolution[offset] = texture.getWidth();
+				channelResolution[offset + 1] = texture.getHeight();
+				channelResolution[offset + 2] = 1;
+			} else {
+				texture = blackTexture;
+				channelResolution[offset] = 0;
+				channelResolution[offset + 1] = 0;
+				channelResolution[offset + 2] = 0;
+			}
+			bindings.setTexture(ChannelParameters.getChannelName(channel), texture);
+		}
+		bindings.setFloat3(UNIFORM_ST_CHANNEL_RESOLUTION, ChannelParameters.MAX_CHANNELS,
+				channelResolution);
 	}
 
 	// Sizes the next band from how long the last one actually took, using
@@ -1454,6 +1650,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	private void discardContextResources() {
+		blackTexture = null;
 		builtinUniforms.clearConfiguration();
 		renderPipeline.discardContextResources();
 		programManager.discardContextResources();

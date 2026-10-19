@@ -54,29 +54,19 @@ final class BuiltinSystemUniforms {
 
 	void configure(
 			@NonNull GlDevice device,
-			@NonNull GlProgram program) {
+			@NonNull UniformPresence uniforms) {
 		lastBatteryUpdate = 0L;
 		lastDateUpdate = 0L;
 		lastMediaVolumeUpdate = 0L;
-		hasNightMode = device.hasUniform(program, ShaderRenderer.UNIFORM_NIGHT_MODE);
-		hasNotificationCount = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_NOTIFICATION_COUNT);
-		hasLastNotificationTime = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_LAST_NOTIFICATION_TIME);
-		hasBattery = device.hasUniform(program, ShaderRenderer.UNIFORM_BATTERY);
-		hasPowerConnected = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_POWER_CONNECTED);
-		hasDate = device.hasUniform(program, ShaderRenderer.UNIFORM_DATE);
-		hasDaytime = device.hasUniform(program, ShaderRenderer.UNIFORM_DAYTIME);
-		hasMediaVolume = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_MEDIA_VOLUME);
-		hasMicAmplitude = device.hasUniform(
-				program,
-				ShaderRenderer.UNIFORM_MIC_AMPLITUDE);
+		hasNightMode = uniforms.has(ShaderRenderer.UNIFORM_NIGHT_MODE);
+		hasNotificationCount = uniforms.has(ShaderRenderer.UNIFORM_NOTIFICATION_COUNT);
+		hasLastNotificationTime = uniforms.has(ShaderRenderer.UNIFORM_LAST_NOTIFICATION_TIME);
+		hasBattery = uniforms.has(ShaderRenderer.UNIFORM_BATTERY);
+		hasPowerConnected = uniforms.has(ShaderRenderer.UNIFORM_POWER_CONNECTED);
+		hasDate = uniforms.has(ShaderRenderer.UNIFORM_DATE);
+		hasDaytime = uniforms.has(ShaderRenderer.UNIFORM_DAYTIME);
+		hasMediaVolume = uniforms.has(ShaderRenderer.UNIFORM_MEDIA_VOLUME);
+		hasMicAmplitude = uniforms.has(ShaderRenderer.UNIFORM_MIC_AMPLITUDE);
 
 		if (hasNightMode) {
 			nightMode = (context.getResources().getConfiguration().uiMode &

@@ -197,6 +197,34 @@ final class GlDevice {
 		texture.setSize(width, height);
 	}
 
+	// RGBA16F storage for an offscreen buffer pass's targets - only valid
+	// on a GLES3 context, and only renderable where
+	// supportsHalfFloatTargets() says so.
+	void allocateTexture2DHalfFloat(@NonNull GlTexture2D texture, int width, int height) {
+		bindTexture(0, texture);
+		GLES30.glTexImage2D(
+				GLES30.GL_TEXTURE_2D,
+				0,
+				GLES30.GL_RGBA16F,
+				width,
+				height,
+				0,
+				GLES30.GL_RGBA,
+				GLES30.GL_HALF_FLOAT,
+				null);
+		texture.setSize(width, height);
+	}
+
+	// Whether this (current, GLES3) context can render into RGBA16F
+	// textures - core GLES 3.0 can sample them but not render to them
+	// without one of these extensions.
+	boolean supportsHalfFloatTargets() {
+		String extensions = GLES20.glGetString(GLES20.GL_EXTENSIONS);
+		return extensions != null &&
+				(extensions.contains("GL_EXT_color_buffer_half_float") ||
+						extensions.contains("GL_EXT_color_buffer_float"));
+	}
+
 	void updateTexture2D(@NonNull GlTexture2D texture, @NonNull ByteBuffer pixels) {
 		bindTexture(0, texture);
 		pixels.rewind();
@@ -583,6 +611,11 @@ final class GlDevice {
 				break;
 			}
 			int location = getUniformLocation(program, texture.name);
+			// Not used by this program (bindings can be shared between the
+			// passes of a multipass shader) - don't spend a unit on it.
+			if (location < 0) {
+				continue;
+			}
 			uniform1i(location, textureUnit);
 			bindTexture(textureUnit, texture.texture);
 			++textureUnit;

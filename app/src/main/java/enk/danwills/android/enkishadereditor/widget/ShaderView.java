@@ -7,6 +7,8 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 
+import androidx.annotation.Nullable;
+
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
@@ -71,13 +73,26 @@ public class ShaderView extends GLSurfaceView {
 	}
 
 	public void setFragmentShader(String src, float quality, long shaderId) {
+		setFragmentShader(src, null, quality, shaderId);
+	}
+
+	// bufferSources: see ShaderRenderer.setFragmentShader().
+	public void setFragmentShader(String src, @Nullable String[] bufferSources,
+			float quality, long shaderId) {
 		onPause();
 		// When pasting text from other apps, e.g. Gmail, the
 		// text is sometimes tainted with useless non-ascii
 		// characters that can raise an exception in the shader
 		// compiler. To still allow UTF-8 characters in comments,
 		// the source is cleaned up here.
-		renderer.setFragmentShader(removeNonAscii(src), quality, shaderId);
+		String[] cleanBuffers = null;
+		if (bufferSources != null) {
+			cleanBuffers = new String[bufferSources.length];
+			for (int i = 0; i < bufferSources.length; ++i) {
+				cleanBuffers[i] = removeNonAscii(bufferSources[i]);
+			}
+		}
+		renderer.setFragmentShader(removeNonAscii(src), cleanBuffers, quality, shaderId);
 		onResume();
 	}
 

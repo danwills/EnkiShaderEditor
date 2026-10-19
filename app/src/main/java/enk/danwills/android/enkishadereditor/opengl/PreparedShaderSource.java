@@ -15,18 +15,24 @@ final class PreparedShaderSource {
 	private final BackBufferParameters backBufferParameters;
 	@NonNull
 	private final List<DiscoveredSampler> samplers;
+	// Indexed by channel, null where the source declares no such
+	// iChannel - see ChannelParameters.
+	@NonNull
+	private final ChannelParameters[] channels;
 
 	PreparedShaderSource(
 			@Nullable PreparedShaderInput fragmentShader,
 			float fTimeMax,
 			@Nullable String gles3VersionDirective,
 			@NonNull BackBufferParameters backBufferParameters,
-			@NonNull List<DiscoveredSampler> samplers) {
+			@NonNull List<DiscoveredSampler> samplers,
+			@NonNull ChannelParameters[] channels) {
 		this.fragmentShader = fragmentShader;
 		this.fTimeMax = fTimeMax;
 		this.gles3VersionDirective = gles3VersionDirective;
 		this.backBufferParameters = backBufferParameters;
 		this.samplers = List.copyOf(samplers);
+		this.channels = channels.clone();
 	}
 
 	@NonNull
@@ -36,7 +42,8 @@ final class PreparedShaderSource {
 				3f,
 				null,
 				new BackBufferParameters(),
-				List.of());
+				List.of(),
+				new ChannelParameters[ChannelParameters.MAX_CHANNELS]);
 	}
 
 	@Nullable
@@ -56,6 +63,11 @@ final class PreparedShaderSource {
 	@NonNull
 	List<DiscoveredSampler> getSamplers() {
 		return samplers;
+	}
+
+	@Nullable
+	ChannelParameters getChannel(int channel) {
+		return channels[channel];
 	}
 
 	@NonNull

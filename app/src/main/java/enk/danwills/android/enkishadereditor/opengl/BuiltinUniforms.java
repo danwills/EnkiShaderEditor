@@ -8,6 +8,8 @@ import android.view.WindowManager;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.Calendar;
+
 final class BuiltinUniforms {
 	record SurfaceState(int renderWidth, int renderHeight, boolean renderTargetsChanged) {
 		@NonNull
@@ -35,6 +37,18 @@ final class BuiltinUniforms {
 	private final float[] mouse = new float[]{0, 0};
 	private final float[] pointers = new float[MAX_POINTERS * 3];
 	private final float[] offset = new float[]{0, 0};
+	// ShaderToy uniforms - see bindShaderToyUniforms().
+	private final float[] stResolution = new float[]{0, 0, 1};
+	private final float[] stMouse = new float[]{0, 0, 0, 0};
+	private final float[] stDate = new float[]{0, 0, 0, 0};
+	private final Calendar calendar = Calendar.getInstance();
+	// Set by a touch going down, cleared once a frame has seen it - iMouse.w
+	// is positive only on the first frame of a press.
+	private volatile boolean stMousePressed;
+	// `time` as of the last completed frame, for iTimeDelta; < 0 before
+	// the first one (since a restart).
+	private float previousFrameTime = -1;
+	private float lastBoundTime;
 	@NonNull
 	private final Context context;
 	@NonNull
@@ -94,6 +108,7 @@ final class BuiltinUniforms {
 		startTime = now;
 		startRandom = (float) Math.random();
 		frameNum = 0;
+		previousFrameTime = -1;
 	}
 
 	// Suspends time-based uniforms without losing their position, so
@@ -175,14 +190,21 @@ final class BuiltinUniforms {
 				pointers[i] *= f;
 				pointers[i + 1] *= f;
 			}
+			for (int i = 0; i < stMouse.length; ++i) {
+				stMouse[i] *= f;
+			}
 			keepClockOnNextSurface = true;
 		}
 		this.quality = quality;
 	}
 
+	// `program` is the Image pass, which the shared bindings start out
+	// targeting; `uniforms` covers every pass's program (see
+	// UniformPresence), deciding which sensors etc. to start.
 	void configure(
 			@NonNull GlDevice device,
 			@NonNull GlProgram program,
+			@NonNull UniformPresence uniforms,
 			float fTimeMax,
 			@NonNull ShaderTextureResources textureResources) {
 		releaseModules();
@@ -190,10 +212,10 @@ final class BuiltinUniforms {
 		this.textureResources = textureResources;
 		programBindings = new ProgramBindings(program);
 
-		sensorUniforms.configure(device, program);
-		systemUniforms.configure(device, program);
-		cameraUniforms.configure(device, program, textureResources);
-		audioUniforms.configure(device, program, textureResources);
+		sensorUniforms.configure(device, uniforms);
+		systemUniforms.configure(device, uniforms);
+		cameraUniforms.configure(device, uniforms, textureResources);
+		audioUniforms.configure(device, uniforms, textureResources);
 	}
 
 	void resetAudioCaptureConsent() {
@@ -236,6 +258,7 @@ final class BuiltinUniforms {
 			startTime = now;
 			startRandom = (float) Math.random();
 			frameNum = 0;
+			previousFrameTime = -1;
 		}
 
 		surfaceResolution[0] = width;
@@ -269,16 +292,29 @@ final class BuiltinUniforms {
 		mouse[0] = x / resolution[0];
 		mouse[1] = 1 - y / resolution[1];
 
+		// ShaderToy's iMouse: xy follows the touch while it's down, zw is
+		// where it went down - both positive while down, z negated once
+		// it's lifted, w positive only on the press's first frame (see
+		// bindShaderToyUniforms()).
 		switch (e.getActionMasked()) {
 			case MotionEvent.ACTION_DOWN:
 				touchStart[0] = touch[0];
 				touchStart[1] = touch[1];
+				stMouse[0] = touch[0];
+				stMouse[1] = touch[1];
+				stMouse[2] = touch[0];
+				stMouse[3] = touch[1];
+				stMousePressed = true;
 				break;
 			case MotionEvent.ACTION_UP:
 			case MotionEvent.ACTION_CANCEL:
 				pointerCount = 0;
+				stMouse[2] = -Math.abs(stMouse[2]);
+				stMouse[3] = -Math.abs(stMouse[3]);
 				return;
 			default:
+				stMouse[0] = touch[0];
+				stMouse[1] = touch[1];
 				break;
 		}
 
@@ -350,6 +386,7 @@ final class BuiltinUniforms {
 
 	void endFrame() {
 		++frameNum;
+		previousFrameTime = lastBoundTime;
 	}
 
 	// Bumped by every beginFrame(), whoever called it - lets a frame
@@ -419,6 +456,38 @@ final class BuiltinUniforms {
 		}
 		bindings.setFloat2(ShaderRenderer.UNIFORM_OFFSET, offset);
 		bindings.setFloat(ShaderRenderer.UNIFORM_START_RANDOM, startRandom);
+		bindShaderToyUniforms(bindings, delta);
+	}
+
+	private void bindShaderToyUniforms(
+			@NonNull ProgramBindings bindings,
+			float delta) {
+		lastBoundTime = delta;
+		float timeDelta = previousFrameTime < 0 ? 0f : Math.max(0f, delta - previousFrameTime);
+		bindings.setFloat(ShaderRenderer.UNIFORM_ST_TIME, delta);
+		bindings.setFloat(ShaderRenderer.UNIFORM_ST_TIME_DELTA, timeDelta);
+		bindings.setFloat(ShaderRenderer.UNIFORM_ST_FRAME_RATE,
+				timeDelta > 0f ? 1f / timeDelta : 0f);
+		bindings.setInt(ShaderRenderer.UNIFORM_ST_FRAME, frameNum);
+		stResolution[0] = resolution[0];
+		stResolution[1] = resolution[1];
+		bindings.setFloat3(ShaderRenderer.UNIFORM_ST_RESOLUTION, stResolution);
+		if (stMousePressed) {
+			stMousePressed = false;
+		} else {
+			stMouse[3] = -Math.abs(stMouse[3]);
+		}
+		bindings.setFloat4(ShaderRenderer.UNIFORM_ST_MOUSE, stMouse);
+		calendar.setTimeInMillis(System.currentTimeMillis());
+		stDate[0] = calendar.get(Calendar.YEAR);
+		// 0-based, like JavaScript's Date (which ShaderToy passes on).
+		stDate[1] = calendar.get(Calendar.MONTH);
+		stDate[2] = calendar.get(Calendar.DAY_OF_MONTH);
+		stDate[3] = calendar.get(Calendar.HOUR_OF_DAY) * 3600f +
+				calendar.get(Calendar.MINUTE) * 60f +
+				calendar.get(Calendar.SECOND) +
+				calendar.get(Calendar.MILLISECOND) / 1000f;
+		bindings.setFloat4(ShaderRenderer.UNIFORM_ST_DATE, stDate);
 	}
 
 	private void releaseModules() {
