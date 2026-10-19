@@ -56,6 +56,62 @@ public final class DatabaseContract {
 		// ShaderDao.updateLastFps()/getLastFps().
 		String LAST_FPS = "last_fps";
 		String LAST_FPS_QUALITY = "last_fps_quality";
+		// The shader pack (see PackColumns) this shader was installed
+		// from, or null for the user's own shaders.
+		String PACK_ID = "pack_id";
+	}
+
+	/**
+	 * Defines the contents of the 'packs' table: the shader packs installed
+	 * into this library - see ShaderPackInstaller.
+	 */
+	public interface PackColumns {
+		String TABLE_NAME = "packs";
+		String PACK_ID = "pack_id";
+		String TITLE = "title";
+		String DESCRIPTION = "description";
+		String AUTHOR = "author";
+		String VERSION = "version";
+		String INSTALLED = "installed";
+		// Where it came from: SOURCE_FILE (installed from a pack file) or,
+		// later, a store.
+		String SOURCE = "source";
+		String SOURCE_FILE = "file";
+	}
+
+	/**
+	 * Defines the 'pack_info' table found only in a shader pack file (a
+	 * standalone database holding just the pack's shaders, buffers and
+	 * textures - see ShaderPackWriter): one row describing the pack.
+	 */
+	public interface PackInfoColumns {
+		String TABLE_NAME = "pack_info";
+		String PACK_ID = "pack_id";
+		String TITLE = "title";
+		String DESCRIPTION = "description";
+		String AUTHOR = "author";
+		String VERSION = "version";
+		String CREATED = "created";
+		// The pack file format's own version, so later readers can tell
+		// older packs apart.
+		String FORMAT = "format";
+		int CURRENT_FORMAT = 1;
+	}
+
+	/**
+	 * Defines a shader pack file's 'pack_media' table: images previewing
+	 * the pack - its shaders' thumbnails now, screenshots later.
+	 */
+	public interface PackMediaColumns extends BaseColumns {
+		String TABLE_NAME = "pack_media";
+		String KIND = "kind";
+		String KIND_THUMB = "thumb";
+		String KIND_SCREENSHOT = "screenshot";
+		// The pictured shader's CREATED date (its identity across
+		// libraries - see ShaderDao's import), or null.
+		String SHADER_CREATED = "shader_created";
+		String IMAGE = "image";
+		String CAPTION = "caption";
 	}
 
 	/**

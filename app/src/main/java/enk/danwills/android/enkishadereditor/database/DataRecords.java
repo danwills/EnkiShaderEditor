@@ -80,4 +80,22 @@ public final class DataRecords {
 			byte[] thumb
 	) {
 	}
+
+	/**
+	 * A shader pack installed into the library - see ShaderPackInstaller.
+	 */
+	public record ShaderPack(
+			String packId,
+			String title,
+			@Nullable
+			String description,
+			@Nullable
+			String author,
+			int version,
+			@Nullable
+			String installed,
+			@Nullable
+			String source
+	) {
+	}
 }

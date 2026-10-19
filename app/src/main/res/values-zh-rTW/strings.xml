@@ -536,4 +536,8 @@
 	<string name="channel_wrap_clamp">鉗制</string>
 	<string name="channel_wrap_repeat">重複</string>
 	<string name="buffers_capture_unsupported">自訂解析度和序列暫不支援帶離屏緩衝區的著色器</string>
+	<string name="not_a_shader_pack">這不是著色器包</string>
+	<plurals name="shader_pack_installed">
+		<item quantity="other">已安裝 %1$s：%2$d 個著色器</item>
+	</plurals>
 </resources>

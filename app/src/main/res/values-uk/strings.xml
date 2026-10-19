@@ -573,4 +573,11 @@
 	<string name="channel_wrap_clamp">Обрізання</string>
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Довільна роздільність і послідовності поки не підтримують шейдери з позаекранними буферами</string>
+	<string name="not_a_shader_pack">Це не набір шейдерів</string>
+	<plurals name="shader_pack_installed">
+		<item quantity="one">%1$s встановлено: %2$d шейдер</item>
+		<item quantity="few">%1$s встановлено: %2$d шейдери</item>
+		<item quantity="many">%1$s встановлено: %2$d шейдерів</item>
+		<item quantity="other">%1$s встановлено: %2$d шейдера</item>
+	</plurals>
 </resources>

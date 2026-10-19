@@ -446,6 +446,11 @@ public class ShaderDao {
 		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME;");
 	}
 
+	// Nothing to backfill - every existing shader is the user's own.
+	private static void addPackId(@NonNull SQLiteDatabase db) {
+		db.execSQL("ALTER TABLE " + DatabaseContract.ShaderColumns.TABLE_NAME + " ADD COLUMN " + DatabaseContract.ShaderColumns.PACK_ID + " TEXT;");
+	}
+
 	// Nothing to backfill - starts null for every existing row and gets
 	// populated the next time each shader actually renders a live frame.
 	private static void addLastFpsTracking(@NonNull SQLiteDatabase db) {
@@ -487,12 +492,21 @@ public class ShaderDao {
 				if (oldVersion < 9) {
 					addLastFpsTracking(db);
 				}
+				if (oldVersion < 11) {
+					addPackId(db);
+				}
 			}
 
 			@Override
 			public boolean onImport(@NonNull SQLiteDatabase intoDb,
 					@NonNull SQLiteDatabase fromDb) {
-				return importShaders(intoDb, fromDb);
+				return importShaders(intoDb, fromDb, null);
+			}
+
+			@Override
+			public boolean onImport(@NonNull SQLiteDatabase intoDb,
+					@NonNull SQLiteDatabase fromDb, @Nullable String packId) {
+				return importShaders(intoDb, fromDb, packId);
 			}
 
 			private void createShadersTable(@NonNull SQLiteDatabase db) {
@@ -514,7 +528,8 @@ public class ShaderDao {
 						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_LENGTH + " INTEGER," +
 						DatabaseContract.ShaderColumns.COMPILE_TIME_SOURCE_MODIFIED + " DATETIME," +
 						DatabaseContract.ShaderColumns.LAST_FPS + " INTEGER," +
-						DatabaseContract.ShaderColumns.LAST_FPS_QUALITY + " REAL);");
+						DatabaseContract.ShaderColumns.LAST_FPS_QUALITY + " REAL," +
+						DatabaseContract.ShaderColumns.PACK_ID + " TEXT);");
 				insertInitialShaders(db);
 			}
 
@@ -537,9 +552,13 @@ public class ShaderDao {
 		};
 	}
 
+	// packId: importing a shader pack - every shader it brings in, and any
+	// it already had (same created/modified dates, i.e. the same shader),
+	// is tagged with it. Otherwise (a backup) each keeps its own pack_id.
 	private static boolean importShaders(
 			SQLiteDatabase dst,
-			SQLiteDatabase src) {
+			SQLiteDatabase src,
+			@Nullable String packId) {
 		try (Cursor cursor = src.rawQuery(
 				"SELECT *" +
 						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
@@ -560,8 +579,13 @@ public class ShaderDao {
 							DatabaseContract.ShaderColumns.CREATED);
 					String modifiedDate = CursorHelpers.getString(cursor,
 							DatabaseContract.ShaderColumns.MODIFIED);
-					if (createdDate == null || modifiedDate == null ||
-							shaderExists(dst, createdDate, modifiedDate)) {
+					if (createdDate == null || modifiedDate == null) {
+						continue;
+					}
+					if (shaderExists(dst, createdDate, modifiedDate)) {
+						if (packId != null) {
+							tagShaders(dst, createdDate, modifiedDate, packId);
+						}
 						continue;
 					}
 					// Falls back to modifiedDate when importing a backup
@@ -586,10 +610,28 @@ public class ShaderDao {
 						success = false;
 						break;
 					}
+					// "" when the source predates pack_id - see CursorHelpers.
+					String rowPackId = packId != null
+							? packId
+							: CursorHelpers.getString(cursor,
+									DatabaseContract.ShaderColumns.PACK_ID);
+					if (rowPackId != null && !rowPackId.isEmpty()) {
+						tagShaders(dst, createdDate, modifiedDate, rowPackId);
+					}
 				} while (cursor.moveToNext());
 			}
 			return success;
 		}
+	}
+
+	private static void tagShaders(SQLiteDatabase db, String createdDate,
+			String modifiedDate, String packId) {
+		var cv = new ContentValues();
+		cv.put(DatabaseContract.ShaderColumns.PACK_ID, packId);
+		db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
+				DatabaseContract.ShaderColumns.CREATED + " = ? AND " +
+						DatabaseContract.ShaderColumns.MODIFIED + " = ?",
+				new String[]{createdDate, modifiedDate});
 	}
 
 	private static boolean shaderExists(

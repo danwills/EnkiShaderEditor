@@ -569,4 +569,11 @@
 	<string name="channel_wrap_clamp">Обрезка</string>
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Произвольное разрешение и последовательности пока не поддерживают шейдеры с внеэкранными буферами</string>
+	<string name="not_a_shader_pack">Это не набор шейдеров</string>
+	<plurals name="shader_pack_installed">
+		<item quantity="one">%1$s установлен: %2$d шейдер</item>
+		<item quantity="few">%1$s установлен: %2$d шейдера</item>
+		<item quantity="many">%1$s установлен: %2$d шейдеров</item>
+		<item quantity="other">%1$s установлен: %2$d шейдера</item>
+	</plurals>
 </resources>

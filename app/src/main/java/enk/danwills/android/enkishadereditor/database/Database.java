@@ -58,6 +58,15 @@ public final class Database {
 
 	@Nullable
 	public String importDatabase(String tempFileName, @NonNull Uri originalUri) {
+		return importDatabase(tempFileName, originalUri, null);
+	}
+
+	// packId: when importing a shader pack, the pack whose id every shader
+	// it brings in (or already had) gets tagged with - see
+	// ShaderPackInstaller.
+	@Nullable
+	public String importDatabase(String tempFileName, @NonNull Uri originalUri,
+			@Nullable String packId) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		var tables = dbHelper.getTables();
 		try (var helper = new ImportHelper(new ExternalDatabaseContext(appContext), tempFileName);
@@ -65,7 +74,7 @@ public final class Database {
 			db.beginTransaction();
 			boolean success = true;
 			for (var table : tables) {
-				success &= table.onImport(db, edb);
+				success &= table.onImport(db, edb, packId);
 			}
 			if (success) {
 				db.setTransactionSuccessful();
@@ -94,7 +103,7 @@ public final class Database {
 		private final List<DatabaseTable> tables;
 
 		private OpenHelper(Context context, List<DatabaseTable> tables) {
-			super(context, DatabaseContract.FILE_NAME, null, 10);
+			super(context, DatabaseContract.FILE_NAME, null, 11);
 			this.tables = tables;
 		}
 
