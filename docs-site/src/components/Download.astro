@@ -18,35 +18,6 @@ const base = import.meta.env.BASE_URL;
         <a href={`${base}enki/`} class="btn btn-primary">Download the Enki APK</a>
       </div>
 
-      <p class="download-original">
-        The original ShaderEditor by Markus Fisch is on F-Droid and Google Play:
-      </p>
-
-      <div class="download-badges">
-        <a
-          href="https://f-droid.org/en/packages/de.markusfisch.android.shadereditor/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="download-badge download-badge-fdroid"
-        >
-          <img
-            src={`${base}media/badge-fdroid.svg`}
-            alt="Get it on F-Droid"
-          />
-        </a>
-        <a
-          href="https://play.google.com/store/apps/details?id=de.markusfisch.android.shadereditor"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="download-badge download-badge-gplay"
-        >
-          <img
-            src={`${base}media/badge-google-play.svg`}
-            alt="Get it on Google Play"
-          />
-        </a>
-      </div>
-
       <div class="download-meta">
         <div class="meta-item">
           <span class="meta-label">Version</span>
@@ -142,39 +113,8 @@ const base = import.meta.env.BASE_URL;
     position: relative;
   }
 
-  .download-original {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    margin-bottom: 1rem;
-    position: relative;
-  }
-
   .support-text-original {
     margin-top: 1.5rem;
-  }
-
-  .download-badges {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    margin-bottom: 2.5rem;
-    position: relative;
-  }
-
-  .download-badge img {
-    height: 54px;
-    width: auto;
-  }
-
-  .download-badge {
-    transition: transform 0.3s, opacity 0.3s;
-    opacity: 0.9;
-  }
-
-  .download-badge:hover {
-    transform: scale(1.05);
-    opacity: 1;
   }
 
   .download-meta {
