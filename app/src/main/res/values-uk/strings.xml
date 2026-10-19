@@ -572,7 +572,7 @@
 	<string name="channel_filter_mipmap">Міп-карти</string>
 	<string name="channel_wrap_clamp">Обрізання</string>
 	<string name="channel_wrap_repeat">Повтор</string>
-	<string name="buffers_capture_unsupported">Довільна роздільність і послідовності поки не підтримують шейдери з позаекранними буферами</string>
+	<string name="buffers_capture_unsupported">Шейдери з позаекранними буферами поки можна знімати лише в режимі «Як у застосунку» (без суперсемплінгу)</string>
 	<string name="not_a_shader_pack">Це не набір шейдерів</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s встановлено: %2$d шейдер</item>

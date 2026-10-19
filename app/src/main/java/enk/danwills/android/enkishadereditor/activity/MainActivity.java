@@ -3394,7 +3394,18 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 				return;
 			}
-			boolean autoDetectTileSize = autoDetectTileSizeBox.isChecked();
+			if (editorFragment.hasBufferPasses() && (oversample != 1 ||
+					width != shaderViewManager.getRenderWidth() ||
+					height != shaderViewManager.getRenderHeight())) {
+				// Tiled rendering draws the Image pass on its own, not the
+				// buffer chain it reads - so buffer shaders are captured
+				// by the live renderer itself, at its own size.
+				Toast.makeText(this, R.string.buffers_capture_unsupported,
+						Toast.LENGTH_LONG).show();
+				return;
+			}
+			boolean autoDetectTileSize = autoDetectTileSizeBox.isChecked()
+					&& !editorFragment.hasBufferPasses();
 			SharedPreferences.Editor prefsEditor = dialogPrefs().edit()
 					.putInt(PREF_CUSTOM_RES_WIDTH, width)
 					.putInt(PREF_CUSTOM_RES_HEIGHT, height)
@@ -3993,7 +4004,11 @@ public class MainActivity extends AppCompatActivity {
 			// live-context path (today's original behavior, same risk of
 			// being interrupted by backgrounding as before) if a shared
 			// context couldn't be created for any reason.
-			SharedCaptureContext sharedContext = shaderViewManager.createSharedCaptureContext();
+			// Not for buffer shaders: their buffers' framebuffers belong to
+			// the live context and aren't shared with another one.
+			SharedCaptureContext sharedContext = editorFragment.hasBufferPasses()
+					? null
+					: shaderViewManager.createSharedCaptureContext();
 			boolean backgroundCapable = sharedContext != null;
 			if (backgroundCapable) {
 				shaderViewManager.setBackgroundCaptureActive(true);
@@ -4398,7 +4413,11 @@ public class MainActivity extends AppCompatActivity {
 			// most likely to run long enough for someone to background
 			// the app partway through, so this is the capture this
 			// feature matters most for.
-			SharedCaptureContext sharedContext = shaderViewManager.createSharedCaptureContext();
+			// Not for buffer shaders: their buffers' framebuffers belong to
+			// the live context and aren't shared with another one.
+			SharedCaptureContext sharedContext = editorFragment.hasBufferPasses()
+					? null
+					: shaderViewManager.createSharedCaptureContext();
 			boolean backgroundCapable = sharedContext != null;
 			if (backgroundCapable) {
 				shaderViewManager.setBackgroundCaptureActive(true);
@@ -4610,13 +4629,6 @@ public class MainActivity extends AppCompatActivity {
 			handleScreenshotAction(png, ScreenshotAction.SAVE_AND_OPEN);
 		});
 		higherResButton.setOnClickListener(v -> {
-			if (editorFragment.hasBufferPasses()) {
-				// Those render the Image pass on its own, tile by tile -
-				// not the buffer chain it depends on (yet).
-				Toast.makeText(this, R.string.buffers_capture_unsupported,
-						Toast.LENGTH_LONG).show();
-				return;
-			}
 			rememberLastUsedButton(PREF_LAST_SCREENSHOT_ACTION, R.id.screenshot_higher_res);
 			// Listener cleared first - the dismiss below would otherwise
 			// restore pause state to whatever it was before this whole

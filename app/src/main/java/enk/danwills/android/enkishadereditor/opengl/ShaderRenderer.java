@@ -1438,6 +1438,15 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (!programManager.hasPreparedShader()) {
 			return null;
 		}
+		if (hasBufferPasses()) {
+			// The tiled path renders the Image pass on its own, without
+			// the buffer chain it reads - so a buffer shader captures the
+			// live renderer's own completed frame instead, which only
+			// exists at the live render size.
+			return oversample == 1 && isLiveRenderSize(width, height)
+					? renderPipeline.readCompletedFrameAsPng()
+					: null;
+		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
 				: progressListener::onProgress;
@@ -1503,9 +1512,24 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (frame == null) {
 			return;
 		}
-		renderPipeline.renderMainPass(frame.bindings(), mainProgram);
+		if (hasBufferPasses()) {
+			// Every buffer pass, then the Image pass - a whole frame of
+			// the chain, exactly as live rendering draws it.
+			ensureBufferTargets();
+			drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(),
+					renderPipeline.getTargetHeight());
+		} else {
+			renderPipeline.renderMainPass(frame.bindings(), mainProgram);
+		}
 		renderPipeline.swapTargets();
 		builtinUniforms.endFrame();
+	}
+
+	// Whether width x height is the live render size - the only size a
+	// buffer shader can be captured at (see captureHighResScreenshot()).
+	public boolean isLiveRenderSize(int width, int height) {
+		return width == renderPipeline.getTargetWidth() &&
+				height == renderPipeline.getTargetHeight();
 	}
 
 	// Captures numFrames frames via captureHighResScreenshot() above,
@@ -1555,7 +1579,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// per-frame-from-the-live-backbuffer behavior either way, just
 		// without the persistent high-res feedback a healthy allocation
 		// would have given them.
-		HighResScreenshotCapture.SequenceFeedback feedback =
+		HighResScreenshotCapture.SequenceFeedback feedback = !hasBufferPasses() &&
 				HighResScreenshotCapture.isFeedbackEligible(device, width * oversample, height * oversample)
 						? HighResScreenshotCapture.SequenceFeedback.create(
 								device, width * oversample, height * oversample)

@@ -393,6 +393,23 @@ final class ShaderRenderPipeline {
 		return targetTextures[backTarget];
 	}
 
+	// PNG of the most recently completed frame (the back target), at the
+	// render size - see ShaderRenderer's buffer-shader captures.
+	@Nullable
+	byte[] readCompletedFrameAsPng() {
+		GlTexture2D texture = targetTextures[backTarget];
+		if (texture == null) {
+			return null;
+		}
+		GlFramebuffer framebuffer = device.createFramebuffer();
+		device.attachColor(framebuffer, texture);
+		device.bindFramebuffer(framebuffer);
+		byte[] png = readPixelsAsPng(texture.getWidth(), texture.getHeight());
+		device.bindFramebuffer(null);
+		device.deleteFramebuffer(framebuffer);
+		return png;
+	}
+
 	void swapTargets() {
 		int target = frontTarget;
 		frontTarget = backTarget;

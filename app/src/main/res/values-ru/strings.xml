@@ -568,7 +568,7 @@
 	<string name="channel_filter_mipmap">Мип-карты</string>
 	<string name="channel_wrap_clamp">Обрезка</string>
 	<string name="channel_wrap_repeat">Повтор</string>
-	<string name="buffers_capture_unsupported">Произвольное разрешение и последовательности пока не поддерживают шейдеры с внеэкранными буферами</string>
+	<string name="buffers_capture_unsupported">Шейдеры с внеэкранными буферами пока можно снимать только в режиме «Как в приложении» (без суперсэмплинга)</string>
 	<string name="not_a_shader_pack">Это не набор шейдеров</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s установлен: %2$d шейдер</item>
