@@ -6,9 +6,10 @@
 // typing on is the code you're typing.
 //
 // Arrows, Home, End, PageUp and PageDown move the cursor, and so does
-// a tap; hold Shift to select. One finger drags the text about; two
-// pinch, pan and turn it. Buffer A does all of that - this pass just
-// draws.
+// a tap; hold Shift to select, and a long press selects a word (with
+// Shift, extends the selection to it). One finger drags the text
+// about; two pinch, pan and turn it. Buffer A does all of that - this
+// pass just draws.
 
 uniform sampler2D iChannel0; ///buf:A;
 uniform sampler2D font;
@@ -128,9 +129,11 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 // The top row is this pass's own numbers, from the right (two bytes
 // each, in pairs of channels): 0 the cursor, 1 the source version it
 // copied, 2 the selection's other end, 3 and 9 the view's pan (three
-// bytes each), 4 its zoom and turn, 5-7 last frame's touches (and how
+// bytes each), 4 its zoom and turn, 5-7 last frame's touches (in
+// quarter pixels; and how
 // far the touch has moved, to tell a tap from a drag), 8 the
-// size of a character cell - which the Image pass reads to draw.
+// size of a character cell - which the Image pass reads to draw - and
+// 10 when the touch began, and whether it's been a long press yet.
 ///text:Image
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -149,6 +152,7 @@ uniform int pointerCount;
 #define TAB_WIDTH 4
 #define MAX_COLUMNS 512
 #define TAP_SLOP 24.0 // pixels a touch can move and still be a tap
+#define LONG_PRESS 0.45 // seconds held still to select a word
 #define MIN_ZOOM 0.125
 #define MAX_ZOOM 8.0
 #define TYPED_COLOR vec3(1.0)
@@ -250,6 +254,48 @@ int nextStart(ivec2 cur) {
 		}
 	}
 	return cur.x + 1;
+}
+
+bool isWord(int code) {
+	return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) ||
+			(code >= 97 && code <= 122) || code == 95;
+}
+
+// The word (letters, digits, _) at p: [start, end) along its line - or
+// just the character there, if it isn't part of one.
+void wordAt(ivec2 p, out ivec2 start, out ivec2 end) {
+	start = p;
+	end = p + ivec2(1, 0);
+	if (!isWord(codeAt(p))) {
+		return;
+	}
+	for (int i = 0; i < 64; ++i) {
+		if (start.x <= 0 || !isWord(codeAt(start - ivec2(1, 0)))) {
+			break;
+		}
+		--start.x;
+	}
+	for (int i = 0; i < 64; ++i) {
+		if (!isWord(codeAt(end))) {
+			break;
+		}
+		++end.x;
+	}
+}
+
+// The character cell under a touch, on the text: within its line, and
+// at a character's start rather than in a tab's room.
+ivec2 cellUnder(vec2 cell) {
+	int y = clamp(int(cell.y), 0, res.y - 2);
+	int length = lineLength(y);
+	int x = clamp(int(cell.x), 0, length);
+	for (int i = 0; i < 16; ++i) {
+		if (x <= 0 || x >= length || codeAt(ivec2(x, y)) != 0) {
+			break;
+		}
+		--x;
+	}
+	return ivec2(x, y);
 }
 
 // This frame's typing, as one edit: delete [s, e) - nothing if s == e
@@ -392,9 +438,12 @@ vec2 toScreen(vec2 p, View v) {
 	return rotation(v.angle) * (p - center - v.pan) * v.zoom + center;
 }
 
-// A touch, y down like the text.
+// A touch, y down like the text - in quarter pixels, as it's kept
+// between frames (see the top row), so a still finger doesn't look
+// like it's creeping.
 vec2 touch(int i) {
-	return vec2(pointers[i].x, float(res.y) - pointers[i].y);
+	vec2 p = vec2(pointers[i].x, float(res.y) - pointers[i].y);
+	return floor(max(p, vec2(0.0)) * 4.0 + 0.5) / 4.0;
 }
 
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
@@ -439,7 +488,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 
 	// The top row: only the first few texels hold anything.
 	int index = res.x - 1 - p.x;
-	if (index > 9) {
+	if (index > 10) {
 		fragColor = vec4(0.0);
 		return;
 	}
@@ -458,7 +507,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	} else if (!copy) {
 		next = navigate(cur, page);
 		moved = next != cur;
-		nextAnchor = held(16) ? anchor : next;
+		// Only a move without Shift collapses the selection - not
+		// letting go of Shift afterwards, so a selection can be typed
+		// over.
+		nextAnchor = moved && !held(16) ? next : anchor;
 	}
 
 	// The view: one finger drags it, two pinch, pan and turn it.
@@ -467,9 +519,9 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	int lastCount = fresh ? 0 : byte(m.r);
 	float travel = fresh ? 0.0 : float(unpack(m.gb));
 	m = meta(6);
-	vec2 last0 = vec2(unpack(m.rg), unpack(m.ba));
+	vec2 last0 = vec2(unpack(m.rg), unpack(m.ba)) / 4.0;
 	m = meta(7);
-	vec2 last1 = vec2(unpack(m.rg), unpack(m.ba));
+	vec2 last1 = vec2(unpack(m.rg), unpack(m.ba)) / 4.0;
 	vec2 now0 = touch(0);
 	vec2 now1 = touch(1);
 	if (count > 0 && count == lastCount) {
@@ -494,23 +546,34 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		// Two fingers, or none: never a tap.
 		travel = count == 0 && lastCount == 1 ? travel : TAP_SLOP + 1.0;
 	}
+	m = meta(10);
+	float pressStart = fresh ? 0.0 : float(unpack24(m.rgb)) / 100.0;
+	bool longPressed = !fresh && m.a > 0.5;
 	if (count == 1 && lastCount == 0) {
 		travel = 0.0;
+		pressStart = iTime;
+		longPressed = false;
+	}
+	// A long press - one finger held still - selects the word under it,
+	// or with Shift held, extends the selection to that word.
+	if (!copy && !moved && count == 1 && lastCount == 1 && !longPressed &&
+			travel <= TAP_SLOP && iTime - pressStart >= LONG_PRESS) {
+		longPressed = true;
+		ivec2 ws, we;
+		wordAt(cellUnder(floor(toPage(now0, view) / cellSize)), ws, we);
+		if (held(16)) {
+			next = before(ws, anchor) ? ws : we;
+		} else {
+			nextAnchor = ws;
+			next = we;
+		}
 	}
 	// A tap - one finger, let go having hardly moved - puts the cursor
 	// where it was, on a character's start, or extends the selection
 	// there with Shift held.
-	if (!copy && count == 0 && lastCount == 1 && travel <= TAP_SLOP && !moved) {
-		vec2 at = floor(toPage(last0, view) / cellSize);
-		int y = clamp(int(at.y), 0, res.y - 2);
-		int x = clamp(int(at.x), 0, lineLength(y));
-		for (int i = 0; i < 16; ++i) {
-			if (x <= 0 || codeAt(ivec2(x, y)) != 0 || x >= lineLength(y)) {
-				break;
-			}
-			--x;
-		}
-		next = ivec2(x, y);
+	if (!copy && count == 0 && lastCount == 1 && travel <= TAP_SLOP && !moved &&
+			!longPressed) {
+		next = cellUnder(floor(toPage(last0, view) / cellSize));
 		nextAnchor = held(16) ? anchor : next;
 	}
 	// PageUp/PageDown move the view a page too; then typing or moving
@@ -548,9 +611,11 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	} else if (index == 5) {
 		fragColor = vec4(float(count) / 255.0, pack(int(min(travel, 60000.0))), 0.0);
 	} else if (index == 6) {
-		fragColor = vec4(pack(int(max(now0.x, 0.0))), pack(int(max(now0.y, 0.0))));
+		fragColor = vec4(pack(int(now0.x * 4.0)), pack(int(now0.y * 4.0)));
 	} else if (index == 7) {
-		fragColor = vec4(pack(int(max(now1.x, 0.0))), pack(int(max(now1.y, 0.0))));
+		fragColor = vec4(pack(int(now1.x * 4.0)), pack(int(now1.y * 4.0)));
+	} else if (index == 10) {
+		fragColor = vec4(pack24(int(pressStart * 100.0)), longPressed ? 1.0 : 0.0);
 	} else {
 		fragColor = vec4(pack(int(cellSize.x * 16.0)), pack(int(cellSize.y * 16.0)));
 	}
