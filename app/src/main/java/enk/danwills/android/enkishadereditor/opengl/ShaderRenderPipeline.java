@@ -350,13 +350,17 @@ final class ShaderRenderPipeline {
 	// Shows the most recently *completed* frame - the back target, after
 	// a swap - rather than the front one, which in progressive mode may
 	// only be partly rendered.
+	// shown: a texture to show instead (an offscreen buffer the editor
+	// is on - see ShaderRenderer.setDisplayedBuffer()), or null.
 	void renderCompletedSurfacePass(
 			@NonNull ProgramBindings surfaceBindings,
 			@NonNull GlProgram surfaceProgram,
 			int surfaceWidth,
-			int surfaceHeight) {
+			int surfaceHeight,
+			@Nullable GlTexture2D shown) {
 		drawSurface(
-				standInFrame != null ? standInFrame : targetTextures[backTarget],
+				shown != null ? shown
+						: standInFrame != null ? standInFrame : targetTextures[backTarget],
 				surfaceWidth,
 				surfaceHeight,
 				null,
@@ -369,9 +373,10 @@ final class ShaderRenderPipeline {
 			@NonNull ProgramBindings surfaceBindings,
 			@NonNull GlProgram surfaceProgram,
 			int surfaceWidth,
-			int surfaceHeight) {
+			int surfaceHeight,
+			@Nullable GlTexture2D shown) {
 		drawSurface(
-				targetTextures[frontTarget],
+				shown != null ? shown : targetTextures[frontTarget],
 				surfaceWidth,
 				surfaceHeight,
 				null,

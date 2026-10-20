@@ -575,6 +575,8 @@
 	<string name="offscreen_buffers_remove">Видалити</string>
 	<string name="pass_tab_image">Зобр</string>
 	<string name="pass_tab_buffer">Буфер %1$s</string>
+	<string name="pass_preview_image">Попередній перегляд показує прохід Image</string>
+	<string name="pass_preview_buffer">Перегляд: буфер %1$s (утримуйте знову для Img)</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">Немає</string>
 	<string name="channel_buffer">Буфер %1$s</string>

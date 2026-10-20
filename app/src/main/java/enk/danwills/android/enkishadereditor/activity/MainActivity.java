@@ -357,6 +357,13 @@ public class MainActivity extends AppCompatActivity {
 			refreshPassTabs();
 		});
 		editorFragment.setOnPassSelectedListener(this::switchToPass);
+		editorFragment.setOnPassDisplayedListener(pass -> {
+			shaderViewManager.setDisplayedBuffer(pass);
+			Toast.makeText(this, pass == ShaderError.IMAGE_PASS
+					? getString(R.string.pass_preview_image)
+					: getString(R.string.pass_preview_buffer,
+							ShaderProjectPaths.getBufferLetter(pass)), Toast.LENGTH_SHORT).show();
+		});
 		editorFragment.setOnChannelClickListener(this::showChannelMenu);
 		uiManager.setOnDrawerOpenedListener(this::clearFindMatchRing);
 
@@ -1808,6 +1815,9 @@ public class MainActivity extends AppCompatActivity {
 			present[i] = buffers[i] != null;
 		}
 		editorFragment.setPassTabs(present);
+		// Back to the Image pass if the shown buffer has gone, or another
+		// shader was loaded - see EditorFragment.getDisplayedPass().
+		shaderViewManager.setDisplayedBuffer(editorFragment.getDisplayedPass());
 	}
 
 	private void switchToPass(int pass) {

@@ -538,6 +538,8 @@
 	<string name="offscreen_buffers_remove">刪除</string>
 	<string name="pass_tab_image">圖像</string>
 	<string name="pass_tab_buffer">緩衝區 %1$s</string>
+	<string name="pass_preview_image">預覽顯示 Image 通道</string>
+	<string name="pass_preview_buffer">預覽顯示緩衝區 %1$s（再次長按返回 Img）</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">無</string>
 	<string name="channel_buffer">緩衝區 %1$s</string>

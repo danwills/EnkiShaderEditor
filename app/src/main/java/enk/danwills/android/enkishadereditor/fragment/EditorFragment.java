@@ -47,6 +47,12 @@ public class EditorFragment extends Fragment {
 		void onPassSelected(int pass);
 	}
 
+	// Long-pressing a pass tab picks which pass the preview shows - see
+	// getDisplayedPass().
+	public interface OnPassDisplayedListener {
+		void onPassDisplayed(int pass);
+	}
+
 	public interface OnChannelClickListener {
 		void onChannelClick(int channel, @NonNull View anchor);
 	}
@@ -59,6 +65,10 @@ public class EditorFragment extends Fragment {
 	// another one is shown (see switchToPass()). Reset by setText(),
 	// i.e. whenever a different shader is loaded.
 	private static int activePass = ShaderError.IMAGE_PASS;
+	// Which pass the preview shows: the Image pass, unless a buffer tab
+	// was long-pressed to look at that buffer's pixels instead. Separate
+	// from activePass, so editing a buffer doesn't change the preview.
+	private static int displayedPass = ShaderError.IMAGE_PASS;
 	private static final Map<Integer, UndoRedo.EditHistory> passHistories = new HashMap<>();
 	private static final Map<Integer, int[]> passViewStates = new HashMap<>();
 
@@ -76,6 +86,7 @@ public class EditorFragment extends Fragment {
 	private List<ShaderError> allErrors = Collections.emptyList();
 	@Nullable
 	private OnPassSelectedListener passSelectedListener;
+	private OnPassDisplayedListener passDisplayedListener;
 	@Nullable
 	private OnChannelClickListener channelClickListener;
 
@@ -249,6 +260,20 @@ public class EditorFragment extends Fragment {
 		passSelectedListener = listener;
 	}
 
+	public void setOnPassDisplayedListener(@Nullable OnPassDisplayedListener listener) {
+		passDisplayedListener = listener;
+	}
+
+	// The Image pass, or a buffer that's still there - so loading another
+	// shader, or removing the shown buffer, falls back to the Image pass.
+	public int getDisplayedPass() {
+		if (displayedPass != ShaderError.IMAGE_PASS &&
+				(displayedPass >= buffersPresent.length || !buffersPresent[displayedPass])) {
+			displayedPass = ShaderError.IMAGE_PASS;
+		}
+		return displayedPass;
+	}
+
 	public void setOnChannelClickListener(@Nullable OnChannelClickListener listener) {
 		channelClickListener = listener;
 	}
@@ -375,6 +400,14 @@ public class EditorFragment extends Fragment {
 	private void addPassTab(int pass, @NonNull String label) {
 		var tab = new TextView(requireContext());
 		var text = new SpannableStringBuilder(label);
+		if (pass != ShaderError.IMAGE_PASS && pass == getDisplayedPass()) {
+			// This buffer is what the preview shows - see displayedPass.
+			int start = text.length();
+			text.append(" \u25C9");
+			text.setSpan(new ForegroundColorSpan(
+							ContextCompat.getColor(requireContext(), R.color.toggle_active)),
+					start, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		}
 		if (passHasErrors(pass)) {
 			int start = text.length();
 			text.append(" \u25CF");
@@ -400,6 +433,15 @@ public class EditorFragment extends Fragment {
 			if (pass != activePass && passSelectedListener != null) {
 				passSelectedListener.onPassSelected(pass);
 			}
+		});
+		// Toggles the preview between this buffer and the Image pass.
+		tab.setOnLongClickListener(v -> {
+			displayedPass = pass == getDisplayedPass() ? ShaderError.IMAGE_PASS : pass;
+			buildPassTabs();
+			if (passDisplayedListener != null) {
+				passDisplayedListener.onPassDisplayed(displayedPass);
+			}
+			return true;
 		});
 		passTabs.addView(tab, new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.WRAP_CONTENT, size));
@@ -490,6 +532,7 @@ public class EditorFragment extends Fragment {
 	public void setText(String text) {
 		clearError();
 		activePass = ShaderError.IMAGE_PASS;
+		displayedPass = ShaderError.IMAGE_PASS;
 		passHistories.clear();
 		passViewStates.clear();
 		undoRedo.setEditHistory(ShaderEditorApp.editHistory);

@@ -566,6 +566,8 @@
 	<string name="offscreen_buffers_remove">Remove</string>
 	<string name="pass_tab_image">Img</string>
 	<string name="pass_tab_buffer">Buffer %1$s</string>
+	<string name="pass_preview_image">Preview shows the Image pass</string>
+	<string name="pass_preview_buffer">Preview shows Buffer %1$s (long-press again for Img)</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">None</string>
 	<string name="channel_buffer">Buffer %1$s</string>

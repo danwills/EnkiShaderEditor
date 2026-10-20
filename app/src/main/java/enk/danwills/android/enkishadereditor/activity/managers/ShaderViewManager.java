@@ -429,6 +429,14 @@ public class ShaderViewManager {
 				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources);
 	}
 
+	// Shows the given offscreen buffer (0 = A) instead of the Image pass,
+	// or the Image pass again for ShaderError.IMAGE_PASS - see
+	// ShaderRenderer.setDisplayedBuffer().
+	public void setDisplayedBuffer(int buffer) {
+		shaderView.getRenderer().setDisplayedBuffer(buffer);
+		shaderView.requestRender();
+	}
+
 	public void setProjectSession(@NonNull ShaderProjectSession projectSession) {
 		if (paused) {
 			return;

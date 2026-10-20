@@ -343,6 +343,35 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		pendingReload = true;
 	}
 
+	// Which offscreen buffer (0 = A) to show on screen instead of the
+	// Image pass - the one the editor is on - or -1 for the Image pass.
+	// Every pass still renders as usual; only what's shown changes.
+	// Thumbnails and high-res captures always take the Image pass, while
+	// a plain screenshot takes what's on screen. Set from the UI thread,
+	// read on the GL thread.
+	private volatile int displayedBuffer = ShaderError.IMAGE_PASS;
+
+	public void setDisplayedBuffer(int buffer) {
+		displayedBuffer = buffer;
+	}
+
+	// The displayed buffer's latest output, or null to show the Image
+	// pass (also when the shader has no such buffer, e.g. while it's
+	// being removed).
+	@Nullable
+	private GlTexture2D getDisplayedBufferTexture() {
+		int buffer = displayedBuffer;
+		if (buffer == ShaderError.IMAGE_PASS) {
+			return null;
+		}
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.buffer == buffer) {
+				return pass.getCurrentTexture();
+			}
+		}
+		return null;
+	}
+
 	// Called from ShaderView.onResume() - every pause runs release()
 	// (unregistering sensors/camera/audio and clearing BuiltinUniforms'
 	// per-program configuration, see unregisterListeners()), which used to
@@ -796,7 +825,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				surfaceBindings,
 				surfaceProgram,
 				frame.surfaceWidth(),
-				frame.surfaceHeight());
+				frame.surfaceHeight(),
+				getDisplayedBufferTexture());
 		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
 		renderPipeline.swapTargets();
 		renderPipeline.releaseStandInFrame();
@@ -873,7 +903,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				surfaceBindings,
 				surfaceProgram,
 				frame.surfaceWidth(),
-				frame.surfaceHeight());
+				frame.surfaceHeight(),
+				getDisplayedBufferTexture());
 		captureFullImage(frame.surfaceWidth(), frame.surfaceHeight());
 		captureThumbnail(true);
 		if (completed) {
