@@ -123,6 +123,5 @@
 		android:hint="@string/adjust_defines_comment_hint"
 		android:importantForAutofill="no"
 		android:inputType="text"
-		android:maxLines="1"
 		android:textSize="13sp"/>
 </LinearLayout>

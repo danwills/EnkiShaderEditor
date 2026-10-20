@@ -4,6 +4,7 @@ import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
+import android.text.InputFilter;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
@@ -225,6 +226,17 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			colorSwatch = itemView.findViewById(R.id.define_color_swatch);
 			vectorRows = itemView.findViewById(R.id.define_vector_rows);
 			commentText = itemView.findViewById(R.id.define_comment_text);
+			// A comment is one line of source, so the box stays single-line
+			// (no newline key, and pasted newlines become spaces) but wraps
+			// on screen rather than scrolling sideways.
+			commentText.setHorizontallyScrolling(false);
+			commentText.setMaxLines(Integer.MAX_VALUE);
+			commentText.setFilters(new InputFilter[]{(source, start, end, dest, dstart, dend) -> {
+				String text = source.subSequence(start, end).toString();
+				return text.indexOf('\n') < 0 && text.indexOf('\r') < 0
+						? null
+						: text.replace('\r', ' ').replace('\n', ' ');
+			}});
 		}
 
 		void bind(@NonNull ShaderDefine define, @NonNull OnStartDragListener dragListener,
