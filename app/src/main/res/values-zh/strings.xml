@@ -528,6 +528,8 @@
 	<string name="sample_circles_rationale">一个简单的绘制多个圆形图案的着色器</string>
 	<string name="sample_cloudy_conway_name">多云康威</string>
 	<string name="sample_cloudy_conway_rationale">康威生命游戏的一个变种。</string>
+	<string name="sample_crt_source_name">CRT Self-Portrait</string>
+	<string name="sample_crt_source_rationale">使用 sourceText 和内置字体，把自己的源代码打字到一台老式绿色荧光 CRT 屏幕上。</string>
 	<string name="sample_electric_fade_name">电力淡化</string>
 	<string name="sample_electric_fade_rationale">类似于多云康威，但使用了预设的回扫缓冲区 (Backbuffer)。</string>
 	<string name="sample_game_of_life_name">生命游戏</string>

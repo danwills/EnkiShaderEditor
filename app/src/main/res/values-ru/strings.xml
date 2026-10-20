@@ -554,6 +554,8 @@
 	<string name="sample_circles_rationale">Данный шейдер отрисовывает пару-тройку кружков</string>
 	<string name="sample_cloudy_conway_name">Cloudy Conway</string>
 	<string name="sample_cloudy_conway_rationale">A variation on Conway\'s Game of Life.</string>
+	<string name="sample_crt_source_name">CRT Self-Portrait</string>
+	<string name="sample_crt_source_rationale">Печатает собственный исходный код на старом зелёном ЭЛТ-экране с помощью sourceText и встроенного шрифта.</string>
 	<string name="sample_electric_fade_name">Electric Fade</string>
 	<string name="sample_electric_fade_rationale">Like Cloudy Conway but with a preset backbuffer.</string>
 	<string name="sample_game_of_life_name">Игра "Жизнь"</string>

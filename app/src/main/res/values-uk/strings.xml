@@ -554,6 +554,8 @@
 	<string name="sample_circles_rationale">Намалюйте кілька кіл</string>
 	<string name="sample_cloudy_conway_name">Cloudy Conway</string>
 	<string name="sample_cloudy_conway_rationale">Варіація «Гри життя» Конвея.</string>
+	<string name="sample_crt_source_name">CRT Self-Portrait</string>
+	<string name="sample_crt_source_rationale">Друкує власний вихідний код на старому зеленому ЕПТ-екрані за допомогою sourceText і вбудованого шрифту.</string>
 	<string name="sample_electric_fade_name">Електричне згасання</string>
 	<string name="sample_electric_fade_rationale">Як Cloudy Conway, але із попередньо встановленим зворотним буфером.</string>
 	<string name="sample_game_of_life_name">Гра життя</string>

@@ -528,6 +528,8 @@
 	<string name="sample_circles_rationale">繪製一些圓形圖案</string>
 	<string name="sample_cloudy_conway_name">多雲康威</string>
 	<string name="sample_cloudy_conway_rationale">康威生命遊戲的一個變體。</string>
+	<string name="sample_crt_source_name">CRT Self-Portrait</string>
+	<string name="sample_crt_source_rationale">使用 sourceText 和內建字型，把自己的原始碼打字到一台老式綠色螢光 CRT 螢幕上。</string>
 	<string name="sample_electric_fade_name">電力淡化</string>
 	<string name="sample_electric_fade_rationale">類似於多雲康威，但使用了預設的回掃緩衝區 (Backbuffer)。</string>
 	<string name="sample_game_of_life_name">生命遊戲</string>
