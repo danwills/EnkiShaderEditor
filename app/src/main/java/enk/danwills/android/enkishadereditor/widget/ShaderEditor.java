@@ -372,6 +372,11 @@ public class ShaderEditor extends LineNumberEditText {
 			return;
 		}
 		e.replace(0, e.length(), text, 0, text.length());
+		// Replacing everything drops every colour span, and the usual
+		// highlight only redoes the tokens that changed - so redo it all.
+		isUserInteraction = false;
+		highlight(e, true);
+		isUserInteraction = true;
 	}
 
 	public void navigateToLine(int lineNumber) {
