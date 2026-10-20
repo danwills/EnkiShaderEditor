@@ -200,6 +200,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private byte[] fullImage;
 	private boolean captureFullImage;
 	private volatile boolean blankFrameRequested;
+	// See requestRedisplay().
+	private volatile boolean redisplayRequested;
+	// The view's size, for requestRedisplay().
+	private int viewWidth;
+	private int viewHeight;
 	// Multipass shaders - see drawBufferPasses(). A 1x1 black texture for
 	// channels with nothing assigned (ShaderToy reads those as black),
 	// whether this context can render into RGBA16F buffers, and which
@@ -426,6 +431,15 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// sync with it.
 	public void requestBlankFrame() {
 		blankFrameRequested = true;
+		redisplayRequested = false;
+	}
+
+	// Shows the last completed frame again on the next onDrawFrame(),
+	// without rendering a new one - so a paused shader (feedback and
+	// buffer shaders included) comes back from requestBlankFrame()
+	// exactly as it was, not one step on.
+	public void requestRedisplay() {
+		redisplayRequested = true;
 	}
 
 	public void resumeClock() {
@@ -639,6 +653,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		lastRender = now;
 		refreshRate = getRefreshRate(context);
 		surfaceState = builtinUniforms.updateSurface(width, height, now);
+		viewWidth = width;
+		viewHeight = height;
 		if (surfaceState.renderTargetsChanged()) {
 			// Keeps the last completed frame on screen (scaled) until the
 			// first frame at the new size completes - otherwise a quality
@@ -763,6 +779,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			cancelCaptureThumbnail();
 			cancelCaptureFullImage();
 			return;
+		}
+		if (redisplayRequested) {
+			redisplayRequested = false;
+			var surfaceProgram = programManager.getSurfaceProgram();
+			var surfaceBindings = programManager.getSurfaceBindings();
+			if (surfaceProgram != null && surfaceBindings != null && renderPipeline.hasTargets()) {
+				renderPipeline.renderCompletedSurfacePass(surfaceBindings, surfaceProgram,
+						viewWidth, viewHeight, getDisplayedBufferTexture());
+				return;
+			}
 		}
 
 		var surfaceProgram = programManager.getSurfaceProgram();

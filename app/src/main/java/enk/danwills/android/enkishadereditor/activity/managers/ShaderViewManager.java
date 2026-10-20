@@ -386,6 +386,15 @@ public class ShaderViewManager {
 	// setPaused() itself - other callers (capture flows, "run when not
 	// editing") still need the live frame to remain visible/capturable
 	// while paused.
+	// Shows the paused frame again - undoing blankScreen().
+	public void redraw() {
+		if (shaderView.getVisibility() != View.VISIBLE) {
+			return;
+		}
+		shaderView.queueEvent(() -> shaderView.getRenderer().requestRedisplay());
+		shaderView.requestRender();
+	}
+
 	public void blankScreen() {
 		if (shaderView.getVisibility() != View.VISIBLE) {
 			return;

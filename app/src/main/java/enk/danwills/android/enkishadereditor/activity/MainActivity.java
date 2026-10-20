@@ -341,7 +341,10 @@ public class MainActivity extends AppCompatActivity {
 				editorFragment,
 				extraKeysManager,
 				shaderViewManager);
-		uiManager.setOnCodeVisibilityChangedListener(this::updatePauseForEditingVisibility);
+		uiManager.setOnCodeVisibilityChangedListener(codeVisible -> {
+			updatePauseForEditingVisibility(codeVisible);
+			updatePausedBlanking();
+		});
 		shaderListManager = new ShaderListManager(this,
 				findViewById(R.id.shaders),
 				dataSource,
@@ -5539,8 +5542,9 @@ public class MainActivity extends AppCompatActivity {
 		if (!fullscreen && pausedBeforeFullscreen) {
 			pausedBeforeFullscreen = false;
 			setShaderPaused(true);
-			shaderViewManager.blankScreen();
+			pausedByButton = true;
 		}
+		updatePausedBlanking();
 		// The keyboard needs explicit handling since IME visibility isn't
 		// tied to View visibility and the editor doesn't regain focus on
 		// its own. Selection is restored explicitly too, defensively -
@@ -5571,12 +5575,30 @@ public class MainActivity extends AppCompatActivity {
 	private void togglePauseShader() {
 		boolean pausing = !shaderViewManager.isPaused();
 		setShaderPaused(pausing);
-		if (pausing) {
-			// Only for this, the manual pause button - other
-			// setShaderPaused(true) callers (screenshot/capture flows,
-			// "run when not editing") still need the live frame visible
-			// while paused, not blanked.
+		pausedByButton = pausing;
+		// Only for this, the manual pause button - other
+		// setShaderPaused(true) callers (screenshot/capture flows,
+		// "run when not editing") still need the live frame visible
+		// while paused, not blanked.
+		updatePausedBlanking();
+	}
+
+	// Whether the pause button paused the shader - see
+	// updatePausedBlanking().
+	private boolean pausedByButton;
+
+	// A shader paused with the pause button is blanked only while the
+	// code editor is showing, so the editor reads clearly; with the
+	// editor hidden (or fullscreen) the frozen frame stays on screen.
+	private void updatePausedBlanking() {
+		if (!pausedByButton || !shaderViewManager.isPaused()) {
+			pausedByButton = false;
+			return;
+		}
+		if (editorFragment.isCodeVisible() && !uiManager.isFullscreen()) {
 			shaderViewManager.blankScreen();
+		} else {
+			shaderViewManager.redraw();
 		}
 	}
 
