@@ -4016,6 +4016,10 @@ public class MainActivity extends AppCompatActivity {
 			return !cancelRequested.get();
 		};
 		new Thread(() -> {
+			// Same priority handling as runFrameSequenceCapture(), so the
+			// notification's priority buttons work for a single image too.
+			Process.setThreadPriority(ShaderEditorApp.preferences.getCaptureThreadPriority());
+			HighResCaptureService.setCaptureThreadId(Process.myTid());
 			// Grabbing a SharedCaptureContext here, right as the capture
 			// starts (so the live GL context is definitely still around
 			// to share against), and running the tiled capture against it
@@ -4049,6 +4053,7 @@ public class MainActivity extends AppCompatActivity {
 				sharedContext.destroy();
 				HighResCaptureService.stop(this);
 			}
+			HighResCaptureService.clearCaptureThreadId();
 			runOnUiThread(() -> {
 				getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 				progressDialog.dismiss();

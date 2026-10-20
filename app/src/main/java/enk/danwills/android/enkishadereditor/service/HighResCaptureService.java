@@ -37,9 +37,9 @@ import enk.danwills.android.enkishadereditor.preference.Preferences;
 // then stop it; the actual work happens on MainActivity's own capture
 // thread, never here.
 //
-// Also hosts two notification action buttons letting the frame-sequence
-// capture thread's OS thread priority (Preferences.CAPTURE_THREAD_PRIORITY,
-// via MainActivity.runFrameSequenceCapture()) be changed without
+// Also hosts two notification action buttons letting the capture
+// thread's OS thread priority (Preferences.CAPTURE_THREAD_PRIORITY,
+// via MainActivity.runHighResCapture()/runFrameSequenceCapture()) be changed without
 // reopening the app - see setCaptureThreadId()/onStartCommand() below.
 public class HighResCaptureService extends Service {
 	private static final String TAG = "HighResCapture";
@@ -131,6 +131,10 @@ public class HighResCaptureService extends Service {
 				.setSmallIcon(R.drawable.ic_launcher_monochrome)
 				.setPriority(NotificationCompat.PRIORITY_MIN)
 				.setOngoing(true)
+				// Shown straight away rather than after Android 12+'s
+				// usual 10s grace period, so a quick single-image capture
+				// shows it too.
+				.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 				.setProgress(100, percent, false)
 				.addAction(0,
 						(currentLevel == Preferences.CAPTURE_PRIORITY_NORMAL ? "✓ " : "") +
