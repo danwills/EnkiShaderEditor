@@ -25,6 +25,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Process;
+import android.os.SystemClock;
 import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.Spannable;
@@ -711,13 +712,60 @@ public class MainActivity extends AppCompatActivity {
 		int index = shaderViewManager.stepQuality(direction);
 		String[] names = getResources().getStringArray(R.array.quality_names);
 		String name = index >= 0 && index < names.length ? names[index] : "";
-		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo,
-				getString(R.string.quality_step_toast, name)), Toast.LENGTH_SHORT).show();
+		showHotkeyMessage(getString(R.string.hotkey_toast_format, combo,
+				getString(R.string.quality_step_toast, name)));
 	}
 
 	private void showHotkeyToast(@NonNull String combo, @StringRes int actionNameRes) {
-		Toast.makeText(this, getString(R.string.hotkey_toast_format, combo, getString(actionNameRes)),
-				Toast.LENGTH_SHORT).show();
+		showHotkeyMessage(getString(R.string.hotkey_toast_format, combo, getString(actionNameRes)));
+	}
+
+	// Hotkeys pressed within this long of each other share one toast.
+	private static final long HOTKEY_GROUP_MILLIS = 1500;
+	// How many different actions a shared toast names (toasts show at
+	// most two lines on newer Android).
+	private static final int HOTKEY_GROUP_SHOWN = 2;
+	@Nullable
+	private Toast hotkeyToast;
+	private long lastHotkeyMillis;
+	// The actions in the current group, oldest first, and how many times
+	// each was pressed in a row.
+	private final List<String> hotkeyActions = new ArrayList<>();
+	private final List<Integer> hotkeyRepeats = new ArrayList<>();
+
+	// One toast for a burst of hotkeys, replaced as each comes in, rather
+	// than one each - those queue up, and take ages to get through when
+	// keys are pressed quickly.
+	private void showHotkeyMessage(@NonNull String message) {
+		long now = SystemClock.uptimeMillis();
+		if (now - lastHotkeyMillis > HOTKEY_GROUP_MILLIS) {
+			hotkeyActions.clear();
+			hotkeyRepeats.clear();
+		}
+		lastHotkeyMillis = now;
+		int last = hotkeyActions.size() - 1;
+		if (last >= 0 && hotkeyActions.get(last).equals(message)) {
+			hotkeyRepeats.set(last, hotkeyRepeats.get(last) + 1);
+		} else {
+			hotkeyActions.add(message);
+			hotkeyRepeats.add(1);
+		}
+		var text = new StringBuilder();
+		for (int i = Math.max(0, hotkeyActions.size() - HOTKEY_GROUP_SHOWN);
+				i < hotkeyActions.size(); ++i) {
+			if (text.length() > 0) {
+				text.append(" · ");
+			}
+			text.append(hotkeyActions.get(i));
+			if (hotkeyRepeats.get(i) > 1) {
+				text.append(" ×").append(hotkeyRepeats.get(i));
+			}
+		}
+		if (hotkeyToast != null) {
+			hotkeyToast.cancel();
+		}
+		hotkeyToast = Toast.makeText(this, text, Toast.LENGTH_SHORT);
+		hotkeyToast.show();
 	}
 
 	// Pauses, then shows a single-choice list dialog of the same
