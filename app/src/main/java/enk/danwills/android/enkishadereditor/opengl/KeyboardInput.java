@@ -9,15 +9,18 @@ import androidx.annotation.Nullable;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 // Keys for shaders, fed from the UI thread (MainActivity.
 // dispatchKeyEvent()) and applied once per frame on the GL thread:
 // - `keyboard`: a 256x3 texture like ShaderToy's, indexed by JavaScript
 //   key code (65 = A, 37-40 = arrows, 13 = Enter...): row 0 (v = 0) is
-//   1 while the key is held, row 1 for the one frame it went down in,
-//   and row 2 flips each time it's pressed. In all four channels.
+//   1 while the key is held, row 1 for the one frame it went down in
+//   (and each time it auto-repeats while held), and row 2 flips each
+//   time it's pressed. In all four channels.
 // - `typedChar`: the character typed this frame, or 0 - one per frame
 //   from a queue, so fast typing at a low frame rate never drops any.
 //   Text as typed (Shift, layouts), plus 8 for Backspace, 9 for Tab,
@@ -33,11 +36,14 @@ public final class KeyboardInput {
 			GLES20.GL_NEAREST, GLES20.GL_NEAREST,
 			GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE);
 
-	// Positive key code: down; negative minus one: up. -KEYS - 1: all up.
+	// Positive key code: down; negative minus one: up; KEYS + key code:
+	// a held key repeating. -KEYS - 1: all up.
 	private final ConcurrentLinkedQueue<Integer> keyEvents = new ConcurrentLinkedQueue<>();
 	private final ConcurrentLinkedQueue<Integer> typed = new ConcurrentLinkedQueue<>();
 	// GL thread only from here.
 	private final boolean[][] state = new boolean[ROWS][KEYS];
+	// Key-ups held back a frame - see apply().
+	private final List<Integer> deferredUps = new ArrayList<>();
 	@Nullable
 	private ByteBuffer pixels;
 	@Nullable
@@ -48,6 +54,15 @@ public final class KeyboardInput {
 	public void keyDown(int keyCode) {
 		if (keyCode > 0 && keyCode < KEYS) {
 			keyEvents.add(keyCode);
+		}
+	}
+
+	// A held key's auto-repeat: pressed again for a frame, as if let go
+	// and pressed - so holding an arrow keeps moving a cursor - but
+	// without flipping its toggle.
+	public void keyRepeat(int keyCode) {
+		if (keyCode > 0 && keyCode < KEYS) {
+			keyEvents.add(KEYS + keyCode);
 		}
 	}
 
@@ -85,9 +100,29 @@ public final class KeyboardInput {
 				dirty = true;
 			}
 		}
+		// A key let go in the frame it went down in is held for that
+		// frame and let go in the next - so a quick tap, or a modifier
+		// and a key pressed together, is seen held.
+		var deferred = new ArrayList<Integer>();
+		for (Integer up : deferredUps) {
+			state[HELD][-up - 1] = false;
+			dirty = true;
+		}
+		deferredUps.clear();
+		boolean[] wentDown = new boolean[KEYS];
 		for (Integer event; (event = keyEvents.poll()) != null; ) {
+			if (event < 0 && event != -KEYS - 1 && wentDown[-event - 1]) {
+				deferred.add(event);
+				continue;
+			}
+			if (event >= 0 && event < KEYS) {
+				wentDown[event] = true;
+			}
 			if (event == -KEYS - 1) {
 				Arrays.fill(state[HELD], false);
+			} else if (event >= KEYS) {
+				pressed[event - KEYS] = true;
+				state[HELD][event - KEYS] = true;
 			} else if (event >= 0) {
 				if (!state[HELD][event]) {
 					pressed[event] = true;
@@ -99,6 +134,7 @@ public final class KeyboardInput {
 			}
 			dirty = true;
 		}
+		deferredUps.addAll(deferred);
 		Integer next = typed.poll();
 		typedChar = next != null ? next : 0;
 
