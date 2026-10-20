@@ -3957,6 +3957,24 @@ public class MainActivity extends AppCompatActivity {
 			cancelRequested.set(true);
 			cancelButton.setEnabled(false);
 		});
+		// Stops like Cancel, but keeps what's rendered so far - cropped
+		// to the finished tiles' bounding box (see
+		// HighResScreenshotCapture.renderTiles()), so a centre-out,
+		// Hilbert or scanline order saves a smaller image, while a
+		// random order usually still spans the whole frame. Not offered
+		// for a single pass, which is only ever one tile.
+		AtomicBoolean interruptRequested = new AtomicBoolean(false);
+		Button interruptButton = progressView.findViewById(R.id.progress_interrupt_make_video);
+		if (!singlePass && !editorFragment.hasBufferPasses()) {
+			interruptButton.setText(R.string.interrupt_save_partial_button);
+			interruptButton.setVisibility(View.VISIBLE);
+			interruptButton.setOnClickListener(v -> {
+				interruptRequested.set(true);
+				interruptButton.setEnabled(false);
+				cancelButton.setEnabled(false);
+				statusMessage.setText(R.string.status_interrupting_save_partial);
+			});
+		}
 		// A tiled capture can run for several seconds (or, at a large
 		// oversample factor, minutes) entirely on the GL thread. Without
 		// this, a screen timeout mid-capture lets Android tear down the
@@ -3986,34 +4004,46 @@ public class MainActivity extends AppCompatActivity {
 		// first tile), so the average below is over actual tile-render
 		// time only, not however long compiling took first.
 		long[] captureStartNanos = {0};
-		ShaderRenderer.HighResProgressListener progressListener = (tilesDone, totalTiles) -> {
-			runOnUiThread(() -> {
-				if (compileAnim[0] != null) {
-					compileAnim[0].cancel();
-					compileAnim[0] = null;
-				}
-				if (!tileInfoKnown[0]) {
-					tileInfoKnown[0] = true;
-					overallBar.setMax(PROGRESS_COMPILE_UNITS + totalTiles);
-					subtaskBar.setVisibility(View.VISIBLE);
-					subtaskBar.setMax(totalTiles);
-					// "Tile 1 of 1" is true but meaningless whenever the
-					// capture didn't actually need tiling (a single pass) -
-					// see status_tile_single_onepass's own doc.
-					tileVariant[0] = pickRandomStatus(
-							totalTiles > 1 ? R.array.status_tile_single : R.array.status_tile_single_onepass);
-					captureStartNanos[0] = System.nanoTime();
-				}
-				overallBar.setProgress(PROGRESS_COMPILE_UNITS + tilesDone);
-				subtaskBar.setProgress(tilesDone);
-				statusMessage.setText(totalTiles > 1
-						? String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles)
-						: tileVariant[0]);
-				updateTimingEstimate(timingView, R.string.progress_timing_tile,
-						captureStartNanos[0], tilesDone, totalTiles - tilesDone);
-				notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
-			});
-			return !cancelRequested.get();
+		ShaderRenderer.HighResProgressListener progressListener = new ShaderRenderer.HighResProgressListener() {
+			@Override
+			public boolean onProgress(int tilesDone, int totalTiles) {
+				onHighResTileProgress(tilesDone, totalTiles);
+				return !cancelRequested.get() && !interruptRequested.get();
+			}
+
+			@Override
+			public boolean keepPartialOnStop() {
+				return interruptRequested.get() && !cancelRequested.get();
+			}
+
+			private void onHighResTileProgress(int tilesDone, int totalTiles) {
+				runOnUiThread(() -> {
+					if (compileAnim[0] != null) {
+						compileAnim[0].cancel();
+						compileAnim[0] = null;
+					}
+					if (!tileInfoKnown[0]) {
+						tileInfoKnown[0] = true;
+						overallBar.setMax(PROGRESS_COMPILE_UNITS + totalTiles);
+						subtaskBar.setVisibility(View.VISIBLE);
+						subtaskBar.setMax(totalTiles);
+						// "Tile 1 of 1" is true but meaningless whenever the
+						// capture didn't actually need tiling (a single pass) -
+						// see status_tile_single_onepass's own doc.
+						tileVariant[0] = pickRandomStatus(
+								totalTiles > 1 ? R.array.status_tile_single : R.array.status_tile_single_onepass);
+						captureStartNanos[0] = System.nanoTime();
+					}
+					overallBar.setProgress(PROGRESS_COMPILE_UNITS + tilesDone);
+					subtaskBar.setProgress(tilesDone);
+					statusMessage.setText(totalTiles > 1
+							? String.format(Locale.getDefault(), tileVariant[0], tilesDone, totalTiles)
+							: tileVariant[0]);
+					updateTimingEstimate(timingView, R.string.progress_timing_tile,
+							captureStartNanos[0], tilesDone, totalTiles - tilesDone);
+					notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
+				});
+			}
 		};
 		new Thread(() -> {
 			// Same priority handling as runFrameSequenceCapture(), so the
@@ -4062,7 +4092,8 @@ public class MainActivity extends AppCompatActivity {
 				}
 				if (png == null) {
 					Toast.makeText(this,
-							cancelRequested.get() ? R.string.higher_res_cancelled
+							cancelRequested.get() || interruptRequested.get()
+									? R.string.higher_res_cancelled
 									: R.string.screenshot_save_failed,
 							Toast.LENGTH_SHORT).show();
 					setShaderPaused(wasPaused);

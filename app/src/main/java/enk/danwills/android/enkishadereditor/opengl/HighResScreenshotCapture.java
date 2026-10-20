@@ -37,6 +37,14 @@ final class HighResScreenshotCapture {
 		// any other capture failure - see capture()'s cleanup, which runs
 		// unconditionally regardless of why renderTiles() returned null.
 		boolean onProgress(int tilesDone, int totalTiles);
+
+		// Asked once onProgress() has returned false: true keeps what's
+		// rendered so far instead of discarding it - the result is
+		// cropped to the bounding box of the tiles that finished (see
+		// renderTiles()).
+		default boolean keepPartialOnStop() {
+			return false;
+		}
 	}
 
 	// Reports one tile's rendered pixels right after ProgressListener's
@@ -652,6 +660,12 @@ final class HighResScreenshotCapture {
 		int totalTiles = tilesX * tilesY;
 		int tilesDone = 0;
 		boolean cancelled = false;
+		// The finished tiles' bounding box, in the result's top-down
+		// coordinates - what a stopped capture keeps when asked to.
+		int doneX0 = targetWidth;
+		int doneY0 = targetHeight;
+		int doneX1 = 0;
+		int doneY1 = 0;
 		// See the per-tile fatal-error check below.
 		boolean aborted = false;
 		float[] tileOffset = new float[2];
@@ -800,9 +814,12 @@ final class HighResScreenshotCapture {
 			// own rows top-down local to itself; its row 0 is this
 			// tile's highest GL-native row, which belongs at bitmap
 			// row (targetHeight - contentY0 - contentH).
-			result.setPixels(argb, 0, contentW,
-					contentX0, targetHeight - contentY0 - contentH,
-					contentW, contentH);
+			int bitmapY0 = targetHeight - contentY0 - contentH;
+			result.setPixels(argb, 0, contentW, contentX0, bitmapY0, contentW, contentH);
+			doneX0 = Math.min(doneX0, contentX0);
+			doneY0 = Math.min(doneY0, bitmapY0);
+			doneX1 = Math.max(doneX1, contentX0 + contentW);
+			doneY1 = Math.max(doneY1, bitmapY0 + contentH);
 			if (onTilePreview != null) {
 				onTilePreview.onTile(contentX0, targetHeight - contentY0 - contentH,
 						contentW, contentH, targetWidth, targetHeight, argb);
@@ -833,7 +850,24 @@ final class HighResScreenshotCapture {
 		// (not skipped on `cancelled`) for the same reason the feedback
 		// swap above is: this frame's render already physically happened.
 		builtinUniforms.endFrame();
-		return cancelled || aborted ? null : result;
+		if (aborted) {
+			return null;
+		}
+		if (cancelled) {
+			if (tilesDone == 0 || onProgress == null || !onProgress.keepPartialOnStop()) {
+				return null;
+			}
+			if (doneX0 == 0 && doneY0 == 0 && doneX1 == targetWidth && doneY1 == targetHeight) {
+				return result;
+			}
+			try {
+				return Bitmap.createBitmap(result, doneX0, doneY0, doneX1 - doneX0, doneY1 - doneY0);
+			} catch (OutOfMemoryError e) {
+				Log.e(TAG, "renderTiles: OOM cropping the partial capture");
+				return null;
+			}
+		}
+		return result;
 	}
 
 	// Errors that mean the context itself is no longer usable (a GPU

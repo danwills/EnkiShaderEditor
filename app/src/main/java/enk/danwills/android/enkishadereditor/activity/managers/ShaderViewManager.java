@@ -491,13 +491,22 @@ public class ShaderViewManager {
 		byte[][] resultHolder = new byte[1][];
 		boolean[] doneHolder = new boolean[1];
 		long[] lastProgressMillis = {System.currentTimeMillis()};
-		ShaderRenderer.HighResProgressListener innerListener = (tilesDone, totalTiles) -> {
-			synchronized (lock) {
-				lastProgressMillis[0] = System.currentTimeMillis();
+		ShaderRenderer.HighResProgressListener innerListener = new ShaderRenderer.HighResProgressListener() {
+			@Override
+			public boolean onProgress(int tilesDone, int totalTiles) {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
+				boolean continueCapture = progressListener == null ||
+						progressListener.onProgress(tilesDone, totalTiles);
+				pacedProgressDelay();
+				return continueCapture;
 			}
-			boolean continueCapture = progressListener == null || progressListener.onProgress(tilesDone, totalTiles);
-			pacedProgressDelay();
-			return continueCapture;
+
+			@Override
+			public boolean keepPartialOnStop() {
+				return progressListener != null && progressListener.keepPartialOnStop();
+			}
 		};
 		shaderView.queueEvent(() -> {
 			byte[] result = shaderView.getRenderer()
@@ -685,10 +694,18 @@ public class ShaderViewManager {
 			@Nullable ShaderRenderer.HighResProgressListener progressListener,
 			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener) {
 		ShaderRenderer.HighResProgressListener innerListener = progressListener == null ? null :
-				(tilesDone, totalTiles) -> {
-					boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);
-					pacedProgressDelay();
-					return continueCapture;
+				new ShaderRenderer.HighResProgressListener() {
+					@Override
+					public boolean onProgress(int tilesDone, int totalTiles) {
+						boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);
+						pacedProgressDelay();
+						return continueCapture;
+					}
+
+					@Override
+					public boolean keepPartialOnStop() {
+						return progressListener.keepPartialOnStop();
+					}
 				};
 		return shaderView.getRenderer().captureHighResScreenshotOnSharedContext(sharedContext, width,
 				height, oversample, preserveBackbufferEdges, bucketSize, tileOrder, innerListener,

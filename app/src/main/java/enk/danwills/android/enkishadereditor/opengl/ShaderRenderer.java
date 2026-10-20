@@ -57,6 +57,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// HighResScreenshotCapture.ProgressListener, which this gets
 		// forwarded to one-for-one.
 		boolean onProgress(int tilesDone, int totalTiles);
+
+		// See HighResScreenshotCapture.ProgressListener.keepPartialOnStop().
+		default boolean keepPartialOnStop() {
+			return false;
+		}
 	}
 
 	// Reports one tile's actual rendered pixels as soon as it's read
@@ -1449,7 +1454,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
-				: progressListener::onProgress;
+				: new HighResScreenshotCapture.ProgressListener() {
+					@Override
+					public boolean onProgress(int tilesDone, int totalTiles) {
+						return progressListener.onProgress(tilesDone, totalTiles);
+					}
+
+					@Override
+					public boolean keepPartialOnStop() {
+						return progressListener.keepPartialOnStop();
+					}
+				};
 		HighResScreenshotCapture.TilePreviewListener innerTilePreviewListener =
 				tilePreviewListener == null ? null : tilePreviewListener::onTilePreview;
 		// Single-pass eligibility (see TileBucketSize's own doc) is
@@ -1468,7 +1483,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			return null;
 		}
 		if (oversample > 1) {
-			bitmap = HighResScreenshotCapture.boxDownscale(bitmap, width, height);
+			// From the bitmap's own size, not width/height: a stopped
+			// capture's partial result is cropped to the finished tiles.
+			bitmap = HighResScreenshotCapture.boxDownscale(bitmap,
+					Math.max(1, bitmap.getWidth() / oversample),
+					Math.max(1, bitmap.getHeight() / oversample));
 			if (bitmap == null) {
 				return null;
 			}
