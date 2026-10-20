@@ -405,8 +405,23 @@ public class UIManager {
 	// as well as the system status/navigation bars, leaving only the
 	// shader visible. The system bars stay revealable by the usual
 	// edge-swipe gesture rather than being fully locked out.
+	// How long the navigation bar stays after going fullscreen, so its
+	// back button can still back straight out.
+	private static final long NAVIGATION_BAR_HIDE_DELAY_MS = 750;
+	private final Runnable hideNavigationBar = this::hideNavigationBarIfFullscreen;
+
+	private void hideNavigationBarIfFullscreen() {
+		if (fullscreen) {
+			WindowCompat.getInsetsController(activity.getWindow(),
+					activity.getWindow().getDecorView()).hide(
+					WindowInsetsCompat.Type.navigationBars());
+		}
+	}
+
 	public void setFullscreen(boolean fullscreen) {
 		this.fullscreen = fullscreen;
+		View decorView = activity.getWindow().getDecorView();
+		decorView.removeCallbacks(hideNavigationBar);
 
 		if (mainLayout != null) {
 			mainLayout.setVisibility(fullscreen ? View.GONE : View.VISIBLE);
@@ -423,7 +438,10 @@ public class UIManager {
 		if (fullscreen) {
 			controller.setSystemBarsBehavior(
 					WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-			controller.hide(WindowInsetsCompat.Type.systemBars());
+			controller.hide(WindowInsetsCompat.Type.statusBars());
+			// The navigation bar goes a moment later - see
+			// NAVIGATION_BAR_HIDE_DELAY_MS.
+			decorView.postDelayed(hideNavigationBar, NAVIGATION_BAR_HIDE_DELAY_MS);
 		} else {
 			// Only the nav bar is unconditionally restored here - the
 			// status bar instead defers to whether the code editor is
