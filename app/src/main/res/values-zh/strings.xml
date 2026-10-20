@@ -361,6 +361,7 @@
 	<string name="daytime">时、分、秒</string>
 	<string name="font_atlas">内置字形图集（16×16 格，字符编码 0–255，有符号距离场：边缘为 0.5，内部更高）</string>
 	<string name="source_text">此通道自身的源代码：每个字符一个纹素，第 n 行纹素即第 n 行代码。R = 字符编码，G×256+B = 按阅读顺序的序号，A = 1 表示字符</string>
+	<string name="source_text_color">sourceText 的语法高亮，布局相同：RGB = 编辑器中该字符的颜色，A × 255 = 其类别（行尾之后为 0）</string>
 	<string name="source_text_length">sourceText 中的字符数</string>
 	<string name="source_text_size">sourceText 的列数和行数</string>
 	<string name="start_random">加载时生成的 0.0 到 1.0 之间的随机值</string>

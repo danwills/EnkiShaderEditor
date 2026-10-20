@@ -335,13 +335,14 @@ final class RendererProgramManager {
 	}
 
 	// After a reload - GL thread only.
-	void createMainSourceText(@NonNull GlDevice device, int tabWidth) {
+	void createMainSourceText(@NonNull Context context, @NonNull GlDevice device, int tabWidth) {
 		if (mainSourceText != null) {
 			mainSourceText.release(device);
 			mainSourceText = null;
 		}
-		if (mainProgram != null && device.hasUniform(mainProgram, ShaderRenderer.UNIFORM_SOURCE_TEXT)) {
-			mainSourceText = SourceText.create(device, sourceText, tabWidth);
+		if (mainProgram != null) {
+			mainSourceText = SourceText.createFor(context, device, mainProgram, sourceText,
+					tabWidth);
 		}
 	}
 

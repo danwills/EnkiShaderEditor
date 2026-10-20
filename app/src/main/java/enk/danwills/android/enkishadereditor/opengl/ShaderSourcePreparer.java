@@ -124,7 +124,8 @@ final class ShaderSourcePreparer {
 				continue;
 			}
 			// Built in - bound by the renderer, see SourceText.
-			if (ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name)) {
+			if (ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name) ||
+					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name)) {
 				continue;
 			}
 			// Bound by the renderer to an offscreen buffer, not looked up
@@ -266,7 +267,8 @@ final class ShaderSourcePreparer {
 		for (Matcher matcher = PATTERN_SAMPLER.matcher(source); matcher.find(); ) {
 			String name = matcher.group(2);
 			if (name == null || ChannelParameters.getChannelIndex(name) >= 0 ||
-					ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name)) {
+					ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name) ||
+					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name)) {
 				continue;
 			}
 			if (ShaderRenderer.UNIFORM_BACKBUFFER.equals(name)) {

@@ -126,6 +126,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT = "sourceText";
 	public static final String UNIFORM_SOURCE_TEXT_SIZE = "sourceTextSize";
 	public static final String UNIFORM_SOURCE_TEXT_LENGTH = "sourceTextLength";
+	public static final String UNIFORM_SOURCE_TEXT_COLOR = "sourceTextColor";
 	// The built-in glyph atlas - see FontTexture.
 	public static final String UNIFORM_FONT = "font";
 	public static final String UNIFORM_BATTERY = "battery";
@@ -712,7 +713,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					}
 				}
 				updateBufferMipmapNeeds();
-				programManager.createMainSourceText(device, tabWidth());
+				programManager.createMainSourceText(context, device, tabWidth());
 				updateFontTexture();
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
@@ -1169,7 +1170,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				if (program != null && framebuffer != null) {
 					bindings.retarget(program);
 					bindChannels(bindings, pass.prepared, passes);
-					bindSourceText(bindings, program, pass.getSourceText(device, tabWidth()));
+					bindSourceText(bindings, program, pass.getSourceText(context, device, tabWidth()));
 					// A buffer's own `backbuffer` is its previous frame.
 					bindings.setTexture(UNIFORM_BACKBUFFER, pass.getCurrentTexture());
 					renderPipeline.renderPassRows(bindings, program, framebuffer,
@@ -1198,7 +1199,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See SourceText - only for a pass that uses it.
 	private void bindSourceText(@NonNull ProgramBindings bindings, @NonNull GlProgram program,
 			@Nullable SourceText text) {
-		if (text == null || !device.hasUniform(program, UNIFORM_SOURCE_TEXT)) {
+		if (text == null || !SourceText.isUsedBy(device, program)) {
 			return;
 		}
 		applySourceText(bindings, text);
@@ -1206,6 +1207,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	static void applySourceText(@NonNull ProgramBindings bindings, @NonNull SourceText text) {
 		bindings.setTexture(UNIFORM_SOURCE_TEXT, text.texture);
+		if (text.colorTexture != null) {
+			bindings.setTexture(UNIFORM_SOURCE_TEXT_COLOR, text.colorTexture);
+		}
 		bindings.setFloat2(UNIFORM_SOURCE_TEXT_SIZE, text.size);
 		bindings.setFloat(UNIFORM_SOURCE_TEXT_LENGTH, text.length);
 	}

@@ -208,6 +208,10 @@ public class PresetUniformAdapter extends BaseAdapter implements Filterable {
 						ShaderRenderer.UNIFORM_SOURCE_TEXT,
 						context.getString(R.string.source_text)),
 				new Uniform(
+						"sampler2D",
+						ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR,
+						context.getString(R.string.source_text_color)),
+				new Uniform(
 						"float",
 						ShaderRenderer.UNIFORM_SOURCE_TEXT_LENGTH,
 						context.getString(R.string.source_text_length)),

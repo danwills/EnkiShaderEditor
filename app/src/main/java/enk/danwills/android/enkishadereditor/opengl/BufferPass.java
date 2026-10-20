@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.opengl;
 
+import android.content.Context;
 import android.opengl.GLES20;
 import android.util.Log;
 
@@ -42,10 +43,10 @@ final class BufferPass {
 	// This pass's `sourceText`, made the first time it's drawn with a
 	// program that uses it - GL thread only.
 	@Nullable
-	SourceText getSourceText(@NonNull GlDevice device, int tabWidth) {
-		if (sourceTextTexture == null && program != null &&
-				device.hasUniform(program, ShaderRenderer.UNIFORM_SOURCE_TEXT)) {
-			sourceTextTexture = SourceText.create(device, sourceText, tabWidth);
+	SourceText getSourceText(@NonNull Context context, @NonNull GlDevice device, int tabWidth) {
+		if (sourceTextTexture == null && program != null) {
+			sourceTextTexture = SourceText.createFor(context, device, program, sourceText,
+					tabWidth);
 		}
 		return sourceTextTexture;
 	}

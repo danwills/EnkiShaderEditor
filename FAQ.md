@@ -171,6 +171,11 @@ float index = floor(t.g * 255.0 + 0.5) * 256.0 + floor(t.b * 255.0 + 0.5);
 
 Lines are cut at 512 columns, and the text at 2048 lines.
 
+For colour, `uniform sampler2D sourceTextColor;` is the same text's syntax highlighting, in the
+same layout: RGB is the colour the editor shows that character in, so text drawn with it looks
+like the editor, and `floor(a * 255.0 + 0.5)` is the kind of token it's part of (0 past the end of
+a line), for choosing your own colours.
+
 To draw text, there's a built-in font too:
 
 ```glsl
