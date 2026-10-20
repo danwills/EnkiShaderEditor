@@ -505,6 +505,9 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		if (paused) {
+			shaderView.getRenderer().requestRedoLastStep();
+		}
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				bufferSources,
@@ -528,10 +531,13 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getLiveDefines();
 	}
 
-	// Draws one frame while paused, e.g. to show a live define's new
-	// value - running, the next frame picks it up anyway.
-	public void requestRenderIfPaused() {
+	// Redraws the last frame while paused, e.g. to show a live define's
+	// new value - from the same inputs, so a paused simulation doesn't
+	// move on (see ShaderRenderer.requestRedoLastStep()). Running, the
+	// next frame picks it up anyway.
+	public void redrawIfPaused() {
 		if (paused) {
+			shaderView.getRenderer().requestRedoLastStep();
 			shaderView.requestRender();
 		}
 	}

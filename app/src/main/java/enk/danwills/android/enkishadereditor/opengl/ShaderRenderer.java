@@ -318,6 +318,13 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile long shaderId = 0;
 	// See setFragmentShader()'s keepState - read with pendingReload.
 	private volatile boolean pendingKeepState;
+	// See requestRedoLastStep(). redoFrameStamp is the
+	// BuiltinUniforms.getBeginFrameCount() the last completed live frame
+	// left behind, or -1 once its inputs are gone (targets cleared or
+	// rebuilt) - and if anything else began a frame since (a capture),
+	// the count won't match. GL thread only.
+	private volatile boolean redoRequested;
+	private int redoFrameStamp = -1;
 	@Nullable
 	private ProgramBinaryCache programBinaryCache;
 
@@ -348,7 +355,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// contents and backbuffer are all kept, not restarted.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
-		if (!keepState) {
+		if (keepState) {
+			builtinUniforms.keepClockThroughNextSurface();
+		} else {
 			builtinUniforms.setRuntimeNanos(0);
 		}
 		setQuality(quality);
@@ -364,6 +373,18 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// (see setPreserveEGLContextOnPause() there), so onSurfaceCreated()
 		// only still runs when the system genuinely discarded it.
 		pendingReload = true;
+	}
+
+	// While paused: the next frame draws the last one again, from the
+	// same inputs (each buffer's and the backbuffer's previous frame), at
+	// the same time and frame number - so a paused simulation shows a
+	// change (Adjust Defines' live values) without moving on a step. The
+	// previous frames are still there in each ping-pong pair's other
+	// target, so this costs nothing to keep. If that's no longer
+	// possible, the next frame is simply a new one. Coalesced: several
+	// requests before a frame redo it once.
+	public void requestRedoLastStep() {
+		redoRequested = true;
 	}
 
 	// See LiveDefines - set from the UI thread, bound into every frame.
@@ -438,6 +459,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// and clears the backbuffer ping-pong targets to black, so a
 	// feedback shader's accumulated image is discarded too.
 	public void restartTime() {
+		redoFrameStamp = -1;
 		builtinUniforms.restart(System.nanoTime());
 		renderPipeline.clearTargets();
 		for (var pass : programManager.getBufferPasses()) {
@@ -600,6 +622,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		device.setClearColor(0f, 0f, 0f, 1f);
 
 		discardContextResources();
+		redoFrameStamp = -1;
 		blackTexture = device.createTexture2D();
 		device.allocateTexture2D(blackTexture, 1, 1);
 		device.updateTexture2D(blackTexture, java.nio.ByteBuffer.allocateDirect(4));
@@ -699,6 +722,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		viewWidth = width;
 		viewHeight = height;
 		if (surfaceState.renderTargetsChanged()) {
+			redoFrameStamp = -1;
 			// Keeps the last completed frame on screen (scaled) until the
 			// first frame at the new size completes - otherwise a quality
 			// change showed black for however long that took, which for a
@@ -810,6 +834,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// differ from the old one's - ensureTargets() below rebuilds.
 			if (!keepState || !programManager.backBufferParametersUnchanged()) {
 				renderPipeline.releaseTargets();
+				redoFrameStamp = -1;
 			}
 			// A different (or edited) shader - never hand it the previous
 			// one's stashed state.
@@ -880,6 +905,13 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			progressiveAbandonRequested = false;
 			abandonProgressiveFrame();
 		}
+		boolean redo = redoRequested;
+		redoRequested = false;
+		if (redo && !continuousRendering && redoFrameStamp >= 0 &&
+				redoFrameStamp == builtinUniforms.getBeginFrameCount()) {
+			redoLastStep(mainProgram, surfaceProgram, surfaceBindings);
+			return;
+		}
 		if (isProgressive()) {
 			drawProgressiveStep(mainProgram, surfaceProgram, surfaceBindings);
 			return;
@@ -913,6 +945,39 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 
 		builtinUniforms.endFrame();
+		redoFrameStamp = builtinUniforms.getBeginFrameCount();
+	}
+
+	// See requestRedoLastStep(). Each ping-pong pair is swapped back so
+	// its previous frame is the one read again and the last frame's
+	// target is the one drawn over, then the whole chain draws as usual,
+	// one frame back on the clock.
+	private void redoLastStep(@NonNull GlProgram mainProgram,
+			@NonNull GlProgram surfaceProgram, @NonNull ProgramBindings surfaceBindings) {
+		abandonProgressiveFrame();
+		renderPipeline.swapTargets();
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.hasTargets()) {
+				pass.swap();
+			}
+		}
+		builtinUniforms.rewindFrame();
+		var frame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
+		if (frame == null) {
+			redoFrameStamp = -1;
+			return;
+		}
+		drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(),
+				renderPipeline.getTargetHeight());
+		renderPipeline.renderSurfacePass(
+				surfaceBindings,
+				surfaceProgram,
+				frame.surfaceWidth(),
+				frame.surfaceHeight(),
+				getDisplayedBufferTexture());
+		renderPipeline.swapTargets();
+		builtinUniforms.endFrame();
+		redoFrameStamp = builtinUniforms.getBeginFrameCount();
 	}
 
 	// Progressive live rendering - see setProgressiveRendering(). Renders
@@ -989,6 +1054,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				updateFps(frame.now());
 			}
 			builtinUniforms.endFrame();
+			redoFrameStamp = builtinUniforms.getBeginFrameCount();
 			conservativeStart = false;
 			progressiveFrameWidth = renderPipeline.getTargetWidth();
 			progressiveFrameHeight = height;

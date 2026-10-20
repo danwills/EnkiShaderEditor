@@ -366,7 +366,7 @@ public class MainActivity extends AppCompatActivity {
 			public void onPickColor(@NonNull ShaderDefine define, @NonNull Runnable onPicked) {
 				showColorPickerDialog(define, onPicked, components -> {
 					shaderViewManager.getLiveDefines().set(define.name, define.type, components);
-					shaderViewManager.requestRenderIfPaused();
+					shaderViewManager.redrawIfPaused();
 				});
 			}
 
@@ -2542,7 +2542,7 @@ public class MainActivity extends AppCompatActivity {
 		float[] components = define.liveComponents();
 		if (components != null) {
 			shaderViewManager.getLiveDefines().set(define.name, define.type, components);
-			shaderViewManager.requestRenderIfPaused();
+			shaderViewManager.redrawIfPaused();
 		}
 	}
 

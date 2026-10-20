@@ -48,6 +48,8 @@ final class BuiltinUniforms {
 	// `time` as of the last completed frame, for iTimeDelta; < 0 before
 	// the first one (since a restart).
 	private float previousFrameTime = -1;
+	// previousFrameTime before the last endFrame() - see rewindFrame().
+	private float frameTimeBeforeLast = -1;
 	private float lastBoundTime;
 	@NonNull
 	private final Context context;
@@ -399,7 +401,25 @@ final class BuiltinUniforms {
 
 	void endFrame() {
 		++frameNum;
+		frameTimeBeforeLast = previousFrameTime;
 		previousFrameTime = lastBoundTime;
+	}
+
+	// Puts `frame` and the time delta back to the last frame's, so it can
+	// be drawn again - see ShaderRenderer.requestRedoLastStep().
+	void rewindFrame() {
+		if (frameNum > 0) {
+			--frameNum;
+			previousFrameTime = frameTimeBeforeLast;
+		}
+	}
+
+	// Keeps `time`, `frame` and startRandom going through the next
+	// surface change rather than restarting them - for a shader swapped
+	// without restarting it (see ShaderRenderer.setFragmentShader()'s
+	// keepState), which recreates the surface on the way.
+	void keepClockThroughNextSurface() {
+		keepClockOnNextSurface = true;
 	}
 
 	// Bumped by every beginFrame(), whoever called it - lets a frame
