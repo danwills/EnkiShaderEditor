@@ -129,7 +129,7 @@
 			android:title="@string/syntax_highlighting_mode"
 			android:entries="@array/syntax_highlighting_mode_names"
 			android:entryValues="@array/syntax_highlighting_mode_values"
-			android:defaultValue="3"/>
+			android:defaultValue="2"/>
 		<androidx.preference.SwitchPreferenceCompat
 			android:key="auto_save"
 			android:title="@string/auto_save"

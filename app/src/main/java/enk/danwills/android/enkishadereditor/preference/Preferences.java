@@ -117,7 +117,8 @@ public class Preferences {
 	// but never blocks the UI thread waiting for it - see ShaderEditor's
 	// own highlight()/TokenListUpdater, where FULL's wait-for-it
 	// ensureUpdated() call is exactly what can stall typing on a large
-	// shader. FULL is today's original, always-consistent behavior.
+	// shader. FULL is the original, always-consistent behavior; FAST is
+	// the default.
 	public static final int HIGHLIGHTING_OFF = 1;
 	public static final int HIGHLIGHTING_FAST = 2;
 	public static final int HIGHLIGHTING_FULL = 3;
@@ -157,7 +158,7 @@ public class Preferences {
 	private int systemBarColor;
 	private long defaultNewShaderId = 0;
 	private long lastOpenedShaderId = 0;
-	private int syntaxHighlightingMode = HIGHLIGHTING_FULL;
+	private int syntaxHighlightingMode = HIGHLIGHTING_FAST;
 	private boolean autoSave = true;
 	private boolean warnSlowCompile = true;
 	private boolean showLineNumbers = true;
