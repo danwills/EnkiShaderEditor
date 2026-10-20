@@ -177,6 +177,12 @@
 	<string name="image_format_webp_lossless">WebP без втрат</string>
 	<string name="image_quality">Якість зображень</string>
 	<string name="image_quality_summary">Для JPEG і WebP</string>
+	<string name="video_format">Формат відео</string>
+	<string name="video_format_h264">H.264 MP4 (працює всюди)</string>
+	<string name="video_format_hevc">H.265 MP4 (компактніший)</string>
+	<string name="video_format_vp9">VP9 WebM (для вебу)</string>
+	<string name="video_format_vp8">VP8 WebM (старі браузери)</string>
+	<string name="video_format_size_unsupported">%1$s не може створити відео %2$s на цьому телефоні. Зменште масштаб відео або виберіть інший формат відео в налаштуваннях.</string>
 	<string name="capture_thread_priority">Пріоритет фонового рендерингу</string>
 	<string name="capture_thread_priority_normal">Звичайний</string>
 	<string name="capture_thread_priority_high">Високий (швидше, більше навантаження на ЦП)</string>

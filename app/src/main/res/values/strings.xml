@@ -177,6 +177,12 @@
 	<string name="image_format_webp_lossless">WebP Lossless</string>
 	<string name="image_quality">Image Quality</string>
 	<string name="image_quality_summary">For JPEG and WebP</string>
+	<string name="video_format">Video Format</string>
+	<string name="video_format_h264">H.264 MP4 (Plays Everywhere)</string>
+	<string name="video_format_hevc">H.265 MP4 (Smaller)</string>
+	<string name="video_format_vp9">VP9 WebM (For the Web)</string>
+	<string name="video_format_vp8">VP8 WebM (Older Browsers)</string>
+	<string name="video_format_size_unsupported">%1$s can\'t make a %2$s video on this phone. Try a smaller Video Scale, or another Video Format in Settings.</string>
 	<string name="capture_thread_priority">Background Render Priority</string>
 	<string name="capture_thread_priority_normal">Normal</string>
 	<string name="capture_thread_priority_high">High (Faster, Uses More CPU)</string>

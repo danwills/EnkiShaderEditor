@@ -30,6 +30,8 @@ import androidx.preference.PreferenceGroup;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 import enk.danwills.android.enkishadereditor.R;
@@ -41,6 +43,7 @@ import enk.danwills.android.enkishadereditor.io.CompileAllShadersRunner;
 import enk.danwills.android.enkishadereditor.io.DatabaseExporter;
 import enk.danwills.android.enkishadereditor.io.DatabaseImporter;
 import enk.danwills.android.enkishadereditor.io.ImportExportAsFiles;
+import enk.danwills.android.enkishadereditor.io.VideoFormat;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.preference.ShaderListPreference;
 import enk.danwills.android.enkishadereditor.receiver.BatteryLevelReceiver;
@@ -101,6 +104,7 @@ public class PreferencesFragment
 	public void onCreatePreferences(Bundle state, String rootKey) {
 		setPreferencesFromResource(R.xml.preferences, rootKey);
 		wireImportExport();
+		limitVideoFormats();
 		EditTextPreference breathingRoom = findPreference(Preferences.BREATHING_ROOM);
 		if (breathingRoom != null) {
 			breathingRoom.setOnBindEditTextListener(editText -> {
@@ -110,6 +114,27 @@ public class PreferencesFragment
 				editText.setSelection(editText.getText().length());
 			});
 		}
+	}
+
+	// Lists only the video formats this phone has an encoder for.
+	private void limitVideoFormats() {
+		ListPreference videoFormat = findPreference(Preferences.VIDEO_FORMAT);
+		if (videoFormat == null) {
+			return;
+		}
+		CharSequence[] names = videoFormat.getEntries();
+		CharSequence[] keys = videoFormat.getEntryValues();
+		List<VideoFormat> supported = VideoFormat.supported();
+		List<CharSequence> supportedNames = new ArrayList<>();
+		List<CharSequence> supportedKeys = new ArrayList<>();
+		for (int i = 0; i < keys.length; ++i) {
+			if (supported.contains(VideoFormat.fromKey(keys[i].toString()))) {
+				supportedNames.add(names[i]);
+				supportedKeys.add(keys[i]);
+			}
+		}
+		videoFormat.setEntries(supportedNames.toArray(new CharSequence[0]));
+		videoFormat.setEntryValues(supportedKeys.toArray(new CharSequence[0]));
 	}
 
 	@Override

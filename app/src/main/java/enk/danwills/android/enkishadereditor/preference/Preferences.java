@@ -17,6 +17,7 @@ import java.util.Map;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.io.ImageEncoding;
+import enk.danwills.android.enkishadereditor.io.VideoFormat;
 
 public class Preferences {
 	public static final String WALLPAPER_SHADER = "shader";
@@ -68,6 +69,7 @@ public class Preferences {
 	public static final String CAPTURE_THREAD_PRIORITY = "capture_thread_priority";
 	public static final String IMAGE_FORMAT = "image_format";
 	public static final String IMAGE_QUALITY = "image_quality";
+	public static final String VIDEO_FORMAT = "video_format";
 	public static final String GPU_PRIORITY = "gpu_priority";
 	public static final String BREATHING_ROOM = "breathing_room";
 	public static final String LIVE_RENDER_MODE = "live_render_mode";
@@ -174,6 +176,7 @@ public class Preferences {
 	private int captureThreadPriority = CAPTURE_PRIORITY_NORMAL;
 	private ImageEncoding.Format imageFormat = ImageEncoding.Format.PNG;
 	private int imageQuality = 92;
+	private VideoFormat videoFormat = VideoFormat.H264;
 	private int gpuPriority = GPU_PRIORITY_LOW;
 	private float breathingRoom = 0f;
 	private int liveRenderMode = LIVE_RENDER_AUTO;
@@ -306,6 +309,13 @@ public class Preferences {
 		imageFormat = ImageEncoding.Format.fromKey(
 				preferences.getString(IMAGE_FORMAT, null));
 		imageQuality = preferences.getInt(IMAGE_QUALITY, imageQuality);
+		videoFormat = VideoFormat.fromKey(preferences.getString(VIDEO_FORMAT, null));
+	}
+
+	// What a frame sequence's video is made as.
+	@NonNull
+	public VideoFormat getVideoFormat() {
+		return videoFormat;
 	}
 
 	// How screenshots, high-res captures and sequence frames are saved.

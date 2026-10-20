@@ -30,6 +30,14 @@
 			app:min="1"
 			app:showSeekBarValue="true"
 			android:defaultValue="92"/>
+		<!-- Entries are cut down to the phone's encoders - see
+			PreferencesFragment. -->
+		<ListPreference
+			android:key="video_format"
+			android:title="@string/video_format"
+			android:entries="@array/video_format_names"
+			android:entryValues="@array/video_format_values"
+			android:defaultValue="h264"/>
 		<ListPreference
 			android:key="capture_thread_priority"
 			android:title="@string/capture_thread_priority"

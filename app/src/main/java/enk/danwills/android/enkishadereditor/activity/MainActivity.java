@@ -117,6 +117,7 @@ import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
+import enk.danwills.android.enkishadereditor.io.VideoFormat;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
@@ -3538,6 +3539,19 @@ public class MainActivity extends AppCompatActivity {
 				int videoQuality = sequenceViews.qualitySeekBar.getProgress();
 				int videoScale = Math.max(1,
 						parsePositiveInt(sequenceViews.videoScaleView.getText().toString()));
+				VideoFormat videoFormat = ShaderEditorApp.preferences.getVideoFormat();
+				if (sequenceViews.createVideoBox.isChecked() &&
+						!videoFormat.supportsSize(width * videoScale, height * videoScale)) {
+					// Caught now, rather than after rendering every frame.
+					new MaterialAlertDialogBuilder(this)
+							.setMessage(getString(R.string.video_format_size_unsupported,
+									getResources().getStringArray(R.array.video_format_names)[
+											videoFormat.ordinal()],
+									(width * videoScale) + " × " + (height * videoScale)))
+							.setPositiveButton(android.R.string.ok, null)
+							.show();
+					return;
+				}
 				prefsEditor.putInt(PREF_CUSTOM_RES_SEQUENCE_FRAMES, frameCount)
 						.putFloat(PREF_CUSTOM_RES_SEQUENCE_FPS, fps)
 						.putInt(PREF_CUSTOM_RES_SEQUENCE_SKIP, skipFrames)
@@ -4270,6 +4284,9 @@ public class MainActivity extends AppCompatActivity {
 		setShaderPaused(true);
 		var shader = dataSource.shader.getShader(shaderManager.getSelectedShaderId());
 		String baseShaderName = sanitizeFilename(shader != null ? shader.getTitle() : "shader");
+		// Fixed now, like the frames' own format - see
+		// ShaderViewManager.useImageFormatSetting().
+		VideoFormat videoFormat = ShaderEditorApp.preferences.getVideoFormat();
 
 		View progressView = getLayoutInflater().inflate(R.layout.dialog_progress, null);
 		TextView resolutionInfo = progressView.findViewById(R.id.progress_resolution_info);
@@ -4653,9 +4670,10 @@ public class MainActivity extends AppCompatActivity {
 					});
 					return !cancelRequested.get();
 				};
-				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + ".mp4";
+				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + "." +
+						videoFormat.extension;
 				videoUri = VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
-						videoQuality, videoFilename, videoProgress);
+						videoQuality, videoFormat, videoFilename, videoProgress);
 				if (videoUri != null && cleanupImages) {
 					runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
 					ScreenshotSaver.deleteSubAlbum(this, frameSubAlbum[0]);
@@ -4737,7 +4755,9 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void openVideo(@NonNull Uri uri) {
-		openMedia(uri, "video/mp4", R.string.no_app_to_open_video, true);
+		String mimeType = getContentResolver().getType(uri);
+		openMedia(uri, mimeType != null ? mimeType : "video/mp4", R.string.no_app_to_open_video,
+				true);
 	}
 
 	// Shows a capture's result toast (and opens the video, if videoUri is
@@ -5024,7 +5044,7 @@ public class MainActivity extends AppCompatActivity {
 
 	// Lists the most recent frame-sequence videos VideoEncoder has saved
 	// (same MediaStore album ScreenshotSaver uses for screenshots, but
-	// filtered to video/mp4 - see VideoEncoder's own ALBUM constant,
+	// filtered to videos - see VideoEncoder's own ALBUM constant,
 	// duplicated here as a literal since neither class exposes it
 	// publicly and there's nothing else in this app that would need to).
 	// Requires Q, same as video creation itself (MediaStore's
@@ -5088,7 +5108,7 @@ public class MainActivity extends AppCompatActivity {
 			uris.add(recordings.get(i).uri());
 		}
 		Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE)
-				.setType("video/mp4")
+				.setType("video/*")
 				.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
 				.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 		try {

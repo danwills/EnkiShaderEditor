@@ -36,8 +36,9 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
 
-// Encodes a sequence of already-saved frame images into an H.264 MP4
-// video, entirely on-device via Android's own MediaCodec (hardware-
+// Encodes a sequence of already-saved frame images into a video (an
+// H.264 or HEVC MP4, or a VP9 or VP8 WebM - see VideoFormat), entirely
+// on-device via Android's own MediaCodec (hardware-
 // accelerated where the device offers it) + MediaMuxer - no FFmpeg or
 // other native/third-party libraries. Frames are read back one at a
 // time from their MediaStore URIs (not held all in memory at once,
@@ -65,7 +66,6 @@ import java.util.List;
 // pacing delay needed between frames.
 public final class VideoEncoder {
 	private static final String TAG = "VideoEncoder";
-	private static final String MIME_TYPE = "video/avc";
 	private static final String ALBUM = "Enki Shader Editor";
 
 	private static final String VERTEX_SHADER = """
@@ -123,7 +123,8 @@ public final class VideoEncoder {
 	// ("pixelly") rather than smoothing the source pixels away - at
 	// videoScale 1 this has no visible effect either way, since there's
 	// no sub-pixel stretch for either filter mode to interpolate across.
-	// filename: the desired output filename (including ".mp4"). Returns
+	// filename: the desired output filename (including the format's
+	// extension). Returns
 	// the saved video's content:// URI, or null on any failure (missing
 	// encoder support, an I/O error, etc) - callers should treat that as
 	// "the image sequence is still fine, just the video step failed",
@@ -131,13 +132,14 @@ public final class VideoEncoder {
 	@Nullable
 	@RequiresApi(Build.VERSION_CODES.Q)
 	public static Uri encode(@NonNull Context context, @NonNull List<Uri> frameUris,
-			int width, int height, int videoScale, float fps, int quality, @NonNull String filename,
+			int width, int height, int videoScale, float fps, int quality,
+			@NonNull VideoFormat videoFormat, @NonNull String filename,
 			@Nullable ProgressListener progressListener) {
 		if (frameUris.isEmpty()) {
 			return null;
 		}
 		ContentResolver resolver = context.getContentResolver();
-		Uri outputUri = insertPendingVideo(resolver, filename);
+		Uri outputUri = insertPendingVideo(resolver, filename, videoFormat.mimeType);
 		if (outputUri == null) {
 			return null;
 		}
@@ -153,11 +155,12 @@ public final class VideoEncoder {
 		int texture = 0;
 		boolean succeeded = false;
 		try {
-			MediaFormat format = MediaFormat.createVideoFormat(MIME_TYPE, videoWidth, videoHeight);
+			MediaFormat format = MediaFormat.createVideoFormat(
+					videoFormat.codecMimeType, videoWidth, videoHeight);
 			format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
 					MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
 			format.setInteger(MediaFormat.KEY_BIT_RATE,
-					estimateBitrate(videoWidth, videoHeight, fps, quality));
+					estimateBitrate(videoWidth, videoHeight, fps, quality, videoFormat.bitrateScale));
 			// This is only an encoder hint (bitrate/I-frame pacing) - it's
 			// fine that it's rounded (and clamped to at least 1 for a
 			// sub-1-fps sequence). The video's *actual* played-back speed
@@ -168,7 +171,14 @@ public final class VideoEncoder {
 			format.setInteger(MediaFormat.KEY_FRAME_RATE, Math.max(1, Math.round(fps)));
 			format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 
-			codec = MediaCodec.createEncoderByType(MIME_TYPE);
+			// An encoder that takes this size too - see encoderFor().
+			String codecName = videoFormat.encoderFor(videoWidth, videoHeight);
+			if (codecName == null) {
+				Log.e(TAG, "encode: no " + videoFormat.codecMimeType + " encoder for " +
+						videoWidth + "x" + videoHeight);
+				return null;
+			}
+			codec = MediaCodec.createByCodecName(codecName);
 			codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
 			inputSurface = codec.createInputSurface();
 			codec.start();
@@ -194,8 +204,7 @@ public final class VideoEncoder {
 			if (outputPfd == null) {
 				return null;
 			}
-			muxer = new MediaMuxer(outputPfd.getFileDescriptor(),
-					MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+			muxer = new MediaMuxer(outputPfd.getFileDescriptor(), videoFormat.muxerFormat);
 
 			MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
 			long frameDurationNanos = Math.round(1_000_000_000.0 / fps);
@@ -381,23 +390,26 @@ public final class VideoEncoder {
 	// per-frame presentation timestamps above): a low-fps sequence still
 	// wants each individual frame to look good, and scaling bitrate
 	// straight down with fps would starve those infrequent frames of
-	// detail precisely when each one's on screen the longest.
-	private static int estimateBitrate(int width, int height, float fps, int quality) {
+	// detail precisely when each one's on screen the longest. scale: see
+	// VideoFormat.bitrateScale.
+	private static int estimateBitrate(int width, int height, float fps, int quality,
+			double scale) {
 		double minBitsPerPixel = 0.02;
 		double maxBitsPerPixel = 0.5;
 		double bitsPerPixel = minBitsPerPixel +
 				(maxBitsPerPixel - minBitsPerPixel) * (Math.max(0, Math.min(100, quality)) / 100.0);
 		float bitrateFps = Math.max(10f, fps);
-		long bitrate = (long) (width * height * bitrateFps * bitsPerPixel);
+		long bitrate = (long) (width * height * bitrateFps * bitsPerPixel * scale);
 		return (int) Math.min(50_000_000, Math.max(500_000, bitrate));
 	}
 
 	@Nullable
 	@RequiresApi(Build.VERSION_CODES.Q)
-	private static Uri insertPendingVideo(@NonNull ContentResolver resolver, @NonNull String filename) {
+	private static Uri insertPendingVideo(@NonNull ContentResolver resolver, @NonNull String filename,
+			@NonNull String mimeType) {
 		ContentValues values = new ContentValues();
 		values.put(MediaStore.Video.Media.DISPLAY_NAME, filename);
-		values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+		values.put(MediaStore.Video.Media.MIME_TYPE, mimeType);
 		values.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/" + ALBUM);
 		values.put(MediaStore.Video.Media.IS_PENDING, 1);
 		return resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);

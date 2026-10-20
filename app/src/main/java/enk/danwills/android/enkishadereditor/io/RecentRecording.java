@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 // One frame-sequence video MainActivity's "Play Recent Recordings" (see
 // VideoEncoder) found in MediaStore. label is a cleaned-up display name -
-// the raw MediaStore DISPLAY_NAME with the ".mp4" extension and the
+// the raw MediaStore DISPLAY_NAME with the ".mp4"/".webm" extension and the
 // embedded prose-date substring (see PROSE_DATE_PATTERN) both stripped,
 // so the list shows just the shader name without wrapping or visual
 // clutter. dateAddedSeconds (MediaStore's own DATE_ADDED column, not a
@@ -38,7 +38,8 @@ public record RecentRecording(
 			@NonNull Uri uri, @NonNull String displayName, long dateAddedSeconds) {
 		String name = displayName;
 		int dot = name.lastIndexOf('.');
-		if (dot > 0 && name.substring(dot + 1).equalsIgnoreCase("mp4")) {
+		String extension = dot > 0 ? name.substring(dot + 1) : "";
+		if (extension.equalsIgnoreCase("mp4") || extension.equalsIgnoreCase("webm")) {
 			name = name.substring(0, dot);
 		}
 		String dateLabel = null;

@@ -1,0 +1,15 @@
+<resources>
+	<string-array name="video_format_names">
+		<item>@string/video_format_h264</item>
+		<item>@string/video_format_hevc</item>
+		<item>@string/video_format_vp9</item>
+		<item>@string/video_format_vp8</item>
+	</string-array>
+	<!-- VideoFormat keys. -->
+	<string-array name="video_format_values" translatable="false">
+		<item>h264</item>
+		<item>hevc</item>
+		<item>vp9</item>
+		<item>vp8</item>
+	</string-array>
+</resources>
