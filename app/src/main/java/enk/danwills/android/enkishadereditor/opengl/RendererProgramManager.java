@@ -325,8 +325,11 @@ final class RendererProgramManager {
 			stale.release(device);
 		}
 		staleTextureResources.clear();
+		// Only programs: these passes were made since the last reload,
+		// so any render targets they have are ones they've just adopted
+		// to keep (see adoptBufferTargets()).
 		for (var pass : bufferPasses) {
-			pass.release(device);
+			pass.releaseProgram(device);
 		}
 		for (var stale : staleBufferPasses) {
 			stale.release(device);

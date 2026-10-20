@@ -165,6 +165,17 @@ final class BufferPass {
 		current = 0;
 	}
 
+	// Deletes this pass's program and `sourceText`, but not its render
+	// targets.
+	void releaseProgram(@NonNull GlDevice device) {
+		device.deleteProgram(program);
+		program = null;
+		if (sourceTextTexture != null) {
+			sourceTextTexture.release(device);
+			sourceTextTexture = null;
+		}
+	}
+
 	// Deletes everything GL this pass owns, on a context that's still
 	// alive.
 	void release(@NonNull GlDevice device) {
