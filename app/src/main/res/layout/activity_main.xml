@@ -189,19 +189,6 @@
 				android:text="@string/typing_into_shader"
 				android:textColor="@color/drawer_text"
 				android:textSize="13sp"/>
-			<!-- Only for a self-editing shader - see TextDirective. -->
-			<TextView
-				android:id="@+id/typing_into_shader_run"
-				android:layout_width="wrap_content"
-				android:layout_height="wrap_content"
-				android:paddingStart="8dp"
-				android:paddingEnd="16dp"
-				android:paddingVertical="8dp"
-				android:text="@string/run_shader_text"
-				android:textColor="@color/toggle_active"
-				android:textSize="13sp"
-				android:textStyle="bold"
-				android:visibility="gone"/>
 		</LinearLayout>
 
 		<!-- Adjust Defines' live mode, over the fullscreen shader -->

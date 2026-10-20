@@ -116,12 +116,11 @@
 	<string name="type_into_shader">Введення в шейдер</string>
 	<string name="typing_into_shader">Введення в шейдер · торкніться, щоб зупинити</string>
 	<string name="shader_ignores_keyboard">Цей шейдер не читає клавіатуру — потрібен keyboard або typedChar</string>
-	<string name="run_shader_text">▶ Запуск</string>
-	<string name="no_shader_text">Немає тексту для запуску — у шейдера немає буфера з рядком ///text:</string>
+	<string name="run_shader_text">Запустити введений текст</string>
 	<string name="shader_text_unchanged">Нічого не змінено</string>
 	<string name="ran_shader_text">Змінений текст запущено</string>
 	<string name="shader_text_unreadable">Не вдалося прочитати текст із буфера</string>
-	<string name="shader_text_not_run">Не запущено — у зміненому тексті помилка: %1$s</string>
+	<string name="shader_text_not_run">Не запущено — введений текст не компілюється: %1$s</string>
 	<string name="hide_toolbar">Сховати верхнє меню</string>
 	<string name="shader_stats">Статистика шейдера</string>
 	<string name="play_recent_recordings">Відтворити останні записи</string>
@@ -569,7 +568,7 @@
 	<string name="sample_crt_source_name">CRT Self-Portrait</string>
 	<string name="sample_crt_source_rationale">Друкує власний вихідний код на старому зеленому ЕПТ-екрані за допомогою sourceText і вбудованого шрифту.</string>
 	<string name="sample_notepad_name">Блокнот</string>
-	<string name="sample_notepad_rationale">Редагує власний код: введіть текст, потім Ctrl+Enter (або «Запуск»), щоб запустити його.</string>
+	<string name="sample_notepad_rationale">Редагує власний код: введіть текст, потім натисніть «Запустити введений текст» на панелі інструментів.</string>
 	<string name="sample_electric_fade_name">Електричне згасання</string>
 	<string name="sample_electric_fade_rationale">Як Cloudy Conway, але із попередньо встановленим зворотним буфером.</string>
 	<string name="sample_game_of_life_name">Гра життя</string>

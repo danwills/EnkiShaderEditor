@@ -116,12 +116,11 @@
 	<string name="type_into_shader">Type into Shader</string>
 	<string name="typing_into_shader">Typing into the shader · tap to stop</string>
 	<string name="shader_ignores_keyboard">This shader doesn\'t read the keyboard - it needs keyboard or typedChar</string>
-	<string name="run_shader_text">▶ Run</string>
-	<string name="no_shader_text">No edited text to run - this shader has no buffer with a ///text: line</string>
+	<string name="run_shader_text">Run Typed Text</string>
 	<string name="shader_text_unchanged">Nothing has been edited</string>
 	<string name="ran_shader_text">Ran the edited text</string>
 	<string name="shader_text_unreadable">Couldn\'t read the text back from the buffer</string>
-	<string name="shader_text_not_run">Not run - the edited text has an error: %1$s</string>
+	<string name="shader_text_not_run">Not run - the typed text doesn\'t compile: %1$s</string>
 	<string name="hide_toolbar">Hide Top Menu</string>
 	<string name="shader_stats">Shader Stats</string>
 	<string name="play_recent_recordings">Play Recent Recordings</string>
@@ -566,7 +565,7 @@
 	<string name="sample_crt_source_name">CRT Self-Portrait</string>
 	<string name="sample_crt_source_rationale">Types its own source onto an old green-phosphor CRT, using sourceText and the built-in font.</string>
 	<string name="sample_notepad_name">Notepad</string>
-	<string name="sample_notepad_rationale">Edits its own source: type into it, then Ctrl+Enter (or Run) to run what you typed.</string>
+	<string name="sample_notepad_rationale">Edits its own source: type into it, then press Run Typed Text in the toolbar to run what you typed.</string>
 	<string name="sample_electric_fade_name">Electric Fade</string>
 	<string name="sample_electric_fade_rationale">Like Cloudy Conway but with a preset backbuffer.</string>
 	<string name="sample_game_of_life_name">Game of Life</string>

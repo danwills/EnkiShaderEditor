@@ -212,10 +212,11 @@ does, so the buffer knows when to copy it again. The buffer holds the text the w
 does - row `n` is line `n`, R is the character code (0 for none; a tab is 9 then 0s) - with its
 top row left free for the shader's own use, such as a cursor.
 
-**Ctrl+Enter** (or **Run** on the Type into Shader chip) reads that buffer back and, if the text
-compiles, makes it the named pass's source - in the editor too - without restarting the shader,
-so the buffer, and what's typed in it, carry on. If it doesn't compile, the error is shown and the
-shader keeps running as it was. Save as usual to keep it.
+A self-editing shader gets a **Run Typed Text** button in the toolbar. It reads that buffer back
+and, if the text compiles, makes it the named pass's source - in the editor too - without
+restarting the shader, so the buffer, and what's typed in it, carry on. If it doesn't compile, a
+toast says why and the shader keeps running as it was. Nothing is ever run without pressing it.
+Save as usual to keep it.
 
 ## Can a shader read the keyboard?
 
@@ -228,7 +229,8 @@ uniform int typedChar;      // the character typed this frame, or 0
 
 `keyboard` is laid out like ShaderToy's keyboard texture, indexed by JavaScript key code (65 for
 A, 37-40 for the arrows, 13 for Enter, 32 for Space...): row 0 is 1 while a key is held, row 1
-for the frame it went down in, and row 2 flips each time it's pressed:
+for the frame it went down in (and again each time it auto-repeats while held), and row 2 flips
+each time it's pressed:
 
 ```glsl
 float held = texture2D(keyboard, vec2((37.0 + 0.5) / 256.0, 0.5 / 3.0)).r; // Left

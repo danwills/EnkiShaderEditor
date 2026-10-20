@@ -366,8 +366,6 @@ public class MainActivity extends AppCompatActivity {
 		shaderKeyInput.setKeyboard(shaderViewManager.getKeyboardInput());
 		typingIntoShaderChip = findViewById(R.id.typing_into_shader_chip);
 		findViewById(R.id.typing_into_shader_stop).setOnClickListener(v -> stopTypingIntoShader());
-		typingRunButton = findViewById(R.id.typing_into_shader_run);
-		typingRunButton.setOnClickListener(v -> runShaderText());
 		// The keyboard closing (Back, or its own button) ends it too -
 		// once it's stayed closed a moment, since some keyboards close
 		// and reopen when switching layouts. Insets rather than layout:
@@ -529,7 +527,11 @@ public class MainActivity extends AppCompatActivity {
 			getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 		}
 
+		View runShaderTextButton = findViewById(R.id.run_shader_text);
+		ViewCompat.setTooltipText(runShaderTextButton, getText(R.string.run_shader_text));
+		runShaderTextButton.setOnClickListener(v -> runShaderText());
 		editorFragment.setOnEditPausedListener(text -> {
+			updateRunShaderTextButton();
 			if (ShaderEditorApp.preferences.doesRunOnChange()) {
 				if (editorFragment.hasErrors()) {
 					editorFragment.clearError();
@@ -577,7 +579,6 @@ public class MainActivity extends AppCompatActivity {
 	// use (volume, media) pass through. True if the key was taken.
 	private ShaderKeyInputView shaderKeyInput;
 	private View typingIntoShaderChip;
-	private View typingRunButton;
 	// Type into Shader is on - see startTypingIntoShader() - and its
 	// keyboard has come up since.
 	private boolean typingIntoShader;
@@ -622,10 +623,6 @@ public class MainActivity extends AppCompatActivity {
 		typingIntoShader = true;
 		typingImeShown = false;
 		typingIntoShaderChip.setVisibility(View.VISIBLE);
-		typingRunButton.setVisibility(TextDirective.findTextBuffer(shaderManager
-				.getEditedProjectSession().getProject().getBufferSources()) >= 0
-				? View.VISIBLE
-				: View.GONE);
 		extraKeysManager.setSuppressed(true);
 		// Posted: the menu that started this still has the window's
 		// focus until it's gone, and the keyboard won't show for a
@@ -649,19 +646,18 @@ public class MainActivity extends AppCompatActivity {
 		shaderViewManager.getKeyboardInput().releaseAll();
 	}
 
-	// Run, for a self-editing shader (see TextDirective): the text its
-	// buffer holds becomes the source of the pass it edits - once it's
-	// compiled without errors, so a typo never stops what's running.
-	// The shader carries on without restarting, its buffers (the typed
-	// text included) and all. Never automatic: Ctrl+Enter or the Run
-	// chip.
+	// Run Typed Text, for a self-editing shader (see TextDirective):
+	// the text its buffer holds becomes the source of the pass it edits
+	// - once it's compiled without errors, so a typo never stops what's
+	// running. The shader carries on without restarting, its buffers
+	// (the typed text included) and all. Only ever from the toolbar
+	// button (see updateRunShaderTextButton()), never automatically.
 	private void runShaderText() {
 		ShaderProjectSession session = shaderManager.getEditedProjectSession(
 				editorFragment.getText());
 		String[] buffers = session.getProject().getBufferSources();
 		int textBuffer = TextDirective.findTextBuffer(buffers);
 		if (textBuffer < 0) {
-			Toast.makeText(this, R.string.no_shader_text, Toast.LENGTH_LONG).show();
 			return;
 		}
 		int target = TextDirective.findTarget(buffers[textBuffer]);
@@ -670,7 +666,6 @@ public class MainActivity extends AppCompatActivity {
 				: ShaderProjectPaths.getBufferPath(target);
 		var targetFile = session.getProject().getFile(targetPath);
 		if (targetFile == null) {
-			Toast.makeText(this, R.string.no_shader_text, Toast.LENGTH_LONG).show();
 			return;
 		}
 		String oldText = targetFile.source();
@@ -689,8 +684,8 @@ public class MainActivity extends AppCompatActivity {
 				if (!errors.isEmpty()) {
 					// Not the editor's error list: that's about the editor's
 					// text, and this is about the buffer's.
-					Snackbar.make(findViewById(R.id.main_coordinator), getString(R.string.shader_text_not_run,
-							errors.get(0).toString()), Snackbar.LENGTH_LONG).show();
+					showShaderTextError(getString(R.string.shader_text_not_run,
+							errors.get(0).toString()));
 					return;
 				}
 				// Running first, so the editor's change below is already
@@ -705,6 +700,25 @@ public class MainActivity extends AppCompatActivity {
 				Toast.makeText(this, R.string.ran_shader_text, Toast.LENGTH_SHORT).show();
 			});
 		}, "RunShaderText").start();
+	}
+
+	// Why typed text wasn't run: like a compile error's bar (red warning
+	// icon, six seconds), but without its Details - that list is about
+	// the editor's text, not the typed text.
+	private void showShaderTextError(@NonNull String message) {
+		Snackbar snackbar = Snackbar.make(findViewById(R.id.main_coordinator), message, 6000);
+		TextView text = snackbar.getView().findViewById(
+				com.google.android.material.R.id.snackbar_text);
+		Drawable icon = ContextCompat.getDrawable(this, R.drawable.ic_warning);
+		if (text != null && icon != null) {
+			icon = icon.mutate();
+			icon.setTint(ContextCompat.getColor(this, R.color.warning_icon));
+			icon.setBounds(0, 0, icon.getIntrinsicWidth(), icon.getIntrinsicHeight());
+			text.setCompoundDrawables(icon, null, null, null);
+			text.setCompoundDrawablePadding(dpToPx(8));
+			text.setMaxLines(4);
+		}
+		snackbar.show();
 	}
 
 	private boolean sendKeyToShader(@NonNull KeyEvent event) {
@@ -724,6 +738,8 @@ public class MainActivity extends AppCompatActivity {
 		if (event.getAction() == KeyEvent.ACTION_DOWN) {
 			if (event.getRepeatCount() == 0) {
 				keys.keyDown(jsCode);
+			} else {
+				keys.keyRepeat(jsCode);
 			}
 			typed = KeyboardInput.typedCharOf(event);
 			keys.type(typed);
@@ -750,14 +766,6 @@ public class MainActivity extends AppCompatActivity {
 		// changes mid-call.
 		boolean editorFocused = editorFragment.isSourceEditorFocused();
 		switch (event.getKeyCode()) {
-			case KeyEvent.KEYCODE_ENTER:
-			case KeyEvent.KEYCODE_NUMPAD_ENTER:
-				if (!ctrl || editorFocused || TextDirective.findTextBuffer(shaderManager
-						.getEditedProjectSession().getProject().getBufferSources()) < 0) {
-					return false;
-				}
-				runShaderText();
-				return true;
 			// Zoom-style in/out - works in the source editor too, since
 			// it doesn't use these combos for anything itself.
 			case KeyEvent.KEYCODE_EQUALS:
@@ -2175,7 +2183,20 @@ public class MainActivity extends AppCompatActivity {
 			}
 			""";
 
+	// Run Typed Text shows only for a self-editing shader - one with a
+	// buffer that has a `///text:` line (see TextDirective).
+	private void updateRunShaderTextButton() {
+		boolean selfEditing = TextDirective.findTextBuffer(shaderManager
+				.getEditedProjectSession(editorFragment.getText())
+				.getProject().getBufferSources()) >= 0;
+		View button = findViewById(R.id.run_shader_text);
+		if ((button.getVisibility() == View.VISIBLE) != selfEditing) {
+			button.setVisibility(selfEditing ? View.VISIBLE : View.GONE);
+		}
+	}
+
 	private void refreshPassTabs() {
+		updateRunShaderTextButton();
 		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
 		boolean[] present = new boolean[buffers.length];
 		for (int i = 0; i < buffers.length; ++i) {
