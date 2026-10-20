@@ -181,22 +181,18 @@ final class HighResScreenshotCapture {
 	static final int TILE_MARGIN = 4;
 
 	// Each tile is drawn as one or more scissored pieces ("chunks"), each
-	// finished and timed on its own - see drawInChunks(). A piece that
-	// takes longer than SLOW_CHUNK_MS halves the piece size for the rest
-	// of the capture; one comfortably under it (a piece 4x its area would
-	// still take under half of SLOW_CHUNK_MS) doubles it again, up to the
-	// tile size. The driver resets the GPU on a draw that runs past ~2s,
-	// and tile cost varies enormously across an image and with thermal
-	// throttling, so no up-front tile size choice is safe on its own -
-	// this keeps every single draw short whatever the tile size.
-	private static final long SLOW_CHUNK_MS = 250;
+	// finished and timed on its own - see drawInChunks(). The driver
+	// resets the GPU on a draw that runs past ~2s, and tile cost varies
+	// enormously - across shaders (one at 1/8 quality can need 30us a
+	// pixel), across an image, and with thermal throttling - so no tile
+	// size is safe on its own. Instead every piece is sized from how long
+	// the last one took, aiming at TARGET_CHUNK_MS, starting from a tiny
+	// MIN_CHUNK_SIZE piece so even the very first draw can't run long.
+	private static final long TARGET_CHUNK_MS = 125;
 	private static final int MIN_CHUNK_SIZE = 32;
-	// Where the piece size starts, whatever the tile size: a big tile
-	// (or a whole frame, for a single pass) as one first draw could
-	// already be past the deadline before there's any timing to go on.
-	// A cheap shader grows its pieces back to the full tile within a
-	// few draws.
-	private static final int INITIAL_CHUNK_SIZE = 512;
+	// The most a piece may grow by from one to the next, so one quick
+	// (or mis-timed) piece can't leap straight to a huge one.
+	private static final int MAX_CHUNK_GROWTH = 4;
 	// The most pixels read back at once - see renderTiles(). 16MB of
 	// int per array; a full Max tile (2048 + margins) still fits in one.
 	private static final int READBACK_BAND_PIXELS = 4 << 20;
@@ -689,8 +685,8 @@ final class HighResScreenshotCapture {
 		int doneY1 = 0;
 		// See the per-tile fatal-error check below.
 		boolean aborted = false;
-		// See SLOW_CHUNK_MS and INITIAL_CHUNK_SIZE.
-		int[] chunkSize = {Math.min(INITIAL_CHUNK_SIZE, tileContentSize + margin * 2)};
+		// See TARGET_CHUNK_MS.
+		int[] chunkSize = {MIN_CHUNK_SIZE};
 		float[] tileOffset = new float[2];
 		Mesh fullScreenQuad = Mesh.fullScreenQuad();
 		// Only redone when the tile about to render is in a different
@@ -919,7 +915,7 @@ final class HighResScreenshotCapture {
 
 	// Draws one rect of the bound framebuffer (scissor already enabled)
 	// in pieces no bigger than chunkSize[0], finishing and timing each -
-	// see SLOW_CHUNK_MS. A rect bigger than the current size is split
+	// see TARGET_CHUNK_MS. A rect bigger than the current size is split
 	// into quarters, recursively, and the size is re-read before every
 	// piece, so a slow piece shrinks the very next one. chunkSize[0]
 	// carries over between tiles. Returns false if a fatal GL error (a
@@ -945,22 +941,29 @@ final class HighResScreenshotCapture {
 		long start = System.nanoTime();
 		device.draw(quad, program);
 		GLES20.glFinish();
-		long ms = (System.nanoTime() - start) / 1_000_000;
+		long nanos = System.nanoTime() - start;
 		if (isFatalGlError(GLES20.glGetError())) {
 			return false;
 		}
-		int size = chunkSize[0];
-		if (ms > SLOW_CHUNK_MS && size > MIN_CHUNK_SIZE) {
-			chunkSize[0] = Math.max(MIN_CHUNK_SIZE, size / 2);
-			Log.w(TAG, "drawInChunks: a " + width + "x" + height + " draw took " + ms +
-					"ms - drawing at most " + chunkSize[0] + "px pieces from here on");
-		} else if (ms * 4 < SLOW_CHUNK_MS / 2 && size < maxChunkSize &&
-				Math.max(width, height) * 2 > size) {
-			// Only from a piece near the current size - a sliver at a
-			// tile's edge says little about a full piece's cost.
-			chunkSize[0] = Math.min(maxChunkSize, size * 2);
-		}
+		chunkSize[0] = nextChunkSize(chunkSize[0], width, height, nanos, maxChunkSize);
 		return true;
+	}
+
+	// The size (on a side) for the next piece: whatever would take about
+	// TARGET_CHUNK_MS at the rate the last width x height piece drew at -
+	// shrinking right away when that was slow, growing at most
+	// MAX_CHUNK_GROWTH times over when quick. Shared with
+	// ShaderRenderer's banded simulation steps.
+	static int nextChunkSize(int size, int width, int height, long nanos, int maxChunkSize) {
+		double nanosPerPixel = Math.max(1.0, nanos) / Math.max(1, width * height);
+		int ideal = (int) Math.sqrt(TARGET_CHUNK_MS * 1_000_000.0 / nanosPerPixel);
+		int next = Math.min(ideal, size * MAX_CHUNK_GROWTH);
+		next = Math.max(MIN_CHUNK_SIZE, Math.min(maxChunkSize, next));
+		if (next < size / 2) {
+			Log.w(TAG, "drawInChunks: a " + width + "x" + height + " draw took " +
+					nanos / 1_000_000 + "ms - drawing " + next + "px pieces from here on");
+		}
+		return next;
 	}
 
 	// Errors that mean the context itself is no longer usable (a GPU

@@ -1589,17 +1589,36 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			return;
 		}
 		if (hasBufferPasses()) {
-			// Every buffer pass, then the Image pass - a whole frame of
-			// the chain, exactly as live rendering draws it.
 			ensureBufferTargets();
-			drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(),
-					renderPipeline.getTargetHeight());
-		} else {
-			renderPipeline.renderMainPass(frame.bindings(), mainProgram);
+		}
+		// Every buffer pass, then the Image pass - a whole frame of the
+		// chain, exactly as live rendering draws it - in timed bands of
+		// rows rather than one draw, so an expensive shader's step can't
+		// run past the driver's deadline and reset the GPU (which takes
+		// the whole app down).
+		int height = renderPipeline.getTargetHeight();
+		int chainRows = getChainRows();
+		int width = Math.max(1, renderPipeline.getTargetWidth());
+		for (int y0 = 0; y0 < chainRows; ) {
+			int rows = Math.min(stepBandRows, chainRows - y0);
+			long start = System.nanoTime();
+			drawChainRows(frame.bindings(), mainProgram, y0, rows, height);
+			GLES20.glFinish();
+			long nanos = System.nanoTime() - start;
+			y0 += rows;
+			// The same sizing the tiled capture's pieces use, as an area.
+			int side = HighResScreenshotCapture.nextChunkSize(
+					(int) Math.sqrt((double) stepBandRows * width), width, rows, nanos,
+					Integer.MAX_VALUE);
+			stepBandRows = Math.max(1, (int) ((long) side * side / width));
 		}
 		renderPipeline.swapTargets();
 		builtinUniforms.endFrame();
 	}
+
+	// Rows per band for stepSimulationFrame() - kept between steps, so a
+	// sequence settles on its shader's speed after the first frame.
+	private int stepBandRows = 1;
 
 	// Whether width x height is the live render size - the only size a
 	// buffer shader can be captured at (see captureHighResScreenshot()).
