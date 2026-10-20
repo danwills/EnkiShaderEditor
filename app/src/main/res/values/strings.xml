@@ -494,6 +494,24 @@
 	<string name="adjust_defines_show_recent">Show Recent</string>
 	<string name="adjust_defines_no_matches">No defines match</string>
 	<string name="adjust_defines_treat_as_color">Treat as Color</string>
+	<string name="adjust_defines_edit_live">Edit Live</string>
+	<string name="adjust_defines_go_live">Go Live</string>
+	<string name="adjust_defines_back">Back</string>
+	<string name="adjust_defines_live_checking">Checking…</string>
+	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
+	<string name="adjust_defines_live_none">Tick at least one define to adjust live</string>
+	<string name="adjust_defines_live_conditional">Used by #if or #ifdef, so it has to stay a #define</string>
+	<plurals name="adjust_defines_live_failed">
+		<item quantity="one">%1$d define can\'t be live and was unticked</item>
+		<item quantity="other">%1$d defines can\'t be live and were unticked</item>
+	</plurals>
+	<string name="live_defines_collapse">Hide sliders</string>
+	<string name="live_defines_expand">Show sliders</string>
+	<string name="live_defines_discard">Discard</string>
+	<string name="live_defines_done">Done</string>
+	<string name="live_defines_discard_title">Discard live edits?</string>
+	<string name="live_defines_discard_message">The shader goes back to the values its #defines had before.</string>
+	<string name="live_defines_keep_editing">Keep Editing</string>
 	<string name="color_picker_title">Pick a Color</string>
 	<string name="color_picker_red">R</string>
 	<string name="color_picker_green">G</string>

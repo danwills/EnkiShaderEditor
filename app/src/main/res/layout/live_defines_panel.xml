@@ -1,0 +1,58 @@
+<!-- Adjust Defines' live mode: the defines being adjusted, over the
+     fullscreen shader - see LiveDefinesPanel. -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	tools:parentTag="android.widget.LinearLayout">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+		<ImageButton
+			android:id="@+id/live_defines_collapse"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="40dp"
+			android:layout_height="40dp"
+			android:contentDescription="@string/live_defines_collapse"
+			android:src="@drawable/ic_expand_more"/>
+		<ImageButton
+			android:id="@+id/live_defines_pause"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="40dp"
+			android:layout_height="40dp"
+			android:contentDescription="@string/pause_shader"
+			android:src="@drawable/ic_pause"/>
+		<Space
+			android:layout_width="0dp"
+			android:layout_height="0dp"
+			android:layout_weight="1"/>
+		<Button
+			android:id="@+id/live_defines_discard"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="wrap_content"
+			android:layout_height="40dp"
+			android:minWidth="0dp"
+			android:text="@string/live_defines_discard"/>
+		<Button
+			android:id="@+id/live_defines_done"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="wrap_content"
+			android:layout_height="40dp"
+			android:minWidth="0dp"
+			android:text="@string/live_defines_done"/>
+	</LinearLayout>
+
+	<ScrollView
+		android:id="@+id/live_defines_scroll"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content">
+		<LinearLayout
+			android:id="@+id/live_defines_rows"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="vertical"
+			android:paddingHorizontal="8dp"
+			android:paddingBottom="8dp"/>
+	</ScrollView>
+</merge>

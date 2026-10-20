@@ -62,6 +62,10 @@ final class BuiltinUniforms {
 
 	@Nullable
 	private ProgramBindings programBindings;
+	// Adjust Defines' live values - see LiveDefines. Empty, and so
+	// binding nothing, unless live mode is on.
+	@NonNull
+	private final LiveDefines liveDefines = new LiveDefines();
 	@NonNull
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
@@ -379,12 +383,18 @@ final class BuiltinUniforms {
 		cameraUniforms.apply(bindings);
 		audioUniforms.apply(device);
 		textureResources.applyTo(bindings);
+		liveDefines.apply(bindings);
 
 		return new PreparedFrame(
 				bindings,
 				(int) surfaceResolution[0],
 				(int) surfaceResolution[1],
 				now);
+	}
+
+	@NonNull
+	LiveDefines getLiveDefines() {
+		return liveDefines;
 	}
 
 	void endFrame() {

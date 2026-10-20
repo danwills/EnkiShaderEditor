@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.adapter;
 
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -20,6 +21,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
@@ -82,6 +84,8 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 	@NonNull
 	private String filter = "";
 	private boolean showRecentOnly = false;
+	// See setLiveSetup().
+	private boolean liveSetup = false;
 	// Indices into `defines` currently matching both filter and
 	// showRecentOnly, in `defines`' own order - this (not `defines`
 	// directly) is what getItemCount()/onBindViewHolder() go by, so a
@@ -129,6 +133,24 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		applyFilterChange();
 	}
 
+	// Live mode's setup list: each define is just a tickbox, its name and
+	// type, its comment and (in red) why it can't be live, if it can't -
+	// and only the defines that could be live at all are listed.
+	public void setLiveSetup(boolean liveSetup) {
+		this.liveSetup = liveSetup;
+		applyFilterChange();
+	}
+
+	public boolean isLiveSetup() {
+		return liveSetup;
+	}
+
+	// After live mode's compile check marked some defines - see
+	// ShaderDefine.liveError.
+	public void refreshAll() {
+		notifyItemRangeChanged(0, getItemCount());
+	}
+
 	private void applyFilterChange() {
 		recomputeVisibleIndices();
 		notifyDataSetChanged();
@@ -144,7 +166,8 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			boolean matchesFilter = filter.isEmpty()
 					|| define.name.toLowerCase(Locale.ROOT).contains(filter);
 			boolean matchesRecent = !showRecentOnly || recentNames.contains(define.name);
-			if (matchesFilter && matchesRecent) {
+			boolean matchesMode = !liveSetup || define.canBeLive();
+			if (matchesFilter && matchesRecent && matchesMode) {
 				visibleIndices.add(i);
 			}
 		}
@@ -165,6 +188,10 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 	@Override
 	public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
 		ShaderDefine define = defines.get(visibleIndices.get(position));
+		if (liveSetup) {
+			holder.bindLiveSetup(define);
+			return;
+		}
 		holder.bind(define, dragListener, colorPickerRequested, () -> notifyItemChanged(position));
 	}
 
@@ -200,6 +227,9 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		private final View colorSwatch;
 		private final LinearLayout vectorRows;
 		private final EditText commentText;
+		private final CheckBox liveCheck;
+		private final TextView liveError;
+		private final TextView commentLabel;
 
 		@Nullable
 		private TextWatcher valueWatcher;
@@ -207,6 +237,7 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		private TextWatcher otherValueWatcher;
 		@Nullable
 		private TextWatcher commentWatcher;
+		private final ColorStateList defaultNameColors;
 		// Guards against the slider/text-box feedback loop: setting one
 		// from the other below sets this first so the listener it also
 		// triggers knows to no-op instead of writing back again.
@@ -226,6 +257,10 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			colorSwatch = itemView.findViewById(R.id.define_color_swatch);
 			vectorRows = itemView.findViewById(R.id.define_vector_rows);
 			commentText = itemView.findViewById(R.id.define_comment_text);
+			liveCheck = itemView.findViewById(R.id.define_live_check);
+			liveError = itemView.findViewById(R.id.define_live_error);
+			commentLabel = itemView.findViewById(R.id.define_comment_label);
+			defaultNameColors = nameView.getTextColors();
 			// A comment is one line of source, so the box stays single-line
 			// (no newline key, and pasted newlines become spaces) but wraps
 			// on screen rather than scrolling sideways.
@@ -239,8 +274,47 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			}});
 		}
 
+		void bindLiveSetup(@NonNull ShaderDefine define) {
+			dragHandle.setVisibility(View.GONE);
+			boolValue.setVisibility(View.GONE);
+			sliderRow.setVisibility(View.GONE);
+			otherValueText.setVisibility(View.GONE);
+			colorRow.setVisibility(View.GONE);
+			vectorRows.setVisibility(View.GONE);
+			commentText.setVisibility(View.GONE);
+
+			nameView.setText(nameView.getContext().getString(
+					R.string.adjust_defines_live_name_format, define.name, define.typeName()));
+			boolean failed = define.liveError != null;
+			if (failed) {
+				nameView.setTextColor(ContextCompat.getColor(nameView.getContext(),
+						R.color.define_live_error));
+			} else {
+				nameView.setTextColor(defaultNameColors);
+			}
+			liveError.setVisibility(failed ? View.VISIBLE : View.GONE);
+			liveError.setText(define.liveError);
+			commentLabel.setVisibility(define.comment != null ? View.VISIBLE : View.GONE);
+			commentLabel.setText(define.comment);
+
+			liveCheck.setVisibility(View.VISIBLE);
+			liveCheck.setOnCheckedChangeListener(null);
+			liveCheck.setChecked(define.live);
+			liveCheck.setOnCheckedChangeListener((button, checked) -> define.live = checked);
+			itemView.setOnClickListener(v -> liveCheck.toggle());
+		}
+
 		void bind(@NonNull ShaderDefine define, @NonNull OnStartDragListener dragListener,
 				@NonNull OnColorPickerRequested colorPickerRequested, @NonNull Runnable refreshSelf) {
+			dragHandle.setVisibility(View.VISIBLE);
+			commentText.setVisibility(View.VISIBLE);
+			liveCheck.setVisibility(View.GONE);
+			liveCheck.setOnCheckedChangeListener(null);
+			liveError.setVisibility(View.GONE);
+			commentLabel.setVisibility(View.GONE);
+			itemView.setOnClickListener(null);
+			itemView.setClickable(false);
+			nameView.setTextColor(defaultNameColors);
 			nameView.setText(define.name);
 			boolValue.setVisibility(View.GONE);
 			sliderRow.setVisibility(View.GONE);

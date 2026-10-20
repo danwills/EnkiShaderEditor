@@ -4,6 +4,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -240,6 +241,46 @@ public final class ShaderDefineParser {
 		float lo = Math.min(0f, numeric - span);
 		float hi = Math.max(0f, numeric + span);
 		return new float[]{lo, hi};
+	}
+
+	/**
+	 * The source live mode runs: every define at its own line, with its
+	 * current value, and the ones in `live` declared as uniforms there
+	 * instead - see ShaderDefine.toLiveLine(). Reordering doesn't matter
+	 * for running, so it isn't applied here.
+	 */
+	@NonNull
+	public static String toLiveSource(@NonNull String originalSource,
+			@NonNull List<ShaderDefine> defines, @NonNull Collection<ShaderDefine> live) {
+		String[] lines = originalSource.split("\n", -1);
+		for (ShaderDefine define : defines) {
+			if (define.lineIndex < lines.length) {
+				lines[define.lineIndex] = live.contains(define) && define.canBeLive()
+						? define.toLiveLine()
+						: define.toLine();
+			}
+		}
+		return String.join("\n", lines);
+	}
+
+	// Lines testing whether a macro exists or what it is - a uniform
+	// can't be either, and turning a define into one would quietly flip
+	// every `#ifdef NAME` without any compile error to catch it.
+	private static final Pattern CONDITIONAL_DIRECTIVE =
+			Pattern.compile("^\\s*#\\s*(if|ifdef|ifndef|elif|undef)\\b.*");
+
+	// Whether `define` is tested by an #if/#ifdef/#ifndef/#elif/#undef
+	// anywhere in `source`, so it can't be made live - see
+	// CONDITIONAL_DIRECTIVE.
+	public static boolean isUsedInConditional(@NonNull String source,
+			@NonNull ShaderDefine define) {
+		Pattern word = Pattern.compile("\\b" + Pattern.quote(define.name) + "\\b");
+		for (String line : source.split("\n", -1)) {
+			if (CONDITIONAL_DIRECTIVE.matcher(line).matches() && word.matcher(line).find()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

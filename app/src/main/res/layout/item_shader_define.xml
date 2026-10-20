@@ -11,6 +11,13 @@
 		android:layout_height="wrap_content"
 		android:gravity="center_vertical"
 		android:orientation="horizontal">
+		<!-- Live mode's setup list only: tick to adjust it live. -->
+		<CheckBox
+			android:id="@+id/define_live_check"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginEnd="4dp"
+			android:visibility="gone"/>
 		<ImageView
 			android:id="@+id/define_drag_handle"
 			android:layout_width="32dp"
@@ -33,6 +40,24 @@
 			android:layout_height="wrap_content"
 			android:visibility="gone"/>
 	</LinearLayout>
+
+	<!-- Live mode's setup list only: why this define can't be live. -->
+	<TextView
+		android:id="@+id/define_live_error"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:textColor="@color/define_live_error"
+		android:textSize="13sp"
+		android:visibility="gone"/>
+
+	<!-- Live mode's setup list only: the comment, read-only. -->
+	<TextView
+		android:id="@+id/define_comment_label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:alpha="0.7"
+		android:textSize="13sp"
+		android:visibility="gone"/>
 
 	<!-- Slider + exact-value text box, only shown for FLOAT/INT. -->
 	<LinearLayout

@@ -66,6 +66,13 @@ public final class ShaderDefine {
 	// especially - won't obviously look like one from name/range alone).
 	public boolean showColorPicker;
 
+	// Adjust Defines' live mode: whether this define is ticked to be
+	// adjusted live (turned into a uniform - see ShaderDefineParser.
+	// toLiveSource()), and if it can't be, why not - shown in red.
+	public boolean live;
+	@Nullable
+	public String liveError;
+
 	public ShaderDefine(@NonNull String name, @NonNull Type type, int lineIndex,
 			@NonNull String indent, @NonNull String value, @Nullable String comment,
 			float sliderMin, float sliderMax,
@@ -85,6 +92,77 @@ public final class ShaderDefine {
 		this.vectorComponents = vectorComponents;
 		this.looksLikeColor = looksLikeColor;
 		this.showColorPicker = looksLikeColor;
+	}
+
+	// Only plain values can become uniforms - an expression or a
+	// function-like macro has nothing to adjust.
+	public boolean canBeLive() {
+		return type != Type.OTHER;
+	}
+
+	// The uniform this define becomes in live mode, in place of its own
+	// line. highp so a value isn't rounded to half precision on GPUs
+	// where mediump is - the old ES 2 GPUs without highp in fragment
+	// shaders fail the test compile instead, and the define goes red.
+	@NonNull
+	public String toLiveLine() {
+		String glslType = switch (type) {
+			case FLOAT -> "highp float";
+			case INT -> "highp int";
+			case BOOL -> "bool";
+			case VEC2 -> "highp vec2";
+			case VEC3 -> "highp vec3";
+			case VEC4 -> "highp vec4";
+			case OTHER -> throw new IllegalStateException(name + " can't be live");
+		};
+		return indent + "uniform " + glslType + " " + name + ";";
+	}
+
+	// The current value as the uniform's components, or null if it
+	// doesn't parse (the text box can hold anything).
+	@Nullable
+	public float[] liveComponents() {
+		switch (type) {
+			case BOOL:
+				return new float[]{value.equalsIgnoreCase("true") ? 1f : 0f};
+			case VEC2:
+			case VEC3:
+			case VEC4:
+				return vectorComponents != null ? vectorComponents.clone() : null;
+			case FLOAT:
+			case INT:
+				try {
+					return new float[]{Float.parseFloat(value)};
+				} catch (NumberFormatException e) {
+					return null;
+				}
+			default:
+				return null;
+		}
+	}
+
+	// Sets a FLOAT/INT/BOOL's value from a live control.
+	public void setLiveScalar(float scalar) {
+		switch (type) {
+			case INT -> value = String.valueOf(Math.round(scalar));
+			case BOOL -> value = scalar != 0f ? "true" : "false";
+			default -> value = formatFloat(scalar);
+		}
+	}
+
+	// A short name for the type, shown next to the define's name in
+	// live mode's setup list.
+	@NonNull
+	public String typeName() {
+		return switch (type) {
+			case FLOAT -> "float";
+			case INT -> "int";
+			case BOOL -> "bool";
+			case VEC2 -> "vec2";
+			case VEC3 -> showColorPicker ? "color" : "vec3";
+			case VEC4 -> showColorPicker ? "color" : "vec4";
+			case OTHER -> "";
+		};
 	}
 
 	public boolean isValueChanged() {

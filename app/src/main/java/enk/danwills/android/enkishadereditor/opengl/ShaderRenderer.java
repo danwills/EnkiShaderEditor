@@ -316,6 +316,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// Caching is simply skipped for such sessions (nothing stable to key
 	// the cache on).
 	private volatile long shaderId = 0;
+	// See setFragmentShader()'s keepState - read with pendingReload.
+	private volatile boolean pendingKeepState;
 	@Nullable
 	private ProgramBinaryCache programBinaryCache;
 
@@ -337,10 +339,24 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// by buffer (0 = A), null entries (or a null array) for none.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId) {
-		builtinUniforms.setRuntimeNanos(0);
+		setFragmentShader(source, bufferSources, quality, shaderId, false);
+	}
+
+	// keepState: the new source is the same shader with only some values
+	// changed (Adjust Defines' live mode swapping #defines for uniforms
+	// and back), so it carries on from where it is - the clock, buffer
+	// contents and backbuffer are all kept, not restarted.
+	public void setFragmentShader(String source, @Nullable String[] bufferSources,
+			float quality, long shaderId, boolean keepState) {
+		if (!keepState) {
+			builtinUniforms.setRuntimeNanos(0);
+		}
 		setQuality(quality);
 		this.shaderId = shaderId;
 		programManager.setFragmentShader(source, bufferSources);
+		// Several changes before the next frame keep the state only if
+		// every one of them asked to.
+		pendingKeepState = keepState && (!pendingReload || pendingKeepState);
 		resetFps();
 		// Compiled on the GL thread's next frame (see onDrawFrame()) rather
 		// than relying on ShaderView's onPause()/onResume() to recreate the
@@ -348,6 +364,18 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// (see setPreserveEGLContextOnPause() there), so onSurfaceCreated()
 		// only still runs when the system genuinely discarded it.
 		pendingReload = true;
+	}
+
+	// See LiveDefines - set from the UI thread, bound into every frame.
+	@NonNull
+	public LiveDefines getLiveDefines() {
+		return builtinUniforms.getLiveDefines();
+	}
+
+	// See RendererProgramManager.testCompile() - GL thread only.
+	@NonNull
+	public List<ShaderError> testCompile(@NonNull String source, @Nullable String[] bufferSources) {
+		return programManager.testCompile(device, source, bufferSources);
 	}
 
 	// Which offscreen buffer (0 = A) to show on screen instead of the
@@ -772,10 +800,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			pendingReload = false;
 			pendingReconfigure = false;
 			abandonProgressiveFrame();
+			boolean keepState = pendingKeepState;
+			pendingKeepState = false;
+			if (keepState) {
+				programManager.adoptBufferTargets();
+			}
 			programManager.releaseForReload(device);
 			// The new shader's backbuffer parameters (size/filtering) may
 			// differ from the old one's - ensureTargets() below rebuilds.
-			renderPipeline.releaseTargets();
+			if (!keepState || !programManager.backBufferParametersUnchanged()) {
+				renderPipeline.releaseTargets();
+			}
 			// A different (or edited) shader - never hand it the previous
 			// one's stashed state.
 			stateRowMigrationPending = false;

@@ -74,6 +74,20 @@ final class BufferPass {
 		current = 1 - current;
 	}
 
+	// Takes over `other`'s render targets (and what's in them), leaving
+	// it with none - see RendererProgramManager.adoptBufferTargets().
+	void adoptTargets(@NonNull BufferPass other) {
+		for (int i = 0; i < 2; ++i) {
+			framebuffers[i] = other.framebuffers[i];
+			textures[i] = other.textures[i];
+			other.framebuffers[i] = null;
+			other.textures[i] = null;
+		}
+		current = other.current;
+		halfFloat = other.halfFloat;
+		other.current = 0;
+	}
+
 	void ensureTargets(@NonNull GlDevice device, int width, int height, boolean tryHalfFloat,
 			@NonNull List<ShaderError> errors) {
 		if (hasTargets() || width <= 0 || height <= 0) {

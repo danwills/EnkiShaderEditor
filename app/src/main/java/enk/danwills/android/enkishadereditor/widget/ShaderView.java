@@ -7,7 +7,13 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
@@ -15,6 +21,7 @@ import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
 
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
+import enk.danwills.android.enkishadereditor.opengl.ShaderError;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 
@@ -79,21 +86,62 @@ public class ShaderView extends GLSurfaceView {
 	// bufferSources: see ShaderRenderer.setFragmentShader().
 	public void setFragmentShader(String src, @Nullable String[] bufferSources,
 			float quality, long shaderId) {
+		setFragmentShader(src, bufferSources, quality, shaderId, false);
+	}
+
+	// keepState: see ShaderRenderer.setFragmentShader().
+	public void setFragmentShader(String src, @Nullable String[] bufferSources,
+			float quality, long shaderId, boolean keepState) {
 		onPause();
-		// When pasting text from other apps, e.g. Gmail, the
-		// text is sometimes tainted with useless non-ascii
-		// characters that can raise an exception in the shader
-		// compiler. To still allow UTF-8 characters in comments,
-		// the source is cleaned up here.
-		String[] cleanBuffers = null;
-		if (bufferSources != null) {
-			cleanBuffers = new String[bufferSources.length];
-			for (int i = 0; i < bufferSources.length; ++i) {
-				cleanBuffers[i] = removeNonAscii(bufferSources[i]);
-			}
-		}
-		renderer.setFragmentShader(removeNonAscii(src), cleanBuffers, quality, shaderId);
+		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources), quality,
+				shaderId, keepState);
 		onResume();
+	}
+
+	// Compiles the given sources on the GL thread without running them
+	// (see ShaderRenderer.testCompile()) and waits for the result - not
+	// on the UI thread, which would block the GL thread's own UI
+	// callbacks. A compile that doesn't finish within the timeout counts
+	// as failed.
+	@NonNull
+	public List<ShaderError> testCompileAndWait(@NonNull String src,
+			@Nullable String[] bufferSources) {
+		String cleanSource = removeNonAscii(src);
+		String[] cleanBuffers = removeNonAscii(bufferSources);
+		List<ShaderError> result = new ArrayList<>();
+		CountDownLatch done = new CountDownLatch(1);
+		queueEvent(() -> {
+			try {
+				result.addAll(renderer.testCompile(cleanSource, cleanBuffers));
+			} finally {
+				done.countDown();
+			}
+		});
+		try {
+			if (!done.await(10, TimeUnit.SECONDS)) {
+				return List.of(ShaderError.createGeneral("Compile timed out"));
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return List.of(ShaderError.createGeneral("Compile interrupted"));
+		}
+		return result;
+	}
+
+	// When pasting text from other apps, e.g. Gmail, the text is
+	// sometimes tainted with useless non-ascii characters that can raise
+	// an exception in the shader compiler. To still allow UTF-8
+	// characters in comments, the source is cleaned up here.
+	@Nullable
+	private static String[] removeNonAscii(@Nullable String[] sources) {
+		if (sources == null) {
+			return null;
+		}
+		String[] clean = new String[sources.length];
+		for (int i = 0; i < sources.length; ++i) {
+			clean[i] = removeNonAscii(sources[i]);
+		}
+		return clean;
 	}
 
 	public ShaderRenderer getRenderer() {

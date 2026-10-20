@@ -102,6 +102,10 @@ final class RendererProgramManager {
 	// thread - same idea as staleTextureResources.
 	@NonNull
 	private final List<BufferPass> staleBufferPasses = new ArrayList<>();
+	// The backbuffer parameters before the last prepareShaderSource(),
+	// as text - see backBufferParametersUnchanged().
+	@Nullable
+	private String previousBackBufferParameters;
 	// See prepareShaderSource()/releaseForReload().
 	@NonNull
 	private final List<ShaderTextureResources> staleTextureResources = new ArrayList<>();
@@ -362,12 +366,86 @@ final class RendererProgramManager {
 		return textureResources;
 	}
 
+	// Compiles `source` and `bufferSources` (as setFragmentShader()
+	// takes them) and deletes the programs straight away, changing
+	// nothing - so Adjust Defines' live mode can find out whether its
+	// converted source compiles before handing it over for real. GL
+	// thread only. Empty if every pass compiled.
+	@NonNull
+	List<ShaderError> testCompile(@NonNull GlDevice device, @NonNull String source,
+			@Nullable String[] bufferSources) {
+		var errors = new ArrayList<ShaderError>();
+		testCompilePass(device, ShaderSourcePreparer.prepare(source, version, maxTextures),
+				ShaderError.IMAGE_PASS, errors);
+		if (bufferSources != null) {
+			for (int buffer = 0; buffer < bufferSources.length; ++buffer) {
+				if (bufferSources[buffer] != null) {
+					testCompilePass(device, ShaderSourcePreparer.prepare(
+							bufferSources[buffer], version, maxTextures), buffer, errors);
+				}
+			}
+		}
+		return errors;
+	}
+
+	private void testCompilePass(@NonNull GlDevice device, @NonNull PreparedShaderSource prepared,
+			int buffer, @NonNull List<ShaderError> errors) {
+		var fragmentShader = prepared.getFragmentShader();
+		if (fragmentShader == null) {
+			return;
+		}
+		var result = device.createProgram(
+				prepared.getVertexShader(
+						FULL_SCREEN_VERTEX_SHADER,
+						FULL_SCREEN_VERTEX_SHADER_3,
+						version),
+				fragmentShader.getSource(),
+				fragmentShader.getLineMapping());
+		if (!result.succeeded() || result.getProgram() == null) {
+			for (var error : result.getInfoLog()) {
+				errors.add(buffer == ShaderError.IMAGE_PASS ? error : error.withPass(buffer));
+			}
+			if (result.getInfoLog().isEmpty()) {
+				var linkFailed = ShaderError.createGeneral("Link failed");
+				errors.add(buffer == ShaderError.IMAGE_PASS ? linkFailed : linkFailed.withPass(buffer));
+			}
+		}
+		device.deleteProgram(result.getProgram());
+	}
+
+	// For a reload that keeps the shader's state (see ShaderRenderer.
+	// setFragmentShader()'s keepState): hands each new buffer pass the
+	// render targets - and so the contents - of the replaced pass for
+	// the same buffer, before releaseForReload() would delete them. GL
+	// thread only.
+	void adoptBufferTargets() {
+		for (var pass : bufferPasses) {
+			for (var stale : staleBufferPasses) {
+				if (stale.buffer == pass.buffer && stale.hasTargets()) {
+					pass.adoptTargets(stale);
+					break;
+				}
+			}
+		}
+	}
+
+	// Whether the last setFragmentShader() left the backbuffer's
+	// parameters (size, filtering, preset) as they were, so its targets
+	// can be kept - see adoptBufferTargets().
+	boolean backBufferParametersUnchanged() {
+		return previousBackBufferParameters != null && previousBackBufferParameters.equals(
+				preparedShaderSource.getBackBufferParameters().toString());
+	}
+
 	private void prepareShaderSource() {
 		// Kept so releaseForReload() can delete its GL textures later, on
 		// the GL thread - this runs on the UI thread, with the GL thread
 		// paused, so it can't touch GL itself.
 		staleTextureResources.add(textureResources);
 		staleBufferPasses.addAll(bufferPasses);
+		previousBackBufferParameters = preparedShaderSource.getFragmentShader() != null
+				? preparedShaderSource.getBackBufferParameters().toString()
+				: null;
 		preparedShaderSource = ShaderSourcePreparer.prepare(
 				sourceText,
 				version,

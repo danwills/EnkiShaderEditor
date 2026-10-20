@@ -161,5 +161,14 @@
 			android:visibility="gone"
 			android:alpha="0"/>
 
+		<!-- Adjust Defines' live mode, over the fullscreen shader -->
+		<enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel
+			android:id="@+id/live_defines_panel"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_gravity="bottom"
+			android:elevation="8dp"
+			android:visibility="gone"/>
+
 	</androidx.coordinatorlayout.widget.CoordinatorLayout>
 </merge>

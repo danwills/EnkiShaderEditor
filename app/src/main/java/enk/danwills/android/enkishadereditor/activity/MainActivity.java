@@ -35,6 +35,7 @@ import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -87,6 +88,10 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Random;
 import java.util.Locale;
 import java.util.Set;
@@ -120,6 +125,7 @@ import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
 import enk.danwills.android.enkishadereditor.io.VideoFormat;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
+import enk.danwills.android.enkishadereditor.opengl.LiveDefines;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
 import enk.danwills.android.enkishadereditor.opengl.ChannelParameters;
@@ -128,6 +134,7 @@ import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackDelivery;
 import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackStore;
 import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectPaths;
+import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
@@ -141,6 +148,7 @@ import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
+import enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel;
 import enk.danwills.android.enkishadereditor.widget.BatchShaderDialog;
 import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
@@ -282,7 +290,9 @@ public class MainActivity extends AppCompatActivity {
 			new OnBackPressedCallback(true) {
 				@Override
 				public void handleOnBackPressed() {
-					if (uiManager.isFullscreen()) {
+					if (liveDefinesState != null) {
+						confirmDiscardLiveDefines();
+					} else if (uiManager.isFullscreen()) {
 						setFullscreen(false);
 						setToolbarHidden(false);
 					} else if (uiManager.isDrawerOpen()) {
@@ -345,6 +355,37 @@ public class MainActivity extends AppCompatActivity {
 				editorFragment,
 				extraKeysManager,
 				shaderViewManager);
+		liveDefinesPanel = findViewById(R.id.live_defines_panel);
+		liveDefinesPanel.setListener(new LiveDefinesPanel.Listener() {
+			@Override
+			public void onValueChanged(@NonNull ShaderDefine define) {
+				sendLiveDefine(define);
+			}
+
+			@Override
+			public void onPickColor(@NonNull ShaderDefine define, @NonNull Runnable onPicked) {
+				showColorPickerDialog(define, onPicked, components -> {
+					shaderViewManager.getLiveDefines().set(define.name, define.type, components);
+					shaderViewManager.requestRenderIfPaused();
+				});
+			}
+
+			@Override
+			public void onTogglePause() {
+				togglePauseShader();
+				liveDefinesPanel.setPaused(shaderViewManager.isPaused());
+			}
+
+			@Override
+			public void onDone() {
+				finishLiveDefines();
+			}
+
+			@Override
+			public void onDiscard() {
+				confirmDiscardLiveDefines();
+			}
+		});
 		uiManager.setOnCodeVisibilityChangedListener(codeVisible -> {
 			updatePauseForEditingVisibility(codeVisible);
 			updatePausedBlanking();
@@ -2142,6 +2183,13 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
+		long shaderId = shaderManager.getEditedProjectSession(source).getShaderId();
+		Set<String> liveNames = liveDefineNames.get(shaderId);
+		if (liveNames != null) {
+			for (ShaderDefine define : workingOrder) {
+				define.live = liveNames.contains(define.name);
+			}
+		}
 
 		// Paused for the whole flow (this dialog and the confirm dialog
 		// it leads to) - dragging a slider recompiles nothing by itself,
@@ -2239,16 +2287,50 @@ public class MainActivity extends AppCompatActivity {
 				.setTitle(R.string.adjust_defines)
 				.setView(view)
 				.setNegativeButton(android.R.string.cancel, null)
-				.setPositiveButton(R.string.adjust_defines_make_edits, (d, w) -> {
-					proceeding[0] = true;
-					showAdjustDefinesConfirmDialog(source, originalOrder, workingOrder, wasPaused);
-				})
+				.setPositiveButton(R.string.adjust_defines_make_edits, null)
+				.setNeutralButton(R.string.adjust_defines_edit_live, null)
 				.setOnDismissListener(d -> {
 					if (!proceeding[0]) {
 						setShaderPaused(wasPaused);
 					}
 				})
 				.show();
+		// Set after show() so a click doesn't always close the dialog -
+		// in live mode's setup, Go Live stays open when a define can't
+		// be live, and Back returns to the normal list.
+		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+		Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+		Button neutral = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+		Runnable updateButtons = () -> {
+			boolean setup = adapter.isLiveSetup();
+			positive.setText(setup ? R.string.adjust_defines_go_live : R.string.adjust_defines_make_edits);
+			negative.setText(setup ? R.string.adjust_defines_back : android.R.string.cancel);
+			neutral.setVisibility(setup ? View.GONE : View.VISIBLE);
+		};
+		positive.setOnClickListener(v -> {
+			if (adapter.isLiveSetup()) {
+				checkLiveDefines(dialog, adapter, source, originalOrder, workingOrder, wasPaused,
+						proceeding);
+				return;
+			}
+			proceeding[0] = true;
+			dialog.dismiss();
+			showAdjustDefinesConfirmDialog(source, originalOrder, workingOrder, wasPaused, null,
+					null);
+		});
+		negative.setOnClickListener(v -> {
+			if (adapter.isLiveSetup()) {
+				adapter.setLiveSetup(false);
+				updateButtons.run();
+			} else {
+				dialog.dismiss();
+			}
+		});
+		neutral.setOnClickListener(v -> {
+			SoftKeyboard.hide(this, filterView);
+			adapter.setLiveSetup(true);
+			updateButtons.run();
+		});
 		// So typing a filter can start immediately, same rationale/pattern
 		// as the Find Shader dialog's query field above.
 		filterView.requestFocus();
@@ -2257,27 +2339,266 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	// onApplied runs after Apply / Apply and Save, onCancelled when the
+	// dialog closes any other way - both optional (live mode's Done
+	// uses them, see finishLiveDefines()).
 	private void showAdjustDefinesConfirmDialog(@NonNull String originalSource,
 			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
-			boolean wasPaused) {
+			boolean wasPaused, @Nullable Runnable onApplied, @Nullable Runnable onCancelled) {
 		View view = getLayoutInflater().inflate(R.layout.dialog_adjust_defines_confirm, null);
 		TextView summary = view.findViewById(R.id.adjust_defines_confirm_summary);
 		summary.setText(buildAdjustDefinesSummary(originalOrder, workingOrder));
 
+		boolean[] applied = {false};
 		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.adjust_defines_confirm_title)
 				.setView(view)
-				.setOnDismissListener(d -> setShaderPaused(wasPaused))
+				.setOnDismissListener(d -> {
+					setShaderPaused(wasPaused);
+					if (!applied[0] && onCancelled != null) {
+						onCancelled.run();
+					}
+				})
 				.show();
 		view.findViewById(R.id.adjust_defines_confirm_cancel).setOnClickListener(v -> dialog.dismiss());
 		view.findViewById(R.id.adjust_defines_confirm_apply).setOnClickListener(v -> {
+			applied[0] = true;
 			applyAdjustedDefines(originalSource, originalOrder, workingOrder, false);
+			if (onApplied != null) {
+				onApplied.run();
+			}
 			dialog.dismiss();
 		});
 		view.findViewById(R.id.adjust_defines_confirm_apply_and_save).setOnClickListener(v -> {
+			applied[0] = true;
 			applyAdjustedDefines(originalSource, originalOrder, workingOrder, true);
+			if (onApplied != null) {
+				onApplied.run();
+			}
 			dialog.dismiss();
 		});
+	}
+
+	// Defines ticked for live mode, per shader id, this app session -
+	// so going live again on the same shader starts with the same ones
+	// ticked. In-memory only, like recentlyEditedDefineNames.
+	private static final Map<Long, Set<String>> liveDefineNames = new HashMap<>();
+
+	// Adjust Defines' live mode while it's on (see startLiveDefines()),
+	// null otherwise.
+	private record LiveDefinesState(@NonNull String originalSource,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			@NonNull List<ShaderDefine> live) {
+	}
+
+	@Nullable
+	private LiveDefinesState liveDefinesState;
+	private LiveDefinesPanel liveDefinesPanel;
+
+	// Live mode's Go Live: makes sure every ticked define can be a
+	// uniform before going live. A define tested by #if/#ifdef can't (and
+	// wouldn't fail to compile, just quietly change what's compiled), so
+	// that's checked first; then the converted shader is test-compiled,
+	// and if it fails, each define on its own, to find the ones at fault.
+	// Those are unticked and shown in red with the reason, and the
+	// dialog stays open - so the next Go Live runs with the rest.
+	private void checkLiveDefines(@NonNull AlertDialog dialog, @NonNull DefineAdapter adapter,
+			@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
+			@NonNull List<ShaderDefine> workingOrder, boolean wasPaused,
+			@NonNull boolean[] proceeding) {
+		List<ShaderDefine> live = new ArrayList<>();
+		for (ShaderDefine define : workingOrder) {
+			define.liveError = null;
+			if (define.live && define.canBeLive()) {
+				live.add(define);
+			}
+		}
+		if (live.isEmpty()) {
+			adapter.refreshAll();
+			Toast.makeText(this, R.string.adjust_defines_live_none, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		List<ShaderDefine> failed = new ArrayList<>();
+		for (ShaderDefine define : live) {
+			if (ShaderDefineParser.isUsedInConditional(source, define)) {
+				define.liveError = getString(R.string.adjust_defines_live_conditional);
+				failed.add(define);
+			}
+		}
+		if (!failed.isEmpty()) {
+			showLiveDefinesFailed(adapter, failed);
+			return;
+		}
+
+		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+		positive.setEnabled(false);
+		positive.setText(R.string.adjust_defines_live_checking);
+		// Everything the check needs, built here on the UI thread - the
+		// defines are the dialog's, and only it changes them.
+		ShaderProjectSession liveSession = shaderManager.getEditedProjectSession(
+				ShaderDefineParser.toLiveSource(source, workingOrder, live));
+		Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
+		for (ShaderDefine define : live) {
+			singles.put(define, shaderManager.getEditedProjectSession(
+					ShaderDefineParser.toLiveSource(source, workingOrder, List.of(define))));
+		}
+		new Thread(() -> {
+			List<ShaderError> errors = shaderViewManager.testCompileAndWait(liveSession);
+			Map<ShaderDefine, String> reasons = new LinkedHashMap<>();
+			if (!errors.isEmpty()) {
+				for (var entry : singles.entrySet()) {
+					List<ShaderError> own = shaderViewManager.testCompileAndWait(entry.getValue());
+					if (!own.isEmpty()) {
+						reasons.put(entry.getKey(), describeLiveError(own.get(0)));
+					}
+				}
+				// Each compiles alone but not together - nothing to single
+				// out, so they all go.
+				if (reasons.isEmpty()) {
+					for (ShaderDefine define : live) {
+						reasons.put(define, describeLiveError(errors.get(0)));
+					}
+				}
+			}
+			runOnUiThread(() -> {
+				if (!dialog.isShowing()) {
+					return;
+				}
+				positive.setEnabled(true);
+				positive.setText(R.string.adjust_defines_go_live);
+				if (!reasons.isEmpty()) {
+					for (var entry : reasons.entrySet()) {
+						entry.getKey().liveError = entry.getValue();
+					}
+					showLiveDefinesFailed(adapter, new ArrayList<>(reasons.keySet()));
+					return;
+				}
+				proceeding[0] = true;
+				dialog.dismiss();
+				startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
+						liveSession, wasPaused);
+			});
+		}, "LiveDefinesCheck").start();
+	}
+
+	@NonNull
+	private static String describeLiveError(@NonNull ShaderError error) {
+		return error.hasLine()
+				? "Line " + error.getLine() + ": " + error.getMessage()
+				: error.getMessage();
+	}
+
+	private void showLiveDefinesFailed(@NonNull DefineAdapter adapter,
+			@NonNull List<ShaderDefine> failed) {
+		for (ShaderDefine define : failed) {
+			define.live = false;
+		}
+		adapter.refreshAll();
+		Toast.makeText(this, getResources().getQuantityString(
+				R.plurals.adjust_defines_live_failed, failed.size(), failed.size()),
+				Toast.LENGTH_LONG).show();
+	}
+
+	// Live mode: the ticked defines become uniforms (the running shader
+	// is swapped for liveSession's without restarting it - see
+	// ShaderViewManager.setProjectSessionKeepingState()), and a panel of
+	// sliders for them goes over the fullscreen shader. Done takes the
+	// values back to the confirm dialog, Discard puts the shader back as
+	// it was.
+	private void startLiveDefines(@NonNull LiveDefinesState state,
+			@NonNull ShaderProjectSession liveSession, boolean wasPaused) {
+		Set<String> names = new HashSet<>();
+		for (ShaderDefine define : state.live()) {
+			names.add(define.name);
+		}
+		liveDefineNames.put(liveSession.getShaderId(), names);
+
+		// Back to however it was before Adjust Defines paused it - then
+		// fullscreen, which runs a paused shader, so pause it again if
+		// it was: a paused buffer shader can be adjusted without moving
+		// on.
+		setShaderPaused(wasPaused);
+		setFullscreen(true);
+		if (wasPaused) {
+			setShaderPaused(true);
+		}
+		shaderViewManager.setFullscreenExitGestureEnabled(false);
+
+		LiveDefines values = shaderViewManager.getLiveDefines();
+		values.clear();
+		for (ShaderDefine define : state.live()) {
+			float[] components = define.liveComponents();
+			values.set(define.name, define.type, components != null ? components : new float[4]);
+		}
+		shaderViewManager.setProjectSessionKeepingState(liveSession, true);
+		liveDefinesState = state;
+
+		liveDefinesPanel.setDefines(state.live());
+		liveDefinesPanel.setPaused(shaderViewManager.isPaused());
+		liveDefinesPanel.setVisibility(View.VISIBLE);
+	}
+
+	private void sendLiveDefine(@NonNull ShaderDefine define) {
+		float[] components = define.liveComponents();
+		if (components != null) {
+			shaderViewManager.getLiveDefines().set(define.name, define.type, components);
+			shaderViewManager.requestRenderIfPaused();
+		}
+	}
+
+	// Hides the panel and leaves fullscreen - the shader is left running
+	// whatever the caller swapped in.
+	private void hideLiveDefines() {
+		liveDefinesPanel.setVisibility(View.GONE);
+		LiveDefinesState state = liveDefinesState;
+		liveDefinesState = null;
+		if (state != null) {
+			setFullscreen(false);
+		}
+	}
+
+	// Done: the live values go to the usual confirm dialog. Applying
+	// them swaps the shader for the applied source without restarting
+	// it, so a simulation carries on from where it was; cancelling goes
+	// back to the live sliders.
+	private void finishLiveDefines() {
+		LiveDefinesState state = liveDefinesState;
+		if (state == null) {
+			return;
+		}
+		liveDefinesPanel.setVisibility(View.GONE);
+		showAdjustDefinesConfirmDialog(state.originalSource(), state.originalOrder(),
+				state.workingOrder(), shaderViewManager.isPaused(), () -> {
+					hideLiveDefines();
+					shaderViewManager.setProjectSessionKeepingState(
+							shaderManager.getEditedProjectSession(editorFragment.getText()), false);
+					shaderViewManager.getLiveDefines().clear();
+				}, () -> {
+					if (liveDefinesState != null) {
+						liveDefinesPanel.setVisibility(View.VISIBLE);
+					}
+				});
+	}
+
+	private void confirmDiscardLiveDefines() {
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.live_defines_discard_title)
+				.setMessage(R.string.live_defines_discard_message)
+				.setNegativeButton(R.string.live_defines_keep_editing, null)
+				.setPositiveButton(R.string.live_defines_discard, (d, w) -> discardLiveDefines())
+				.show();
+	}
+
+	// Discard: the shader goes back to the editor's source, as it was,
+	// still without restarting.
+	private void discardLiveDefines() {
+		if (liveDefinesState == null) {
+			return;
+		}
+		hideLiveDefines();
+		shaderViewManager.setProjectSessionKeepingState(
+				shaderManager.getEditedProjectSession(editorFragment.getText()), false);
+		shaderViewManager.getLiveDefines().clear();
 	}
 
 	@NonNull
@@ -2358,10 +2679,19 @@ public class MainActivity extends AppCompatActivity {
 	// once, in the OK handler. Alpha is never scaled by intensity - an
 	// opacity channel, not a color magnitude.
 	private void showColorPickerDialog(@NonNull ShaderDefine define, @NonNull Runnable onChanged) {
+		showColorPickerDialog(define, onChanged, null);
+	}
+
+	// preview: given the color as it changes, before OK - and the
+	// original again on Cancel - so live mode's shader follows the
+	// picker. The dialog then also leaves the shader undimmed.
+	private void showColorPickerDialog(@NonNull ShaderDefine define, @NonNull Runnable onChanged,
+			@Nullable Consumer<float[]> preview) {
 		float[] components = define.vectorComponents;
 		if (components == null) {
 			return;
 		}
+		float[] originalComponents = components.clone();
 		boolean hasAlpha = components.length == 4;
 
 		View view = getLayoutInflater().inflate(R.layout.dialog_color_picker, null);
@@ -2440,6 +2770,9 @@ public class MainActivity extends AppCompatActivity {
 					? String.format(Locale.US, "#%02X%02X%02X%02X", rgba[0], rgba[1], rgba[2], rgba[3])
 					: String.format(Locale.US, "#%02X%02X%02X", rgba[0], rgba[1], rgba[2]));
 			updating[0] = false;
+			if (preview != null) {
+				preview.accept(pickedComponents(rgba, intensity[0], hasAlpha));
+			}
 		};
 		intensitySeek.setMax(1000);
 		refresh.run();
@@ -2583,21 +2916,41 @@ public class MainActivity extends AppCompatActivity {
 			}
 		});
 
-		new MaterialAlertDialogBuilder(this)
+		boolean[] confirmed = {false};
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.color_picker_title)
 				.setView(view)
 				.setNegativeButton(android.R.string.cancel, null)
 				.setPositiveButton(android.R.string.ok, (d, w) -> {
-					components[0] = (rgba[0] / 255f) * intensity[0];
-					components[1] = (rgba[1] / 255f) * intensity[0];
-					components[2] = (rgba[2] / 255f) * intensity[0];
-					if (hasAlpha) {
-						components[3] = rgba[3] / 255f;
-					}
+					confirmed[0] = true;
+					System.arraycopy(pickedComponents(rgba, intensity[0], hasAlpha), 0,
+							components, 0, components.length);
 					define.syncVectorValue();
 					onChanged.run();
 				})
+				.setOnDismissListener(d -> {
+					if (!confirmed[0] && preview != null) {
+						preview.accept(originalComponents);
+					}
+				})
 				.show();
+		if (preview != null && dialog.getWindow() != null) {
+			dialog.getWindow().setDimAmount(0f);
+			dialog.getWindow().setGravity(Gravity.TOP);
+		}
+	}
+
+	@NonNull
+	private static float[] pickedComponents(@NonNull int[] rgba, float intensity,
+			boolean hasAlpha) {
+		float[] picked = new float[hasAlpha ? 4 : 3];
+		picked[0] = (rgba[0] / 255f) * intensity;
+		picked[1] = (rgba[1] / 255f) * intensity;
+		picked[2] = (rgba[2] / 255f) * intensity;
+		if (hasAlpha) {
+			picked[3] = rgba[3] / 255f;
+		}
+		return picked;
 	}
 
 	private static int colorComponentToByte(float component) {
@@ -5602,6 +5955,10 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void setFullscreen(boolean fullscreen) {
+		// Live mode stays fullscreen until Done or Discard end it.
+		if (!fullscreen && liveDefinesState != null) {
+			return;
+		}
 		if (fullscreen) {
 			View focused = getCurrentFocus();
 			keyboardVisibleBeforeFullscreen = focused != null && isKeyboardVisible(focused);
@@ -5717,7 +6074,9 @@ public class MainActivity extends AppCompatActivity {
 		shaderViewManager.setPaused(paused);
 		if (!paused && !editorFragment.getText().equals(textAtPauseTime)) {
 			// Catch up on whatever was edited while paused.
-			shaderViewManager.setProjectSession(
+			// IfChanged: the edit may already be running, swapped in
+			// without a restart while paused (live mode's Done).
+			shaderViewManager.setProjectSessionIfChanged(
 					shaderManager.getEditedProjectSession(editorFragment.getText()));
 		}
 		uiManager.setPauseButtonState(paused);

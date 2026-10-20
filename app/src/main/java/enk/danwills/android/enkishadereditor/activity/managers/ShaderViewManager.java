@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataSource;
+import enk.danwills.android.enkishadereditor.opengl.LiveDefines;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
@@ -490,6 +491,49 @@ public class ShaderViewManager {
 				projectSession.getProject().getBufferSources(),
 				projectSession.getQuality(),
 				projectSession.getShaderId());
+	}
+
+	// Swaps in a changed version of the running shader without
+	// restarting it - see ShaderRenderer.setFragmentShader()'s keepState.
+	// For Adjust Defines' live mode, which swaps #defines for uniforms
+	// (live = true: never cached as the shader's compiled program) and
+	// back. Works while paused too, drawing one frame to show it.
+	public void setProjectSessionKeepingState(@NonNull ShaderProjectSession projectSession,
+			boolean live) {
+		appliedShaderId = projectSession.getShaderId();
+		appliedQuality = projectSession.getQuality();
+		appliedSource = projectSession.getEntryPointSource();
+		String[] bufferSources = projectSession.getProject().getBufferSources();
+		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		shaderView.setFragmentShader(
+				projectSession.getEntryPointSource(),
+				bufferSources,
+				projectSession.getQuality(),
+				live ? 0 : projectSession.getShaderId(),
+				true);
+		if (paused) {
+			shaderView.requestRender();
+		}
+	}
+
+	// See ShaderView.testCompileAndWait() - not on the UI thread.
+	@NonNull
+	public List<ShaderError> testCompileAndWait(@NonNull ShaderProjectSession projectSession) {
+		return shaderView.testCompileAndWait(projectSession.getEntryPointSource(),
+				projectSession.getProject().getBufferSources());
+	}
+
+	@NonNull
+	public LiveDefines getLiveDefines() {
+		return shaderView.getRenderer().getLiveDefines();
+	}
+
+	// Draws one frame while paused, e.g. to show a live define's new
+	// value - running, the next frame picks it up anyway.
+	public void requestRenderIfPaused() {
+		if (paused) {
+			shaderView.requestRender();
+		}
 	}
 
 	// Reseeds fpsAtCurrentQuality from this shader's own persisted

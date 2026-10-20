@@ -473,6 +473,23 @@
 	<string name="adjust_defines_show_recent">顯示最近</string>
 	<string name="adjust_defines_no_matches">沒有相符的 define</string>
 	<string name="adjust_defines_treat_as_color">視為顏色</string>
+	<string name="adjust_defines_edit_live">即時編輯</string>
+	<string name="adjust_defines_go_live">開始即時</string>
+	<string name="adjust_defines_back">返回</string>
+	<string name="adjust_defines_live_checking">正在檢查…</string>
+	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
+	<string name="adjust_defines_live_none">請至少勾選一個 define 進行即時調整</string>
+	<string name="adjust_defines_live_conditional">被 #if 或 #ifdef 使用，必須保持為 #define</string>
+	<plurals name="adjust_defines_live_failed">
+		<item quantity="other">%1$d 個 define 無法即時調整，已取消勾選</item>
+	</plurals>
+	<string name="live_defines_collapse">隱藏滑桿</string>
+	<string name="live_defines_expand">顯示滑桿</string>
+	<string name="live_defines_discard">放棄</string>
+	<string name="live_defines_done">完成</string>
+	<string name="live_defines_discard_title">放棄即時修改？</string>
+	<string name="live_defines_discard_message">著色器將恢復 #define 原來的值。</string>
+	<string name="live_defines_keep_editing">繼續編輯</string>
 	<string name="color_picker_title">選擇顏色</string>
 	<string name="color_picker_red">R</string>
 	<string name="color_picker_green">G</string>

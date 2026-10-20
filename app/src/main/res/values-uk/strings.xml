@@ -493,6 +493,26 @@
 	<string name="adjust_defines_show_recent">Недавні</string>
 	<string name="adjust_defines_no_matches">Немає відповідних defines</string>
 	<string name="adjust_defines_treat_as_color">Вважати кольором</string>
+	<string name="adjust_defines_edit_live">Наживо</string>
+	<string name="adjust_defines_go_live">Почати</string>
+	<string name="adjust_defines_back">Назад</string>
+	<string name="adjust_defines_live_checking">Перевірка…</string>
+	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
+	<string name="adjust_defines_live_none">Позначте хоча б один define для живого налаштування</string>
+	<string name="adjust_defines_live_conditional">Використовується в #if або #ifdef, тому має лишитися #define</string>
+	<plurals name="adjust_defines_live_failed">
+		<item quantity="one">%1$d define не можна змінювати наживо, позначку знято</item>
+		<item quantity="few">%1$d define не можна змінювати наживо, позначки знято</item>
+		<item quantity="many">%1$d define не можна змінювати наживо, позначки знято</item>
+		<item quantity="other">%1$d define не можна змінювати наживо, позначки знято</item>
+	</plurals>
+	<string name="live_defines_collapse">Сховати повзунки</string>
+	<string name="live_defines_expand">Показати повзунки</string>
+	<string name="live_defines_discard">Скасувати</string>
+	<string name="live_defines_done">Готово</string>
+	<string name="live_defines_discard_title">Скасувати живі зміни?</string>
+	<string name="live_defines_discard_message">Шейдер повернеться до попередніх значень #define.</string>
+	<string name="live_defines_keep_editing">Продовжити</string>
 	<string name="color_picker_title">Вибір кольору</string>
 	<string name="color_picker_red">R</string>
 	<string name="color_picker_green">G</string>

@@ -22,4 +22,6 @@
 	<color name="cube_face_text">#fff</color>
 	<color name="auto_detect_tile_size_safe">#4CAF50</color>
 	<color name="auto_detect_tile_size_unsafe">#F44336</color>
+	<!-- A define Adjust Defines' live mode couldn't make live. -->
+	<color name="define_live_error">#ff6e6e</color>
 </resources>

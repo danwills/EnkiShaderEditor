@@ -473,6 +473,23 @@
 	<string name="adjust_defines_show_recent">显示最近</string>
 	<string name="adjust_defines_no_matches">没有匹配的 define</string>
 	<string name="adjust_defines_treat_as_color">视为颜色</string>
+	<string name="adjust_defines_edit_live">实时编辑</string>
+	<string name="adjust_defines_go_live">开始实时</string>
+	<string name="adjust_defines_back">返回</string>
+	<string name="adjust_defines_live_checking">正在检查…</string>
+	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
+	<string name="adjust_defines_live_none">请至少勾选一个 define 进行实时调整</string>
+	<string name="adjust_defines_live_conditional">被 #if 或 #ifdef 使用，必须保持为 #define</string>
+	<plurals name="adjust_defines_live_failed">
+		<item quantity="other">%1$d 个 define 无法实时调整，已取消勾选</item>
+	</plurals>
+	<string name="live_defines_collapse">隐藏滑块</string>
+	<string name="live_defines_expand">显示滑块</string>
+	<string name="live_defines_discard">放弃</string>
+	<string name="live_defines_done">完成</string>
+	<string name="live_defines_discard_title">放弃实时修改？</string>
+	<string name="live_defines_discard_message">着色器将恢复 #define 原来的值。</string>
+	<string name="live_defines_keep_editing">继续编辑</string>
 	<string name="color_picker_title">选择颜色</string>
 	<string name="color_picker_red">R</string>
 	<string name="color_picker_green">G</string>
