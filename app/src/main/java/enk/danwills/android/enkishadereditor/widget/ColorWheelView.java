@@ -28,7 +28,7 @@ public class ColorWheelView extends View {
 		void onHueSaturationChanged(float hue, float saturation);
 	}
 
-	private static final float SELECTOR_RADIUS_DP = 9f;
+	static final int SELECTOR_RADIUS_DP = 9;
 
 	private final Paint discPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final Paint shadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -77,6 +77,11 @@ public class ColorWheelView extends View {
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
 		disc = null;
+	}
+
+	// The disc's radius - the selector's centre can reach its edge.
+	float getRadius() {
+		return radius();
 	}
 
 	private float radius() {

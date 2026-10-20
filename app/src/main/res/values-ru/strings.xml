@@ -509,6 +509,7 @@
 	<string name="live_defines_collapse">Скрыть ползунки</string>
 	<string name="live_defines_expand">Показать ползунки</string>
 	<string name="live_defines_discard">Отменить</string>
+	<string name="live_defines_brightness">Яркость</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Отменить живые правки?</string>
 	<string name="live_defines_discard_message">Шейдер вернётся к прежним значениям #define.</string>

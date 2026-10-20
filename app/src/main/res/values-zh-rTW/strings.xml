@@ -486,6 +486,7 @@
 	<string name="live_defines_collapse">隱藏滑桿</string>
 	<string name="live_defines_expand">顯示滑桿</string>
 	<string name="live_defines_discard">放棄</string>
+	<string name="live_defines_brightness">亮度</string>
 	<string name="live_defines_done">完成</string>
 	<string name="live_defines_discard_title">放棄即時修改？</string>
 	<string name="live_defines_discard_message">著色器將恢復 #define 原來的值。</string>

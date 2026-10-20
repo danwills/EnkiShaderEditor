@@ -11,9 +11,11 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.PopupWindow;
 import android.widget.SeekBar;
 
 import androidx.annotation.NonNull;
@@ -58,6 +60,8 @@ public class LiveDefinesPanel extends LinearLayout {
 	// How far up (dp) the finger moves before a drag goes to a quarter,
 	// then a sixteenth, of its usual change - see fineScale().
 	private static final int[] FINE_STEPS_DP = {48, 120};
+	// The pop-up hue/saturation disc - see addColorRow().
+	private static final int WHEEL_SIZE_DP = 220;
 	// Slider ranges as the user left them, by rangeKeyPrefix + name -
 	// see addSliderRow(). In-memory, for the app session.
 	private static final Map<String, float[]> ranges = new HashMap<>();
@@ -197,7 +201,20 @@ public class LiveDefinesPanel extends LinearLayout {
 		}
 	}
 
+	// A color: a swatch, and under it a brightness slider. Pressing the
+	// swatch pops up a hue/saturation disc (see ColorWheelView) centred so
+	// the finger is already on the current color; dragging picks a new
+	// one, and letting go closes it. So little of the shader is covered,
+	// and nothing needs confirming. Brightness is kept apart from the
+	// disc - the largest component, which the slider can take past 1 for
+	// an HDR color. A tap that doesn't drag opens the full color picker
+	// instead (hex, RGB and so on).
+	@SuppressLint("ClickableViewAccessibility")
 	private void addColorRow(@NonNull ShaderDefine define) {
+		float[] c = define.vectorComponents;
+		if (c == null) {
+			return;
+		}
 		LinearLayout row = new LinearLayout(getContext());
 		row.setOrientation(HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -205,27 +222,184 @@ public class LiveDefinesPanel extends LinearLayout {
 		View swatch = new View(getContext());
 		swatch.setBackground(ContextCompat.getDrawable(getContext(),
 				R.drawable.color_swatch_background));
+		// Hue and saturation of the color at full brightness, and the
+		// brightness itself - set from the components, and back again.
+		float[] hsv = new float[3];
+		float[] brightness = new float[1];
+		Runnable readColor = () -> {
+			brightness[0] = Math.max(c[0], Math.max(c[1], c[2]));
+			if (brightness[0] > 0f) {
+				rgbToHsv(c[0] / brightness[0], c[1] / brightness[0], c[2] / brightness[0], hsv);
+			}
+			hsv[2] = 1f;
+		};
+		readColor.run();
 		Runnable show = () -> {
 			label.setText(labelText(define.name, define.value));
-			float[] c = define.vectorComponents;
-			if (c != null && swatch.getBackground() instanceof GradientDrawable gradient) {
+			if (swatch.getBackground() instanceof GradientDrawable gradient) {
 				gradient.mutate();
 				gradient.setColor(Color.argb(c.length == 4 ? toByte(c[3]) : 255,
 						toByte(c[0]), toByte(c[1]), toByte(c[2])));
 			}
 		};
-		show.run();
-		swatch.setOnClickListener(v -> {
-			if (listener != null) {
-				listener.onPickColor(define, show);
+		Runnable writeColor = () -> {
+			hsvToRgb(hsv[0], hsv[1], c);
+			for (int i = 0; i < 3; i++) {
+				c[i] *= brightness[0];
 			}
-		});
+			define.syncVectorValue();
+			show.run();
+			changed(define);
+		};
+		show.run();
+
 		int size = dp(32);
 		LayoutParams swatchParams = new LayoutParams(size * 2, size);
 		swatchParams.setMargins(dp(8), dp(4), dp(4), dp(4));
 		row.addView(label, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 		row.addView(swatch, swatchParams);
 		rows.addView(row);
+
+		OnValue setBrightness = addSliderRow(
+				getContext().getString(R.string.live_defines_brightness),
+				define.name + ".brightness", brightness[0], false,
+				() -> ShaderDefine.formatFloat(brightness[0]), v -> {
+					brightness[0] = Math.max(0f, v);
+					writeColor.run();
+				});
+
+		ColorWheelView wheel = new ColorWheelView(getContext());
+		int wheelSize = dp(WHEEL_SIZE_DP);
+		PopupWindow popup = new PopupWindow(wheel, wheelSize, wheelSize, false);
+		popup.setTouchable(false);
+		popup.setClippingEnabled(false);
+		int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+		swatch.setOnTouchListener(new OnTouchListener() {
+			// Where the disc's centre is on screen, where the press
+			// started, and how far the current color's spot on the disc
+			// is from there - not always under the finger, when the disc
+			// had to move to stay on screen. The selector moves with the
+			// finger from that spot, so the color never jumps.
+			private float centreX;
+			private float centreY;
+			private float downX;
+			private float downY;
+			private float grabX;
+			private float grabY;
+			private boolean dragging;
+
+			@Override
+			public boolean onTouch(View v, MotionEvent event) {
+				switch (event.getActionMasked()) {
+					case MotionEvent.ACTION_DOWN -> {
+						v.getParent().requestDisallowInterceptTouchEvent(true);
+						downX = event.getRawX();
+						downY = event.getRawY();
+						dragging = false;
+						showDisc();
+					}
+					case MotionEvent.ACTION_MOVE -> {
+						if (!dragging && Math.hypot(event.getRawX() - downX,
+								event.getRawY() - downY) < slop) {
+							return true;
+						}
+						dragging = true;
+						float dx = event.getRawX() + grabX - centreX;
+						float dy = event.getRawY() + grabY - centreY;
+						float hue = (float) Math.toDegrees(Math.atan2(dy, dx));
+						hsv[0] = hue < 0f ? hue + 360f : hue;
+						hsv[1] = Math.min(1f, (float) Math.hypot(dx, dy) / wheel.getRadius());
+						// Black has no hue to show - picking one means a
+						// color.
+						if (brightness[0] <= 0f) {
+							brightness[0] = 1f;
+							setBrightness.onValue(1f);
+						}
+						wheel.setHsv(hsv);
+						writeColor.run();
+					}
+					case MotionEvent.ACTION_UP -> {
+						popup.dismiss();
+						if (!dragging && listener != null) {
+							listener.onPickColor(define, () -> {
+								readColor.run();
+								setBrightness.onValue(brightness[0]);
+								show.run();
+								changed(define);
+							});
+						}
+					}
+					case MotionEvent.ACTION_CANCEL -> popup.dismiss();
+					default -> {
+					}
+				}
+				return true;
+			}
+
+			// Centred so the current color is under the finger, kept on
+			// screen.
+			private void showDisc() {
+				wheel.setHsv(hsv);
+				float radius = wheelSize / 2f - dp(ColorWheelView.SELECTOR_RADIUS_DP);
+				double angle = Math.toRadians(hsv[0]);
+				float offsetX = (float) Math.cos(angle) * hsv[1] * radius;
+				float offsetY = (float) Math.sin(angle) * hsv[1] * radius;
+				int screenWidth = getResources().getDisplayMetrics().widthPixels;
+				int screenHeight = getRootView().getHeight();
+				int x = Math.round(downX - offsetX - wheelSize / 2f);
+				int y = Math.round(downY - offsetY - wheelSize / 2f);
+				x = Math.max(0, Math.min(screenWidth - wheelSize, x));
+				y = Math.max(0, Math.min(screenHeight - wheelSize, y));
+				centreX = x + wheelSize / 2f;
+				centreY = y + wheelSize / 2f;
+				grabX = centreX + offsetX - downX;
+				grabY = centreY + offsetY - downY;
+				popup.showAtLocation(LiveDefinesPanel.this, Gravity.NO_GRAVITY, x, y);
+			}
+		});
+	}
+
+	// Float versions of Color.RGBToHSV()/HSVToColor(), at full value, so
+	// a color isn't rounded to 8 bits on the way through the disc.
+	private static void rgbToHsv(float r, float g, float b, @NonNull float[] hsv) {
+		float max = Math.max(r, Math.max(g, b));
+		float min = Math.min(r, Math.min(g, b));
+		float delta = max - min;
+		float hue = 0f;
+		if (delta > 0f) {
+			if (max == r) {
+				hue = 60f * (((g - b) / delta) % 6f);
+			} else if (max == g) {
+				hue = 60f * ((b - r) / delta + 2f);
+			} else {
+				hue = 60f * ((r - g) / delta + 4f);
+			}
+		}
+		hsv[0] = hue < 0f ? hue + 360f : hue;
+		hsv[1] = max > 0f ? delta / max : 0f;
+		hsv[2] = max;
+	}
+
+	private static void hsvToRgb(float hue, float saturation, @NonNull float[] rgb) {
+		float h = (hue % 360f) / 60f;
+		float x = 1f - Math.abs(h % 2f - 1f);
+		float r, g, b;
+		if (h < 1f) {
+			r = 1f; g = x; b = 0f;
+		} else if (h < 2f) {
+			r = x; g = 1f; b = 0f;
+		} else if (h < 3f) {
+			r = 0f; g = 1f; b = x;
+		} else if (h < 4f) {
+			r = 0f; g = x; b = 1f;
+		} else if (h < 5f) {
+			r = x; g = 0f; b = 1f;
+		} else {
+			r = 1f; g = 0f; b = x;
+		}
+		rgb[0] = 1f - saturation * (1f - r);
+		rgb[1] = 1f - saturation * (1f - g);
+		rgb[2] = 1f - saturation * (1f - b);
 	}
 
 	private interface ValueText {
@@ -248,8 +422,11 @@ public class LiveDefinesPanel extends LinearLayout {
 	// - double-tapping the label puts the range back to the first guess.
 	// Ranges are kept per shader and name for the app session (see
 	// rangeKeyPrefix), so going live again picks up where it was.
+	// Returns what sets the slider from outside (without calling
+	// onValue), widening its range to fit if need be.
 	@SuppressLint("ClickableViewAccessibility")
-	private void addSliderRow(@NonNull String name, @NonNull String rangeName, float value,
+	@NonNull
+	private OnValue addSliderRow(@NonNull String name, @NonNull String rangeName, float value,
 			boolean integer, @NonNull ValueText valueText, @NonNull OnValue onValue) {
 		OutlinedTextView label = addLabel();
 		float[] guess = ShaderDefineParser.inferSliderRange(value);
@@ -363,6 +540,13 @@ public class LiveDefinesPanel extends LinearLayout {
 			}
 		});
 		rows.addView(slider, new LayoutParams(LayoutParams.MATCH_PARENT, dp(32)));
+		return v -> {
+			current[0] = v;
+			liveRange[0] = Math.min(liveRange[0], v);
+			liveRange[1] = Math.max(liveRange[1], v);
+			placeThumb.run();
+			showValue.run();
+		};
 	}
 
 	// How much a sideways drag moves the value, by how far the finger

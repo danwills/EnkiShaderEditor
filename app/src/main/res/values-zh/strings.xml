@@ -486,6 +486,7 @@
 	<string name="live_defines_collapse">隐藏滑块</string>
 	<string name="live_defines_expand">显示滑块</string>
 	<string name="live_defines_discard">放弃</string>
+	<string name="live_defines_brightness">亮度</string>
 	<string name="live_defines_done">完成</string>
 	<string name="live_defines_discard_title">放弃实时修改？</string>
 	<string name="live_defines_discard_message">着色器将恢复 #define 原来的值。</string>

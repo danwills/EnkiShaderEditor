@@ -508,6 +508,7 @@
 	<string name="live_defines_collapse">Hide sliders</string>
 	<string name="live_defines_expand">Show sliders</string>
 	<string name="live_defines_discard">Discard</string>
+	<string name="live_defines_brightness">Brightness</string>
 	<string name="live_defines_done">Done</string>
 	<string name="live_defines_discard_title">Discard live edits?</string>
 	<string name="live_defines_discard_message">The shader goes back to the values its #defines had before.</string>

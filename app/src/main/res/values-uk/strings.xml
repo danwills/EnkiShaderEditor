@@ -509,6 +509,7 @@
 	<string name="live_defines_collapse">Сховати повзунки</string>
 	<string name="live_defines_expand">Показати повзунки</string>
 	<string name="live_defines_discard">Скасувати</string>
+	<string name="live_defines_brightness">Яскравість</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Скасувати живі зміни?</string>
 	<string name="live_defines_discard_message">Шейдер повернеться до попередніх значень #define.</string>
