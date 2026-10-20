@@ -40,6 +40,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -3223,6 +3224,10 @@ public class MainActivity extends AppCompatActivity {
 		tileOrderSpinner.setSelection(prefs.getInt(
 				PREF_CUSTOM_RES_TILE_ORDER, TileRenderOrder.HILBERT.ordinal()));
 		Spinner bucketSizeSpinner = view.findViewById(R.id.custom_bucket_size);
+		var bucketSizeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+				bucketSizeMenuLabels());
+		bucketSizeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+		bucketSizeSpinner.setAdapter(bucketSizeAdapter);
 		bucketSizeSpinner.setSelection(prefs.getInt(
 				PREF_CUSTOM_RES_BUCKET_SIZE, TileBucketSize.NORMAL.ordinal()));
 		CheckBox autoDetectTileSizeBox = view.findViewById(R.id.custom_auto_detect_tile_size);
@@ -3589,6 +3594,21 @@ public class MainActivity extends AppCompatActivity {
 				}
 			});
 		}).start();
+	}
+
+	// The bucket size menu's entries, in TileBucketSize ordinal order:
+	// each name with its tile size, e.g. "Large (1024px)" - except Max,
+	// which renders the whole frame in one go when it can.
+	@NonNull
+	private String[] bucketSizeMenuLabels() {
+		String[] names = getResources().getStringArray(R.array.bucket_size_names);
+		var labels = new String[names.length];
+		for (var size : TileBucketSize.values()) {
+			labels[size.ordinal()] = size == TileBucketSize.MAX
+					? getString(R.string.bucket_size_max_label, names[size.ordinal()])
+					: getString(R.string.progress_tile_named, names[size.ordinal()], size.pixels);
+		}
+		return labels;
 	}
 
 	// "WHOLE_FRAME" is TileSizeProber's one synthetic rung, not a real
