@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Build;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -49,8 +48,7 @@ public class NavigationManager {
 		intent.putExtra(PreviewActivity.QUALITY, projectSession.getQuality());
 		intent.putExtra(PreviewActivity.PROJECT_SESSION, projectSession);
 
-		if (ShaderEditorApp.preferences.doesRunInNewTask() &&
-				Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+		if (ShaderEditorApp.preferences.doesRunInNewTask()) {
 			intent.setFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT |
 					Intent.FLAG_ACTIVITY_NEW_TASK);
 			activity.startActivity(intent);

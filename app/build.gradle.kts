@@ -8,7 +8,7 @@ android {
 	compileSdk = 37
 
 	defaultConfig {
-		minSdk = 23
+		minSdk = 24
 		targetSdk = compileSdk
 
 		versionCode = 94

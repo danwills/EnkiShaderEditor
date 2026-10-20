@@ -3,7 +3,6 @@ package enk.danwills.android.enkishadereditor.app;
 import android.app.Application;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.os.Build;
 import android.os.StrictMode;
 
 import enk.danwills.android.enkishadereditor.BuildConfig;
@@ -42,9 +41,7 @@ public class ShaderEditorApp extends Application {
 		// Other components will get this instance via Database.getInstance().
 		Database.getInstance(this);
 
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-			registerBatteryReceiver();
-		}
+		registerBatteryReceiver();
 	}
 
 	private void registerBatteryReceiver() {
