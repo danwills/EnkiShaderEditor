@@ -1,7 +1,8 @@
 // CRT Self-Portrait: this shader types its own source onto an old
-// green-phosphor screen. `sourceText` is the source (one texel per
-// character, row n = line n) and `font` a built-in signed-distance-field
-// glyph atlas - see the FAQ. Everything else is the CRT.
+// CRT. `sourceText` is the source (one texel per character, row n =
+// line n), `sourceTextColor` its syntax highlighting, and `font` a
+// built-in signed-distance-field glyph atlas - see the FAQ.
+// Everything else is the tube.
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
@@ -13,15 +14,20 @@ uniform float time;
 uniform sampler2D backbuffer;
 uniform sampler2D font;
 uniform sampler2D sourceText;
+uniform sampler2D sourceTextColor;
 uniform vec2 sourceTextSize;
 uniform float sourceTextLength;
 
-#define COLUMNS 80.0 // characters across, as on a real terminal
+#define COLUMNS 52.0 // characters across - longer lines run off
 #define CHARS_PER_SECOND 140.0
 #define HOLD 6.0 // seconds to show the whole text before typing it again
 #define CURVE 0.12 // how much the tube bulges
 #define PERSISTENCE 0.55 // how much of the last frame glows on
 #define PHOSPHOR vec3(0.3, 1.0, 0.45)
+#define GREEN 0.0 // 0 = the editor's colours, 1 = all green phosphor
+#define SCANLINES 260.0 // lines down the tube
+#define SCANLINE_DEPTH 0.55
+#define BACKGROUND vec3(0.035, 0.04, 0.045)
 #define GLYPH_WIDTH 0.42 // of an atlas cell - glyphs are about 0.37 wide
 
 // The glyph for character `code` at `p` (0-1 across its cell):
@@ -60,6 +66,8 @@ void main(void) {
 	float real = t.a * step(cr.x, sourceTextSize.x - 1.0) *
 			step(0.0, cr.y) * step(cr.y, sourceTextSize.y - 1.0);
 
+	vec3 highlight = texture2D(sourceTextColor, (cr + 0.5) / sourceTextSize).rgb;
+	vec3 inkColor = mix(highlight, PHOSPHOR, GREEN);
 	float d = glyph(code, vec2(0.5 + (f.x - 0.5) * GLYPH_WIDTH, 1.0 - f.y));
 	float visible = real * step(index, shown - 1.0);
 	float w = 3.0 / ch;
@@ -72,11 +80,13 @@ void main(void) {
 	float cursor = real * step(abs(index - floor(shown)), 0.5) * blink *
 			step(0.1, f.x) * step(f.x, 0.9) * step(0.15, f.y) * step(f.y, 0.85);
 
-	vec3 col = PHOSPHOR * (ink + glow + cursor * 0.9);
+	vec3 col = mix(BACKGROUND, PHOSPHOR * 0.12, GREEN) +
+			inkColor * (ink + glow) + mix(vec3(0.9), PHOSPHOR, GREEN) * cursor;
 
-	// The tube: scanlines, an aperture grille, a rolling hum bar,
-	// flicker, vignette, and a faint glow on the glass.
-	col *= 0.75 + 0.25 * sin(gl_FragCoord.y * 3.14159);
+	// The tube: scanlines (curving with it), an aperture grille, a
+	// rolling hum bar, flicker, vignette, and a faint glow on the glass.
+	float scan = 0.5 + 0.5 * cos(c.y * SCANLINES * 3.14159);
+	col *= 1.0 - SCANLINE_DEPTH * (1.0 - scan);
 	col *= 0.9 + 0.1 * vec3(
 			sin(gl_FragCoord.x * 2.094),
 			sin(gl_FragCoord.x * 2.094 + 2.094),
@@ -85,7 +95,7 @@ void main(void) {
 	col *= 0.92 + 0.08 * smoothstep(0.0, 0.08, hum);
 	col *= 0.97 + 0.03 * sin(time * 120.0);
 	col *= 1.0 - 0.35 * dot(c * 0.7, c * 0.7);
-	col += PHOSPHOR * 0.025 * (1.0 - dot(c, c) * 0.5);
+	col += mix(vec3(0.02), PHOSPHOR * 0.025, GREEN) * (1.0 - dot(c, c) * 0.5);
 	col *= tube;
 
 	// Phosphor persistence: what was lit fades rather than vanishing.
