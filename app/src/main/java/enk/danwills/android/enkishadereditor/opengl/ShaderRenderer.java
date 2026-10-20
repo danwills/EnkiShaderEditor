@@ -23,6 +23,7 @@ import java.util.List;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
+import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 
 public class ShaderRenderer implements GLSurfaceView.Renderer {
@@ -121,6 +122,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	public static final String UNIFORM_AUDIO_SPECTRUM = "audioSpectrum";
 	public static final String UNIFORM_BACKBUFFER = "backbuffer";
+	// The pass's own source - see SourceText.
+	public static final String UNIFORM_SOURCE_TEXT = "sourceText";
+	public static final String UNIFORM_SOURCE_TEXT_SIZE = "sourceTextSize";
+	public static final String UNIFORM_SOURCE_TEXT_LENGTH = "sourceTextLength";
 	public static final String UNIFORM_BATTERY = "battery";
 	public static final String UNIFORM_CAMERA_ADDENT = "cameraAddent";
 	public static final String UNIFORM_CAMERA_BACK = "cameraBack";
@@ -701,6 +706,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					}
 				}
 				updateBufferMipmapNeeds();
+				programManager.createMainSourceText(device, tabWidth());
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
 						onRendererListener != null) {
@@ -1084,6 +1090,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	private void configureUniforms(@NonNull GlProgram mainProgram) {
+		builtinUniforms.setSourceText(programManager.getMainSourceText());
 		builtinUniforms.configure(
 				device,
 				mainProgram,
@@ -1155,6 +1162,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				if (program != null && framebuffer != null) {
 					bindings.retarget(program);
 					bindChannels(bindings, pass.prepared, passes);
+					bindSourceText(bindings, program, pass.getSourceText(device, tabWidth()));
 					// A buffer's own `backbuffer` is its previous frame.
 					bindings.setTexture(UNIFORM_BACKBUFFER, pass.getCurrentTexture());
 					renderPipeline.renderPassRows(bindings, program, framebuffer,
@@ -1171,12 +1179,32 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			} else {
 				bindings.retarget(mainProgram);
 				bindChannels(bindings, programManager.getPreparedShaderSource(), passes);
+				bindSourceText(bindings, mainProgram, programManager.getMainSourceText());
 				bindings.setTexture(UNIFORM_BACKBUFFER, mainBackTexture);
 				renderPipeline.renderMainPassRows(bindings, mainProgram, y0, n);
 			}
 			done += n;
 		}
 		bindings.retarget(mainProgram);
+	}
+
+	// See SourceText - only for a pass that uses it.
+	private void bindSourceText(@NonNull ProgramBindings bindings, @NonNull GlProgram program,
+			@Nullable SourceText text) {
+		if (text == null || !device.hasUniform(program, UNIFORM_SOURCE_TEXT)) {
+			return;
+		}
+		applySourceText(bindings, text);
+	}
+
+	static void applySourceText(@NonNull ProgramBindings bindings, @NonNull SourceText text) {
+		bindings.setTexture(UNIFORM_SOURCE_TEXT, text.texture);
+		bindings.setFloat2(UNIFORM_SOURCE_TEXT_SIZE, text.size);
+		bindings.setFloat(UNIFORM_SOURCE_TEXT_LENGTH, text.length);
+	}
+
+	private static int tabWidth() {
+		return ShaderEditorApp.preferences.getTabWidth();
 	}
 
 	private void bindChannels(@NonNull ProgramBindings bindings,

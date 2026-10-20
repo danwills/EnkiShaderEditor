@@ -147,6 +147,30 @@ foreground to share its playback. If you cancel the prompt, toggle the setting o
 ask again. System playback audio only works while running a shader in the app; the live wallpaper
 and manual preview always fall back to the microphone.
 
+## Can a shader read its own source?
+
+Yes - declare:
+
+```glsl
+uniform sampler2D sourceText;
+uniform vec2 sourceTextSize;    // columns, lines
+uniform float sourceTextLength; // number of characters
+```
+
+`sourceText` holds the source of the pass it's declared in, one texel per character: texel row
+`n` is line `n` (so line 0 is at `v = 0`) and tabs are expanded to
+the editor's tab width. Each texel has the character code in R, the character's index in reading
+order as `G * 256 + B` (handy for typing the text on in order), and A = 1 for a character or 0
+past the end of a line. Look one up by column and line:
+
+```glsl
+vec4 t = texture2D(sourceText, (vec2(column, line) + 0.5) / sourceTextSize);
+float code = floor(t.r * 255.0 + 0.5);
+float index = floor(t.g * 255.0 + 0.5) * 256.0 + floor(t.b * 255.0 + 0.5);
+```
+
+Lines are cut at 512 columns, and the text at 2048 lines.
+
 ## Can I paste ShaderToy code directly?
 
 Yes.

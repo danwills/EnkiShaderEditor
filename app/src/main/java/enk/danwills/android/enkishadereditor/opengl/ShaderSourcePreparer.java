@@ -123,6 +123,10 @@ final class ShaderSourcePreparer {
 				backBufferParameters.parse(params);
 				continue;
 			}
+			// Built in - bound by the renderer, see SourceText.
+			if (ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name)) {
+				continue;
+			}
 			// Bound by the renderer to an offscreen buffer, not looked up
 			// as a saved texture.
 			int channel = ChannelParameters.getChannelIndex(name);
@@ -261,7 +265,8 @@ final class ShaderSourcePreparer {
 		}
 		for (Matcher matcher = PATTERN_SAMPLER.matcher(source); matcher.find(); ) {
 			String name = matcher.group(2);
-			if (name == null || ChannelParameters.getChannelIndex(name) >= 0) {
+			if (name == null || ChannelParameters.getChannelIndex(name) >= 0 ||
+					ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name)) {
 				continue;
 			}
 			if (ShaderRenderer.UNIFORM_BACKBUFFER.equals(name)) {

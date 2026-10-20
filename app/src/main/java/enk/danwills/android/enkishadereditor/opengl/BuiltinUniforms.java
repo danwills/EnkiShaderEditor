@@ -68,6 +68,9 @@ final class BuiltinUniforms {
 	// binding nothing, unless live mode is on.
 	@NonNull
 	private final LiveDefines liveDefines = new LiveDefines();
+	// The Image pass's `sourceText`, if it uses it - see SourceText.
+	@Nullable
+	private SourceText sourceText;
 	@NonNull
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
@@ -385,6 +388,11 @@ final class BuiltinUniforms {
 		cameraUniforms.apply(bindings);
 		audioUniforms.apply(device);
 		textureResources.applyTo(bindings);
+		// The Image pass's; drawChainRows() swaps in each buffer pass's
+		// own as it draws it.
+		if (sourceText != null) {
+			ShaderRenderer.applySourceText(bindings, sourceText);
+		}
 		liveDefines.apply(bindings);
 
 		return new PreparedFrame(
@@ -392,6 +400,10 @@ final class BuiltinUniforms {
 				(int) surfaceResolution[0],
 				(int) surfaceResolution[1],
 				now);
+	}
+
+	void setSourceText(@Nullable SourceText sourceText) {
+		this.sourceText = sourceText;
 	}
 
 	@NonNull

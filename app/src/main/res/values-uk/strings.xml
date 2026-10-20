@@ -367,6 +367,9 @@
 	<string name="camera_orientation">Помножте на координату текстури з цією матрицею, щоб повернути рамку камери до орієнтації пристрою (cameraAddent + uv * cameraOrientation; лише на Ice Cream Sandwich або краще)</string>
 	<string name="date_time">Рік, місяць, день і час у секундах</string>
 	<string name="daytime">Година, хвилина і секунди</string>
+	<string name="source_text">Вихідний текст цього проходу: один тексель на символ, рядок n текстури — рядок n коду. R — код символу, G×256+B — його номер у порядку читання, A = 1 для символу</string>
+	<string name="source_text_length">Кількість символів у sourceText</string>
+	<string name="source_text_size">Стовпці та рядки sourceText</string>
 	<string name="start_random">Випадкове значення від 0,0 до 1,0, ініціалізується під час завантаження</string>
 	<string name="media_volume_level">Рівень гучності медіа від 0,0 до 1,0</string>
 	<string name="microphone_amplitude">Амплітуда вхідного сигналу мікрофона від 0,0 до 1,0</string>

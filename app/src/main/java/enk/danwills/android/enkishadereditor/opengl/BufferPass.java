@@ -29,12 +29,25 @@ final class BufferPass {
 	private final GlFramebuffer[] framebuffers = new GlFramebuffer[2];
 	private final GlTexture2D[] textures = new GlTexture2D[2];
 	private int current;
+	@Nullable
+	private SourceText sourceTextTexture;
 	private boolean halfFloat;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
 		this.buffer = buffer;
 		this.sourceText = sourceText;
 		this.prepared = prepared;
+	}
+
+	// This pass's `sourceText`, made the first time it's drawn with a
+	// program that uses it - GL thread only.
+	@Nullable
+	SourceText getSourceText(@NonNull GlDevice device, int tabWidth) {
+		if (sourceTextTexture == null && program != null &&
+				device.hasUniform(program, ShaderRenderer.UNIFORM_SOURCE_TEXT)) {
+			sourceTextTexture = SourceText.create(device, sourceText, tabWidth);
+		}
+		return sourceTextTexture;
 	}
 
 	@Nullable
@@ -155,6 +168,10 @@ final class BufferPass {
 	// alive.
 	void release(@NonNull GlDevice device) {
 		releaseTargets(device);
+		if (sourceTextTexture != null) {
+			sourceTextTexture.release(device);
+			sourceTextTexture = null;
+		}
 		device.deleteProgram(program);
 		program = null;
 	}
@@ -166,6 +183,7 @@ final class BufferPass {
 			textures[i] = null;
 		}
 		program = null;
+		sourceTextTexture = null;
 		current = 0;
 	}
 }

@@ -119,6 +119,9 @@ final class RendererProgramManager {
 	private GlProgram mainProgram;
 	@Nullable
 	private ProgramBindings surfaceBindings;
+	// The Image pass's `sourceText`, if it uses it - see SourceText.
+	@Nullable
+	private SourceText mainSourceText;
 
 	RendererProgramManager(int maxTextures) {
 		this.maxTextures = maxTextures;
@@ -314,6 +317,9 @@ final class RendererProgramManager {
 	void releaseForReload(@NonNull GlDevice device) {
 		device.deleteProgram(surfaceProgram);
 		device.deleteProgram(mainProgram);
+		if (mainSourceText != null) {
+			mainSourceText.release(device);
+		}
 		clearPrograms();
 		for (var stale : staleTextureResources) {
 			stale.release(device);
@@ -326,6 +332,22 @@ final class RendererProgramManager {
 			stale.release(device);
 		}
 		staleBufferPasses.clear();
+	}
+
+	// After a reload - GL thread only.
+	void createMainSourceText(@NonNull GlDevice device, int tabWidth) {
+		if (mainSourceText != null) {
+			mainSourceText.release(device);
+			mainSourceText = null;
+		}
+		if (mainProgram != null && device.hasUniform(mainProgram, ShaderRenderer.UNIFORM_SOURCE_TEXT)) {
+			mainSourceText = SourceText.create(device, sourceText, tabWidth);
+		}
+	}
+
+	@Nullable
+	SourceText getMainSourceText() {
+		return mainSourceText;
 	}
 
 	@Nullable
@@ -478,5 +500,6 @@ final class RendererProgramManager {
 		surfaceProgram = null;
 		mainProgram = null;
 		surfaceBindings = null;
+		mainSourceText = null;
 	}
 }

@@ -359,6 +359,9 @@
 	<string name="camera_orientation">用於將鏡頭幀旋轉至設備方向的矩陣（cameraAddent + uv * cameraOrientation）</string>
 	<string name="date_time">年、月、日和目前秒數</string>
 	<string name="daytime">時、分、秒</string>
+	<string name="source_text">此通道自身的原始碼：每個字元一個紋素，第 n 行紋素即第 n 行程式碼。R = 字元編碼，G×256+B = 依閱讀順序的序號，A = 1 表示字元</string>
+	<string name="source_text_length">sourceText 中的字元數</string>
+	<string name="source_text_size">sourceText 的欄數和行數</string>
 	<string name="start_random">載入時生成的 0.0 到 1.0 之間的隨機值</string>
 	<string name="media_volume_level">媒體音量 (0.0 到 1.0)</string>
 	<string name="microphone_amplitude">麥克風輸入振幅 (0.0 到 1.0)</string>

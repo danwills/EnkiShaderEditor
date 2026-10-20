@@ -367,6 +367,9 @@
 	<string name="camera_orientation">Multiply with texture coordinate with this matrix to rotate camera frame to device orientation (cameraAddent + uv * cameraOrientation; only on Ice Cream Sandwich or better)</string>
 	<string name="date_time">Год, месяц, день и время в секундах</string>
 	<string name="daytime">Часы, минуты и секунды</string>
+	<string name="source_text">Исходный текст этого прохода: один тексель на символ, строка n текстуры — строка n кода. R — код символа, G×256+B — его номер по порядку чтения, A = 1 для символа</string>
+	<string name="source_text_length">Количество символов в sourceText</string>
+	<string name="source_text_size">Столбцы и строки sourceText</string>
 	<string name="start_random">Random value from 0.0 to 1.0, initialized at load</string>
 	<string name="media_volume_level">Уровень громкости с 0.0 до 1.0</string>
 	<string name="microphone_amplitude">Громкость звука, входящего в микрофон с 0.0 до 1.0</string>
