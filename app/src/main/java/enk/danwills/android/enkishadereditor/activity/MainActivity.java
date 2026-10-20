@@ -150,6 +150,7 @@ import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel;
 import enk.danwills.android.enkishadereditor.widget.BatchShaderDialog;
+import enk.danwills.android.enkishadereditor.widget.ColorWheelView;
 import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
@@ -2717,6 +2718,7 @@ public class MainActivity extends AppCompatActivity {
 		TextView vVal = view.findViewById(R.id.color_picker_v_value);
 		View aRow = view.findViewById(R.id.color_picker_a_row);
 		EditText hexField = view.findViewById(R.id.color_picker_hex);
+		ColorWheelView wheel = view.findViewById(R.id.color_picker_wheel);
 		aRow.setVisibility(hasAlpha ? View.VISIBLE : View.GONE);
 
 		float initialIntensity = Math.max(Math.abs(components[0]),
@@ -2745,6 +2747,7 @@ public class MainActivity extends AppCompatActivity {
 		// stale value.
 		Runnable refresh = () -> {
 			Color.RGBToHSV(rgba[0], rgba[1], rgba[2], hsv);
+			wheel.setHsv(hsv);
 			((GradientDrawable) swatch.getBackground().mutate())
 					.setColor(Color.argb(hasAlpha ? rgba[3] : 255, rgba[0], rgba[1], rgba[2]));
 			updating[0] = true;
@@ -2889,6 +2892,19 @@ public class MainActivity extends AppCompatActivity {
 			public void onStopTrackingTouch(SeekBar seekBar) {
 			}
 		};
+		wheel.setOnHueSaturationChanged((hue, saturation) -> {
+			hsv[0] = hue;
+			hsv[1] = saturation;
+			// Black has no hue to show - picking one means a color.
+			if (hsv[2] < 0.01f) {
+				hsv[2] = 1f;
+			}
+			int color = Color.HSVToColor(hsv);
+			rgba[0] = Color.red(color);
+			rgba[1] = Color.green(color);
+			rgba[2] = Color.blue(color);
+			refresh.run();
+		});
 		hSeek.setOnSeekBarChangeListener(hsvListener);
 		sSeek.setOnSeekBarChangeListener(hsvListener);
 		vSeek.setOnSeekBarChangeListener(hsvListener);
