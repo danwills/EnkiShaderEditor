@@ -520,6 +520,12 @@ public class ShaderViewManager {
 		}
 	}
 
+	// See ShaderView.readBufferTextAndWait() - not on the UI thread.
+	@Nullable
+	public String readBufferTextAndWait(int buffer, boolean endWithNewline) {
+		return shaderView.readBufferTextAndWait(buffer, endWithNewline);
+	}
+
 	// See ShaderView.testCompileAndWait() - not on the UI thread.
 	@NonNull
 	public List<ShaderError> testCompileAndWait(@NonNull ShaderProjectSession projectSession) {

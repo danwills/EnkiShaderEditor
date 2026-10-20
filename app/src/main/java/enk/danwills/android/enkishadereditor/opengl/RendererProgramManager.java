@@ -496,6 +496,15 @@ final class RendererProgramManager {
 				}
 			}
 		}
+		for (var pass : passes) {
+			int target = TextDirective.findTarget(pass.sourceText);
+			if (target == ShaderError.IMAGE_PASS) {
+				pass.setTextSource(sourceText);
+			} else if (target != TextDirective.NONE && bufferSourceTexts != null &&
+					target < bufferSourceTexts.length) {
+				pass.setTextSource(bufferSourceTexts[target]);
+			}
+		}
 		bufferPasses = List.copyOf(passes);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}

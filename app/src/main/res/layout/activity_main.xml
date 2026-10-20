@@ -169,22 +169,40 @@
 			android:layout_width="1dp"
 			android:layout_height="1dp"
 			android:alpha="0"/>
-		<TextView
+		<LinearLayout
 			android:id="@+id/typing_into_shader_chip"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			android:layout_gravity="bottom|center_horizontal"
 			android:layout_marginBottom="16dp"
 			android:background="@drawable/background_menu"
-			android:drawablePadding="8dp"
-			android:gravity="center_vertical"
-			android:paddingHorizontal="16dp"
-			android:paddingVertical="8dp"
-			android:text="@string/typing_into_shader"
-			android:textColor="@color/drawer_text"
-			android:textSize="13sp"
 			android:elevation="8dp"
-			android:visibility="gone"/>
+			android:gravity="center_vertical"
+			android:orientation="horizontal"
+			android:visibility="gone">
+			<TextView
+				android:id="@+id/typing_into_shader_stop"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:paddingHorizontal="16dp"
+				android:paddingVertical="8dp"
+				android:text="@string/typing_into_shader"
+				android:textColor="@color/drawer_text"
+				android:textSize="13sp"/>
+			<!-- Only for a self-editing shader - see TextDirective. -->
+			<TextView
+				android:id="@+id/typing_into_shader_run"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:paddingStart="8dp"
+				android:paddingEnd="16dp"
+				android:paddingVertical="8dp"
+				android:text="@string/run_shader_text"
+				android:textColor="@color/toggle_active"
+				android:textSize="13sp"
+				android:textStyle="bold"
+				android:visibility="gone"/>
+		</LinearLayout>
 
 		<!-- Adjust Defines' live mode, over the fullscreen shader -->
 		<enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel

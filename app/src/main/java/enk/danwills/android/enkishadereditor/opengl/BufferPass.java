@@ -32,6 +32,8 @@ final class BufferPass {
 	private int current;
 	@Nullable
 	private SourceText sourceTextTexture;
+	@Nullable
+	private String textSource;
 	private boolean halfFloat;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
@@ -40,12 +42,19 @@ final class BufferPass {
 		this.prepared = prepared;
 	}
 
+	// What this pass's `sourceText` shows: its own source, or the pass
+	// its `///text:` line names - see TextDirective.
+	void setTextSource(@Nullable String textSource) {
+		this.textSource = textSource;
+	}
+
 	// This pass's `sourceText`, made the first time it's drawn with a
 	// program that uses it - GL thread only.
 	@Nullable
 	SourceText getSourceText(@NonNull Context context, @NonNull GlDevice device, int tabWidth) {
 		if (sourceTextTexture == null && program != null) {
-			sourceTextTexture = SourceText.createFor(context, device, program, sourceText,
+			sourceTextTexture = SourceText.createFor(context, device, program,
+					textSource != null ? textSource : sourceText,
 					tabWidth);
 		}
 		return sourceTextTexture;
@@ -69,6 +78,16 @@ final class BufferPass {
 	@Nullable
 	GlTexture2D getCurrentTexture() {
 		return textures[current];
+	}
+
+	// The framebuffer holding getCurrentTexture(), for reading it back.
+	@Nullable
+	GlFramebuffer getCurrentFramebuffer() {
+		return framebuffers[current];
+	}
+
+	boolean isHalfFloat() {
+		return halfFloat;
 	}
 
 	@Nullable

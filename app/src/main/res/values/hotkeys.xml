@@ -27,6 +27,7 @@
 		<item>Ctrl+Shift+E — While Fullscreen: toggle the source editor and pause, to switch between snappy editing and a fullscreen view</item>
 		<item>Ctrl+Shift+R — Pause and open the quality picker dialog; picking one unpauses</item>
 		<item>Ctrl+= / Ctrl+- — One resolution quality step up/down (an increase on a slow shader still asks first)</item>
+		<item>Ctrl+Enter — Self-editing shaders (a buffer with ///text:): run the edited text</item>
 		<item>Ctrl+Q — Quit (saves the current shader first if needed)</item>
 		<item>Enter (in Find Shader/Find in Shader) — Searches, then cycles through matches on each further press; Ctrl+Enter loads the currently shown match (Find Shader only)</item>
 		<item>Left/Right (in Find Shader) — Cycles through matches</item>

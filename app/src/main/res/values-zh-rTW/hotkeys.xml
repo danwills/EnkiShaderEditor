@@ -21,6 +21,7 @@
 		<item>Ctrl+Shift+E — 全螢幕時：切換原始碼編輯器並暫停，便於在快速編輯和全螢幕檢視之間切換</item>
 		<item>Ctrl+Shift+R — 暫停並開啟品質選擇對話框；選擇後自動取消暫停</item>
 		<item>Ctrl+= / Ctrl+- — 將解析度品質提高/降低一級（對慢速著色器提高時仍會先詢問）</item>
+		<item>Ctrl+Enter — 自我編輯的著色器（帶 ///text: 行的緩衝區）：執行編輯後的文字</item>
 		<item>Ctrl+Q — 結束（如有需要會先儲存目前的著色器）</item>
 		<item>Enter（在尋找著色器/在著色器中尋找對話框中）— 執行搜尋，之後每次按下循環切換相符項目；Ctrl+Enter 載入目前顯示的相符項目（僅尋找著色器）</item>
 		<item>Left/Right（在尋找著色器對話框中）— 循環切換相符項目</item>

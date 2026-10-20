@@ -158,8 +158,8 @@ uniform float sourceTextLength; // number of characters
 ```
 
 `sourceText` holds the source of the pass it's declared in, one texel per character: texel row
-`n` is line `n` (so line 0 is at `v = 0`) and tabs are expanded to
-the editor's tab width. Each texel has the character code in R, the character's index in reading
+`n` is line `n` (so line 0 is at `v = 0`). A tab is code 9 followed by code-0 cells up to the
+next tab stop (the editor's tab width), so text lines up as in the editor. Each texel has the character code in R, the character's index in reading
 order as `G * 256 + B` (handy for typing the text on in order), and A = 1 for a character or 0
 past the end of a line. Look one up by column and line:
 
@@ -196,6 +196,26 @@ Glyphs are centred in their cells and about 0.37 of a cell wide. A ShaderToy-sty
 read it through a channel instead, with `uniform sampler2D iChannel1; ///tex:font;` (or pick
 **Font** for the channel in the editor's channel row). The glyphs are rendered from IBM Plex Mono
 (SIL Open Font License).
+
+## Can a shader edit its own source?
+
+Yes - see the **Notepad** sample. A shader with an offscreen buffer can keep an editable copy of
+a pass's text in that buffer and type into it (see the keyboard question below). A line
+
+```glsl
+///text:Image
+```
+
+in the buffer's source (or `///text:A` to `///text:D`) marks it: that buffer's `sourceText` is
+then the named pass's source, to copy from, and `sourceTextVersion` changes whenever that source
+does, so the buffer knows when to copy it again. The buffer holds the text the way `sourceText`
+does - row `n` is line `n`, R is the character code (0 for none; a tab is 9 then 0s) - with its
+top row left free for the shader's own use, such as a cursor.
+
+**Ctrl+Enter** (or **Run** on the Type into Shader chip) reads that buffer back and, if the text
+compiles, makes it the named pass's source - in the editor too - without restarting the shader,
+so the buffer, and what's typed in it, carry on. If it doesn't compile, the error is shown and the
+shader keeps running as it was. Save as usual to keep it.
 
 ## Can a shader read the keyboard?
 

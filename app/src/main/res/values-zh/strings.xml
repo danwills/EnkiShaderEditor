@@ -115,6 +115,12 @@
 	<string name="type_into_shader">输入到着色器</string>
 	<string name="typing_into_shader">正在输入到着色器 · 点按停止</string>
 	<string name="shader_ignores_keyboard">此着色器不读取键盘——需要 keyboard 或 typedChar</string>
+	<string name="run_shader_text">▶ 运行</string>
+	<string name="no_shader_text">没有可运行的编辑文本——此着色器没有带 ///text: 行的缓冲区</string>
+	<string name="shader_text_unchanged">没有任何编辑</string>
+	<string name="ran_shader_text">已运行编辑后的文本</string>
+	<string name="shader_text_unreadable">无法从缓冲区读回文本</string>
+	<string name="shader_text_not_run">未运行——编辑后的文本有错误：%1$s</string>
 	<string name="hide_toolbar">隐藏顶部菜单</string>
 	<string name="shader_stats">着色器统计信息</string>
 	<string name="play_recent_recordings">播放最近的录制</string>
@@ -536,6 +542,8 @@
 	<string name="sample_cloudy_conway_rationale">康威生命游戏的一个变种。</string>
 	<string name="sample_crt_source_name">CRT Self-Portrait</string>
 	<string name="sample_crt_source_rationale">使用 sourceText 和内置字体，把自己的源代码打字到一台老式绿色荧光 CRT 屏幕上。</string>
+	<string name="sample_notepad_name">记事本</string>
+	<string name="sample_notepad_rationale">编辑自身的源代码：在其中输入，然后按 Ctrl+Enter（或“运行”）运行你输入的内容。</string>
 	<string name="sample_electric_fade_name">电力淡化</string>
 	<string name="sample_electric_fade_rationale">类似于多云康威，但使用了预设的回扫缓冲区 (Backbuffer)。</string>
 	<string name="sample_game_of_life_name">生命游戏</string>

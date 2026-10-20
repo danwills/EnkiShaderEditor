@@ -27,6 +27,7 @@ import enk.danwills.android.enkishadereditor.activity.PreviewActivity;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.LegacyShaderProjectSource;
 import enk.danwills.android.enkishadereditor.project.LooseShaderFileProjectSource;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
@@ -101,6 +102,7 @@ public class ShaderManager {
 								result.getData().getIntExtra(LoadSampleActivity.THUMBNAIL_ID,
 										R.drawable.thumbnail_new_shader),
 								result.getData().getFloatExtra(LoadSampleActivity.QUALITY, 1f));
+						splitSampleBuffers(newId);
 						selectShader(newId);
 					}
 				});
@@ -190,6 +192,21 @@ public class ShaderManager {
 		shaderListManager.setSelectedShaderId(selectedShaderId);
 	}
 
+	// A sample with offscreen buffers is stored as one multipass text
+	// (see MultipassSource) - split it into its passes once inserted.
+	private void splitSampleBuffers(long id) {
+		var shader = dataSource.shader.getShader(id);
+		if (shader == null) {
+			return;
+		}
+		var parsed = MultipassSource.parse(shader.fragmentShader());
+		if (parsed == null) {
+			return;
+		}
+		dataSource.shader.updateShader(id, parsed.imageSource(), null, shader.quality());
+		dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+	}
+
 	@NonNull
 	public ShaderProjectSession getEditedProjectSession() {
 		return getEditedProjectSession(editorFragment.getText());
@@ -205,6 +222,13 @@ public class ShaderManager {
 		return session
 				.withFileSource(session.getActiveFilePath(), editorText)
 				.withQuality(quality);
+	}
+
+	// Replaces one file's source in the current session - for a file
+	// that isn't the one the editor shows, whose text is the editor's.
+	public void setFileSource(@NonNull String path, @NonNull String source) {
+		currentProjectSession = getEditedProjectSession().withFileSource(path, source);
+		setModified(true);
 	}
 
 	@NonNull

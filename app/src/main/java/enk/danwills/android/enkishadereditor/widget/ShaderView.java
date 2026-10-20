@@ -128,6 +128,31 @@ public class ShaderView extends GLSurfaceView {
 		return result;
 	}
 
+	// See ShaderRenderer.readBufferText(), waiting for the GL thread -
+	// not on the UI thread. Null if it can't be read in time.
+	@Nullable
+	public String readBufferTextAndWait(int buffer, boolean endWithNewline) {
+		String[] result = new String[1];
+		CountDownLatch done = new CountDownLatch(1);
+		queueEvent(() -> {
+			try {
+				result[0] = renderer.readBufferText(buffer, endWithNewline);
+			} finally {
+				done.countDown();
+			}
+		});
+		requestRender();
+		try {
+			if (!done.await(10, TimeUnit.SECONDS)) {
+				return null;
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		}
+		return result[0];
+	}
+
 	// When pasting text from other apps, e.g. Gmail, the text is
 	// sometimes tainted with useless non-ascii characters that can raise
 	// an exception in the shader compiler. To still allow UTF-8

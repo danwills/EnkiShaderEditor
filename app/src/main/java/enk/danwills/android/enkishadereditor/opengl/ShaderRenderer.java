@@ -127,6 +127,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT_SIZE = "sourceTextSize";
 	public static final String UNIFORM_SOURCE_TEXT_LENGTH = "sourceTextLength";
 	public static final String UNIFORM_SOURCE_TEXT_COLOR = "sourceTextColor";
+	public static final String UNIFORM_SOURCE_TEXT_VERSION = "sourceTextVersion";
 	// The built-in glyph atlas - see FontTexture.
 	public static final String UNIFORM_FONT = "font";
 	// Keys for shaders - see KeyboardInput.
@@ -409,6 +410,18 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@NonNull
 	public LiveDefines getLiveDefines() {
 		return builtinUniforms.getLiveDefines();
+	}
+
+	// The text in offscreen buffer `buffer` (0 = A), as BufferText reads
+	// it, or null - GL thread only.
+	@Nullable
+	public String readBufferText(int buffer, boolean endWithNewline) {
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.buffer == buffer && pass.hasTargets()) {
+				return BufferText.read(device, pass, endWithNewline);
+			}
+		}
+		return null;
 	}
 
 	// See RendererProgramManager.testCompile() - GL thread only.
@@ -1221,6 +1234,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		bindings.setFloat2(UNIFORM_SOURCE_TEXT_SIZE, text.size);
 		bindings.setFloat(UNIFORM_SOURCE_TEXT_LENGTH, text.length);
+		bindings.setFloat(UNIFORM_SOURCE_TEXT_VERSION, text.version);
 	}
 
 	// Made the first time a shader uses it, kept until one doesn't.

@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.highlighter.Highlight;
@@ -20,8 +21,10 @@ import enk.danwills.android.enkishadereditor.highlighter.Token;
 // (or read) its own text: one texel per character, and texel row n is
 // line n - so line 0 is at v = 0, and a shader looks a character up
 // by (column, line) directly. Each texel:
-// - R: the character code, ASCII 32-126; tabs are expanded to spaces
-//   and anything else becomes '?';
+// - R: the character code, ASCII 32-126, anything else becoming '?' -
+//   except a tab, which is code 9 followed by code-0 cells up to the
+//   next tab stop (so it lines up, and reads back as a tab - see
+//   BufferText);
 // - G, B: the character's index in the whole text, in reading order,
 //   as G * 256 + B - for type-on reveals in order with one fetch;
 // - A: 255 for a character, 0 for padding past the end of its line.
@@ -56,6 +59,11 @@ final class SourceText {
 	// (columns, lines), for `sourceTextSize`.
 	@NonNull
 	final float[] size;
+	// Different every time one is made, for `sourceTextVersion` - so a
+	// shader that keeps its own copy of the text (a buffer it edits)
+	// can tell when the source has changed and copy it afresh.
+	final int version;
+	private static final AtomicInteger versions = new AtomicInteger();
 
 	private SourceText(@NonNull GlTexture2D texture, @Nullable GlTexture2D colorTexture,
 			int columns, int lines, int length) {
@@ -65,6 +73,7 @@ final class SourceText {
 		this.lines = lines;
 		this.length = length;
 		size = new float[]{columns, lines};
+		version = versions.incrementAndGet() & 0xffff;
 	}
 
 	// Whether `program` declares either texture, so needs one made.
@@ -124,14 +133,14 @@ final class SourceText {
 				continue;
 			}
 			int count = c == '\t' ? tabWidth - column % tabWidth : 1;
-			char code = c == '\t' ? ' ' : c >= 32 && c <= 126 ? c : '?';
+			char code = c == '\t' ? '\t' : c >= 32 && c <= 126 ? c : '?';
 			for (int n = 0; n < count; ++n, ++column) {
 				if (column >= columns) {
 					continue;
 				}
 				int at = (line * columns + column) * 4;
 				int k = Math.min(index++, MAX_INDEX);
-				pixels.put(at, (byte) code);
+				pixels.put(at, (byte) (n == 0 ? code : 0));
 				pixels.put(at + 1, (byte) (k >> 8));
 				pixels.put(at + 2, (byte) k);
 				pixels.put(at + 3, (byte) 255);
