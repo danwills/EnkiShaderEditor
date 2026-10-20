@@ -125,6 +125,9 @@ public final class BatchShaderDialog {
 				.setTitle(R.string.batch_shaders)
 				.setView(view)
 				.setPositiveButton(R.string.batch_done, null)
+				// In the dialog's own buttons so it's never scrolled or
+				// clipped out of view.
+				.setNeutralButton(R.string.batch_apply_list, (d, w) -> host.pickRenameList())
 				.show();
 
 		view.findViewById(R.id.batch_rename).setOnClickListener(v -> {
@@ -154,10 +157,6 @@ public final class BatchShaderDialog {
 				dialog.dismiss();
 				deleteAll(activity, host, ids);
 			});
-		});
-		view.findViewById(R.id.batch_apply_list).setOnClickListener(v -> {
-			dialog.dismiss();
-			host.pickRenameList();
 		});
 	}
 

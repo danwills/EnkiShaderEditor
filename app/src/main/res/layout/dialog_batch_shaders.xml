@@ -72,11 +72,4 @@
 			android:text="@string/batch_delete" />
 	</LinearLayout>
 
-	<com.google.android.material.button.MaterialButton
-		android:id="@+id/batch_apply_list"
-		style="@style/Widget.Material3.Button.TextButton"
-		android:layout_width="match_parent"
-		android:layout_height="wrap_content"
-		android:text="@string/batch_apply_list" />
-
 </LinearLayout>
