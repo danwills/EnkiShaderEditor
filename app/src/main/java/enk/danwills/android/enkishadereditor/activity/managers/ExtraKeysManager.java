@@ -62,20 +62,29 @@ public class ExtraKeysManager implements ViewTreeObserver.OnGlobalLayoutListener
 		updateVisibility();
 	}
 
+	private boolean suppressed;
+
 	public void setCompletions(List<String> completions, int position) {
 		completionsAdapter.submitCompletions(completions, position);
+	}
+
+	// Hidden whatever else says, while the keyboard types into
+	// something they'd make no sense for (Type into Shader).
+	public void setSuppressed(boolean suppressed) {
+		this.suppressed = suppressed;
+		updateVisibility();
 	}
 
 	public void updateVisibility() {
 		var preferences = ShaderEditorApp.preferences;
 		extraKeysView.setVisibility(
-				getVisibility(preferences.showExtraKeys()));
+				getVisibility(preferences.showExtraKeys() && !suppressed));
 		insertTabView.setVisibility(
 				getVisibility(preferences.doesShowInsertTab()));
 	}
 
 	public void setVisible(boolean visible) {
-		extraKeysView.setVisibility(getVisibility(visible));
+		extraKeysView.setVisibility(getVisibility(visible && !suppressed));
 	}
 
 	public void setPauseButtonState(boolean paused) {
@@ -91,7 +100,7 @@ public class ExtraKeysManager implements ViewTreeObserver.OnGlobalLayoutListener
 		if (!preferences.autoHideExtraKeys()) {
 			return;
 		}
-		if (!preferences.showExtraKeys()) {
+		if (!preferences.showExtraKeys() || suppressed) {
 			extraKeysView.setVisibility(View.GONE);
 			return;
 		}

@@ -223,6 +223,10 @@ Keys go to the shader while it reads them and the code editor is hidden (or the 
 fullscreen), instead of the app's own single-key shortcuts. Ctrl shortcuts, Back and Escape
 still work as usual.
 
+Without a hardware keyboard, **More Options → Type into Shader** brings up the phone's keyboard
+for the running shader: what you type arrives in `typedChar`, and each key taps the matching key
+in `keyboard`. Tap the "Typing into the shader" chip, or close the keyboard, to stop.
+
 ## Can I paste ShaderToy code directly?
 
 Yes.

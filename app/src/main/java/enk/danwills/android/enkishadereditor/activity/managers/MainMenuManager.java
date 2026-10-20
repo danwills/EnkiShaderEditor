@@ -30,6 +30,8 @@ public class MainMenuManager {
 		void onFindInShader();
 
 		void onHideToolbar();
+
+		void onTypeIntoShader();
 	}
 
 	public interface ShaderActions {
@@ -163,6 +165,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.shader_stats, navigationActions::onShowShaderStats);
 		setMoreOptionsClickListener(R.id.play_recent_recordings, navigationActions::onPlayRecentRecordings);
 		setMoreOptionsClickListener(R.id.hide_toolbar, editorActions::onHideToolbar);
+		setMoreOptionsClickListener(R.id.type_into_shader, editorActions::onTypeIntoShader);
 		setMoreOptionsClickListener(R.id.hotkeys, navigationActions::onShowHotkeys);
 		setMoreOptionsClickListener(R.id.adjust_defines, navigationActions::onAdjustDefines);
 		setMoreOptionsClickListener(R.id.offscreen_buffers, navigationActions::onOffscreenBuffers);

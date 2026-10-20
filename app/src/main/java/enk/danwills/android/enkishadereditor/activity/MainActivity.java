@@ -38,6 +38,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
@@ -69,6 +70,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -150,6 +153,7 @@ import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel;
+import enk.danwills.android.enkishadereditor.widget.ShaderKeyInputView;
 import enk.danwills.android.enkishadereditor.widget.BatchShaderDialog;
 import enk.danwills.android.enkishadereditor.widget.ColorWheelView;
 import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
@@ -357,6 +361,46 @@ public class MainActivity extends AppCompatActivity {
 				editorFragment,
 				extraKeysManager,
 				shaderViewManager);
+		shaderKeyInput = findViewById(R.id.shader_key_input);
+		shaderKeyInput.setKeyboard(shaderViewManager.getKeyboardInput());
+		typingIntoShaderChip = findViewById(R.id.typing_into_shader_chip);
+		typingIntoShaderChip.setOnClickListener(v -> stopTypingIntoShader());
+		// The keyboard closing (Back, or its own button) ends it too -
+		// once it's stayed closed a moment, since some keyboards close
+		// and reopen when switching layouts. Insets rather than layout:
+		// the window doesn't resize for the keyboard.
+		ViewCompat.setOnApplyWindowInsetsListener(shaderKeyInput, (v, insets) -> {
+			int imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+			placeTypingChip(imeHeight);
+			boolean imeShowing = insets.isVisible(WindowInsetsCompat.Type.ime());
+			if (typingIntoShader && typingImeShown && !imeShowing) {
+				shaderKeyInput.removeCallbacks(stopTypingIfImeClosed);
+				shaderKeyInput.postDelayed(stopTypingIfImeClosed, 500);
+			}
+			typingImeShown |= typingIntoShader && imeShowing;
+			return insets;
+		});
+		// The value above can be from before the keyboard finished
+		// sliding in - follow the slide, so the chip rides on top of it.
+		ViewCompat.setWindowInsetsAnimationCallback(shaderKeyInput,
+				new WindowInsetsAnimationCompat.Callback(
+						WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+					@NonNull
+					@Override
+					public WindowInsetsCompat onProgress(@NonNull WindowInsetsCompat insets,
+							@NonNull List<WindowInsetsAnimationCompat> running) {
+						placeTypingChip(insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+						return insets;
+					}
+
+					@Override
+					public void onEnd(@NonNull WindowInsetsAnimationCompat animation) {
+						var insets = ViewCompat.getRootWindowInsets(shaderKeyInput);
+						if (insets != null) {
+							placeTypingChip(insets.getInsets(WindowInsetsCompat.Type.ime()).bottom);
+						}
+					}
+				});
 		liveDefinesPanel = findViewById(R.id.live_defines_panel);
 		liveDefinesPanel.setListener(new LiveDefinesPanel.Listener() {
 			@Override
@@ -393,6 +437,7 @@ public class MainActivity extends AppCompatActivity {
 			updatePausedBlanking();
 			if (codeVisible) {
 				// Keys go to the editor now - see sendKeyToShader().
+				stopTypingIntoShader();
 				shaderViewManager.getKeyboardInput().releaseAll();
 			}
 		});
@@ -527,6 +572,75 @@ public class MainActivity extends AppCompatActivity {
 	// of the app's own single-key shortcuts (arrows, Tab...). Ctrl
 	// shortcuts, Back and Escape still work, and keys a shader can't
 	// use (volume, media) pass through. True if the key was taken.
+	private ShaderKeyInputView shaderKeyInput;
+	private View typingIntoShaderChip;
+	// Type into Shader is on - see startTypingIntoShader() - and its
+	// keyboard has come up since.
+	private boolean typingIntoShader;
+	private boolean typingImeShown;
+
+	// Type into Shader: the phone's keyboard types into the shader's
+	// `typedChar` and `keyboard` (see ShaderKeyInputView), with the code
+	// editor out of the way, until the chip is tapped, the keyboard
+	// closes, or the editor opens again.
+	private final Runnable stopTypingIfImeClosed = () -> {
+		if (!isImeShowing()) {
+			stopTypingIntoShader();
+		}
+	};
+
+	// Above the keyboard, which the window doesn't make room for. With
+	// room to spare: some keyboards leave their suggestion strip out of
+	// the height they report until something's been typed.
+	private void placeTypingChip(int imeHeight) {
+		var params = (ViewGroup.MarginLayoutParams) typingIntoShaderChip.getLayoutParams();
+		int margin = imeHeight + Math.round(
+				(imeHeight > 0 ? 64 : 16) * getResources().getDisplayMetrics().density);
+		if (params.bottomMargin != margin) {
+			params.bottomMargin = margin;
+			typingIntoShaderChip.setLayoutParams(params);
+		}
+	}
+
+	private boolean isImeShowing() {
+		var insets = ViewCompat.getRootWindowInsets(shaderKeyInput);
+		return insets != null && insets.isVisible(WindowInsetsCompat.Type.ime());
+	}
+
+	private void startTypingIntoShader() {
+		if (!shaderViewManager.isKeyboardWanted()) {
+			Toast.makeText(this, R.string.shader_ignores_keyboard, Toast.LENGTH_LONG).show();
+			return;
+		}
+		if (editorFragment.isCodeVisible() && !uiManager.isFullscreen()) {
+			uiManager.toggleCodeVisibility();
+		}
+		typingIntoShader = true;
+		typingImeShown = false;
+		typingIntoShaderChip.setVisibility(View.VISIBLE);
+		extraKeysManager.setSuppressed(true);
+		// Posted: the menu that started this still has the window's
+		// focus until it's gone, and the keyboard won't show for a
+		// view without it.
+		shaderKeyInput.post(() -> {
+			shaderKeyInput.requestFocus();
+			WindowCompat.getInsetsController(getWindow(), shaderKeyInput)
+					.show(WindowInsetsCompat.Type.ime());
+		});
+	}
+
+	private void stopTypingIntoShader() {
+		if (!typingIntoShader) {
+			return;
+		}
+		typingIntoShader = false;
+		typingIntoShaderChip.setVisibility(View.GONE);
+		extraKeysManager.setSuppressed(false);
+		SoftKeyboard.hide(this, shaderKeyInput);
+		shaderKeyInput.clearFocus();
+		shaderViewManager.getKeyboardInput().releaseAll();
+	}
+
 	private boolean sendKeyToShader(@NonNull KeyEvent event) {
 		if (!shaderViewManager.isKeyboardWanted() ||
 				(editorFragment.isCodeVisible() && !uiManager.isFullscreen())) {
@@ -1297,6 +1411,11 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onHideToolbar() {
 				setToolbarHidden(true);
+			}
+
+			@Override
+			public void onTypeIntoShader() {
+				startTypingIntoShader();
 			}
 		};
 	}

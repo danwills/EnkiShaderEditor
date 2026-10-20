@@ -161,6 +161,31 @@
 			android:visibility="gone"
 			android:alpha="0"/>
 
+		<!-- Type into Shader: what the phone's keyboard types into
+		     (invisible), and the chip that says it's on - see
+		     MainActivity.startTypingIntoShader(). -->
+		<enk.danwills.android.enkishadereditor.widget.ShaderKeyInputView
+			android:id="@+id/shader_key_input"
+			android:layout_width="1dp"
+			android:layout_height="1dp"
+			android:alpha="0"/>
+		<TextView
+			android:id="@+id/typing_into_shader_chip"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_gravity="bottom|center_horizontal"
+			android:layout_marginBottom="16dp"
+			android:background="@drawable/background_menu"
+			android:drawablePadding="8dp"
+			android:gravity="center_vertical"
+			android:paddingHorizontal="16dp"
+			android:paddingVertical="8dp"
+			android:text="@string/typing_into_shader"
+			android:textColor="@color/drawer_text"
+			android:textSize="13sp"
+			android:elevation="8dp"
+			android:visibility="gone"/>
+
 		<!-- Adjust Defines' live mode, over the fullscreen shader -->
 		<enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel
 			android:id="@+id/live_defines_panel"

@@ -112,6 +112,9 @@
 	<string name="status_interrupted_making_video">提前停止 — 正在用已擷取的 %1$d 個畫面產生影片…</string>
 	<string name="reacquire_audio">重新取得系統音訊</string>
 	<string name="audio_capture_already_working">系統音訊擷取已在正常運作</string>
+	<string name="type_into_shader">輸入到著色器</string>
+	<string name="typing_into_shader">正在輸入到著色器 · 輕觸以停止</string>
+	<string name="shader_ignores_keyboard">此著色器不讀取鍵盤——需要 keyboard 或 typedChar</string>
 	<string name="hide_toolbar">隱藏頂部選單</string>
 	<string name="shader_stats">著色器統計資訊</string>
 	<string name="play_recent_recordings">播放最近的錄製</string>

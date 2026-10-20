@@ -100,6 +100,14 @@
 			app:icon="@drawable/ic_play_arrow" />
 
 		<Button
+			android:id="@+id/type_into_shader"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/type_into_shader"
+			app:icon="@drawable/ic_keyboard" />
+
+		<Button
 			android:id="@+id/hide_toolbar"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

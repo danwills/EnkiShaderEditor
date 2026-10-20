@@ -113,6 +113,9 @@
 	<string name="status_interrupted_making_video">Досрочная остановка — создание видео из %1$d кадра(ов)…</string>
 	<string name="reacquire_audio">Повторный захват системного звука</string>
 	<string name="audio_capture_already_working">Захват системного звука уже работает</string>
+	<string name="type_into_shader">Ввод в шейдер</string>
+	<string name="typing_into_shader">Ввод в шейдер · нажмите, чтобы остановить</string>
+	<string name="shader_ignores_keyboard">Этот шейдер не читает клавиатуру — нужен keyboard или typedChar</string>
 	<string name="hide_toolbar">Скрыть верхнее меню</string>
 	<string name="shader_stats">Статистика шейдера</string>
 	<string name="play_recent_recordings">Воспроизвести последние записи</string>

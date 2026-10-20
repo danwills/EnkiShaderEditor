@@ -57,6 +57,13 @@ public final class KeyboardInput {
 		}
 	}
 
+	// Down and up again: pressed for a frame, never held - for the
+	// phone's keyboard, which sends text rather than key presses.
+	public void tap(int keyCode) {
+		keyDown(keyCode);
+		keyUp(keyCode);
+	}
+
 	public void type(int character) {
 		if (character > 0) {
 			typed.add(character);
@@ -181,6 +188,37 @@ public final class KeyboardInput {
 			case KeyEvent.KEYCODE_BACKSLASH -> 220;
 			case KeyEvent.KEYCODE_RIGHT_BRACKET -> 221;
 			case KeyEvent.KEYCODE_APOSTROPHE -> 222;
+			default -> 0;
+		};
+	}
+
+	// The JavaScript key code of the key that types `c` on a US layout,
+	// or 0 - for text from the phone's keyboard.
+	public static int jsKeyCodeOf(char c) {
+		if (c >= 'a' && c <= 'z') {
+			return 65 + c - 'a';
+		}
+		if (c >= 'A' && c <= 'Z') {
+			return 65 + c - 'A';
+		}
+		if (c >= '0' && c <= '9') {
+			return 48 + c - '0';
+		}
+		return switch (c) {
+			case ' ' -> 32;
+			case '\n' -> 13;
+			case '\t' -> 9;
+			case ';' -> 186;
+			case '=' -> 187;
+			case ',' -> 188;
+			case '-' -> 189;
+			case '.' -> 190;
+			case '/' -> 191;
+			case '`' -> 192;
+			case '[' -> 219;
+			case '\\' -> 220;
+			case ']' -> 221;
+			case '\'' -> 222;
 			default -> 0;
 		};
 	}

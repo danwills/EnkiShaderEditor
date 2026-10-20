@@ -113,6 +113,9 @@
 	<string name="progress_footage_length">%1$.4fs of footage rendered so far</string>
 	<string name="reacquire_audio">Reacquire System Audio</string>
 	<string name="audio_capture_already_working">System audio capture is already working</string>
+	<string name="type_into_shader">Type into Shader</string>
+	<string name="typing_into_shader">Typing into the shader · tap to stop</string>
+	<string name="shader_ignores_keyboard">This shader doesn\'t read the keyboard - it needs keyboard or typedChar</string>
 	<string name="hide_toolbar">Hide Top Menu</string>
 	<string name="shader_stats">Shader Stats</string>
 	<string name="play_recent_recordings">Play Recent Recordings</string>
