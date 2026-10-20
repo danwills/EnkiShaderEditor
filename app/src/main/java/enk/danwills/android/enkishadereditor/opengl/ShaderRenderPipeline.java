@@ -7,11 +7,11 @@ import android.opengl.GLES20;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
+
+import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 
 final class ShaderRenderPipeline {
 	private static final int THUMBNAIL_WIDTH = 144;
@@ -438,10 +438,11 @@ final class ShaderRenderPipeline {
 		return targetTextures[backTarget];
 	}
 
-	// PNG of the most recently completed frame (the back target), at the
-	// render size - see ShaderRenderer's buffer-shader captures.
+	// The most recently completed frame (the back target), at the render
+	// size, encoded as `encoding` - see ShaderRenderer's buffer-shader
+	// captures.
 	@Nullable
-	byte[] readCompletedFrameAsPng() {
+	byte[] readCompletedFrame(@NonNull ImageEncoding encoding) {
 		GlTexture2D texture = targetTextures[backTarget];
 		if (texture == null) {
 			return null;
@@ -449,10 +450,10 @@ final class ShaderRenderPipeline {
 		GlFramebuffer framebuffer = device.createFramebuffer();
 		device.attachColor(framebuffer, texture);
 		device.bindFramebuffer(framebuffer);
-		byte[] png = readPixelsAsPng(texture.getWidth(), texture.getHeight());
+		byte[] image = readPixels(texture.getWidth(), texture.getHeight(), encoding);
 		device.bindFramebuffer(null);
 		device.deleteFramebuffer(framebuffer);
-		return png;
+		return image;
 	}
 
 	void swapTargets() {
@@ -494,18 +495,20 @@ final class ShaderRenderPipeline {
 	// expect, and BGRA/RGBA channel order is swapped to Bitmap's ARGB.
 	@Nullable
 	byte[] readPixelsAsPng(int width, int height) {
+		return readPixels(width, height, ImageEncoding.PNG);
+	}
+
+	// Same, encoded as `encoding` - see ImageEncoding.
+	@Nullable
+	byte[] readPixels(int width, int height, @NonNull ImageEncoding encoding) {
 		int[] argb = readPixelsFlippedToArgb(0, 0, width, height);
-		try (var out = new ByteArrayOutputStream()) {
-			Bitmap.createBitmap(
+		try {
+			return encoding.encode(Bitmap.createBitmap(
 					argb,
 					width,
 					height,
-					Bitmap.Config.ARGB_8888).compress(
-					Bitmap.CompressFormat.PNG,
-					100,
-					out);
-			return out.toByteArray();
-		} catch (OutOfMemoryError | IllegalArgumentException | IOException e) {
+					Bitmap.Config.ARGB_8888));
+		} catch (OutOfMemoryError | IllegalArgumentException e) {
 			return null;
 		}
 	}

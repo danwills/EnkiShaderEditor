@@ -13,6 +13,23 @@
 			android:summary="@string/save_battery_summary"
 			android:checked="true"
 			android:defaultValue="true"/>
+	</PreferenceCategory>
+	<PreferenceCategory android:title="@string/screenshots_and_video">
+		<ListPreference
+			android:key="image_format"
+			android:title="@string/image_format"
+			android:entries="@array/image_format_names"
+			android:entryValues="@array/image_format_values"
+			android:defaultValue="png"/>
+		<!-- Only enabled for lossy formats - see PreferencesFragment. -->
+		<SeekBarPreference
+			android:key="image_quality"
+			android:title="@string/image_quality"
+			android:summary="@string/image_quality_summary"
+			android:max="100"
+			app:min="1"
+			app:showSeekBarValue="true"
+			android:defaultValue="92"/>
 		<ListPreference
 			android:key="capture_thread_priority"
 			android:title="@string/capture_thread_priority"

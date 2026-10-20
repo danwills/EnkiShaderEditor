@@ -166,6 +166,14 @@
 	<string name="wallpaper">壁纸</string>
 	<string name="save_battery">省电模式</string>
 	<string name="save_battery_summary">电池电量低时停止渲染</string>
+	<string name="screenshots_and_video">截图和视频</string>
+	<string name="image_format">图片格式</string>
+	<string name="image_format_png">PNG（无损）</string>
+	<string name="image_format_jpeg">JPEG（最小）</string>
+	<string name="image_format_webp">WebP（较小）</string>
+	<string name="image_format_webp_lossless">WebP 无损</string>
+	<string name="image_quality">图片质量</string>
+	<string name="image_quality_summary">用于 JPEG 和 WebP</string>
 	<string name="capture_thread_priority">后台渲染优先级</string>
 	<string name="capture_thread_priority_normal">正常</string>
 	<string name="capture_thread_priority_high">高（更快，占用更多 CPU）</string>

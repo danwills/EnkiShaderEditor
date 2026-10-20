@@ -166,6 +166,14 @@
 	<string name="wallpaper">桌布</string>
 	<string name="save_battery">省电模式</string>
 	<string name="save_battery_summary">電池電量低時停止渲染</string>
+	<string name="screenshots_and_video">截圖和影片</string>
+	<string name="image_format">圖片格式</string>
+	<string name="image_format_png">PNG（無損）</string>
+	<string name="image_format_jpeg">JPEG（最小）</string>
+	<string name="image_format_webp">WebP（較小）</string>
+	<string name="image_format_webp_lossless">WebP 無損</string>
+	<string name="image_quality">圖片品質</string>
+	<string name="image_quality_summary">用於 JPEG 和 WebP</string>
 	<string name="capture_thread_priority">背景渲染優先度</string>
 	<string name="capture_thread_priority_normal">正常</string>
 	<string name="capture_thread_priority_high">高（較快，佔用更多 CPU）</string>

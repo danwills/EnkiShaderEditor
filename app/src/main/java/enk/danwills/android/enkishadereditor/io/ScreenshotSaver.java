@@ -19,8 +19,9 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-// Saves a rendered shader frame (PNG bytes from ShaderRenderer's
-// glReadPixels capture) into the device's own Pictures gallery via
+// Saves a rendered shader frame (encoded bytes from ShaderRenderer's
+// glReadPixels capture, in whichever ImageEncoding format they were
+// written - read back from the bytes themselves) into the device's own Pictures gallery via
 // MediaStore, rather than app-private storage, so it shows up
 // immediately in Photos/Gallery/Files alongside normal camera shots.
 // Requires API 29 (Q) for MediaStore's RELATIVE_PATH column - older
@@ -41,16 +42,18 @@ public final class ScreenshotSaver {
 	// the clipboard (ClipData.newUri) - clipboard image-copy needs a
 	// URI some other app's process can read back from later, which a
 	// MediaStore-backed one already is, without a separate FileProvider.
-	public record SavedScreenshot(@NonNull String filename, @NonNull Uri uri) {
+	// mimeType: for opening it.
+	public record SavedScreenshot(@NonNull String filename, @NonNull Uri uri,
+			@NonNull String mimeType) {
 	}
 
 	@Nullable
 	@RequiresApi(Build.VERSION_CODES.Q)
-	public static SavedScreenshot save(Context context, byte[] pngBytes) {
+	public static SavedScreenshot save(Context context, byte[] imageBytes) {
 		String filename = "EnkiShader_" +
 				new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) +
-				".png";
-		return save(context, pngBytes, filename, null);
+				"." + ImageEncoding.sniff(imageBytes).extension;
+		return save(context, imageBytes, filename, null);
 	}
 
 	// Finds a sub-album name under ALBUM that nothing's been saved into
@@ -105,14 +108,15 @@ public final class ScreenshotSaver {
 	// one alongside ordinary screenshots.
 	@Nullable
 	@RequiresApi(Build.VERSION_CODES.Q)
-	public static SavedScreenshot save(Context context, byte[] pngBytes,
+	public static SavedScreenshot save(Context context, byte[] imageBytes,
 			@NonNull String filename, @Nullable String subAlbum) {
 		String relativePath = Environment.DIRECTORY_PICTURES + "/" + ALBUM +
 				(subAlbum != null && !subAlbum.isBlank() ? "/" + subAlbum : "");
 
 		ContentValues values = new ContentValues();
 		values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
-		values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+		String mimeType = ImageEncoding.sniff(imageBytes).mimeType;
+		values.put(MediaStore.Images.Media.MIME_TYPE, mimeType);
 		values.put(MediaStore.Images.Media.RELATIVE_PATH, relativePath);
 
 		ContentResolver resolver = context.getContentResolver();
@@ -125,8 +129,8 @@ public final class ScreenshotSaver {
 				resolver.delete(uri, null, null);
 				return null;
 			}
-			out.write(pngBytes);
-			return new SavedScreenshot(filename, uri);
+			out.write(imageBytes);
+			return new SavedScreenshot(filename, uri, mimeType);
 		} catch (IOException e) {
 			resolver.delete(uri, null, null);
 			return null;

@@ -112,6 +112,7 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.hardware.LocalMusicPlayer;
+import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
 import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
@@ -4249,15 +4250,16 @@ public class MainActivity extends AppCompatActivity {
 	// each virtualFps seconds apart in the shader's own simulated time,
 	// not wall-clock, after first stepping skipFrames frames forward
 	// without saving anything - naming each saved one
-	// "<shader>.NNNNNN.png" (1-indexed) and saving it into its own
-	// subfolder as soon as it's ready, rather than holding every frame's
-	// PNG in memory until the whole sequence finishes. The subfolder
-	// name gets a numeric suffix (shaderName, shaderName1, ...) if a
+	// "<shader>.NNNNNN.<ext>" (1-indexed, in the Image Format setting's
+	// format) and saving it into its own subfolder as soon as it's
+	// ready, rather than holding every frame's image in memory until
+	// the whole sequence finishes. The subfolder name gets a numeric
+	// suffix (shaderName, shaderName1, ...) if a
 	// previous run already used the plain one, so re-rendering the same
 	// shader doesn't mix a new run's frames in with an old one's. If
 	// createVideo is on, assembles the saved frames into an MP4
 	// afterwards (see VideoEncoder) and, if cleanupImages is also on and
-	// that succeeded, deletes the per-frame PNGs. No "Save and Open" at
+	// that succeeded, deletes the per-frame images. No "Save and Open" at
 	// the end - opening a single image wouldn't make sense for a batch
 	// of them - just a toast summarizing what happened.
 	private void runFrameSequenceCapture(int width, int height, int oversample,
@@ -4511,7 +4513,8 @@ public class MainActivity extends AppCompatActivity {
 		String[] frameSubAlbum = {baseShaderName};
 		List<Uri> frameUris = new ArrayList<>();
 		ShaderRenderer.FrameListener frameListener = (frameIndex, totalFrames, png) -> {
-			String filename = String.format(Locale.US, "%s.%06d.png", baseShaderName, frameIndex + 1);
+			String filename = String.format(Locale.US, "%s.%06d.%s", baseShaderName, frameIndex + 1,
+					ImageEncoding.sniff(png).extension);
 			ScreenshotSaver.SavedScreenshot saved = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 					? ScreenshotSaver.save(this, png, filename, frameSubAlbum[0])
 					: null;
@@ -4848,7 +4851,7 @@ public class MainActivity extends AppCompatActivity {
 						Toast.makeText(this,
 								getString(R.string.screenshot_saved, saved.filename()),
 								Toast.LENGTH_SHORT).show();
-						openMedia(saved.uri(), "image/png", R.string.no_app_to_open_image, false);
+						openMedia(saved.uri(), saved.mimeType(), R.string.no_app_to_open_image, false);
 					}
 				}
 				onComplete.run();

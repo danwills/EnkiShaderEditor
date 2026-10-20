@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
 import enk.danwills.android.enkishadereditor.R;
+import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
@@ -518,6 +519,7 @@ public class ShaderViewManager {
 		// RENDERMODE_WHEN_DIRTY (set when paused) only draws a frame on an
 		// explicit request, so without this the capture flag below would
 		// never get serviced and the wait would just time out.
+		useImageFormatSetting();
 		shaderView.requestRender();
 		return shaderView.getRenderer().captureFullScreenshot();
 	}
@@ -538,6 +540,7 @@ public class ShaderViewManager {
 			@NonNull TileRenderOrder tileOrder,
 			@Nullable ShaderRenderer.HighResProgressListener progressListener,
 			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener) {
+		useImageFormatSetting();
 		Object lock = new Object();
 		byte[][] resultHolder = new byte[1][];
 		boolean[] doneHolder = new boolean[1];
@@ -618,6 +621,7 @@ public class ShaderViewManager {
 			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener,
 			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
 			@NonNull ShaderRenderer.FrameListener frameListener) {
+		useImageFormatSetting();
 		Object lock = new Object();
 		boolean[] doneHolder = new boolean[1];
 		boolean[] successHolder = new boolean[1];
@@ -680,6 +684,13 @@ public class ShaderViewManager {
 	// precisely so it can keep running after that thread's own context
 	// is torn down - see createSharedCaptureContext() below and
 	// ShaderRenderer.captureHighResScreenshotOnSharedContext().
+	// Fixes the format for the capture about to start - see
+	// ShaderRenderer.setCaptureEncoding().
+	private void useImageFormatSetting() {
+		shaderView.getRenderer().setCaptureEncoding(
+				ShaderEditorApp.preferences.getImageEncoding());
+	}
+
 	@NonNull
 	public ShaderRenderer getRenderer() {
 		return shaderView.getRenderer();
@@ -744,6 +755,7 @@ public class ShaderViewManager {
 			@NonNull TileBucketSize bucketSize, @NonNull TileRenderOrder tileOrder,
 			@Nullable ShaderRenderer.HighResProgressListener progressListener,
 			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener) {
+		useImageFormatSetting();
 		ShaderRenderer.HighResProgressListener innerListener = progressListener == null ? null :
 				new ShaderRenderer.HighResProgressListener() {
 					@Override
@@ -774,6 +786,7 @@ public class ShaderViewManager {
 			@Nullable ShaderRenderer.TilePreviewListener tilePreviewListener,
 			@Nullable ShaderRenderer.SequenceProgressListener sequenceProgressListener,
 			@NonNull ShaderRenderer.FrameListener frameListener) {
+		useImageFormatSetting();
 		ShaderRenderer.HighResProgressListener innerTileListener = progressListener == null ? null :
 				(tilesDone, totalTiles) -> {
 					boolean continueCapture = progressListener.onProgress(tilesDone, totalTiles);

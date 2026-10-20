@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import enk.danwills.android.enkishadereditor.R;
+import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 
 public class Preferences {
 	public static final String WALLPAPER_SHADER = "shader";
@@ -65,6 +66,8 @@ public class Preferences {
 	public static final String ICON_SIZE = "icon_size";
 	public static final String WARN_SLOW_COMPILE = "warn_slow_compile";
 	public static final String CAPTURE_THREAD_PRIORITY = "capture_thread_priority";
+	public static final String IMAGE_FORMAT = "image_format";
+	public static final String IMAGE_QUALITY = "image_quality";
 	public static final String GPU_PRIORITY = "gpu_priority";
 	public static final String BREATHING_ROOM = "breathing_room";
 	public static final String LIVE_RENDER_MODE = "live_render_mode";
@@ -169,6 +172,8 @@ public class Preferences {
 	private long pendingCrashShaderId = 0;
 	private int iconSize = ICON_SIZE_NORMAL;
 	private int captureThreadPriority = CAPTURE_PRIORITY_NORMAL;
+	private ImageEncoding.Format imageFormat = ImageEncoding.Format.PNG;
+	private int imageQuality = 92;
 	private int gpuPriority = GPU_PRIORITY_LOW;
 	private float breathingRoom = 0f;
 	private int liveRenderMode = LIVE_RENDER_AUTO;
@@ -298,6 +303,15 @@ public class Preferences {
 		stateRows = parseInt(
 				preferences.getString(STATE_ROWS, null),
 				stateRows);
+		imageFormat = ImageEncoding.Format.fromKey(
+				preferences.getString(IMAGE_FORMAT, null));
+		imageQuality = preferences.getInt(IMAGE_QUALITY, imageQuality);
+	}
+
+	// How screenshots, high-res captures and sequence frames are saved.
+	@NonNull
+	public ImageEncoding getImageEncoding() {
+		return new ImageEncoding(imageFormat, imageQuality);
 	}
 
 	// One of the GPU_PRIORITY_* levels - what the live preview's EGL

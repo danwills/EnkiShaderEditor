@@ -169,6 +169,14 @@
 	<string name="wallpaper">Шпалери</string>
 	<string name="save_battery">Економія батареї</string>
 	<string name="save_battery_summary">Зупинити візуалізацію, коли заряд акумулятора низький</string>
+	<string name="screenshots_and_video">Знімки екрана та відео</string>
+	<string name="image_format">Формат зображень</string>
+	<string name="image_format_png">PNG (без втрат)</string>
+	<string name="image_format_jpeg">JPEG (найкомпактніший)</string>
+	<string name="image_format_webp">WebP (компактний)</string>
+	<string name="image_format_webp_lossless">WebP без втрат</string>
+	<string name="image_quality">Якість зображень</string>
+	<string name="image_quality_summary">Для JPEG і WebP</string>
 	<string name="capture_thread_priority">Пріоритет фонового рендерингу</string>
 	<string name="capture_thread_priority_normal">Звичайний</string>
 	<string name="capture_thread_priority_high">Високий (швидше, більше навантаження на ЦП)</string>

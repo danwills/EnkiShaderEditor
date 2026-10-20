@@ -169,6 +169,14 @@
 	<string name="wallpaper">Wallpaper</string>
 	<string name="save_battery">Save Battery</string>
 	<string name="save_battery_summary">Stop rendering when battery is low</string>
+	<string name="screenshots_and_video">Screenshots &amp; Video</string>
+	<string name="image_format">Image Format</string>
+	<string name="image_format_png">PNG (Lossless)</string>
+	<string name="image_format_jpeg">JPEG (Smallest)</string>
+	<string name="image_format_webp">WebP (Small)</string>
+	<string name="image_format_webp_lossless">WebP Lossless</string>
+	<string name="image_quality">Image Quality</string>
+	<string name="image_quality_summary">For JPEG and WebP</string>
 	<string name="capture_thread_priority">Background Render Priority</string>
 	<string name="capture_thread_priority_normal">Normal</string>
 	<string name="capture_thread_priority_high">High (Faster, Uses More CPU)</string>

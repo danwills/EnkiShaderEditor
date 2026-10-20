@@ -169,6 +169,14 @@
 	<string name="wallpaper">Обоя</string>
 	<string name="save_battery">Экономить батарею</string>
 	<string name="save_battery_summary">Прекратить отрисовку при низком заряде аккамулятора</string>
+	<string name="screenshots_and_video">Скриншоты и видео</string>
+	<string name="image_format">Формат изображений</string>
+	<string name="image_format_png">PNG (без потерь)</string>
+	<string name="image_format_jpeg">JPEG (самый компактный)</string>
+	<string name="image_format_webp">WebP (компактный)</string>
+	<string name="image_format_webp_lossless">WebP без потерь</string>
+	<string name="image_quality">Качество изображений</string>
+	<string name="image_quality_summary">Для JPEG и WebP</string>
 	<string name="capture_thread_priority">Приоритет фонового рендеринга</string>
 	<string name="capture_thread_priority_normal">Обычный</string>
 	<string name="capture_thread_priority_high">Высокий (быстрее, больше нагрузки на ЦП)</string>

@@ -1,0 +1,15 @@
+<resources>
+	<string-array name="image_format_names">
+		<item>@string/image_format_png</item>
+		<item>@string/image_format_jpeg</item>
+		<item>@string/image_format_webp</item>
+		<item>@string/image_format_webp_lossless</item>
+	</string-array>
+	<!-- ImageEncoding.Format keys. -->
+	<string-array name="image_format_values" translatable="false">
+		<item>png</item>
+		<item>jpeg</item>
+		<item>webp</item>
+		<item>webp_lossless</item>
+	</string-array>
+</resources>

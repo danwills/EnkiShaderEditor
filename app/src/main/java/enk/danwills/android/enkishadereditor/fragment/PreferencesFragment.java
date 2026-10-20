@@ -206,6 +206,13 @@ public class PreferencesFragment
 			// about *what* is delayed - spell it out (see ShaderEditor's
 			// updateRunnable and MainActivity's OnEditPausedListener).
 			preference.setSummary(getString(R.string.update_delay_summary, listPreference.getEntry()));
+		} else if (Preferences.IMAGE_FORMAT.equals(preference.getKey()) &&
+				preference instanceof ListPreference listPreference) {
+			preference.setSummary(listPreference.getEntry());
+			Preference quality = findPreference(Preferences.IMAGE_QUALITY);
+			if (quality != null) {
+				quality.setEnabled(ShaderEditorApp.preferences.getImageEncoding().format().lossy);
+			}
 		} else if (preference instanceof ListPreference) {
 			preference.setSummary(((ListPreference) preference).getEntry());
 		} else if (preference instanceof PreferenceGroup) {

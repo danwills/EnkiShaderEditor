@@ -3,7 +3,6 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
@@ -17,14 +16,14 @@ import android.view.WindowManager;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
+
+import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 
 public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private static final String TAG = "ShaderRenderer";
@@ -199,6 +198,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@Nullable
 	private byte[] fullImage;
 	private boolean captureFullImage;
+	// How screenshots and captures are encoded - see setCaptureEncoding().
+	@NonNull
+	private volatile ImageEncoding captureEncoding = ImageEncoding.PNG;
 	private volatile boolean blankFrameRequested;
 	// See requestRedisplay().
 	private volatile boolean redisplayRequested;
@@ -1394,9 +1396,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 	}
 
+	// Set by ShaderViewManager as each screenshot or capture starts, so
+	// a sequence keeps one format throughout even if Settings changes
+	// while it runs in the background.
+	public void setCaptureEncoding(@NonNull ImageEncoding encoding) {
+		captureEncoding = encoding;
+	}
+
 	// Blocks (off the GL thread - callers should invoke this from a
 	// background thread) until the next frame renders, then returns a
-	// full-resolution PNG of exactly what's on screen - no toolbar,
+	// full-resolution image (see setCaptureEncoding()) of exactly what's on screen - no toolbar,
 	// editor, or other app UI, since it reads straight from the
 	// GLSurfaceView's own framebuffer. Null on timeout/failure.
 	@Nullable
@@ -1506,7 +1515,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// live renderer's own completed frame instead, which only
 			// exists at the live render size.
 			return oversample == 1 && isLiveRenderSize(width, height)
-					? renderPipeline.readCompletedFrameAsPng()
+					? renderPipeline.readCompletedFrame(captureEncoding)
 					: null;
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
@@ -1549,12 +1558,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return null;
 			}
 		}
-		try (var out = new ByteArrayOutputStream()) {
-			bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-			return out.toByteArray();
-		} catch (IOException | OutOfMemoryError e) {
-			return null;
-		}
+		return captureEncoding.encode(bitmap);
 	}
 
 	// Must be called on the GL thread (e.g. via
@@ -1828,7 +1832,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private void captureFullImage(int width, int height) {
 		synchronized (fullImageLock) {
 			if (captureFullImage) {
-				fullImage = renderPipeline.readPixelsAsPng(width, height);
+				fullImage = renderPipeline.readPixels(width, height, captureEncoding);
 				captureFullImage = false;
 				fullImageLock.notifyAll();
 			}
