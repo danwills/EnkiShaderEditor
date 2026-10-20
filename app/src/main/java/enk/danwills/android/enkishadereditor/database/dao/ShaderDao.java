@@ -430,7 +430,26 @@ public class ShaderDao {
 			@NonNull String sourceModified,
 			@Nullable byte[] thumbnail,
 			float quality) {
+		return insertShader(db, 0, shader, name, created, modified, sourceModified, thumbnail,
+				quality);
+	}
+
+	// id: the row's id, to replace a shader under the same id (see
+	// importShaders()) - 0 for a new one.
+	private static long insertShader(
+			@NonNull SQLiteDatabase db,
+			long id,
+			@NonNull String shader,
+			@Nullable String name,
+			@NonNull String created,
+			@NonNull String modified,
+			@NonNull String sourceModified,
+			@Nullable byte[] thumbnail,
+			float quality) {
 		ContentValues cv = new ContentValues();
+		if (id > 0) {
+			cv.put(DatabaseContract.ShaderColumns._ID, id);
+		}
 		cv.put(DatabaseContract.ShaderColumns.FRAGMENT_SHADER, shader);
 		cv.put(DatabaseContract.ShaderColumns.THUMB, thumbnail);
 		cv.put(DatabaseContract.ShaderColumns.NAME, name);
@@ -598,8 +617,12 @@ public class ShaderDao {
 	// "<Pack Title>: <name>" (so it can't be confused with, or grouped among,
 	// the user's shaders of the same name), unless this pack already
 	// installed that same shader. The user's own shaders are never
-	// touched. Otherwise (a backup), shaders already here (same
-	// created/modified dates) are skipped and the rest keep their pack_id.
+	// touched. Installing a newer version of a pack replaces the older
+	// version's shader of the same name - keeping its id - unless it's
+	// been edited since (see uneditedNamesakes()), so an update doesn't
+	// leave two same-named shaders behind. Otherwise (a backup), shaders
+	// already here (same created/modified dates) are skipped and the rest
+	// keep their pack_id.
 	private static boolean importShaders(
 			SQLiteDatabase dst,
 			SQLiteDatabase src,
@@ -618,6 +641,7 @@ public class ShaderDao {
 			int nameIndex = cursor.getColumnIndex(DatabaseContract.ShaderColumns.NAME);
 			int qualityIndex = cursor.getColumnIndex(DatabaseContract.ShaderColumns.QUALITY);
 			String namePrefix = packId != null ? packNamePrefix(src, packId) : null;
+			String packInstalled = packId != null ? packInstalledAt(dst, packId) : null;
 			boolean success = true;
 			if (cursor.moveToFirst()) {
 				do {
@@ -628,9 +652,33 @@ public class ShaderDao {
 					if (createdDate == null || modifiedDate == null) {
 						continue;
 					}
-					if (packId != null
-							? packShaderExists(dst, createdDate, modifiedDate, packId)
-							: shaderExists(dst, createdDate, modifiedDate)) {
+					String name = cursor.getString(nameIndex);
+					if (namePrefix != null) {
+						// An unnamed shader goes by its date, as it would here.
+						name = namePrefix + DataRecords.ShaderInfo.PACK_NAME_SEPARATOR +
+								(name == null || name.trim().isEmpty()
+								? createdDate
+								: name.trim());
+					}
+					long reuseId = 0;
+					if (packId != null) {
+						List<Long> stale = packInstalled == null
+								? List.of()
+								: uneditedNamesakes(dst, packId, name, createdDate, modifiedDate,
+										packInstalled);
+						boolean installed = packShaderExists(dst, createdDate, modifiedDate,
+								packId);
+						for (int i = installed ? 0 : 1; i < stale.size(); ++i) {
+							deleteShader(dst, stale.get(i));
+						}
+						if (installed) {
+							continue;
+						}
+						if (!stale.isEmpty()) {
+							reuseId = stale.get(0);
+							deleteShader(dst, reuseId);
+						}
+					} else if (shaderExists(dst, createdDate, modifiedDate)) {
 						continue;
 					}
 					// Falls back to modifiedDate when importing a backup
@@ -641,15 +689,7 @@ public class ShaderDao {
 					if (sourceModifiedDate == null || sourceModifiedDate.isEmpty()) {
 						sourceModifiedDate = modifiedDate;
 					}
-					String name = cursor.getString(nameIndex);
-					if (namePrefix != null) {
-						// An unnamed shader goes by its date, as it would here.
-						name = namePrefix + DataRecords.ShaderInfo.PACK_NAME_SEPARATOR +
-								(name == null || name.trim().isEmpty()
-								? createdDate
-								: name.trim());
-					}
-					long shaderId = insertShader(dst,
+					long shaderId = insertShader(dst, reuseId,
 							cursor.getString(shaderIndex),
 							name,
 							createdDate,
@@ -675,6 +715,51 @@ public class ShaderDao {
 			}
 			return success;
 		}
+	}
+
+	// When packId was last installed (DatabaseContract.PackColumns.INSTALLED),
+	// or null if it never was.
+	@Nullable
+	private static String packInstalledAt(SQLiteDatabase db, String packId) {
+		try (Cursor cursor = db.rawQuery("SELECT " + DatabaseContract.PackColumns.INSTALLED +
+				" FROM " + DatabaseContract.PackColumns.TABLE_NAME +
+				" WHERE " + DatabaseContract.PackColumns.PACK_ID + " = ?",
+				new String[]{packId})) {
+			return cursor != null && cursor.moveToFirst() ? cursor.getString(0) : null;
+		}
+	}
+
+	// The ids of packId's shaders called `name` - other than the one with
+	// these dates - that haven't been edited since the pack was last
+	// installed: an installed pack shader keeps the pack's own
+	// SOURCE_MODIFIED, which is earlier than the install, until its
+	// source (any pass - see BufferDao.setBufferSources()) changes.
+	@NonNull
+	private static List<Long> uneditedNamesakes(SQLiteDatabase db, String packId, String name,
+			String createdDate, String modifiedDate, String packInstalled) {
+		List<Long> ids = new ArrayList<>();
+		try (Cursor cursor = db.rawQuery(
+				"SELECT " + DatabaseContract.ShaderColumns._ID +
+						" FROM " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						" WHERE " + DatabaseContract.ShaderColumns.PACK_ID + " = ?" +
+						" AND " + DatabaseContract.ShaderColumns.NAME + " = ?" +
+						" AND NOT (" + DatabaseContract.ShaderColumns.CREATED + " = ?" +
+						" AND " + DatabaseContract.ShaderColumns.MODIFIED + " = ?)" +
+						" AND " + DatabaseContract.ShaderColumns.SOURCE_MODIFIED + " <= ?" +
+						" ORDER BY " + DatabaseContract.ShaderColumns._ID,
+				new String[]{packId, name, createdDate, modifiedDate, packInstalled})) {
+			while (cursor != null && cursor.moveToNext()) {
+				ids.add(cursor.getLong(0));
+			}
+		}
+		return ids;
+	}
+
+	private static void deleteShader(SQLiteDatabase db, long id) {
+		db.delete(DatabaseContract.ShaderColumns.TABLE_NAME,
+				DatabaseContract.ShaderColumns._ID + " = ?",
+				new String[]{String.valueOf(id)});
+		BufferDao.deleteBuffers(db, id);
 	}
 
 	private static void tagShader(SQLiteDatabase db, long shaderId, String packId) {

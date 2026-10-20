@@ -35,12 +35,15 @@ public class BufferDao {
 
 	// Makes shaderId's buffers exactly `sources` (see the class comment):
 	// a null entry deletes that buffer, a non-null one inserts or updates
-	// it. An unchanged source keeps its cached binary.
+	// it. An unchanged source keeps its cached binary. Any change counts
+	// as a source edit of the shader (its SOURCE_MODIFIED), like one to
+	// the Image pass - see ShaderDao.updateShader().
 	public void setBufferSources(long shaderId, @NonNull String[] sources) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		db.beginTransaction();
 		try {
 			String[] stored = getBufferSources(db, shaderId);
+			boolean changed = false;
 			for (int buffer = 0; buffer < MAX_BUFFERS; ++buffer) {
 				String source = buffer < sources.length ? sources[buffer] : null;
 				if (source == null) {
@@ -48,16 +51,27 @@ public class BufferDao {
 						db.delete(DatabaseContract.BufferColumns.TABLE_NAME,
 								whereBuffer(),
 								whereBufferArgs(shaderId, buffer));
+						changed = true;
 					}
 				} else if (stored[buffer] == null) {
 					insertBuffer(db, shaderId, buffer, source);
+					changed = true;
 				} else if (!source.equals(stored[buffer])) {
 					var cv = new ContentValues();
 					cv.put(DatabaseContract.BufferColumns.SOURCE, source);
 					db.update(DatabaseContract.BufferColumns.TABLE_NAME, cv,
 							whereBuffer(),
 							whereBufferArgs(shaderId, buffer));
+					changed = true;
 				}
+			}
+			if (changed) {
+				// Same format as ShaderDao's own timestamps.
+				db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME +
+						" SET " + DatabaseContract.ShaderColumns.SOURCE_MODIFIED +
+						" = datetime('now', 'localtime')" +
+						" WHERE " + DatabaseContract.ShaderColumns._ID + " = ?",
+						new Object[]{shaderId});
 			}
 			db.setTransactionSuccessful();
 		} finally {
