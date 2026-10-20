@@ -69,6 +69,21 @@ precision mediump float;
 Or use `second`, `subsecond`, or `ftime` uniforms instead.
 See issue [#10](https://github.com/markusfisch/ShaderEditor/issues/10#issuecomment-160463706) for details.
 
+## Values in a big `const` array come out wrong
+
+Some GPU drivers don't handle large constant arrays reliably.
+On a Galaxy S22 Ultra (Adreno GPU), a `const vec4` array of about 1,500 entries came back with most of its `.y` components wrong, while `.x` and `.z` were fine.
+A `const float` array of the same values was almost right, with one entry still wrong.
+Splitting the array into smaller ones made it worse.
+Indexing such an array with a variable can also be very slow.
+Other devices may behave differently.
+
+If a shader needs a big table of numbers (lookup tables, neural network weights, glyphs), keep it in a texture instead and read it with `texelFetch()` (GLES 3.0).
+Saved textures keep their exact pixel values, including alpha.
+Integer constants above 2^24 can also lose precision on some GPUs, so use several smaller numbers instead.
+
+To check a table on your device, draw its entries as pixels and compare them with the values you expect.
+
 ## How can wallpaper animations continue after a pause?
 
 Use `uniform highp float runtime;` instead of `time` for animation time.
