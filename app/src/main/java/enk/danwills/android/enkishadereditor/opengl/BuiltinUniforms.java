@@ -81,6 +81,9 @@ final class BuiltinUniforms {
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
 	private int pointerCount;
+	// See updateTouch() - set on the UI thread, read on the GL thread.
+	private volatile boolean pointerSeen = true;
+	private volatile boolean pointerUpPending;
 	private int frameNum;
 	private long startTime;
 	private long pausedAtNanos = -1;
@@ -316,6 +319,8 @@ final class BuiltinUniforms {
 		// bindShaderToyUniforms()).
 		switch (e.getActionMasked()) {
 			case MotionEvent.ACTION_DOWN:
+				pointerSeen = false;
+				pointerUpPending = false;
 				touchStart[0] = touch[0];
 				touchStart[1] = touch[1];
 				stMouse[0] = touch[0];
@@ -326,7 +331,14 @@ final class BuiltinUniforms {
 				break;
 			case MotionEvent.ACTION_UP:
 			case MotionEvent.ACTION_CANCEL:
-				pointerCount = 0;
+				// A tap quicker than a frame would otherwise never be
+				// seen by the shader at all - so it stays down until a
+				// frame has seen it.
+				if (pointerSeen) {
+					pointerCount = 0;
+				} else {
+					pointerUpPending = true;
+				}
 				stMouse[2] = -Math.abs(stMouse[2]);
 				stMouse[3] = -Math.abs(stMouse[3]);
 				return;
@@ -520,6 +532,13 @@ final class BuiltinUniforms {
 					ShaderRenderer.UNIFORM_POINTERS,
 					pointerCount,
 					pointers);
+		}
+		// See updateTouch(): a touch lifted before any frame saw it has
+		// now been seen, so it's lifted from the next frame on.
+		pointerSeen = true;
+		if (pointerUpPending) {
+			pointerUpPending = false;
+			pointerCount = 0;
 		}
 		bindings.setFloat2(ShaderRenderer.UNIFORM_OFFSET, offset);
 		bindings.setFloat(ShaderRenderer.UNIFORM_START_RANDOM, startRandom);
