@@ -425,7 +425,7 @@ public class MainActivity extends AppCompatActivity {
 					editorFragment.clearError();
 					editorFragment.highlightErrors();
 				}
-				shaderViewManager.setProjectSession(
+				shaderViewManager.setProjectSessionIfChanged(
 						shaderManager.getEditedProjectSession(text));
 			}
 		});

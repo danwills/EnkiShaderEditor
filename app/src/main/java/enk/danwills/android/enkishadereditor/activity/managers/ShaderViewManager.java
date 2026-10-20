@@ -17,7 +17,9 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -98,6 +100,14 @@ public class ShaderViewManager {
 	// See refreshKnownFps().
 	private volatile int fpsGeneration = 0;
 	private boolean paused = false;
+	// What setProjectSession() last handed the renderer - see
+	// setProjectSessionIfChanged().
+	private long appliedShaderId = -1;
+	private float appliedQuality = -1;
+	@Nullable
+	private String appliedSource;
+	@Nullable
+	private String[] appliedBufferSources;
 	private boolean needsRealResume = false;
 	private boolean backgroundCaptureActive = false;
 	// Set by destroy() below - checked by setMediaProjection() to avoid
@@ -400,10 +410,34 @@ public class ShaderViewManager {
 		shaderView.setFragmentShader(src, quality, 0);
 	}
 
+	// For run-on-change: like setProjectSession(), but does nothing when
+	// every pass's source, the quality and the shader are what's already
+	// running - so an "edit" that changes nothing (switching the editor
+	// to another pass's tab, say) doesn't recompile and restart the shader,
+	// wiping its buffers.
+	public void setProjectSessionIfChanged(@NonNull ShaderProjectSession projectSession) {
+		if (!paused && isRunning(projectSession)) {
+			return;
+		}
+		setProjectSession(projectSession);
+	}
+
+	private boolean isRunning(@NonNull ShaderProjectSession projectSession) {
+		return projectSession.getShaderId() == appliedShaderId &&
+				projectSession.getQuality() == appliedQuality &&
+				Objects.equals(projectSession.getEntryPointSource(), appliedSource) &&
+				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources);
+	}
+
 	public void setProjectSession(@NonNull ShaderProjectSession projectSession) {
 		if (paused) {
 			return;
 		}
+		appliedShaderId = projectSession.getShaderId();
+		appliedQuality = projectSession.getQuality();
+		appliedSource = projectSession.getEntryPointSource();
+		String[] bufferSources = projectSession.getProject().getBufferSources();
+		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
 		// Before setQuality() below - setQuality()/applyQuality() is a
 		// no-op when the new shader happens to share its predecessor's
 		// quality value, which would otherwise leave fpsAtCurrentQuality
