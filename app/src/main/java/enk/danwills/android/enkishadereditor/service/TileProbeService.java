@@ -47,6 +47,7 @@ public final class TileProbeService extends Service {
 	public static final String KEY_TARGET_WIDTH = "target_width";
 	public static final String KEY_TARGET_HEIGHT = "target_height";
 	public static final String KEY_TILE_BUCKET_PIXELS = "tile_bucket_pixels";
+	public static final String KEY_SAMPLE_OFFSETS = "sample_offsets";
 
 	private static final String TAG = "TileProbeService";
 
@@ -92,6 +93,11 @@ public final class TileProbeService extends Service {
 		int targetWidth = data != null ? data.getInt(KEY_TARGET_WIDTH) : 0;
 		int targetHeight = data != null ? data.getInt(KEY_TARGET_HEIGHT) : 0;
 		int tileBucketPixels = data != null ? data.getInt(KEY_TILE_BUCKET_PIXELS) : 0;
+		int[] sampleOffsets = data != null ? data.getIntArray(KEY_SAMPLE_OFFSETS) : null;
+		if (sampleOffsets == null) {
+			sampleOffsets = new int[]{0, 0};
+		}
+		int[] offsets = sampleOffsets;
 		Log.d(TAG, "handleMessage: MSG_PROBE replyTo=" + replyTo +
 				" fragmentSource=" + (fragmentSource == null ? "null" : fragmentSource.length() + " chars") +
 				" targetWidth=" + targetWidth + " targetHeight=" + targetHeight +
@@ -102,7 +108,7 @@ public final class TileProbeService extends Service {
 		}
 		workerHandler.post(() -> {
 			TileSafetyProbe.Outcome outcome = TileSafetyProbe.probe(
-					fragmentSource, targetWidth, targetHeight, tileBucketPixels);
+					fragmentSource, targetWidth, targetHeight, tileBucketPixels, offsets);
 			Log.d(TAG, "handleMessage: replying with " + outcome);
 			Message reply = Message.obtain(null, MSG_RESULT);
 			reply.arg1 = outcome.result().ordinal();

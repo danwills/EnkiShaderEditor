@@ -18,7 +18,9 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -42,7 +44,8 @@ import enk.danwills.android.enkishadereditor.opengl.TileSafetyProbe;
 // already takes over automatically whenever TileBucketSize.MAX is
 // selected and the resolution fits one texture - reporting MAX as the
 // result here is what actually triggers that, no separate plumbing
-// needed). "Failure" covers a probe-process crash, a timeout, and a draw
+// needed). Each rung times several tiles spread across the image (see
+// sampleOffsets()) and goes by the slowest. "Failure" covers a probe-process crash, a timeout, and a draw
 // that survived but demonstrably didn't finish (see TileSafetyProbe's
 // sentinel check and looksTruncated() below) - some drivers silently cut
 // an over-long draw short at a fixed deadline instead of killing anything.
@@ -95,7 +98,21 @@ public final class TileSizeProber {
 	// isn't enough: the real capture's own tiles vary in cost with
 	// position (the probe only renders one), and a tile that does hit it
 	// there resets the GPU and takes the main app down with it.
-	private static final long MAX_SAFE_DRAW_MS = 1200;
+	//
+	// Lowered from 1200ms after a 16384px capture passed every rung (its
+	// slowest probe tile took 49ms) and then reset the GPU partway
+	// through: tile cost varies enormously across an image, and the
+	// device throttles its GPU clock under sustained load (seen dropping
+	// from full speed to 285MHz), so a long capture's tiles run slower
+	// than a quick probe's. HighResScreenshotCapture also splits its
+	// draws when they get slow - this is only the starting point.
+	private static final long MAX_SAFE_DRAW_MS = 600;
+	// How many tiles each rung samples - one wasn't enough (see above).
+	// More for large frames, where there's more image to vary across and
+	// each probe draw is a smaller share of the capture's own time.
+	private static final int SAMPLES_LARGE_FRAME = 8;
+	private static final int SAMPLES_SMALL_FRAME = 3;
+	private static final int LARGE_FRAME_PIXELS = 2048;
 	private static final String TAG = "TileSizeProber";
 
 	private TileSizeProber() {
@@ -126,6 +143,9 @@ public final class TileSizeProber {
 		boolean wholeFrameSafe = false;
 		long prevDrawMs = -1;
 		long prevArea = 0;
+		// Seeded per search, so the same shader and size sample the same
+		// tiles each time - a verdict that can be reproduced.
+		var random = new Random(fragmentSource.hashCode() * 31L + targetWidth * 7919L + targetHeight);
 		for (int i = 0; i < rungs.size(); ++i) {
 			if (cancelled != null && cancelled.getAsBoolean()) {
 				Log.d(TAG, "findMaxSafeTileSize: cancelled after " + i + " of " + totalAttempts + " rungs");
@@ -137,7 +157,8 @@ public final class TileSizeProber {
 			if (listener != null) {
 				listener.onAttemptStarting(rung.label(), attempt, totalAttempts);
 			}
-			long drawMs = probeOne(context, fragmentSource, targetWidth, targetHeight, rung.pixels());
+			long drawMs = probeOne(context, fragmentSource, targetWidth, targetHeight, rung.pixels(),
+					sampleOffsets(targetWidth, targetHeight, rung.pixels(), random));
 			long area = (long) rung.pixels() * rung.pixels();
 			boolean withinBudget = drawMs <= MAX_SAFE_DRAW_MS;
 			if (drawMs >= 0 && !withinBudget) {
@@ -165,6 +186,34 @@ public final class TileSizeProber {
 		SearchResult result = new SearchResult(safeBucketSize, wholeFrameSafe);
 		Log.d(TAG, "findMaxSafeTileSize: done, result=" + result);
 		return result;
+	}
+
+	// Content origins (x0, y0 pairs, GL's bottom-up pixels) of the tiles
+	// a rung samples: the centre tile, the first one, then random others
+	// - without repeats, and never more than the frame has.
+	@NonNull
+	static int[] sampleOffsets(int targetWidth, int targetHeight, int tilePixels,
+			@NonNull Random random) {
+		int tilesX = Math.max(1, (targetWidth + tilePixels - 1) / tilePixels);
+		int tilesY = Math.max(1, (targetHeight + tilePixels - 1) / tilePixels);
+		int totalTiles = tilesX * tilesY;
+		int wanted = Math.min(totalTiles,
+				Math.max(targetWidth, targetHeight) > LARGE_FRAME_PIXELS
+						? SAMPLES_LARGE_FRAME
+						: SAMPLES_SMALL_FRAME);
+		var picked = new LinkedHashSet<Integer>();
+		picked.add((tilesY / 2) * tilesX + tilesX / 2);
+		picked.add(0);
+		while (picked.size() < wanted) {
+			picked.add(random.nextInt(totalTiles));
+		}
+		var offsets = new int[picked.size() * 2];
+		int i = 0;
+		for (int tile : picked) {
+			offsets[i++] = (tile % tilesX) * tilePixels;
+			offsets[i++] = (tile / tilesX) * tilePixels;
+		}
+		return offsets;
 	}
 
 	// Backs up TileSafetyProbe's own sentinel readback for drivers that
@@ -233,7 +282,7 @@ public final class TileSizeProber {
 	// main-thread callbacks count down, so findMaxSafeTileSize()'s loop
 	// above can stay a plain sequential search.
 	private static long probeOne(@NonNull Context context, @NonNull String fragmentSource,
-			int targetWidth, int targetHeight, int tilePixels) {
+			int targetWidth, int targetHeight, int tilePixels, @NonNull int[] sampleOffsets) {
 		CountDownLatch latch = new CountDownLatch(1);
 		long[] drawMs = {-1};
 
@@ -259,6 +308,7 @@ public final class TileSizeProber {
 				data.putInt(TileProbeService.KEY_TARGET_WIDTH, targetWidth);
 				data.putInt(TileProbeService.KEY_TARGET_HEIGHT, targetHeight);
 				data.putInt(TileProbeService.KEY_TILE_BUCKET_PIXELS, tilePixels);
+				data.putIntArray(TileProbeService.KEY_SAMPLE_OFFSETS, sampleOffsets);
 				msg.setData(data);
 				msg.replyTo = replyMessenger;
 				try {

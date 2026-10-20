@@ -8,9 +8,10 @@ import androidx.annotation.NonNull;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-// Renders exactly one worst-case tile (bound to the *full* target
-// resolution, same as a real capture's tile program - see probe() below -
-// but only tileBucketPixels+margin pixels actually drawn) off-screen, on
+// Renders a few sample tiles (bound to the *full* target resolution,
+// same as a real capture's tile program - see probe() below - but only
+// tileBucketPixels+margin pixels drawn per tile, at the caller's chosen
+// positions, since cost can vary hugely across an image) off-screen, on
 // whatever thread/process calls this. Used by TileProbeService (see that
 // class's own doc for why it runs in an isolated :probe process) to find
 // the largest TileBucketSize a given shader can render without tripping a
@@ -58,10 +59,11 @@ public final class TileSafetyProbe {
 		NO_GL_CONTEXT
 	}
 
-	// What probe() found, plus how long the draw itself took (draw call
-	// through glFinish(), not EGL/compile setup) - TileSizeProber uses
-	// that to catch a silently-truncated draw the sentinel check alone
-	// can't (see its own plateau check). -1 when no draw happened.
+	// What probe() found, plus how long the slowest sample tile's draw
+	// took (draw call through glFinish(), not EGL/compile setup) -
+	// TileSizeProber uses that to catch a silently-truncated draw the
+	// sentinel check alone can't (see its own plateau check). -1 when no
+	// draw happened.
 	public record Outcome(@NonNull Result result, long drawMs) {
 	}
 
@@ -78,8 +80,10 @@ public final class TileSafetyProbe {
 	private static final int SENTINEL_A = 77;
 
 	@NonNull
+	// sampleOffsets: x0, y0 pairs - each sample tile's content origin in
+	// the target image (GL's bottom-up pixels), one draw per pair.
 	public static Outcome probe(@NonNull String fragmentSource, int targetWidth, int targetHeight,
-			int tileBucketPixels) {
+			int tileBucketPixels, @NonNull int[] sampleOffsets) {
 		long startNanos = System.nanoTime();
 		Log.d(TAG, "probe: starting pid=" + android.os.Process.myPid() +
 				" tileBucketPixels=" + tileBucketPixels +
@@ -113,7 +117,8 @@ public final class TileSafetyProbe {
 			}
 			GlProgram program = buildResult.getProgram();
 			try {
-				Outcome outcome = renderOneTile(device, program, targetWidth, targetHeight, tileBucketPixels);
+				Outcome outcome = renderSampleTiles(device, program, targetWidth, targetHeight,
+						tileBucketPixels, sampleOffsets);
 				long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 				Log.d(TAG, "probe: result=" + outcome.result() + " drawMs=" + outcome.drawMs() +
 						" totalMs=" + elapsedMs);
@@ -127,8 +132,8 @@ public final class TileSafetyProbe {
 	}
 
 	@NonNull
-	private static Outcome renderOneTile(@NonNull GlDevice device, @NonNull GlProgram program,
-			int targetWidth, int targetHeight, int tileBucketPixels) {
+	private static Outcome renderSampleTiles(@NonNull GlDevice device, @NonNull GlProgram program,
+			int targetWidth, int targetHeight, int tileBucketPixels, @NonNull int[] sampleOffsets) {
 		// Never bigger than the frame itself - a real capture's single
 		// tile can't exceed it either (tileContentSize clamps to the
 		// target the same way), so anything past that would only test
@@ -144,11 +149,12 @@ public final class TileSafetyProbe {
 				GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
 		GlFramebuffer framebuffer = device.createFramebuffer();
 		device.attachColor(framebuffer, texture);
-		Log.d(TAG, "renderOneTile: renderSize=" + renderSize);
+		Log.d(TAG, "renderSampleTiles: renderSize=" + renderSize +
+				" samples=" + sampleOffsets.length / 2);
 		try {
 			int fbStatus = device.checkFramebufferStatus(framebuffer);
 			if (fbStatus != GLES20.GL_FRAMEBUFFER_COMPLETE) {
-				Log.e(TAG, "renderOneTile: framebuffer incomplete, status=0x" +
+				Log.e(TAG, "renderSampleTiles: framebuffer incomplete, status=0x" +
 						Integer.toHexString(fbStatus));
 				return new Outcome(Result.COMPILE_FAILED, -1);
 			}
@@ -162,34 +168,48 @@ public final class TileSafetyProbe {
 			// be a meaningful test of that capture's actual risk.
 			bindings.setFloat2(ShaderRenderer.UNIFORM_RESOLUTION,
 					new float[]{targetWidth, targetHeight});
-			// Position doesn't matter for a safety probe - cost is what's
-			// being measured here, not correctness - so (0, 0) is as
-			// representative as any other tile.
-			bindings.setFloat2("_tileOffset", new float[]{0f, 0f});
 			device.bindFramebuffer(framebuffer);
 			device.setViewport(0, 0, renderSize, renderSize);
-			GLES20.glClearColor(SENTINEL_R / 255f, SENTINEL_G / 255f,
-					SENTINEL_B / 255f, SENTINEL_A / 255f);
-			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
-			GLES20.glClearColor(0f, 0f, 0f, 0f);
-			// Flushed separately so the clear's own cost isn't counted in
-			// drawMs below.
-			GLES20.glFinish();
-			device.applyBindings(bindings);
-			long drawStart = System.nanoTime();
-			device.draw(Mesh.fullScreenQuad(), program);
-			// Block until the GPU has genuinely finished this draw (or the
-			// driver's watchdog kills this process first) - glDrawArrays()
-			// alone can return long before the queued work completes.
-			GLES20.glFinish();
-			long drawMs = (System.nanoTime() - drawStart) / 1_000_000;
-			int glError = GLES20.glGetError();
-			int untouched = countSentinelPixels(renderSize);
-			Log.d(TAG, "renderOneTile: glFinish() returned, drawMs=" + drawMs + " glGetError=0x" +
-					Integer.toHexString(glError) + " untouchedPixels=" + untouched + "/" +
-					(renderSize * renderSize));
-			boolean complete = glError == GLES20.GL_NO_ERROR && untouched == 0;
-			return new Outcome(complete ? Result.SAFE : Result.RENDER_INCOMPLETE, drawMs);
+			long slowestMs = 0;
+			int samples = Math.max(1, sampleOffsets.length / 2);
+			for (int i = 0; i < samples; ++i) {
+				// Placed like a real capture's scratch-buffer tile: its
+				// render origin is the content origin less the margin.
+				float x0 = sampleOffsets.length >= 2 * (i + 1)
+						? Math.max(0, sampleOffsets[2 * i] - HighResScreenshotCapture.TILE_MARGIN)
+						: 0;
+				float y0 = sampleOffsets.length >= 2 * (i + 1)
+						? Math.max(0, sampleOffsets[2 * i + 1] - HighResScreenshotCapture.TILE_MARGIN)
+						: 0;
+				bindings.setFloat2("_tileOffset", new float[]{x0, y0});
+				GLES20.glClearColor(SENTINEL_R / 255f, SENTINEL_G / 255f,
+						SENTINEL_B / 255f, SENTINEL_A / 255f);
+				device.clear(GLES20.GL_COLOR_BUFFER_BIT);
+				GLES20.glClearColor(0f, 0f, 0f, 0f);
+				// Flushed separately so the clear's own cost isn't counted
+				// in drawMs below.
+				GLES20.glFinish();
+				device.applyBindings(bindings);
+				long drawStart = System.nanoTime();
+				device.draw(Mesh.fullScreenQuad(), program);
+				// Block until the GPU has genuinely finished this draw (or
+				// the driver's watchdog kills this process first) -
+				// glDrawArrays() alone can return long before the queued
+				// work completes.
+				GLES20.glFinish();
+				long drawMs = (System.nanoTime() - drawStart) / 1_000_000;
+				int glError = GLES20.glGetError();
+				int untouched = countSentinelPixels(renderSize);
+				Log.d(TAG, "renderSampleTiles: sample " + (i + 1) + "/" + samples + " at " +
+						(int) x0 + "," + (int) y0 + " drawMs=" + drawMs + " glGetError=0x" +
+						Integer.toHexString(glError) + " untouchedPixels=" + untouched + "/" +
+						(renderSize * renderSize));
+				slowestMs = Math.max(slowestMs, drawMs);
+				if (glError != GLES20.GL_NO_ERROR || untouched != 0) {
+					return new Outcome(Result.RENDER_INCOMPLETE, slowestMs);
+				}
+			}
+			return new Outcome(Result.SAFE, slowestMs);
 		} finally {
 			device.deleteFramebuffer(framebuffer);
 			device.deleteTexture(texture);

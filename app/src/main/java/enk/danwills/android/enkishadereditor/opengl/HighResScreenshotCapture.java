@@ -180,6 +180,27 @@ final class HighResScreenshotCapture {
 	// buffer identically to a real capture's.
 	static final int TILE_MARGIN = 4;
 
+	// Each tile is drawn as one or more scissored pieces ("chunks"), each
+	// finished and timed on its own - see drawInChunks(). A piece that
+	// takes longer than SLOW_CHUNK_MS halves the piece size for the rest
+	// of the capture; one comfortably under it (a piece 4x its area would
+	// still take under half of SLOW_CHUNK_MS) doubles it again, up to the
+	// tile size. The driver resets the GPU on a draw that runs past ~2s,
+	// and tile cost varies enormously across an image and with thermal
+	// throttling, so no up-front tile size choice is safe on its own -
+	// this keeps every single draw short whatever the tile size.
+	private static final long SLOW_CHUNK_MS = 250;
+	private static final int MIN_CHUNK_SIZE = 32;
+	// Where the piece size starts, whatever the tile size: a big tile
+	// (or a whole frame, for a single pass) as one first draw could
+	// already be past the deadline before there's any timing to go on.
+	// A cheap shader grows its pieces back to the full tile within a
+	// few draws.
+	private static final int INITIAL_CHUNK_SIZE = 512;
+	// The most pixels read back at once - see renderTiles(). 16MB of
+	// int per array; a full Max tile (2048 + margins) still fits in one.
+	private static final int READBACK_BAND_PIXELS = 4 << 20;
+
 	// Package-visible for TileSafetyProbe - see TILE_MARGIN above.
 	static final String TILE_OFFSET_PRELUDE = """
 			uniform vec2 _tileOffset;
@@ -668,6 +689,8 @@ final class HighResScreenshotCapture {
 		int doneY1 = 0;
 		// See the per-tile fatal-error check below.
 		boolean aborted = false;
+		// See SLOW_CHUNK_MS and INITIAL_CHUNK_SIZE.
+		int[] chunkSize = {Math.min(INITIAL_CHUNK_SIZE, tileContentSize + margin * 2)};
 		float[] tileOffset = new float[2];
 		Mesh fullScreenQuad = Mesh.fullScreenQuad();
 		// Only redone when the tile about to render is in a different
@@ -764,27 +787,7 @@ final class HighResScreenshotCapture {
 			// actually owns those pixels; the scratch-buffer path below
 			// doesn't need this, since its margin pixels simply never
 			// get read back into the result Bitmap at all.
-			if (renderingIntoFeedback) {
-				device.setScissor(contentX0, contentY0, contentW, contentH);
-				device.setViewport(renderX0, renderY0, renderW, renderH);
-			} else {
-				device.setViewport(0, 0, renderW, renderH);
-			}
-			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
-			device.applyBindings(bindings);
-			device.draw(fullScreenQuad, tileProgram);
-			if (renderingIntoFeedback) {
-				device.disableScissor();
-			}
-			if (tilesDone == 0) {
-				int glError = GLES20.glGetError();
-				if (glError != GLES20.GL_NO_ERROR) {
-					Log.e(TAG, "renderTiles: GL error after first tile draw: 0x" +
-							Integer.toHexString(glError));
-				}
-			}
-
-			// Reading back from a shared whole-image texture
+				// Reading back from a shared whole-image texture
 			// (renderingIntoFeedback) needs this tile's true global
 			// position - unlike the small scratch buffer the other
 			// branch uses, there's no per-tile local origin to translate
@@ -792,17 +795,34 @@ final class HighResScreenshotCapture {
 			// already *is* this tile's content origin.
 			int contentLocalX0 = renderingIntoFeedback ? contentX0 : contentX0 - renderX0;
 			int contentLocalY0 = renderingIntoFeedback ? contentY0 : contentY0 - renderY0;
-			int[] argb = renderPipeline.readPixelsFlippedToArgb(
-					contentLocalX0, contentLocalY0, contentW, contentH);
-			// Checked after the readback (which forces the draw to actually
-			// complete), every tile: a draw that hit the driver's per-draw
-			// deadline resets the GPU, after which every further GL call
-			// on this context fails (GL_INVALID_FRAMEBUFFER_OPERATION is
-			// what the dev device reports) and carrying on just feeds
-			// garbage tiles into the result - and, left long enough, has
-			// taken the whole process down with a native crash. Stopping
-			// here at least fails the capture cleanly instead.
-			int tileError = GLES20.glGetError();
+			if (renderingIntoFeedback) {
+				device.setViewport(renderX0, renderY0, renderW, renderH);
+			} else {
+				device.setViewport(0, 0, renderW, renderH);
+			}
+			// Drawn in scissored pieces - see drawInChunks(). The scratch
+			// buffer's whole render rect, margin included (rendered only
+			// so dFdx/dFdy see real neighbouring fragments); the shared
+			// feedback texture's content rect only, so the margin never
+			// overwrites a neighbouring tile's pixels there.
+			int drawX0 = renderingIntoFeedback ? contentX0 : 0;
+			int drawY0 = renderingIntoFeedback ? contentY0 : 0;
+			int drawW = renderingIntoFeedback ? contentW : renderW;
+			int drawH = renderingIntoFeedback ? contentH : renderH;
+			device.setScissor(drawX0, drawY0, drawW, drawH);
+			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
+			device.applyBindings(bindings);
+			boolean drawn = drawInChunks(device, fullScreenQuad, tileProgram,
+					drawX0, drawY0, drawW, drawH, chunkSize, tileContentSize + margin * 2);
+			device.disableScissor();
+			// Checked before the readback, every tile: a draw that hit
+			// the driver's per-draw deadline resets the GPU, after which
+			// every further GL call on this context fails
+			// (GL_INVALID_FRAMEBUFFER_OPERATION is what the dev device
+			// reports) - and reading pixels back from it has crashed the
+			// whole process natively (in the driver's own memcpy).
+			// Stopping here fails the capture cleanly instead.
+			int tileError = drawn ? GLES20.glGetError() : GLES20.GL_INVALID_FRAMEBUFFER_OPERATION;
 			if (isFatalGlError(tileError)) {
 				Log.e(TAG, "renderTiles: fatal GL error 0x" + Integer.toHexString(tileError) +
 						" at tile " + tilesDone + " of " + totalTiles + " - likely a GPU reset from a " +
@@ -810,20 +830,47 @@ final class HighResScreenshotCapture {
 				aborted = true;
 				break;
 			}
-			// readPixelsFlippedToArgb() already flipped this tile's
-			// own rows top-down local to itself; its row 0 is this
-			// tile's highest GL-native row, which belongs at bitmap
-			// row (targetHeight - contentY0 - contentH).
+			if (tilesDone == 0 && tileError != GLES20.GL_NO_ERROR) {
+				Log.e(TAG, "renderTiles: GL error after first tile draw: 0x" +
+						Integer.toHexString(tileError));
+			}
+
+			// Read back in row bands of at most READBACK_BAND_PIXELS, so a
+			// big tile (a single pass is the whole frame) never needs
+			// one huge pixel array - 8192x8192 in one go ran the Java
+			// heap out of memory. readPixelsFlippedToArgb() flips each
+			// band's rows top-down local to itself; a band's row 0 is
+			// its highest GL-native row, which belongs at bitmap row
+			// (targetHeight - bandY0 - bandH).
+			int bandRows = Math.max(1, Math.min(contentH, READBACK_BAND_PIXELS / contentW));
+			boolean readOk = true;
+			for (int bandOffset = 0; bandOffset < contentH; bandOffset += bandRows) {
+				int bandH = Math.min(bandRows, contentH - bandOffset);
+				int[] argb;
+				try {
+					argb = renderPipeline.readPixelsFlippedToArgb(
+							contentLocalX0, contentLocalY0 + bandOffset, contentW, bandH);
+				} catch (OutOfMemoryError e) {
+					Log.e(TAG, "renderTiles: OOM reading back a " + contentW + "x" + bandH + " band");
+					readOk = false;
+					break;
+				}
+				int bandBitmapY0 = targetHeight - (contentY0 + bandOffset) - bandH;
+				result.setPixels(argb, 0, contentW, contentX0, bandBitmapY0, contentW, bandH);
+				if (onTilePreview != null) {
+					onTilePreview.onTile(contentX0, bandBitmapY0, contentW, bandH,
+							targetWidth, targetHeight, argb);
+				}
+			}
+			if (!readOk) {
+				aborted = true;
+				break;
+			}
 			int bitmapY0 = targetHeight - contentY0 - contentH;
-			result.setPixels(argb, 0, contentW, contentX0, bitmapY0, contentW, contentH);
 			doneX0 = Math.min(doneX0, contentX0);
 			doneY0 = Math.min(doneY0, bitmapY0);
 			doneX1 = Math.max(doneX1, contentX0 + contentW);
 			doneY1 = Math.max(doneY1, bitmapY0 + contentH);
-			if (onTilePreview != null) {
-				onTilePreview.onTile(contentX0, targetHeight - contentY0 - contentH,
-						contentW, contentH, targetWidth, targetHeight, argb);
-			}
 
 			++tilesDone;
 			if (onProgress != null && !onProgress.onProgress(tilesDone, totalTiles)) {
@@ -868,6 +915,52 @@ final class HighResScreenshotCapture {
 			}
 		}
 		return result;
+	}
+
+	// Draws one rect of the bound framebuffer (scissor already enabled)
+	// in pieces no bigger than chunkSize[0], finishing and timing each -
+	// see SLOW_CHUNK_MS. A rect bigger than the current size is split
+	// into quarters, recursively, and the size is re-read before every
+	// piece, so a slow piece shrinks the very next one. chunkSize[0]
+	// carries over between tiles. Returns false if a fatal GL error (a
+	// GPU reset) means the capture should stop.
+	private static boolean drawInChunks(@NonNull GlDevice device, @NonNull Mesh quad,
+			@NonNull GlProgram program, int x0, int y0, int width, int height,
+			@NonNull int[] chunkSize, int maxChunkSize) {
+		if (width > chunkSize[0] || height > chunkSize[0]) {
+			// Split on even pixels, so 2x2 shading quads never straddle
+			// two pieces.
+			int halfW = width > chunkSize[0] ? (width / 2 + 1) & ~1 : width;
+			int halfH = height > chunkSize[0] ? (height / 2 + 1) & ~1 : height;
+			return drawInChunks(device, quad, program, x0, y0, halfW, halfH, chunkSize, maxChunkSize) &&
+					(halfW >= width || drawInChunks(device, quad, program, x0 + halfW, y0,
+							width - halfW, halfH, chunkSize, maxChunkSize)) &&
+					(halfH >= height || drawInChunks(device, quad, program, x0, y0 + halfH,
+							halfW, height - halfH, chunkSize, maxChunkSize)) &&
+					(halfW >= width || halfH >= height || drawInChunks(device, quad, program,
+							x0 + halfW, y0 + halfH, width - halfW, height - halfH, chunkSize,
+							maxChunkSize));
+		}
+		device.setScissor(x0, y0, width, height);
+		long start = System.nanoTime();
+		device.draw(quad, program);
+		GLES20.glFinish();
+		long ms = (System.nanoTime() - start) / 1_000_000;
+		if (isFatalGlError(GLES20.glGetError())) {
+			return false;
+		}
+		int size = chunkSize[0];
+		if (ms > SLOW_CHUNK_MS && size > MIN_CHUNK_SIZE) {
+			chunkSize[0] = Math.max(MIN_CHUNK_SIZE, size / 2);
+			Log.w(TAG, "drawInChunks: a " + width + "x" + height + " draw took " + ms +
+					"ms - drawing at most " + chunkSize[0] + "px pieces from here on");
+		} else if (ms * 4 < SLOW_CHUNK_MS / 2 && size < maxChunkSize &&
+				Math.max(width, height) * 2 > size) {
+			// Only from a piece near the current size - a sliver at a
+			// tile's edge says little about a full piece's cost.
+			chunkSize[0] = Math.min(maxChunkSize, size * 2);
+		}
+		return true;
 	}
 
 	// Errors that mean the context itself is no longer usable (a GPU

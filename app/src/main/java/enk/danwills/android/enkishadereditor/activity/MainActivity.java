@@ -3824,7 +3824,10 @@ public class MainActivity extends AppCompatActivity {
 			// expand to the full row width instead of sharing it) and
 			// just show that one tile, i.e. the whole image, full
 			// resolution, centered.
-			if (singlePass) {
+			// A large single pass arrives in row bands (see
+			// HighResScreenshotCapture.renderTiles()), which fill in the
+			// overview like tiles do.
+			if (singlePass && contentW == targetWidth && contentH == targetHeight) {
 				Bitmap wholeImageBitmap =
 						Bitmap.createBitmap(argb, contentW, contentH, Bitmap.Config.ARGB_8888);
 				runOnUiThread(() -> {
