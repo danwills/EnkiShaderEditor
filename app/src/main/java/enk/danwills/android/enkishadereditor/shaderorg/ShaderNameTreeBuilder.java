@@ -58,16 +58,28 @@ public final class ShaderNameTreeBuilder {
 			if (tokens.isEmpty()) {
 				tokens = List.of(title);
 			}
+			ShaderNameNode parent = node;
 			for (String token : tokens) {
 				ShaderNameNode child = node.children.get(token);
 				if (child == null) {
 					child = new ShaderNameNode(token);
 					node.children.put(token, child);
 				}
+				parent = node;
 				node = child;
 			}
-			// If two shaders share the exact same name, the last one
-			// processed wins the leaf; both still appear in the flat list.
+			if (node.shader != null) {
+				// Another shader of exactly this name (a pack update's
+				// edited old copy, say): a leaf of its own beside the
+				// first, "Name (2)", rather than one hiding the other.
+				String token = node.token;
+				int n = 2;
+				while (parent.children.containsKey(token + " (" + n + ")")) {
+					++n;
+				}
+				node = new ShaderNameNode(token + " (" + n + ")");
+				parent.children.put(node.token, node);
+			}
 			node.shader = shader;
 		}
 		return root;
