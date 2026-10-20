@@ -364,6 +364,34 @@ public class ShaderDao {
 		return -1;
 	}
 
+	// For rename lists made from a copy of this library (see
+	// BatchShaderDialog): only renames shader `id` if it was created at
+	// `created`, so a list can't hit a different shader that happens to
+	// have that id. Like updateShaderName(), leaves every date alone.
+	public boolean renameShaderIfCreated(long id, @NonNull String created,
+			@NonNull String name) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		var cv = new ContentValues();
+		cv.put(DatabaseContract.ShaderColumns.NAME, name);
+		return db.update(DatabaseContract.ShaderColumns.TABLE_NAME, cv,
+				DatabaseContract.ShaderColumns._ID + " = ? AND " +
+						DatabaseContract.ShaderColumns.CREATED + " = ?",
+				new String[]{String.valueOf(id), created}) > 0;
+	}
+
+	// See renameShaderIfCreated().
+	public boolean removeShaderIfCreated(long id, @NonNull String created) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		int removed = db.delete(DatabaseContract.ShaderColumns.TABLE_NAME,
+				DatabaseContract.ShaderColumns._ID + " = ? AND " +
+						DatabaseContract.ShaderColumns.CREATED + " = ?",
+				new String[]{String.valueOf(id), created});
+		if (removed > 0) {
+			BufferDao.deleteBuffers(db, id);
+		}
+		return removed > 0;
+	}
+
 	public void removeShader(long id) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		db.delete(DatabaseContract.ShaderColumns.TABLE_NAME,

@@ -590,4 +590,39 @@
 	<string name="pack_description_label">描述 - 浏览着色器包时显示</string>
 	<string name="pack_shaders_label">包中的着色器</string>
 	<string name="filter_shaders_packs">着色器包</string>
+	<string name="batch_shaders">批量重命名和删除</string>
+	<string name="batch_filter_hint">名称开头为…（例如某个分组）</string>
+	<string name="batch_unnamed_only">仅未命名</string>
+	<string name="batch_select_all">全部</string>
+	<string name="batch_count">已勾选 %1$d / %2$d</string>
+	<string name="batch_rename">重命名…</string>
+	<string name="batch_delete">删除…</string>
+	<string name="batch_apply_list">应用重命名列表…</string>
+	<string name="batch_apply">应用</string>
+	<string name="batch_done">完成</string>
+	<string name="batch_none_ticked">请先勾选着色器</string>
+	<string name="batch_rename_numbered">它们将按创建顺序命名为此名称加 V01、V02…。日期保持不变。</string>
+	<string name="batch_rename_single">日期保持不变。</string>
+	<string name="batch_delete_warning">此操作无法撤销。如果以后可能需要，请先导出数据库。</string>
+	<string name="batch_and_more">…还有 %1$d 个</string>
+	<string name="batch_list_unreadable">该文件不是应用可读取的重命名列表。</string>
+	<string name="batch_list_applied">已重命名 %1$d 个，已删除 %2$d 个。跳过 %3$d 个与此处着色器不匹配的条目（不同的库，或已被更改）。</string>
+	<plurals name="batch_rename_title">
+		<item quantity="other">重命名 %d 个着色器</item>
+	</plurals>
+	<plurals name="batch_renamed">
+		<item quantity="other">已重命名 %d 个着色器</item>
+	</plurals>
+	<plurals name="batch_deleted">
+		<item quantity="other">已删除 %d 个着色器</item>
+	</plurals>
+	<plurals name="batch_delete_title">
+		<item quantity="other">删除 %d 个着色器？</item>
+	</plurals>
+	<plurals name="batch_delete_confirm">
+		<item quantity="other">删除 %d 个着色器</item>
+	</plurals>
+	<plurals name="batch_list_summary">
+		<item quantity="other">按此列表重命名 %d 个着色器？日期保持不变。</item>
+	</plurals>
 </resources>

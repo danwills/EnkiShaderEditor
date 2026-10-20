@@ -590,4 +590,39 @@
 	<string name="pack_description_label">描述 - 瀏覽著色器包時顯示</string>
 	<string name="pack_shaders_label">包中的著色器</string>
 	<string name="filter_shaders_packs">著色器包</string>
+	<string name="batch_shaders">批次重新命名與刪除</string>
+	<string name="batch_filter_hint">名稱開頭為…（例如某個群組）</string>
+	<string name="batch_unnamed_only">僅未命名</string>
+	<string name="batch_select_all">全部</string>
+	<string name="batch_count">已勾選 %1$d / %2$d</string>
+	<string name="batch_rename">重新命名…</string>
+	<string name="batch_delete">刪除…</string>
+	<string name="batch_apply_list">套用重新命名清單…</string>
+	<string name="batch_apply">套用</string>
+	<string name="batch_done">完成</string>
+	<string name="batch_none_ticked">請先勾選著色器</string>
+	<string name="batch_rename_numbered">它們將依建立順序命名為此名稱加 V01、V02…。日期保持不變。</string>
+	<string name="batch_rename_single">日期保持不變。</string>
+	<string name="batch_delete_warning">此操作無法復原。如果日後可能需要，請先匯出資料庫。</string>
+	<string name="batch_and_more">…還有 %1$d 個</string>
+	<string name="batch_list_unreadable">該檔案不是應用程式可讀取的重新命名清單。</string>
+	<string name="batch_list_applied">已重新命名 %1$d 個，已刪除 %2$d 個。略過 %3$d 個與此處著色器不符的項目（不同的資料庫，或已被變更）。</string>
+	<plurals name="batch_rename_title">
+		<item quantity="other">重新命名 %d 個著色器</item>
+	</plurals>
+	<plurals name="batch_renamed">
+		<item quantity="other">已重新命名 %d 個著色器</item>
+	</plurals>
+	<plurals name="batch_deleted">
+		<item quantity="other">已刪除 %d 個著色器</item>
+	</plurals>
+	<plurals name="batch_delete_title">
+		<item quantity="other">刪除 %d 個著色器？</item>
+	</plurals>
+	<plurals name="batch_delete_confirm">
+		<item quantity="other">刪除 %d 個著色器</item>
+	</plurals>
+	<plurals name="batch_list_summary">
+		<item quantity="other">依此清單重新命名 %d 個著色器？日期保持不變。</item>
+	</plurals>
 </resources>

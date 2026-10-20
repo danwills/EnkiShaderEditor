@@ -137,6 +137,7 @@ import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 import enk.danwills.android.enkishadereditor.view.SystemBarMetrics;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
+import enk.danwills.android.enkishadereditor.widget.BatchShaderDialog;
 import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
@@ -1313,6 +1314,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onBatchShaders() {
+				BatchShaderDialog.show(MainActivity.this, batchShaderHost);
+			}
+
+			@Override
 			public void onPlayLocalMusic() {
 				openLocalMusicPlayer();
 			}
@@ -1417,6 +1423,37 @@ public class MainActivity extends AppCompatActivity {
 			showQualityPickerDialog(shared.text(), shared.name());
 		}
 	}
+
+	// Batch Rename & Delete - see BatchShaderDialog.
+	private final BatchShaderDialog.Host batchShaderHost = new BatchShaderDialog.Host() {
+		@Override
+		public void onShadersChanged(@NonNull Set<Long> renamed, @NonNull Set<Long> deleted) {
+			long selected = shaderManager.getSelectedShaderId();
+			if (deleted.contains(selected)) {
+				shaderManager.deleteShader(selected);
+				shaderManager.selectShader(dataSource.shader.getFirstShaderId());
+			} else if (renamed.contains(selected)) {
+				var shader = dataSource.shader.getShader(selected);
+				if (shader != null) {
+					uiManager.setToolbarTitle(shader.getTitle());
+				}
+			}
+			shaderListManager.loadShadersAsync();
+		}
+
+		@Override
+		public void pickRenameList() {
+			// Any type: JSON files often arrive as octet-stream or text.
+			renameListLauncher.launch(new String[]{"*/*"});
+		}
+	};
+
+	private final ActivityResultLauncher<String[]> renameListLauncher =
+			registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+				if (uri != null) {
+					BatchShaderDialog.applyRenameList(this, batchShaderHost, uri);
+				}
+			});
 
 	// Shader packs - see ShaderPackInstaller and GetShaderPackDialog. The
 	// store and delivery are stand-ins until real ones are wired up.

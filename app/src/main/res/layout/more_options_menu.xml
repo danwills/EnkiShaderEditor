@@ -76,6 +76,14 @@
 			app:icon="@drawable/ic_pack" />
 
 		<Button
+			android:id="@+id/batch_shaders"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/batch_shaders"
+			app:icon="@drawable/ic_delete_forever" />
+
+		<Button
 			android:id="@+id/play_recent_recordings"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

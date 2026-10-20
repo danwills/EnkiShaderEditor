@@ -621,4 +621,45 @@
 	<string name="pack_description_label">Description - shown when browsing packs</string>
 	<string name="pack_shaders_label">Shaders in the pack</string>
 	<string name="filter_shaders_packs">Packs</string>
+	<string name="batch_shaders">Batch Rename &amp; Delete</string>
+	<string name="batch_filter_hint">Names starting with… (e.g. a group)</string>
+	<string name="batch_unnamed_only">Unnamed only</string>
+	<string name="batch_select_all">All</string>
+	<string name="batch_count">Ticked: %1$d of %2$d</string>
+	<string name="batch_rename">Rename…</string>
+	<string name="batch_delete">Delete…</string>
+	<string name="batch_apply_list">Apply Rename List…</string>
+	<string name="batch_apply">Apply</string>
+	<string name="batch_done">Done</string>
+	<string name="batch_none_ticked">Tick some shaders first</string>
+	<string name="batch_rename_numbered">They become this name plus V01, V02… in the order they were made. Their dates stay as they are.</string>
+	<string name="batch_rename_single">Its dates stay as they are.</string>
+	<string name="batch_delete_warning">This can\'t be undone. Export your database first if you might want them back.</string>
+	<string name="batch_and_more">…and more (not listed): %1$d</string>
+	<string name="batch_list_unreadable">That file isn\'t a rename list the app can read.</string>
+	<string name="batch_list_applied">Renamed: %1$d. Deleted: %2$d. Skipped (no matching shader here, from another library or already changed): %3$d.</string>
+	<plurals name="batch_rename_title">
+		<item quantity="one">Rename %d shader</item>
+		<item quantity="other">Rename %d shaders</item>
+	</plurals>
+	<plurals name="batch_renamed">
+		<item quantity="one">Renamed %d shader</item>
+		<item quantity="other">Renamed %d shaders</item>
+	</plurals>
+	<plurals name="batch_deleted">
+		<item quantity="one">Deleted %d shader</item>
+		<item quantity="other">Deleted %d shaders</item>
+	</plurals>
+	<plurals name="batch_delete_title">
+		<item quantity="one">Delete %d shader?</item>
+		<item quantity="other">Delete %d shaders?</item>
+	</plurals>
+	<plurals name="batch_delete_confirm">
+		<item quantity="one">Delete %d shader</item>
+		<item quantity="other">Delete %d shaders</item>
+	</plurals>
+	<plurals name="batch_list_summary">
+		<item quantity="one">Rename %d shader from this list? Their dates stay as they are.</item>
+		<item quantity="other">Rename %d shaders from this list? Their dates stay as they are.</item>
+	</plurals>
 </resources>

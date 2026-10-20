@@ -81,6 +81,8 @@ public class MainMenuManager {
 
 		void onGetShaderPack();
 
+		void onBatchShaders();
+
 		void onPlayLocalMusic();
 	}
 
@@ -166,6 +168,7 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.offscreen_buffers, navigationActions::onOffscreenBuffers);
 		setMoreOptionsClickListener(R.id.build_shader_pack, navigationActions::onBuildShaderPack);
 		setMoreOptionsClickListener(R.id.get_shader_pack, navigationActions::onGetShaderPack);
+		setMoreOptionsClickListener(R.id.batch_shaders, navigationActions::onBatchShaders);
 		setMoreOptionsClickListener(R.id.play_local_music, navigationActions::onPlayLocalMusic);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 

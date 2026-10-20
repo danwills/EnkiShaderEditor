@@ -632,4 +632,57 @@
 	<string name="pack_description_label">Описание - видно при просмотре наборов</string>
 	<string name="pack_shaders_label">Шейдеры в наборе</string>
 	<string name="filter_shaders_packs">Наборы</string>
+	<string name="batch_shaders">Массовое переименование и удаление</string>
+	<string name="batch_filter_hint">Имена, начинающиеся с… (например, группа)</string>
+	<string name="batch_unnamed_only">Только без имени</string>
+	<string name="batch_select_all">Все</string>
+	<string name="batch_count">Отмечено %1$d из %2$d</string>
+	<string name="batch_rename">Переименовать…</string>
+	<string name="batch_delete">Удалить…</string>
+	<string name="batch_apply_list">Применить список переименований…</string>
+	<string name="batch_apply">Применить</string>
+	<string name="batch_done">Готово</string>
+	<string name="batch_none_ticked">Сначала отметьте шейдеры</string>
+	<string name="batch_rename_numbered">Они получат это имя с V01, V02… в порядке создания. Даты не меняются.</string>
+	<string name="batch_rename_single">Даты не меняются.</string>
+	<string name="batch_delete_warning">Это нельзя отменить. Сначала экспортируйте базу данных, если они могут понадобиться.</string>
+	<string name="batch_and_more">…и ещё %1$d</string>
+	<string name="batch_list_unreadable">Этот файл не является списком переименований, который может прочитать приложение.</string>
+	<string name="batch_list_applied">Переименовано: %1$d, удалено: %2$d. Пропущено %3$d, не совпавших с шейдерами здесь (другая библиотека или уже изменены).</string>
+	<plurals name="batch_rename_title">
+		<item quantity="one">Переименовать %d шейдер</item>
+		<item quantity="few">Переименовать %d шейдера</item>
+		<item quantity="many">Переименовать %d шейдеров</item>
+		<item quantity="other">Переименовать %d шейдера</item>
+	</plurals>
+	<plurals name="batch_renamed">
+		<item quantity="one">Переименован %d шейдер</item>
+		<item quantity="few">Переименовано %d шейдера</item>
+		<item quantity="many">Переименовано %d шейдеров</item>
+		<item quantity="other">Переименовано %d шейдера</item>
+	</plurals>
+	<plurals name="batch_deleted">
+		<item quantity="one">Удалён %d шейдер</item>
+		<item quantity="few">Удалено %d шейдера</item>
+		<item quantity="many">Удалено %d шейдеров</item>
+		<item quantity="other">Удалено %d шейдера</item>
+	</plurals>
+	<plurals name="batch_delete_title">
+		<item quantity="one">Удалить %d шейдер?</item>
+		<item quantity="few">Удалить %d шейдера?</item>
+		<item quantity="many">Удалить %d шейдеров?</item>
+		<item quantity="other">Удалить %d шейдера?</item>
+	</plurals>
+	<plurals name="batch_delete_confirm">
+		<item quantity="one">Удалить %d шейдер</item>
+		<item quantity="few">Удалить %d шейдера</item>
+		<item quantity="many">Удалить %d шейдеров</item>
+		<item quantity="other">Удалить %d шейдера</item>
+	</plurals>
+	<plurals name="batch_list_summary">
+		<item quantity="one">Переименовать %d шейдер по этому списку? Даты не меняются.</item>
+		<item quantity="few">Переименовать %d шейдера по этому списку? Даты не меняются.</item>
+		<item quantity="many">Переименовать %d шейдеров по этому списку? Даты не меняются.</item>
+		<item quantity="other">Переименовать %d шейдера по этому списку? Даты не меняются.</item>
+	</plurals>
 </resources>
