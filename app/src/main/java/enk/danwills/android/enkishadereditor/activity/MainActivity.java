@@ -3075,6 +3075,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
 	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
 	private static final String PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK = "custom_res_match_device_playback";
+	private static final String PREF_CUSTOM_RES_RESTART_SHADER = "custom_res_restart_shader";
 	// Stores the button's resource *name* (e.g. "screenshot_copy"), not
 	// its numeric id - those get renumbered whenever resources are added,
 	// which silently turned the remembered choice into a different button
@@ -3339,6 +3340,9 @@ public class MainActivity extends AppCompatActivity {
 		preserveBackbufferBox.setChecked(
 				prefs.getBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, true));
 		explainOnLongPress(preserveBackbufferBox, R.string.higher_res_preserve_backbuffer);
+		CheckBox restartShaderBox = view.findViewById(R.id.restart_shader);
+		restartShaderBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_RESTART_SHADER, false));
+		explainOnLongPress(restartShaderBox, R.string.higher_res_restart_shader);
 		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
 		explainOnLongPress(view.findViewById(R.id.sequence_video_scale_label),
 				R.string.higher_res_sequence_video_scale);
@@ -3523,6 +3527,7 @@ public class MainActivity extends AppCompatActivity {
 					.putInt(PREF_CUSTOM_RES_BUCKET_SIZE, bucketSize.ordinal())
 					.putBoolean(PREF_CUSTOM_RES_AUTO_DETECT_TILE_SIZE, autoDetectTileSize)
 					.putBoolean(PREF_HIGHER_RES_PRESERVE_BACKBUFFER, preserveBackbufferBox.isChecked())
+					.putBoolean(PREF_CUSTOM_RES_RESTART_SHADER, restartShaderBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
 							matchAppResBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
@@ -3565,22 +3570,39 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 				proceedWithCustomResCapture(width, height, oversample, autoDetectTileSize, bucketSize,
 						wasPaused,
-						resolvedBucketSize -> runFrameSequenceCapture(width, height, oversample,
-								preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder, skipFrames,
-								frameCount, fps, sequenceViews.createVideoBox.isChecked(), videoQuality,
-								videoScale, sequenceViews.cleanupImagesBox.isChecked(), wasPaused));
+						resolvedBucketSize -> {
+							restartShaderIf(restartShaderBox.isChecked());
+							runFrameSequenceCapture(width, height, oversample,
+									preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder,
+									skipFrames, frameCount, fps, sequenceViews.createVideoBox.isChecked(),
+									videoQuality, videoScale, sequenceViews.cleanupImagesBox.isChecked(),
+									wasPaused);
+						});
 				return;
 			}
 			prefsEditor.apply();
 			dialog.dismiss();
 			proceedWithCustomResCapture(width, height, oversample, autoDetectTileSize, bucketSize, wasPaused,
-					resolvedBucketSize -> runHighResCapture(width, height, oversample,
-							preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder, wasPaused));
+					resolvedBucketSize -> {
+						restartShaderIf(restartShaderBox.isChecked());
+						runHighResCapture(width, height, oversample,
+								preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder, wasPaused);
+					});
 		});
 		view.findViewById(R.id.custom_res_cancel).setOnClickListener(v -> {
 			dialog.dismiss();
 			setShaderPaused(wasPaused);
 		});
+	}
+
+	// The dialog's Restart Shader: rewinds the shader to its very start
+	// (see ShaderRenderer.restartForCapture()) just before the capture,
+	// after any tile-size probing, so the capture's first frame is frame
+	// 0. The shader stays paused - captures run on its paused clock.
+	private void restartShaderIf(boolean restart) {
+		if (restart) {
+			shaderViewManager.restartForCaptureAndWait();
+		}
 	}
 
 	// Shared by both showCustomResolutionDialog() OK-button branches

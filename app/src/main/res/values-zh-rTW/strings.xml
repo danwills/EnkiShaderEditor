@@ -54,6 +54,8 @@
 	<string name="start_render">開始算繪</string>
 	<string name="higher_res_preserve_backbuffer_label">支援 Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">跨區塊保留 backbuffer 中儲存的值（例如第 0 列）</string>
+	<string name="higher_res_restart_shader_label">重新啟動著色器</string>
+	<string name="higher_res_restart_shader">重新啟動著色器 - 從著色器的最開始進行擷取（時間 0、第 0 幀、清空後台緩衝區和緩衝區），就像剛剛開啟一樣，而不是從螢幕上的目前幀繼續</string>
 	<string name="higher_res_match_device_playback_label">符合應用程式解析度設定</string>
 	<string name="higher_res_match_device_playback">符合應用程式解析度設定 - 忽略上方所有參數，改為鏡像應用程式本身目前的解析度設定：設定解析度、超取樣倍數為 1、區塊大小為 Max、影片縮放倍數為可讓已儲存的影片以裝置完整解析度播放</string>
 	<string name="higher_res_oversample_label">超取樣</string>

@@ -418,6 +418,19 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		abandonProgressiveFrame();
 	}
 
+	// restartTime() for a capture about to start from the restarted
+	// state. A buffer shader's capture reads the last completed frame
+	// rather than drawing its own (see captureHighResScreenshot()), and
+	// restartTime() just cleared that - so this draws frame 0 for it,
+	// at time 0. Any other shader's capture draws frame 0 itself, from
+	// the cleared backbuffer.
+	public void restartForCapture() {
+		restartTime();
+		if (hasBufferPasses()) {
+			stepSimulationFrame(0f);
+		}
+	}
+
 	public void pauseClock() {
 		builtinUniforms.pauseClock();
 	}

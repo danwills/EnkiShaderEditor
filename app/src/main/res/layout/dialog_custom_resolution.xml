@@ -205,6 +205,16 @@
 			android:checked="true"
 			android:text="@string/higher_res_preserve_backbuffer_label" />
 
+		<!-- Long-press for the full explanation (see
+		     higher_res_restart_shader). -->
+		<CheckBox
+			android:id="@+id/restart_shader"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="4dp"
+			android:checked="false"
+			android:text="@string/higher_res_restart_shader_label" />
+
 		<CheckBox
 			android:id="@+id/render_sequence"
 			android:layout_width="match_parent"

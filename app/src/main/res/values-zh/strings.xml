@@ -54,6 +54,8 @@
 	<string name="start_render">开始渲染</string>
 	<string name="higher_res_preserve_backbuffer_label">支持 Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">跨图块保留 backbuffer 中存储的值（例如第 0 行）</string>
+	<string name="higher_res_restart_shader_label">重新启动着色器</string>
+	<string name="higher_res_restart_shader">重新启动着色器 - 从着色器的最开始进行捕获（时间 0、第 0 帧、清空后台缓冲区和缓冲区），就像刚刚打开一样，而不是从屏幕上的当前帧继续</string>
 	<string name="higher_res_match_device_playback_label">匹配应用分辨率设置</string>
 	<string name="higher_res_match_device_playback">匹配应用分辨率设置 - 忽略上方所有参数，改为镜像应用本身当前的分辨率设置：设置分辨率、过采样倍数为 1、分块大小为 Max、视频缩放倍数为可让保存的视频以设备完整分辨率播放</string>
 	<string name="higher_res_oversample_label">过采样</string>

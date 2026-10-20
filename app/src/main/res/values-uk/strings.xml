@@ -55,6 +55,8 @@
 	<string name="start_render">Почати рендер</string>
 	<string name="higher_res_preserve_backbuffer_label">Підтримка Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">Зберігати значення з backbuffer (напр. рядок 0) між тайлами</string>
+	<string name="higher_res_restart_shader_label">Перезапустити шейдер</string>
+	<string name="higher_res_restart_shader">Перезапустити шейдер - починає захоплення з самого початку шейдера (час 0, кадр 0, бекбуфер і буфери очищено), ніби його щойно відкрито, а не з кадру на екрані</string>
 	<string name="higher_res_match_device_playback_label">Відповідність налаштуванню застосунку</string>
 	<string name="higher_res_match_device_playback">Відповідність налаштуванню застосунку - ігнорує всі параметри вище і натомість відображає поточне налаштування роздільності самого застосунку: встановлює роздільність, передискретизацію 1, розмір блоку Max і масштаб відео так, щоб збережене відео відтворювалося в повній роздільності пристрою</string>
 	<string name="higher_res_oversample_label">Передискретизація</string>

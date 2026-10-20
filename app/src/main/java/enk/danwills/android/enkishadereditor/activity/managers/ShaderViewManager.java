@@ -20,9 +20,11 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
@@ -409,6 +411,25 @@ public class ShaderViewManager {
 	// can rewind a running or paused shader to its initial state.
 	public void restartRuntime() {
 		shaderView.queueEvent(() -> shaderView.getRenderer().restartTime());
+	}
+
+	// See ShaderRenderer.restartForCapture(). Blocks until it's done,
+	// since the capture may then run on its own thread and context (see
+	// HighResCaptureService), which a merely queued restart could still
+	// be behind. Call off the GL thread.
+	public void restartForCaptureAndWait() {
+		CountDownLatch done = new CountDownLatch(1);
+		shaderView.queueEvent(() -> {
+			shaderView.getRenderer().restartForCapture();
+			done.countDown();
+		});
+		try {
+			if (!done.await(5, TimeUnit.SECONDS)) {
+				Log.e("HighResCapture", "restartForCaptureAndWait: timed out waiting for GL thread");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public void setFragmentShader(@Nullable String src) {

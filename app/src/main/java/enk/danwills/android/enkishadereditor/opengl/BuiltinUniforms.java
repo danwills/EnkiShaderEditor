@@ -105,7 +105,10 @@ final class BuiltinUniforms {
 	// `time`, driven by startTime, is the common ShaderToy-style clock).
 	void restart(long now) {
 		runtimeClock.setElapsedNanos(0);
-		startTime = now;
+		// While paused, time reads as of the moment it paused - so start
+		// from there, or `time` would start out negative (see
+		// ShaderRenderer.restartForCapture()).
+		startTime = pausedAtNanos >= 0 ? pausedAtNanos : now;
 		startRandom = (float) Math.random();
 		frameNum = 0;
 		previousFrameTime = -1;

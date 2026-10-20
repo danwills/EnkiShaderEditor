@@ -55,6 +55,8 @@
 	<string name="start_render">Start Render</string>
 	<string name="higher_res_preserve_backbuffer_label">Support Backbuffer</string>
 	<string name="higher_res_preserve_backbuffer">Preserve backbuffer-stored values (e.g. row 0) across tiles</string>
+	<string name="higher_res_restart_shader_label">Restart Shader</string>
+	<string name="higher_res_restart_shader">Restart Shader - starts the capture from the shader\'s very beginning (time 0, frame 0, backbuffer and buffers cleared), as if it had just been opened, instead of carrying on from the frame on screen</string>
 	<string name="higher_res_match_device_playback_label">Match App Res Setting</string>
 	<string name="higher_res_match_device_playback">Match App Res Setting - ignores every parameter above and instead mirrors the app\'s own current resolution setting: sets Resolution, Oversampling to 1, Bucket Size to Max, and Video Scale so the saved video plays back at the device\'s full resolution</string>
 	<string name="higher_res_oversample_label">Oversampling</string>
