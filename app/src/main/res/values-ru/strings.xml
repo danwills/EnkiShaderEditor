@@ -378,6 +378,14 @@
 	<string name="compose_sampler_cube">Создать кубическую текстуру</string>
 	<string name="not_enough_faces">Недостаточно граней</string>
 	<string name="add_texture">Добавить текстуру</string>
+	<string name="add_texture_image">Изображение (обрезать до квадрата)</string>
+	<string name="add_texture_exact_choice">Точные пиксели (PNG, без обрезки и масштабирования)</string>
+	<string name="add_texture_exact">Точные пиксели</string>
+	<string name="exact_texture_size">Размер %1$d × %2$d, сохраняется точно как есть - для текстур с данными, например таблиц или весов.</string>
+	<string name="exact_texture_unreadable">Не удалось прочитать изображение.</string>
+	<string name="exact_texture_not_png">Для точных пикселей подходят только PNG: другие форматы не сохраняют каждый пиксель точно.</string>
+	<string name="exact_texture_too_big">Размер изображения %1$d × %2$d. Текстуры с точными пикселями ограничены размером %3$d по каждой стороне.</string>
+	<string name="exact_texture_too_big_file">Файл больше %1$d МБ - слишком большой для текстуры с точными пикселями.</string>
 
 	<!-- CubeMapView -->
 	<string name="cube_map_negative_x">-X Слева</string>

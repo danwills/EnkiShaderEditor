@@ -79,7 +79,7 @@ Indexing such an array with a variable can also be very slow.
 Other devices may behave differently.
 
 If a shader needs a big table of numbers (lookup tables, neural network weights, glyphs), keep it in a texture instead and read it with `texelFetch()` (GLES 3.0).
-Saved textures keep their exact pixel values, including alpha.
+Add it with **Exact Pixels** (see “Can I use custom textures?” below) so every value is kept exactly, including alpha.
 Integer constants above 2^24 can also lose precision on some GPUs, so use several smaller numbers instead.
 
 To check a table on your device, draw its entries as pixels and compare them with the values you expect.
@@ -170,6 +170,12 @@ On older Android versions (below 10), you can also export individual `.glsl` fil
 Yes.
 Open **Menu → Add Uniform → 2D Textures** or **Cube Maps** tab.
 Pick image, crop if needed, set sampler parameters like wrap and filter, and Enki Shader Editor inserts uniform declaration into code.
+
+For a texture that holds data rather than a picture, such as a lookup table or neural network weights, choose **Exact Pixels** when adding it.
+That takes a PNG of any size up to 4096 × 4096 and keeps every pixel exactly as it is, with no crop or resize.
+Read it with `texelFetch()`.
+Note that row 0 of the texture is the bottom row of the image.
+Like any saved texture, it goes into shader packs along with the shaders that use it.
 
 ## What is `#define SHADER_EDITOR`?
 

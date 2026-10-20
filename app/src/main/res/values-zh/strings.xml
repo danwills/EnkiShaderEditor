@@ -367,6 +367,14 @@
 	<string name="compose_sampler_cube">合成立方体纹理 (Cube Map)</string>
 	<string name="not_enough_faces">面数量不足</string>
 	<string name="add_texture">添加纹理</string>
+	<string name="add_texture_image">图像（裁剪为正方形）</string>
+	<string name="add_texture_exact_choice">精确像素（PNG，不裁剪不缩放）</string>
+	<string name="add_texture_exact">精确像素</string>
+	<string name="exact_texture_size">尺寸 %1$d × %2$d，完全按原样保存 - 适用于存放数据的纹理，例如查找表或权重。</string>
+	<string name="exact_texture_unreadable">无法读取该图像。</string>
+	<string name="exact_texture_not_png">精确像素仅支持 PNG 图像，其他格式无法精确保留每个像素。</string>
+	<string name="exact_texture_too_big">该图像为 %1$d × %2$d。精确像素纹理每边最多 %3$d。</string>
+	<string name="exact_texture_too_big_file">该文件超过 %1$d MB，作为精确像素纹理太大。</string>
 
 	<string name="cube_map_negative_x">-X 左侧</string>
 	<string name="cube_map_positive_x">+X 右侧</string>

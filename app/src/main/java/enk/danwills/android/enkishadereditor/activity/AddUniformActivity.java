@@ -17,6 +17,7 @@ import androidx.lifecycle.Lifecycle;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.fragment.TextureViewFragment;
 import enk.danwills.android.enkishadereditor.fragment.UniformPagesFragment;
+import enk.danwills.android.enkishadereditor.widget.ExactTextureImportDialog;
 import enk.danwills.android.enkishadereditor.widget.SearchMenu;
 
 public class AddUniformActivity extends AbstractContentActivity {
@@ -35,6 +36,7 @@ public class AddUniformActivity extends AbstractContentActivity {
 	private ActivityResultLauncher<Intent> pickImageLauncher;
 	private ActivityResultLauncher<Intent> cropImageLauncher;
 	private ActivityResultLauncher<Intent> pickTextureLauncher;
+	private ActivityResultLauncher<Intent> pickExactImageLauncher;
 
 	public static void setAddUniformResult(@NonNull Activity activity, String name) {
 		Bundle bundle = new Bundle();
@@ -103,6 +105,21 @@ public class AddUniformActivity extends AbstractContentActivity {
 					}
 				});
 
+		pickExactImageLauncher = registerForActivityResult(
+				new ActivityResultContracts.StartActivityForResult(),
+				result -> {
+					if (result.getResultCode() == RESULT_OK && result.getData() != null &&
+							result.getData().getData() != null) {
+						ExactTextureImportDialog.show(this, result.getData().getData(),
+								statement -> {
+									if (getCallingActivity() != null) {
+										setAddUniformResult(this, statement);
+									}
+									finish();
+								});
+					}
+				});
+
 		// Handle any intents passed to this activity
 		startActivityForIntent(getIntent());
 	}
@@ -138,6 +155,17 @@ public class AddUniformActivity extends AbstractContentActivity {
 		pickImageIntent.setType("image/*");
 		pickImageLauncher.launch(Intent.createChooser(pickImageIntent,
 				getString(R.string.choose_image)));
+	}
+
+	// See ExactTextureImportDialog - PNG only, since nothing else is
+	// lossless. The system file picker rather than GET_CONTENT, which
+	// Android may hand to a photo picker that can give back a re-encoded
+	// copy instead of the file's own bytes.
+	public void startPickExactImage() {
+		Intent pickImageIntent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+		pickImageIntent.addCategory(Intent.CATEGORY_OPENABLE);
+		pickImageIntent.setType("image/png");
+		pickExactImageLauncher.launch(pickImageIntent);
 	}
 
 	public void startPickTexture(long id, @NonNull String samplerType) {

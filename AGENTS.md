@@ -92,7 +92,8 @@ This document captures how the app is structured today so you can change it conf
   - Column definitions live in `DatabaseContract`.
   - Names are optional; UI falls back to the last-modified timestamp (`DataRecords.ShaderInfo.getTitle()`).
 - `TextureDao` (`database/dao/TextureDao.java:1`):
-  - Stores user-imported 2D textures and cube maps (ratio differentiates them).
+  - Stores user-imported 2D textures and cube maps (ratio differentiates them: cube maps are 3:2 atlases, anything else is 2D).
+  - `insertExactTexture()` stores a PNG's own bytes untouched (Add Texture -> Exact Pixels, `widget/ExactTextureImportDialog`), for textures that hold data; matrix PNGs are decoded unpremultiplied and uploaded bottom row first, so `texelFetch()` reads them back exactly.
   - Saves both thumbnails (PNG) and full-resolution PNG matrices. Dimensions feed sampler defaults.
 - `DataRecords` (`database/DataRecords.java:1`) holds immutable records used throughout UI/DAOs.
 - Shader packs (curated sets meant to be sold): a pack file is a standalone SQLite database with the app's own tables holding just the pack's shaders, buffers and textures, plus `pack_info` (id, title, blurb, author, version) and `pack_media` (thumbnails now, screenshots later) - written by `io/ShaderPackWriter` via `PackDao.writePackFile()` (Build Shader Pack, or long-press a sidebar name-tree group), installed by `io/ShaderPackInstaller` (Get Shader Pack -> Install from File, or opening/sharing a `.sqlite` file), which tags each shader's `pack_id` and records the pack in the `packs` table (`database/dao/PackDao`). Get Shader Pack lists `assets/packs/*.json` previews (`pack/ShaderPackCatalog`); buying and delivery go through `pack/ShaderPackStore` / `ShaderPackDelivery`, stubbed (`Unavailable*`) until Play Billing / Play Asset Delivery are wired in.

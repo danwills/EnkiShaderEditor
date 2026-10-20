@@ -120,6 +120,26 @@ public class TextureDao {
 		return insertTexture(db, name, bitmap, textureThumbnailSize);
 	}
 
+	// Stores png's own bytes untouched - never re-encoded, cropped or
+	// resized - so a texture holding data rather than a picture (lookup
+	// tables, network weights) reads back exactly as it was made.
+	// `decoded` is png already decoded, for its size and the thumbnail.
+	// Returns the new row's id, or -1 if the name is taken.
+	public long insertExactTexture(@NonNull String name, @NonNull byte[] png,
+			@NonNull Bitmap decoded) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		var thumbnail = BitmapEditor.createScaledBitmap(decoded, textureThumbnailSize,
+				textureThumbnailSize);
+		int w = decoded.getWidth();
+		int h = decoded.getHeight();
+		try {
+			return insertTexture(db, name, w, h, calculateRatio(w, h),
+					BitmapEditor.encodeAsPng(thumbnail), png);
+		} finally {
+			thumbnail.recycle();
+		}
+	}
+
 	public void removeTexture(long id) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		db.delete(DatabaseContract.TextureColumns.TABLE_NAME,
@@ -153,7 +173,9 @@ public class TextureDao {
 	private List<DataRecords.TextureInfo> getTextures(@Nullable String substring,
 			boolean isCubeMap) {
 		List<DataRecords.TextureInfo> textures = new ArrayList<>();
-		String where = DatabaseContract.TextureColumns.RATIO + (isCubeMap ? " = 1.5" : " = 1") +
+		// Cube maps are stored as 3:2 atlases; every other texture -
+		// square images, and exact (data) textures of any shape - is 2D.
+		String where = DatabaseContract.TextureColumns.RATIO + (isCubeMap ? " = 1.5" : " != 1.5") +
 				(substring != null ? " AND " + DatabaseContract.TextureColumns.NAME + " LIKE ?" :
 						"");
 		var args = substring != null ? new String[]{"%" + substring + "%"} : null;

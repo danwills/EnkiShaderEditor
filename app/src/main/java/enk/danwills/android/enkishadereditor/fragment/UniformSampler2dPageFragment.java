@@ -1,7 +1,6 @@
 package enk.danwills.android.enkishadereditor.fragment;
 
 import android.content.Context;
-import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -12,6 +11,8 @@ import android.widget.ListView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.List;
 import java.util.Locale;
@@ -84,12 +85,24 @@ public class UniformSampler2dPageFragment extends AddUniformPageFragment {
 		samplerType = type;
 	}
 
+	// An image to crop into a square texture, or a PNG kept exactly as
+	// it is - for textures holding data (see ExactTextureImportDialog).
 	protected void addTexture() {
-		Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-		intent.setType("image/*");
-		if (getActivity() instanceof AddUniformActivity activity) {
-			activity.startPickImage();
+		if (!(getActivity() instanceof AddUniformActivity activity)) {
+			return;
 		}
+		new MaterialAlertDialogBuilder(activity)
+				.setTitle(R.string.add_texture)
+				.setItems(new CharSequence[]{
+						getString(R.string.add_texture_image),
+						getString(R.string.add_texture_exact_choice)}, (dialog, which) -> {
+					if (which == 0) {
+						activity.startPickImage();
+					} else {
+						activity.startPickExactImage();
+					}
+				})
+				.show();
 	}
 
 	private void showTexture(long id) {

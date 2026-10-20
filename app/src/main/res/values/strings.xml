@@ -378,6 +378,14 @@
 	<string name="compose_sampler_cube">Compose Cube Map</string>
 	<string name="not_enough_faces">Not Enough Faces</string>
 	<string name="add_texture">Add Texture</string>
+	<string name="add_texture_image">Image (Crop to a Square)</string>
+	<string name="add_texture_exact_choice">Exact Pixels (PNG, No Crop or Resize)</string>
+	<string name="add_texture_exact">Exact Pixels</string>
+	<string name="exact_texture_size">Size %1$d × %2$d, kept exactly as it is - for textures that hold data, like lookup tables or weights.</string>
+	<string name="exact_texture_unreadable">Couldn\'t read that image.</string>
+	<string name="exact_texture_not_png">Exact Pixels only takes PNG images, since other formats don\'t keep every pixel exactly.</string>
+	<string name="exact_texture_too_big">That image is %1$d × %2$d. Exact Pixels textures are limited to %3$d on each side.</string>
+	<string name="exact_texture_too_big_file">That file is over %1$d MB, too big for an Exact Pixels texture.</string>
 
 	<!-- CubeMapView -->
 	<string name="cube_map_negative_x">-X Left</string>
