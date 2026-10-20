@@ -182,6 +182,7 @@
 	<string name="video_format_hevc">H.265 MP4 (компактніший)</string>
 	<string name="video_format_vp9">VP9 WebM (для вебу)</string>
 	<string name="video_format_vp8">VP8 WebM (старі браузери)</string>
+	<string name="video_format_gif">GIF (зациклюється всюди, великий)</string>
 	<string name="video_format_size_unsupported">%1$s не може створити відео %2$s на цьому телефоні. Зменште масштаб відео або виберіть інший формат відео в налаштуваннях.</string>
 	<string name="capture_thread_priority">Пріоритет фонового рендерингу</string>
 	<string name="capture_thread_priority_normal">Звичайний</string>

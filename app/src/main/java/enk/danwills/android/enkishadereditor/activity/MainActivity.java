@@ -112,6 +112,7 @@ import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.hardware.LocalMusicPlayer;
+import enk.danwills.android.enkishadereditor.io.GifEncoder;
 import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 import enk.danwills.android.enkishadereditor.io.RecentRecording;
 import enk.danwills.android.enkishadereditor.io.ScreenshotSaver;
@@ -4672,8 +4673,11 @@ public class MainActivity extends AppCompatActivity {
 				};
 				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + "." +
 						videoFormat.extension;
-				videoUri = VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
-						videoQuality, videoFormat, videoFilename, videoProgress);
+				videoUri = videoFormat == VideoFormat.GIF
+						? GifEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
+								videoFilename, videoProgress)
+						: VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
+								videoQuality, videoFormat, videoFilename, videoProgress);
 				if (videoUri != null && cleanupImages) {
 					runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
 					ScreenshotSaver.deleteSubAlbum(this, frameSubAlbum[0]);

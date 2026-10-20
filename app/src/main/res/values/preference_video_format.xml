@@ -4,6 +4,7 @@
 		<item>@string/video_format_hevc</item>
 		<item>@string/video_format_vp9</item>
 		<item>@string/video_format_vp8</item>
+		<item>@string/video_format_gif</item>
 	</string-array>
 	<!-- VideoFormat keys. -->
 	<string-array name="video_format_values" translatable="false">
@@ -11,5 +12,6 @@
 		<item>hevc</item>
 		<item>vp9</item>
 		<item>vp8</item>
+		<item>gif</item>
 	</string-array>
 </resources>

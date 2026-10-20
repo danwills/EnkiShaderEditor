@@ -179,6 +179,7 @@
 	<string name="video_format_hevc">H.265 MP4（更小）</string>
 	<string name="video_format_vp9">VP9 WebM（適合網頁）</string>
 	<string name="video_format_vp8">VP8 WebM（舊版瀏覽器）</string>
+	<string name="video_format_gif">GIF（隨處循環播放，檔案大）</string>
 	<string name="video_format_size_unsupported">%1$s 無法在此手機上產生 %2$s 的影片。請減小影片縮放，或在設定中選擇其他影片格式。</string>
 	<string name="capture_thread_priority">背景渲染優先度</string>
 	<string name="capture_thread_priority_normal">正常</string>

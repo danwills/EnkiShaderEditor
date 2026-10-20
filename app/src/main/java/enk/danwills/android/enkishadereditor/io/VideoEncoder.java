@@ -135,7 +135,9 @@ public final class VideoEncoder {
 			int width, int height, int videoScale, float fps, int quality,
 			@NonNull VideoFormat videoFormat, @NonNull String filename,
 			@Nullable ProgressListener progressListener) {
-		if (frameUris.isEmpty()) {
+		// Null for GIF, which is GifEncoder's.
+		String codecMimeType = videoFormat.codecMimeType;
+		if (frameUris.isEmpty() || codecMimeType == null) {
 			return null;
 		}
 		ContentResolver resolver = context.getContentResolver();
@@ -156,7 +158,7 @@ public final class VideoEncoder {
 		boolean succeeded = false;
 		try {
 			MediaFormat format = MediaFormat.createVideoFormat(
-					videoFormat.codecMimeType, videoWidth, videoHeight);
+					codecMimeType, videoWidth, videoHeight);
 			format.setInteger(MediaFormat.KEY_COLOR_FORMAT,
 					MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
 			format.setInteger(MediaFormat.KEY_BIT_RATE,
@@ -174,7 +176,7 @@ public final class VideoEncoder {
 			// An encoder that takes this size too - see encoderFor().
 			String codecName = videoFormat.encoderFor(videoWidth, videoHeight);
 			if (codecName == null) {
-				Log.e(TAG, "encode: no " + videoFormat.codecMimeType + " encoder for " +
+				Log.e(TAG, "encode: no " + codecMimeType + " encoder for " +
 						videoWidth + "x" + videoHeight);
 				return null;
 			}

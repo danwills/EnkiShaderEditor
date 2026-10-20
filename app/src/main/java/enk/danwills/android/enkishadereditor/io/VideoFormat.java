@@ -12,9 +12,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 // What a frame sequence's video is made as - picked in Settings
-// (Preferences.VIDEO_FORMAT) and made by VideoEncoder with MediaCodec +
-// MediaMuxer. Which formats a phone can make depends on its encoders,
-// so Settings only lists the ones it has (supported()).
+// (Preferences.VIDEO_FORMAT). Every format but GIF is made by
+// VideoEncoder with MediaCodec + MediaMuxer, and which of those a phone
+// can make depends on its encoders, so Settings only lists the ones it
+// has (supported()). GIF is GifEncoder's own, so always there.
 public enum VideoFormat {
 	H264("h264", MediaFormat.MIMETYPE_VIDEO_AVC,
 			MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4, "mp4", "video/mp4", 1.0),
@@ -26,13 +27,15 @@ public enum VideoFormat {
 	VP9("vp9", MediaFormat.MIMETYPE_VIDEO_VP9,
 			MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM, "webm", "video/webm", 0.6),
 	VP8("vp8", MediaFormat.MIMETYPE_VIDEO_VP8,
-			MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM, "webm", "video/webm", 1.0);
+			MediaMuxer.OutputFormat.MUXER_OUTPUT_WEBM, "webm", "video/webm", 1.0),
+	// Saved as an image, not a video - see GifEncoder.
+	GIF("gif", null, -1, "gif", "image/gif", 1.0);
 
 	// The value stored in preferences.
 	@NonNull
 	public final String key;
-	// The MediaCodec encoder type.
-	@NonNull
+	// The MediaCodec encoder type; null for GIF.
+	@Nullable
 	public final String codecMimeType;
 	public final int muxerFormat;
 	@NonNull
@@ -42,7 +45,7 @@ public enum VideoFormat {
 	public final String mimeType;
 	public final double bitrateScale;
 
-	VideoFormat(@NonNull String key, @NonNull String codecMimeType, int muxerFormat,
+	VideoFormat(@NonNull String key, @Nullable String codecMimeType, int muxerFormat,
 			@NonNull String extension, @NonNull String mimeType, double bitrateScale) {
 		this.key = key;
 		this.codecMimeType = codecMimeType;
@@ -59,7 +62,7 @@ public enum VideoFormat {
 		MediaCodecInfo[] codecs = new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos();
 		List<VideoFormat> formats = new ArrayList<>();
 		for (VideoFormat format : values()) {
-			if (hasEncoder(codecs, format.codecMimeType)) {
+			if (format.codecMimeType == null || hasEncoder(codecs, format.codecMimeType)) {
 				formats.add(format);
 			}
 		}
@@ -67,7 +70,9 @@ public enum VideoFormat {
 	}
 
 	public boolean supportsSize(int width, int height) {
-		return encoderFor(width, height) != null;
+		return codecMimeType == null
+				? width <= GifEncoder.MAX_SIZE && height <= GifEncoder.MAX_SIZE
+				: encoderFor(width, height) != null;
 	}
 
 	// The name of an encoder that can make a video this size, or null.
@@ -79,6 +84,9 @@ public enum VideoFormat {
 	// these videos aren't made in real time.
 	@Nullable
 	public String encoderFor(int width, int height) {
+		if (codecMimeType == null) {
+			return null;
+		}
 		for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS)
 				.getCodecInfos()) {
 			if (!info.isEncoder() || !supportsType(info, codecMimeType)) {

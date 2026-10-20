@@ -182,6 +182,7 @@
 	<string name="video_format_hevc">H.265 MP4 (Smaller)</string>
 	<string name="video_format_vp9">VP9 WebM (For the Web)</string>
 	<string name="video_format_vp8">VP8 WebM (Older Browsers)</string>
+	<string name="video_format_gif">GIF (Loops Anywhere, Large)</string>
 	<string name="video_format_size_unsupported">%1$s can\'t make a %2$s video on this phone. Try a smaller Video Scale, or another Video Format in Settings.</string>
 	<string name="capture_thread_priority">Background Render Priority</string>
 	<string name="capture_thread_priority_normal">Normal</string>

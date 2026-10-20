@@ -179,6 +179,7 @@
 	<string name="video_format_hevc">H.265 MP4（更小）</string>
 	<string name="video_format_vp9">VP9 WebM（适合网页）</string>
 	<string name="video_format_vp8">VP8 WebM（旧版浏览器）</string>
+	<string name="video_format_gif">GIF（随处循环播放，文件大）</string>
 	<string name="video_format_size_unsupported">%1$s 无法在此手机上生成 %2$s 的视频。请减小视频缩放，或在设置中选择其他视频格式。</string>
 	<string name="capture_thread_priority">后台渲染优先级</string>
 	<string name="capture_thread_priority_normal">正常</string>
