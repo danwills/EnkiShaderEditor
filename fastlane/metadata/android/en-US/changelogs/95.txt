@@ -1,0 +1,11 @@
+* Add ShaderToy-style offscreen buffer passes
+* Copy, share and paste whole multipass shaders
+* Add shader packs and Batch Rename & Delete
+* Add Exact Pixels texture import
+* Long-press a buffer tab to show that buffer
+* Add Stop and Save What's Rendered to high-res captures
+* Size capture tiles by measured speed to avoid GPU resets
+* Fix frame sequences failing for some shaders
+* Outline the shader name and fps
+* Make Fast the default syntax highlighting
+* Require Android 7.0

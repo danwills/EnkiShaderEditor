@@ -1,5 +1,22 @@
 # Change Log
 
+## 2.36.4
+* Add ShaderToy-style offscreen buffer passes with tabs and channel slots
+* Copy, share and paste whole multipass shaders as one text
+* Add shader packs: build, install and Get Shader Pack
+* Add Batch Rename & Delete
+* Add Exact Pixels texture import for data textures
+* Long-press a buffer tab to show that buffer on screen
+* Keep the shader running when switching pass tabs
+* Add Stop and Save What's Rendered to high-res captures
+* Add 4096², 8192² and 8K capture presets
+* Size capture tiles by measured speed to avoid GPU resets
+* Fix frame sequences failing for some shaders
+* Outline the shader name and fps over bright shaders
+* Keep the navigation bar briefly after going fullscreen
+* Make Fast the default syntax highlighting mode
+* Require Android 7.0
+
 ## 2.36.3
 * Add persistent runtime uniform for wallpapers
 
