@@ -71,6 +71,9 @@ final class BuiltinUniforms {
 	// The Image pass's `sourceText`, if it uses it - see SourceText.
 	@Nullable
 	private SourceText sourceText;
+	// The built-in `font`, if a shader uses it - see FontTexture.
+	@Nullable
+	private GlTexture2D fontTexture;
 	@NonNull
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
@@ -387,6 +390,10 @@ final class BuiltinUniforms {
 		}
 		cameraUniforms.apply(bindings);
 		audioUniforms.apply(device);
+		// Before the saved textures, so one saved as "font" wins.
+		if (fontTexture != null) {
+			bindings.setTexture(ShaderRenderer.UNIFORM_FONT, fontTexture);
+		}
 		textureResources.applyTo(bindings);
 		// The Image pass's; drawChainRows() swaps in each buffer pass's
 		// own as it draws it.
@@ -400,6 +407,10 @@ final class BuiltinUniforms {
 				(int) surfaceResolution[0],
 				(int) surfaceResolution[1],
 				now);
+	}
+
+	void setFontTexture(@Nullable GlTexture2D fontTexture) {
+		this.fontTexture = fontTexture;
 	}
 
 	void setSourceText(@Nullable SourceText sourceText) {

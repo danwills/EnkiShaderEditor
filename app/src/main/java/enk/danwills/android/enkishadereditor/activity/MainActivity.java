@@ -2054,6 +2054,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final int CHANNEL_MENU_MIPMAP = 22;
 	private static final int CHANNEL_MENU_CLAMP = 30;
 	private static final int CHANNEL_MENU_REPEAT = 31;
+	private static final int CHANNEL_MENU_FONT = 40;
 
 	// What one iChannel slot of the shown pass reads, and how - edits the
 	// pass's declaration of it (undoably, like typing it).
@@ -2070,11 +2071,16 @@ public class MainActivity extends AppCompatActivity {
 						String.valueOf(ShaderProjectPaths.getBufferLetter(i))));
 			}
 		}
+		menu.add(1, CHANNEL_MENU_FONT, 0, R.string.channel_font);
 		menu.setGroupCheckable(1, true, true);
 		int buffer = current != null ? current.getBuffer() : ChannelParameters.NO_BUFFER;
-		var checked = menu.findItem(buffer == ChannelParameters.NO_BUFFER
-				? CHANNEL_MENU_NONE
-				: CHANNEL_MENU_BUFFER + buffer);
+		boolean font = current != null &&
+				ChannelParameters.TEXTURE_FONT.equals(current.getTexture());
+		var checked = menu.findItem(font
+				? CHANNEL_MENU_FONT
+				: buffer == ChannelParameters.NO_BUFFER
+						? CHANNEL_MENU_NONE
+						: CHANNEL_MENU_BUFFER + buffer);
 		if (checked != null) {
 			checked.setChecked(true);
 		}
@@ -2104,6 +2110,8 @@ public class MainActivity extends AppCompatActivity {
 				parameters = null;
 			} else if (id >= CHANNEL_MENU_BUFFER && id < CHANNEL_MENU_BUFFER + buffers.length) {
 				parameters.setBuffer(id - CHANNEL_MENU_BUFFER);
+			} else if (id == CHANNEL_MENU_FONT) {
+				parameters.setTexture(ChannelParameters.TEXTURE_FONT);
 			} else if (id == CHANNEL_MENU_LINEAR) {
 				parameters.set("l", "l", parameters.getWrapSShortcut(),
 						parameters.getWrapTShortcut());

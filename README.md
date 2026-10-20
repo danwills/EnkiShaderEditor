@@ -47,3 +47,9 @@ send some Bitcoin decimals to `bc1q2guk2rpll587aymrfadkdtpq32448x5khk5j8z`.
 * Disables rendering when the battery is low
 
 See [FAQ.md](FAQ.md) for frequently asked questions.
+
+## Third-party assets
+
+* The built-in `font` texture is rendered from
+	[IBM Plex Mono](https://github.com/IBM/plex), Copyright © 2017 IBM Corp., under the
+	[SIL Open Font License 1.1](tools/font/OFL.txt) - see `tools/font/make_atlas.py`.

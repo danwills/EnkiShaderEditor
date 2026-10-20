@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kept by resource shrinking although nothing refers to it: the font
+     atlas's licence has to ship with it (SIL Open Font License). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+	tools:keep="@raw/font_atlas_license"/>

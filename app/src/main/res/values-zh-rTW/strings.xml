@@ -359,6 +359,7 @@
 	<string name="camera_orientation">用於將鏡頭幀旋轉至設備方向的矩陣（cameraAddent + uv * cameraOrientation）</string>
 	<string name="date_time">年、月、日和目前秒數</string>
 	<string name="daytime">時、分、秒</string>
+	<string name="font_atlas">內建字形圖集（16×16 格，字元編碼 0–255，有號距離場：邊緣為 0.5，內部更高）</string>
 	<string name="source_text">此通道自身的原始碼：每個字元一個紋素，第 n 行紋素即第 n 行程式碼。R = 字元編碼，G×256+B = 依閱讀順序的序號，A = 1 表示字元</string>
 	<string name="source_text_length">sourceText 中的字元數</string>
 	<string name="source_text_size">sourceText 的欄數和行數</string>
@@ -580,6 +581,8 @@
 	<string name="pass_preview_buffer">預覽顯示緩衝區 %1$s（再次長按返回 Img）</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">無</string>
+	<string name="channel_font">字型</string>
+	<string name="channel_font_short">字型</string>
 	<string name="channel_buffer">緩衝區 %1$s</string>
 	<string name="channel_filter_linear">線性過濾</string>
 	<string name="channel_filter_nearest">最近鄰過濾</string>

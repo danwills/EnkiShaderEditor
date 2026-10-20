@@ -126,6 +126,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT = "sourceText";
 	public static final String UNIFORM_SOURCE_TEXT_SIZE = "sourceTextSize";
 	public static final String UNIFORM_SOURCE_TEXT_LENGTH = "sourceTextLength";
+	// The built-in glyph atlas - see FontTexture.
+	public static final String UNIFORM_FONT = "font";
 	public static final String UNIFORM_BATTERY = "battery";
 	public static final String UNIFORM_CAMERA_ADDENT = "cameraAddent";
 	public static final String UNIFORM_CAMERA_BACK = "cameraBack";
@@ -328,6 +330,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// left behind, or -1 once its inputs are gone (targets cleared or
 	// rebuilt) - and if anything else began a frame since (a capture),
 	// the count won't match. GL thread only.
+	// See updateFontTexture() - GL thread only.
+	@Nullable
+	private GlTexture2D fontTexture;
 	private volatile boolean redoRequested;
 	private int redoFrameStamp = -1;
 	@Nullable
@@ -628,6 +633,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 		discardContextResources();
 		redoFrameStamp = -1;
+		fontTexture = null;
 		blackTexture = device.createTexture2D();
 		device.allocateTexture2D(blackTexture, 1, 1);
 		device.updateTexture2D(blackTexture, java.nio.ByteBuffer.allocateDirect(4));
@@ -707,6 +713,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 				updateBufferMipmapNeeds();
 				programManager.createMainSourceText(device, tabWidth());
+				updateFontTexture();
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
 						onRendererListener != null) {
@@ -1203,6 +1210,35 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		bindings.setFloat(UNIFORM_SOURCE_TEXT_LENGTH, text.length);
 	}
 
+	// Made the first time a shader uses it, kept until one doesn't.
+	private void updateFontTexture() {
+		boolean used = usesFont(programManager.getPreparedShaderSource());
+		for (var program : programManager.getPassPrograms()) {
+			used |= device.hasUniform(program, UNIFORM_FONT);
+		}
+		for (var pass : programManager.getBufferPasses()) {
+			used |= usesFont(pass.prepared);
+		}
+		if (used && fontTexture == null) {
+			fontTexture = FontTexture.create(context, device);
+		} else if (!used && fontTexture != null) {
+			device.deleteTexture(fontTexture);
+			fontTexture = null;
+		}
+		builtinUniforms.setFontTexture(fontTexture);
+	}
+
+	private static boolean usesFont(@NonNull PreparedShaderSource source) {
+		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+			var parameters = source.getChannel(channel);
+			if (parameters != null &&
+					ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static int tabWidth() {
 		return ShaderEditorApp.preferences.getTabWidth();
 	}
@@ -1219,6 +1255,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 						break;
 					}
 				}
+			}
+			if (parameters != null &&
+					ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())) {
+				texture = fontTexture;
 			}
 			int offset = channel * 3;
 			if (texture != null) {

@@ -457,10 +457,13 @@ public class EditorFragment extends Fragment {
 		String source = shaderEditor.getCleanText();
 		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
 			ChannelParameters parameters = ChannelDeclarations.find(source, channel);
-			String assigned = parameters == null ||
-					parameters.getBuffer() == ChannelParameters.NO_BUFFER
+			String assigned = parameters == null
 					? "\u2014"
-					: String.valueOf((char) ('A' + parameters.getBuffer()));
+					: ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())
+							? getString(R.string.channel_font_short)
+							: parameters.getBuffer() == ChannelParameters.NO_BUFFER
+									? "\u2014"
+									: String.valueOf((char) ('A' + parameters.getBuffer()));
 			var slot = new TextView(requireContext());
 			slot.setText(getString(R.string.channel_slot, channel, assigned));
 			slot.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);

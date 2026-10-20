@@ -102,6 +102,10 @@ public class PresetUniformAdapter extends BaseAdapter implements Filterable {
 						ShaderRenderer.UNIFORM_DAYTIME,
 						context.getString(R.string.daytime)),
 				new Uniform(
+						"sampler2D",
+						ShaderRenderer.UNIFORM_FONT,
+						context.getString(R.string.font_atlas)),
+				new Uniform(
 						"int",
 						ShaderRenderer.UNIFORM_FRAME_NUMBER,
 						context.getString(R.string.frame_number)),

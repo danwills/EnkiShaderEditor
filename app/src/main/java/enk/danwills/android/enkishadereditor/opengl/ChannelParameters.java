@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.opengl.GLES20;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -12,8 +13,9 @@ import java.util.regex.Pattern;
 //
 //   uniform sampler2D iChannel0;///buf:A;min:l;mag:l;s:c;t:c;
 //
-// `buf` names the offscreen buffer (A-D) the slot samples; absent, the
-// slot is unassigned and reads black. Filtering/wrapping default to
+// `buf` names the offscreen buffer (A-D) the slot samples, or `tex` one
+// of the app's built-in textures (`tex:font;`, see FontTexture); with
+// neither, the slot is unassigned and reads black. Filtering/wrapping default to
 // ShaderToy's (linear, clamp) rather than TextureParameters' own.
 public class ChannelParameters extends TextureParameters {
 	public static final int MAX_CHANNELS = 4;
@@ -22,8 +24,13 @@ public class ChannelParameters extends TextureParameters {
 	private static final Pattern PATTERN_CHANNEL_NAME =
 			Pattern.compile("^" + CHANNEL_PREFIX + "([0-" + (MAX_CHANNELS - 1) + "])$");
 	private static final String BUFFER = "buf";
+	private static final String TEXTURE = "tex";
+	public static final String TEXTURE_FONT = "font";
 
 	private int buffer = NO_BUFFER;
+	// A built-in texture's name (TEXTURE_FONT), or null.
+	@Nullable
+	private String texture;
 
 	public ChannelParameters() {
 		super(GLES20.GL_LINEAR,
@@ -55,6 +62,17 @@ public class ChannelParameters extends TextureParameters {
 
 	public void setBuffer(int buffer) {
 		this.buffer = buffer;
+		texture = null;
+	}
+
+	@Nullable
+	public String getTexture() {
+		return texture;
+	}
+
+	public void setTexture(@Nullable String texture) {
+		this.texture = texture;
+		buffer = NO_BUFFER;
 	}
 
 	@NonNull
@@ -66,6 +84,11 @@ public class ChannelParameters extends TextureParameters {
 				params = HEADER;
 			}
 			params += BUFFER + ASSIGN + (char) ('A' + buffer) + SEPARATOR;
+		} else if (texture != null) {
+			if (params.isEmpty()) {
+				params = HEADER;
+			}
+			params += TEXTURE + ASSIGN + texture + SEPARATOR;
 		}
 		return params;
 	}
@@ -78,6 +101,8 @@ public class ChannelParameters extends TextureParameters {
 					value.charAt(0) < 'A' + MAX_CHANNELS
 					? value.charAt(0) - 'A'
 					: NO_BUFFER;
+		} else if (TEXTURE.equals(name)) {
+			texture = TEXTURE_FONT.equals(value) ? value : null;
 		} else {
 			super.parseParameter(name, value);
 		}

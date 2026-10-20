@@ -171,6 +171,27 @@ float index = floor(t.g * 255.0 + 0.5) * 256.0 + floor(t.b * 255.0 + 0.5);
 
 Lines are cut at 512 columns, and the text at 2048 lines.
 
+To draw text, there's a built-in font too:
+
+```glsl
+uniform sampler2D font;
+```
+
+It's a 16x16 grid of glyphs for character codes 0-255, in the same layout as ShaderToy's font
+texture (code `n` is in column `n % 16`, row `n / 16` from the top), stored as a signed distance
+field: 0.5 on a glyph's edge, higher inside. So text stays crisp at any size or warp:
+
+```glsl
+vec2 cell = vec2(mod(code, 16.0), 15.0 - floor(code / 16.0));
+float d = texture2D(font, (cell + p) / 16.0).r; // p: 0-1 within the cell
+float ink = smoothstep(0.5 - w, 0.5 + w, d);    // w: about 4.0 / cell height in pixels
+```
+
+Glyphs are centred in their cells and about 0.37 of a cell wide. A ShaderToy-style shader can
+read it through a channel instead, with `uniform sampler2D iChannel1; ///tex:font;` (or pick
+**Font** for the channel in the editor's channel row). The glyphs are rendered from IBM Plex Mono
+(SIL Open Font License).
+
 ## Can I paste ShaderToy code directly?
 
 Yes.

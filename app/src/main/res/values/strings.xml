@@ -367,6 +367,7 @@
 	<string name="camera_orientation">Multiply with texture coordinate with this matrix to rotate camera frame to device orientation (cameraAddent + uv * cameraOrientation; only on Ice Cream Sandwich or better)</string>
 	<string name="date_time">Year, month, day and time in seconds</string>
 	<string name="daytime">Hour, minute and seconds</string>
+	<string name="font_atlas">Built-in glyph atlas (16×16 cells of character codes 0–255, as a signed distance field: 0.5 on the edge, higher inside)</string>
 	<string name="source_text">This pass\'s own source text: one texel per character, row n is line n. R = character code, G×256+B = its index in reading order, A = 1 for a character</string>
 	<string name="source_text_length">Number of characters in sourceText</string>
 	<string name="source_text_size">Columns and lines of sourceText</string>
@@ -609,6 +610,8 @@
 	<string name="pass_preview_buffer">Preview shows Buffer %1$s (long-press again for Img)</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">None</string>
+	<string name="channel_font">Font</string>
+	<string name="channel_font_short">Font</string>
 	<string name="channel_buffer">Buffer %1$s</string>
 	<string name="channel_filter_linear">Linear filtering</string>
 	<string name="channel_filter_nearest">Nearest filtering</string>

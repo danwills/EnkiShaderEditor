@@ -367,6 +367,7 @@
 	<string name="camera_orientation">Multiply with texture coordinate with this matrix to rotate camera frame to device orientation (cameraAddent + uv * cameraOrientation; only on Ice Cream Sandwich or better)</string>
 	<string name="date_time">Год, месяц, день и время в секундах</string>
 	<string name="daytime">Часы, минуты и секунды</string>
+	<string name="font_atlas">Встроенный атлас глифов (16×16 ячеек с кодами символов 0–255, поле расстояний со знаком: 0.5 на краю, больше внутри)</string>
 	<string name="source_text">Исходный текст этого прохода: один тексель на символ, строка n текстуры — строка n кода. R — код символа, G×256+B — его номер по порядку чтения, A = 1 для символа</string>
 	<string name="source_text_length">Количество символов в sourceText</string>
 	<string name="source_text_size">Столбцы и строки sourceText</string>
@@ -616,6 +617,8 @@
 	<string name="pass_preview_buffer">Предпросмотр: буфер %1$s (удерживайте снова для Img)</string>
 	<string name="channel_slot">iChannel%1$d %2$s</string>
 	<string name="channel_none">Нет</string>
+	<string name="channel_font">Шрифт</string>
+	<string name="channel_font_short">Шрифт</string>
 	<string name="channel_buffer">Буфер %1$s</string>
 	<string name="channel_filter_linear">Линейная фильтрация</string>
 	<string name="channel_filter_nearest">Ближайший пиксель</string>
