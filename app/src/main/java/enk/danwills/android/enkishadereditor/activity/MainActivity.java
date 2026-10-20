@@ -530,6 +530,9 @@ public class MainActivity extends AppCompatActivity {
 		View runShaderTextButton = findViewById(R.id.run_shader_text);
 		ViewCompat.setTooltipText(runShaderTextButton, getText(R.string.run_shader_text));
 		runShaderTextButton.setOnClickListener(v -> runShaderText());
+		View floatingRunButton = findViewById(R.id.run_shader_text_floating);
+		ViewCompat.setTooltipText(floatingRunButton, getText(R.string.run_shader_text));
+		floatingRunButton.setOnClickListener(v -> runShaderText());
 		editorFragment.setOnEditPausedListener(text -> {
 			updateRunShaderTextButton();
 			if (ShaderEditorApp.preferences.doesRunOnChange()) {
@@ -627,6 +630,7 @@ public class MainActivity extends AppCompatActivity {
 		// Posted: the menu that started this still has the window's
 		// focus until it's gone, and the keyboard won't show for a
 		// view without it.
+		shaderKeyInput.setTyping(true);
 		shaderKeyInput.post(() -> {
 			shaderKeyInput.requestFocus();
 			WindowCompat.getInsetsController(getWindow(), shaderKeyInput)
@@ -643,6 +647,7 @@ public class MainActivity extends AppCompatActivity {
 		extraKeysManager.setSuppressed(false);
 		SoftKeyboard.hide(this, shaderKeyInput);
 		shaderKeyInput.clearFocus();
+		shaderKeyInput.setTyping(false);
 		shaderViewManager.getKeyboardInput().releaseAll();
 	}
 
@@ -2185,13 +2190,20 @@ public class MainActivity extends AppCompatActivity {
 
 	// Run Typed Text shows only for a self-editing shader - one with a
 	// buffer that has a `///text:` line (see TextDirective).
+	// While the toolbar's out of sight (fullscreen, or hidden), a
+	// floating copy of the button takes its place.
 	private void updateRunShaderTextButton() {
 		boolean selfEditing = TextDirective.findTextBuffer(shaderManager
 				.getEditedProjectSession(editorFragment.getText())
 				.getProject().getBufferSources()) >= 0;
-		View button = findViewById(R.id.run_shader_text);
-		if ((button.getVisibility() == View.VISIBLE) != selfEditing) {
-			button.setVisibility(selfEditing ? View.VISIBLE : View.GONE);
+		setVisible(findViewById(R.id.run_shader_text), selfEditing);
+		setVisible(findViewById(R.id.run_shader_text_floating), selfEditing &&
+				(uiManager.isFullscreen() || uiManager.isToolbarHidden()));
+	}
+
+	private static void setVisible(@NonNull View view, boolean visible) {
+		if ((view.getVisibility() == View.VISIBLE) != visible) {
+			view.setVisibility(visible ? View.VISIBLE : View.GONE);
 		}
 	}
 
@@ -6263,6 +6275,7 @@ public class MainActivity extends AppCompatActivity {
 			}
 		}
 		uiManager.setFullscreen(fullscreen);
+		updateRunShaderTextButton();
 		shaderViewManager.setCropBorderPixel(fullscreen);
 		// Only meaningful in fullscreen, where there's no toolbar back
 		// button to tap - see FullscreenExitGestureDetector.
@@ -6312,6 +6325,7 @@ public class MainActivity extends AppCompatActivity {
 
 	private void setToolbarHidden(boolean hidden) {
 		uiManager.setToolbarHidden(hidden);
+		updateRunShaderTextButton();
 	}
 
 	private void togglePauseShader() {

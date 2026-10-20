@@ -191,6 +191,23 @@
 				android:textSize="13sp"/>
 		</LinearLayout>
 
+		<!-- Run Typed Text while the toolbar's out of sight (fullscreen,
+		     or the toolbar hidden) - see MainActivity.
+		     updateRunShaderTextButton(). Drag it anywhere. -->
+		<enk.danwills.android.enkishadereditor.widget.DraggableButton
+			android:id="@+id/run_shader_text_floating"
+			android:layout_width="52dp"
+			android:layout_height="52dp"
+			android:layout_gravity="top|end"
+			android:layout_marginTop="96dp"
+			android:layout_marginEnd="16dp"
+			android:background="@drawable/background_floating_button"
+			android:contentDescription="@string/run_shader_text"
+			android:elevation="8dp"
+			android:src="@drawable/ic_keyboard_return"
+			android:tint="@color/toggle_active"
+			android:visibility="gone"/>
+
 		<!-- Adjust Defines' live mode, over the fullscreen shader -->
 		<enk.danwills.android.enkishadereditor.widget.LiveDefinesPanel
 			android:id="@+id/live_defines_panel"

@@ -29,8 +29,15 @@ public class ShaderKeyInputView extends View {
 
 	public ShaderKeyInputView(@NonNull Context context, @Nullable AttributeSet attrs) {
 		super(context, attrs);
-		setFocusable(true);
-		setFocusableInTouchMode(true);
+		setTyping(false);
+	}
+
+	// Focusable only while typing: otherwise it'd pick up focus whenever
+	// the editor hides, and keyboards (Samsung's, with a hardware
+	// keyboard) would show their toolbar for it as if it were a field.
+	public void setTyping(boolean typing) {
+		setFocusable(typing);
+		setFocusableInTouchMode(typing);
 	}
 
 	public void setKeyboard(@Nullable KeyboardInput keyboard) {
