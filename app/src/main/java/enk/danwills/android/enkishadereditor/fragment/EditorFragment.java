@@ -461,6 +461,8 @@ public class EditorFragment extends Fragment {
 					? "\u2014"
 					: ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())
 							? getString(R.string.channel_font_short)
+							: ChannelParameters.TEXTURE_KEYBOARD.equals(parameters.getTexture())
+							? getString(R.string.channel_keyboard_short)
 							: parameters.getBuffer() == ChannelParameters.NO_BUFFER
 									? "\u2014"
 									: String.valueOf((char) ('A' + parameters.getBuffer()));

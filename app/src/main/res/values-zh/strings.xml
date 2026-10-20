@@ -360,6 +360,8 @@
 	<string name="date_time">年、月、日和当前秒数</string>
 	<string name="daytime">时、分、秒</string>
 	<string name="font_atlas">内置字形图集（16×16 格，字符编码 0–255，有符号距离场：边缘为 0.5，内部更高）</string>
+	<string name="keyboard_texture">按住、按下和切换的按键，与 ShaderToy 的 256×3 键盘纹理相同（JavaScript 键码；第 0 行按住，第 1 行本帧按下，第 2 行切换）</string>
+	<string name="typed_char">本帧输入的字符，或 0（8 退格，9 Tab，10 回车，127 删除）</string>
 	<string name="source_text">此通道自身的源代码：每个字符一个纹素，第 n 行纹素即第 n 行代码。R = 字符编码，G×256+B = 按阅读顺序的序号，A = 1 表示字符</string>
 	<string name="source_text_color">sourceText 的语法高亮，布局相同：RGB = 编辑器中该字符的颜色，A × 255 = 其类别（行尾之后为 0）</string>
 	<string name="source_text_length">sourceText 中的字符数</string>
@@ -586,6 +588,8 @@
 	<string name="channel_none">无</string>
 	<string name="channel_font">字体</string>
 	<string name="channel_font_short">字体</string>
+	<string name="channel_keyboard">键盘</string>
+	<string name="channel_keyboard_short">键盘</string>
 	<string name="channel_buffer">缓冲区 %1$s</string>
 	<string name="channel_filter_linear">线性过滤</string>
 	<string name="channel_filter_nearest">最近邻过滤</string>

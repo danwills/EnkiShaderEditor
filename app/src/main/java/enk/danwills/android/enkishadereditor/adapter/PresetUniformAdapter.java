@@ -135,6 +135,10 @@ public class PresetUniformAdapter extends BaseAdapter implements Filterable {
 						ShaderRenderer.UNIFORM_INCLINATION_MATRIX,
 						context.getString(R.string.device_inclination_matrix)),
 				new Uniform(
+						"sampler2D",
+						ShaderRenderer.UNIFORM_KEYBOARD,
+						context.getString(R.string.keyboard_texture)),
+				new Uniform(
 						"float",
 						ShaderRenderer.UNIFORM_LIGHT,
 						context.getString(R.string.light)),
@@ -246,7 +250,11 @@ public class PresetUniformAdapter extends BaseAdapter implements Filterable {
 				new Uniform(
 						"vec2",
 						ShaderRenderer.UNIFORM_TOUCH_START,
-						context.getString(R.string.touch_start_position_in_pixels)));
+						context.getString(R.string.touch_start_position_in_pixels)),
+				new Uniform(
+						"int",
+						ShaderRenderer.UNIFORM_TYPED_CHAR,
+						context.getString(R.string.typed_char)));
 		filteredUniforms = uniforms;
 	}
 

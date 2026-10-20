@@ -125,6 +125,7 @@ import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
 import enk.danwills.android.enkishadereditor.io.VideoEncoder;
 import enk.danwills.android.enkishadereditor.io.VideoFormat;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
+import enk.danwills.android.enkishadereditor.opengl.KeyboardInput;
 import enk.danwills.android.enkishadereditor.opengl.LiveDefines;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
@@ -390,6 +391,10 @@ public class MainActivity extends AppCompatActivity {
 		uiManager.setOnCodeVisibilityChangedListener(codeVisible -> {
 			updatePauseForEditingVisibility(codeVisible);
 			updatePausedBlanking();
+			if (codeVisible) {
+				// Keys go to the editor now - see sendKeyToShader().
+				shaderViewManager.getKeyboardInput().releaseAll();
+			}
 		});
 		shaderListManager = new ShaderListManager(this,
 				findViewById(R.id.shaders),
@@ -507,10 +512,45 @@ public class MainActivity extends AppCompatActivity {
 	// handling).
 	@Override
 	public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+		if (sendKeyToShader(event)) {
+			return true;
+		}
 		if (event.getAction() == KeyEvent.ACTION_DOWN && handleHotkeyDown(event)) {
 			return true;
 		}
 		return super.dispatchKeyEvent(event);
+	}
+
+	// While the running shader reads the keyboard (`keyboard` or
+	// `typedChar`, see KeyboardInput) and nothing is being edited - the
+	// code editor hidden, or fullscreen - keys go to the shader instead
+	// of the app's own single-key shortcuts (arrows, Tab...). Ctrl
+	// shortcuts, Back and Escape still work, and keys a shader can't
+	// use (volume, media) pass through. True if the key was taken.
+	private boolean sendKeyToShader(@NonNull KeyEvent event) {
+		if (!shaderViewManager.isKeyboardWanted() ||
+				(editorFragment.isCodeVisible() && !uiManager.isFullscreen())) {
+			return false;
+		}
+		int keyCode = event.getKeyCode();
+		boolean modifier = keyCode == KeyEvent.KEYCODE_CTRL_LEFT ||
+				keyCode == KeyEvent.KEYCODE_CTRL_RIGHT;
+		if (keyCode == KeyEvent.KEYCODE_BACK || (event.isCtrlPressed() && !modifier)) {
+			return false;
+		}
+		KeyboardInput keys = shaderViewManager.getKeyboardInput();
+		int jsCode = KeyboardInput.jsKeyCode(keyCode);
+		int typed = 0;
+		if (event.getAction() == KeyEvent.ACTION_DOWN) {
+			if (event.getRepeatCount() == 0) {
+				keys.keyDown(jsCode);
+			}
+			typed = KeyboardInput.typedCharOf(event);
+			keys.type(typed);
+		} else if (event.getAction() == KeyEvent.ACTION_UP) {
+			keys.keyUp(jsCode);
+		}
+		return (jsCode > 0 || typed > 0) && keyCode != KeyEvent.KEYCODE_ESCAPE;
 	}
 
 	// True if this key (plus whichever modifiers were held) was handled
@@ -948,6 +988,7 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onPause() {
+		shaderViewManager.getKeyboardInput().releaseAll();
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
 		}
@@ -2055,6 +2096,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final int CHANNEL_MENU_CLAMP = 30;
 	private static final int CHANNEL_MENU_REPEAT = 31;
 	private static final int CHANNEL_MENU_FONT = 40;
+	private static final int CHANNEL_MENU_KEYBOARD = 41;
 
 	// What one iChannel slot of the shown pass reads, and how - edits the
 	// pass's declaration of it (undoably, like typing it).
@@ -2072,12 +2114,14 @@ public class MainActivity extends AppCompatActivity {
 			}
 		}
 		menu.add(1, CHANNEL_MENU_FONT, 0, R.string.channel_font);
+		menu.add(1, CHANNEL_MENU_KEYBOARD, 0, R.string.channel_keyboard);
 		menu.setGroupCheckable(1, true, true);
 		int buffer = current != null ? current.getBuffer() : ChannelParameters.NO_BUFFER;
-		boolean font = current != null &&
-				ChannelParameters.TEXTURE_FONT.equals(current.getTexture());
-		var checked = menu.findItem(font
+		String texture = current != null ? current.getTexture() : null;
+		var checked = menu.findItem(ChannelParameters.TEXTURE_FONT.equals(texture)
 				? CHANNEL_MENU_FONT
+				: ChannelParameters.TEXTURE_KEYBOARD.equals(texture)
+				? CHANNEL_MENU_KEYBOARD
 				: buffer == ChannelParameters.NO_BUFFER
 						? CHANNEL_MENU_NONE
 						: CHANNEL_MENU_BUFFER + buffer);
@@ -2112,6 +2156,8 @@ public class MainActivity extends AppCompatActivity {
 				parameters.setBuffer(id - CHANNEL_MENU_BUFFER);
 			} else if (id == CHANNEL_MENU_FONT) {
 				parameters.setTexture(ChannelParameters.TEXTURE_FONT);
+			} else if (id == CHANNEL_MENU_KEYBOARD) {
+				parameters.setTexture(ChannelParameters.TEXTURE_KEYBOARD);
 			} else if (id == CHANNEL_MENU_LINEAR) {
 				parameters.set("l", "l", parameters.getWrapSShortcut(),
 						parameters.getWrapTShortcut());

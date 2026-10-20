@@ -14,7 +14,8 @@ import java.util.regex.Pattern;
 //   uniform sampler2D iChannel0;///buf:A;min:l;mag:l;s:c;t:c;
 //
 // `buf` names the offscreen buffer (A-D) the slot samples, or `tex` one
-// of the app's built-in textures (`tex:font;`, see FontTexture); with
+// of the app's built-in textures (`tex:font;`, see FontTexture, or
+// `tex:keyboard;`, see KeyboardInput); with
 // neither, the slot is unassigned and reads black. Filtering/wrapping default to
 // ShaderToy's (linear, clamp) rather than TextureParameters' own.
 public class ChannelParameters extends TextureParameters {
@@ -26,9 +27,10 @@ public class ChannelParameters extends TextureParameters {
 	private static final String BUFFER = "buf";
 	private static final String TEXTURE = "tex";
 	public static final String TEXTURE_FONT = "font";
+	public static final String TEXTURE_KEYBOARD = "keyboard";
 
 	private int buffer = NO_BUFFER;
-	// A built-in texture's name (TEXTURE_FONT), or null.
+	// A built-in texture's name (TEXTURE_FONT, TEXTURE_KEYBOARD), or null.
 	@Nullable
 	private String texture;
 
@@ -102,7 +104,7 @@ public class ChannelParameters extends TextureParameters {
 					? value.charAt(0) - 'A'
 					: NO_BUFFER;
 		} else if (TEXTURE.equals(name)) {
-			texture = TEXTURE_FONT.equals(value) ? value : null;
+			texture = TEXTURE_FONT.equals(value) || TEXTURE_KEYBOARD.equals(value) ? value : null;
 		} else {
 			super.parseParameter(name, value);
 		}

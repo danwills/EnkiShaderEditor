@@ -129,6 +129,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT_COLOR = "sourceTextColor";
 	// The built-in glyph atlas - see FontTexture.
 	public static final String UNIFORM_FONT = "font";
+	// Keys for shaders - see KeyboardInput.
+	public static final String UNIFORM_KEYBOARD = "keyboard";
+	public static final String UNIFORM_TYPED_CHAR = "typedChar";
 	public static final String UNIFORM_BATTERY = "battery";
 	public static final String UNIFORM_CAMERA_ADDENT = "cameraAddent";
 	public static final String UNIFORM_CAMERA_BACK = "cameraBack";
@@ -334,6 +337,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See updateFontTexture() - GL thread only.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// See updateKeyboard().
+	@NonNull
+	private final KeyboardInput keyboardInput = new KeyboardInput();
+	private volatile boolean keyboardWanted;
 	private volatile boolean redoRequested;
 	private int redoFrameStamp = -1;
 	@Nullable
@@ -635,6 +642,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		discardContextResources();
 		redoFrameStamp = -1;
 		fontTexture = null;
+		keyboardInput.discard();
 		blackTexture = device.createTexture2D();
 		device.allocateTexture2D(blackTexture, 1, 1);
 		device.updateTexture2D(blackTexture, java.nio.ByteBuffer.allocateDirect(4));
@@ -715,6 +723,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				updateBufferMipmapNeeds();
 				programManager.createMainSourceText(context, device, tabWidth());
 				updateFontTexture();
+				updateKeyboard();
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
 						onRendererListener != null) {
@@ -1216,13 +1225,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	// Made the first time a shader uses it, kept until one doesn't.
 	private void updateFontTexture() {
-		boolean used = usesFont(programManager.getPreparedShaderSource());
-		for (var program : programManager.getPassPrograms()) {
-			used |= device.hasUniform(program, UNIFORM_FONT);
-		}
-		for (var pass : programManager.getBufferPasses()) {
-			used |= usesFont(pass.prepared);
-		}
+		boolean used = usesBuiltin(UNIFORM_FONT, ChannelParameters.TEXTURE_FONT);
 		if (used && fontTexture == null) {
 			fontTexture = FontTexture.create(context, device);
 		} else if (!used && fontTexture != null) {
@@ -1232,15 +1235,53 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.setFontTexture(fontTexture);
 	}
 
-	private static boolean usesFont(@NonNull PreparedShaderSource source) {
-		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
-			var parameters = source.getChannel(channel);
-			if (parameters != null &&
-					ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())) {
+	// Keys go to the shader only while it uses them - see KeyboardInput
+	// and isKeyboardWanted().
+	private void updateKeyboard() {
+		boolean wanted = usesBuiltin(UNIFORM_KEYBOARD, ChannelParameters.TEXTURE_KEYBOARD);
+		for (var program : programManager.getPassPrograms()) {
+			wanted |= device.hasUniform(program, UNIFORM_TYPED_CHAR);
+		}
+		if (!wanted && keyboardWanted) {
+			keyboardInput.release(device);
+		}
+		keyboardWanted = wanted;
+		builtinUniforms.setKeyboard(wanted ? keyboardInput : null);
+	}
+
+	// Whether any pass declares the built-in `uniform`, or reads it
+	// through a channel (`///tex:<channelTexture>;`).
+	private boolean usesBuiltin(@NonNull String uniform, @NonNull String channelTexture) {
+		for (var program : programManager.getPassPrograms()) {
+			if (device.hasUniform(program, uniform)) {
 				return true;
 			}
 		}
+		var sources = new ArrayList<PreparedShaderSource>();
+		sources.add(programManager.getPreparedShaderSource());
+		for (var pass : programManager.getBufferPasses()) {
+			sources.add(pass.prepared);
+		}
+		for (var source : sources) {
+			for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+				var parameters = source.getChannel(channel);
+				if (parameters != null && channelTexture.equals(parameters.getTexture())) {
+					return true;
+				}
+			}
+		}
 		return false;
+	}
+
+	// Whether the running shader reads the keyboard - so MainActivity
+	// sends it keys. Set on the GL thread, read on the UI thread.
+	public boolean isKeyboardWanted() {
+		return keyboardWanted;
+	}
+
+	@NonNull
+	public KeyboardInput getKeyboardInput() {
+		return keyboardInput;
 	}
 
 	private static int tabWidth() {
@@ -1263,6 +1304,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (parameters != null &&
 					ChannelParameters.TEXTURE_FONT.equals(parameters.getTexture())) {
 				texture = fontTexture;
+			} else if (parameters != null &&
+					ChannelParameters.TEXTURE_KEYBOARD.equals(parameters.getTexture())) {
+				texture = keyboardWanted ? keyboardInput.getTexture() : null;
 			}
 			int offset = channel * 3;
 			if (texture != null) {

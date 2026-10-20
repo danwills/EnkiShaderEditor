@@ -74,6 +74,9 @@ final class BuiltinUniforms {
 	// The built-in `font`, if a shader uses it - see FontTexture.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// Keys, if a shader uses them - see KeyboardInput.
+	@Nullable
+	private KeyboardInput keyboard;
 	@NonNull
 	private ShaderTextureResources textureResources =
 			ShaderTextureResources.empty();
@@ -390,9 +393,13 @@ final class BuiltinUniforms {
 		}
 		cameraUniforms.apply(bindings);
 		audioUniforms.apply(device);
-		// Before the saved textures, so one saved as "font" wins.
+		// Before the saved textures, so one saved as "font" (or
+		// "keyboard") wins.
 		if (fontTexture != null) {
 			bindings.setTexture(ShaderRenderer.UNIFORM_FONT, fontTexture);
+		}
+		if (keyboard != null) {
+			keyboard.apply(device, bindings);
 		}
 		textureResources.applyTo(bindings);
 		// The Image pass's; drawChainRows() swaps in each buffer pass's
@@ -407,6 +414,10 @@ final class BuiltinUniforms {
 				(int) surfaceResolution[0],
 				(int) surfaceResolution[1],
 				now);
+	}
+
+	void setKeyboard(@Nullable KeyboardInput keyboard) {
+		this.keyboard = keyboard;
 	}
 
 	void setFontTexture(@Nullable GlTexture2D fontTexture) {

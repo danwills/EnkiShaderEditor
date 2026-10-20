@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataSource;
+import enk.danwills.android.enkishadereditor.opengl.KeyboardInput;
 import enk.danwills.android.enkishadereditor.opengl.LiveDefines;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 import enk.danwills.android.enkishadereditor.opengl.ProgramBinaryCache;
@@ -524,6 +525,16 @@ public class ShaderViewManager {
 	public List<ShaderError> testCompileAndWait(@NonNull ShaderProjectSession projectSession) {
 		return shaderView.testCompileAndWait(projectSession.getEntryPointSource(),
 				projectSession.getProject().getBufferSources());
+	}
+
+	// See ShaderRenderer.isKeyboardWanted() / KeyboardInput.
+	public boolean isKeyboardWanted() {
+		return shaderView.getRenderer().isKeyboardWanted();
+	}
+
+	@NonNull
+	public KeyboardInput getKeyboardInput() {
+		return shaderView.getRenderer().getKeyboardInput();
 	}
 
 	@NonNull

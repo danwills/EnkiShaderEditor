@@ -360,6 +360,8 @@
 	<string name="date_time">年、月、日和目前秒數</string>
 	<string name="daytime">時、分、秒</string>
 	<string name="font_atlas">內建字形圖集（16×16 格，字元編碼 0–255，有號距離場：邊緣為 0.5，內部更高）</string>
+	<string name="keyboard_texture">按住、按下和切換的按鍵，與 ShaderToy 的 256×3 鍵盤紋理相同（JavaScript 鍵碼；第 0 列按住，第 1 列本影格按下，第 2 列切換）</string>
+	<string name="typed_char">本影格輸入的字元，或 0（8 退格，9 Tab，10 Enter，127 刪除）</string>
 	<string name="source_text">此通道自身的原始碼：每個字元一個紋素，第 n 行紋素即第 n 行程式碼。R = 字元編碼，G×256+B = 依閱讀順序的序號，A = 1 表示字元</string>
 	<string name="source_text_color">sourceText 的語法醒目提示，配置相同：RGB = 編輯器中該字元的顏色，A × 255 = 其類別（行尾之後為 0）</string>
 	<string name="source_text_length">sourceText 中的字元數</string>
@@ -586,6 +588,8 @@
 	<string name="channel_none">無</string>
 	<string name="channel_font">字型</string>
 	<string name="channel_font_short">字型</string>
+	<string name="channel_keyboard">鍵盤</string>
+	<string name="channel_keyboard_short">鍵盤</string>
 	<string name="channel_buffer">緩衝區 %1$s</string>
 	<string name="channel_filter_linear">線性過濾</string>
 	<string name="channel_filter_nearest">最近鄰過濾</string>

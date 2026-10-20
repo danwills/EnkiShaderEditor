@@ -368,6 +368,8 @@
 	<string name="date_time">Рік, місяць, день і час у секундах</string>
 	<string name="daytime">Година, хвилина і секунди</string>
 	<string name="font_atlas">Вбудований атлас гліфів (16×16 комірок із кодами символів 0–255, поле відстаней зі знаком: 0.5 на краю, більше всередині)</string>
+	<string name="keyboard_texture">Утримувані, натиснуті й перемкнуті клавіші, як текстура клавіатури ShaderToy 256×3 (коди клавіш JavaScript; рядок 0 — утримання, 1 — натискання в цьому кадрі, 2 — перемикання)</string>
+	<string name="typed_char">Символ, введений у цьому кадрі, або 0 (8 — Backspace, 9 — Tab, 10 — Enter, 127 — Delete)</string>
 	<string name="source_text">Вихідний текст цього проходу: один тексель на символ, рядок n текстури — рядок n коду. R — код символу, G×256+B — його номер у порядку читання, A = 1 для символу</string>
 	<string name="source_text_color">Підсвічування синтаксису sourceText у тому ж розміщенні: RGB — колір символу в редакторі, A × 255 — його вид (0 після кінця рядка)</string>
 	<string name="source_text_length">Кількість символів у sourceText</string>
@@ -626,6 +628,8 @@
 	<string name="channel_none">Немає</string>
 	<string name="channel_font">Шрифт</string>
 	<string name="channel_font_short">Шрифт</string>
+	<string name="channel_keyboard">Клавіатура</string>
+	<string name="channel_keyboard_short">Клав.</string>
 	<string name="channel_buffer">Буфер %1$s</string>
 	<string name="channel_filter_linear">Лінійна фільтрація</string>
 	<string name="channel_filter_nearest">Найближчий піксель</string>

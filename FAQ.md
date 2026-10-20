@@ -197,6 +197,32 @@ read it through a channel instead, with `uniform sampler2D iChannel1; ///tex:fon
 **Font** for the channel in the editor's channel row). The glyphs are rendered from IBM Plex Mono
 (SIL Open Font License).
 
+## Can a shader read the keyboard?
+
+Yes, a hardware or Bluetooth keyboard:
+
+```glsl
+uniform sampler2D keyboard; // like ShaderToy's: 256x3, by JavaScript key code
+uniform int typedChar;      // the character typed this frame, or 0
+```
+
+`keyboard` is laid out like ShaderToy's keyboard texture, indexed by JavaScript key code (65 for
+A, 37-40 for the arrows, 13 for Enter, 32 for Space...): row 0 is 1 while a key is held, row 1
+for the frame it went down in, and row 2 flips each time it's pressed:
+
+```glsl
+float held = texture2D(keyboard, vec2((37.0 + 0.5) / 256.0, 0.5 / 3.0)).r; // Left
+```
+
+`typedChar` gives the text as typed, Shift and keyboard layout included, plus 8 for Backspace,
+9 for Tab, 10 for Enter and 127 for Delete. Characters queue up and arrive one per frame, so none
+are lost when typing faster than the frame rate. A ShaderToy-style shader can read the keyboard
+through a channel with `///tex:keyboard;` (or **Keyboard** in the channel row).
+
+Keys go to the shader while it reads them and the code editor is hidden (or the app is
+fullscreen), instead of the app's own single-key shortcuts. Ctrl shortcuts, Back and Escape
+still work as usual.
+
 ## Can I paste ShaderToy code directly?
 
 Yes.
