@@ -74,7 +74,7 @@
 			android:paddingVertical="8dp"
 			android:elevation="8dp">
 
-			<TextView
+			<enk.danwills.android.enkishadereditor.widget.OutlinedTextView
 				android:id="@+id/shader_title_label"
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
@@ -82,7 +82,7 @@
 				android:textColor="@color/drawer_text"
 				android:textSize="22sp"/>
 
-			<TextView
+			<enk.danwills.android.enkishadereditor.widget.OutlinedTextView
 				android:id="@+id/fps_label"
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
@@ -90,7 +90,9 @@
 				android:textColor="@color/drawer_text"
 				android:textSize="15sp"/>
 
-			<!-- Shown only while the live preview renders progressively:
+			<!-- The name and fps above are outlined (OutlinedTextView) so they
+			     stay readable over a bright shader.
+			     Shown only while the live preview renders progressively:
 			     a dot that shrinks as the current frame nears completion
 			     and is absent while a finished frame is shown (see
 			     ProgressiveSpinnerView). -->
