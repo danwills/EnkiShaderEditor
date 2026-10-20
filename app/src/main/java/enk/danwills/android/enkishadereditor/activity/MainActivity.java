@@ -4660,7 +4660,9 @@ public class MainActivity extends AppCompatActivity {
 				}
 			}
 
-			if (cancelled && deletePartialOnCancel.get() && !frameUris.isEmpty()) {
+			// Frames are only ever saved on Android 10+ (see frameListener).
+			if (cancelled && deletePartialOnCancel.get() && !frameUris.isEmpty()
+					&& Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 				runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
 				ScreenshotSaver.deleteSubAlbum(this, frameSubAlbum[0]);
 			}
@@ -5200,7 +5202,9 @@ public class MainActivity extends AppCompatActivity {
 		for (String name : BUILTIN_UNIFORM_NAMES) {
 			Pattern pattern = Pattern.compile("\\buniform\\s+\\w+\\s+" + Pattern.quote(name) + "\\b");
 			if (pattern.matcher(text).find()) {
-				if (!result.isEmpty()) {
+				// length(), not isEmpty(): StringBuilder only has
+				// isEmpty() from Android 15 on.
+				if (result.length() > 0) {
 					result.append(", ");
 				}
 				result.append(name);
