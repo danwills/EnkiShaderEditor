@@ -2533,7 +2533,7 @@ public class MainActivity extends AppCompatActivity {
 		shaderViewManager.setProjectSessionKeepingState(liveSession, true);
 		liveDefinesState = state;
 
-		liveDefinesPanel.setDefines(state.live());
+		liveDefinesPanel.setDefines(state.live(), liveSession.getShaderId() + "/");
 		liveDefinesPanel.setPaused(shaderViewManager.isPaused());
 		liveDefinesPanel.setVisibility(View.VISIBLE);
 	}
