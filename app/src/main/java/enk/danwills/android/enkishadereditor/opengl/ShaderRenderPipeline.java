@@ -274,10 +274,50 @@ final class ShaderRenderPipeline {
 		return errors;
 	}
 
+	// Framebuffers aren't shared between EGL contexts (textures are), so
+	// while a capture steps the simulation on a SharedCaptureContext,
+	// the targets are drawn through framebuffers made in that context -
+	// the live ones are meaningless there (GL_INVALID_FRAMEBUFFER_
+	// OPERATION). See beginSharedContext().
+	@Nullable
+	private GlFramebuffer[] sharedContextFramebuffers;
+
+	// Call with the shared context current, before stepping on it.
+	void beginSharedContext() {
+		endSharedContext();
+		if (targetTextures[0] == null || targetTextures[1] == null) {
+			return;
+		}
+		sharedContextFramebuffers = new GlFramebuffer[2];
+		for (int i = 0; i < 2; ++i) {
+			GlFramebuffer framebuffer = device.createFramebuffer();
+			device.attachColor(framebuffer, targetTextures[i]);
+			sharedContextFramebuffers[i] = framebuffer;
+		}
+	}
+
+	// Call with the shared context still current, once done with it.
+	void endSharedContext() {
+		if (sharedContextFramebuffers != null) {
+			device.bindFramebuffer(null);
+			for (GlFramebuffer framebuffer : sharedContextFramebuffers) {
+				device.deleteFramebuffer(framebuffer);
+			}
+			sharedContextFramebuffers = null;
+		}
+	}
+
+	@Nullable
+	private GlFramebuffer frontFramebuffer() {
+		return sharedContextFramebuffers != null
+				? sharedContextFramebuffers[frontTarget]
+				: framebuffers[frontTarget];
+	}
+
 	void renderMainPass(
 			@NonNull ProgramBindings bindings,
 			@NonNull GlProgram program) {
-		GlFramebuffer framebuffer = framebuffers[frontTarget];
+		GlFramebuffer framebuffer = frontFramebuffer();
 		GlTexture2D targetTexture = targetTextures[frontTarget];
 		if (framebuffer == null || targetTexture == null) {
 			return;
@@ -303,7 +343,7 @@ final class ShaderRenderPipeline {
 			@NonNull GlProgram program,
 			int y0,
 			int rows) {
-		GlFramebuffer framebuffer = framebuffers[frontTarget];
+		GlFramebuffer framebuffer = frontFramebuffer();
 		GlTexture2D targetTexture = targetTextures[frontTarget];
 		if (framebuffer == null || targetTexture == null) {
 			return;

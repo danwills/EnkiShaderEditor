@@ -1732,9 +1732,17 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			return false;
 		}
 		device.resetState();
-		return captureHighResScreenshotSequence(width, height, oversample, preserveBackbufferEdges,
-				skipFrames, numFrames, virtualFps, bucketSize, tileOrderSupplier, tileProgressListener,
-				tilePreviewListener, sequenceProgressListener, frameListener);
+		// stepSimulationFrame() draws into the live targets - through
+		// framebuffers of this context's own (see beginSharedContext()).
+		renderPipeline.beginSharedContext();
+		try {
+			return captureHighResScreenshotSequence(width, height, oversample,
+					preserveBackbufferEdges, skipFrames, numFrames, virtualFps, bucketSize,
+					tileOrderSupplier, tileProgressListener, tilePreviewListener,
+					sequenceProgressListener, frameListener);
+		} finally {
+			renderPipeline.endSharedContext();
+		}
 	}
 
 	private void resetFps() {
