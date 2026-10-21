@@ -270,3 +270,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   so the middle row showed twice. Now one screen row per grid row, the extra top row wrapping (or
   clamping) - rdCell() is shared with the Image pass for that. Sent both shaders over (the
   phone asks, as Enki's open).
+- **"Control how pixels are interpolated at low res (1/32)? Options, and where - a comment flag,
+  editable from the UI?"** and **"explore scaling the Laplacian"** - answered with options only
+  (nothing built yet): smooth upscaling done in the surface shader behind a `///upscale:` line,
+  picked from the quality menu, or a separate simulation resolution; for the Laplacian, a
+  strength knob (dx already does this), wider stencils, smooth blur-based kernels, and
+  per-chemical, oriented or painted scales.
