@@ -36,7 +36,11 @@ public final class Upscaling {
 		DEFOCUS("defocus", 1.5f),
 		// Nearest under a CRT's scanlines and phosphor stripes; amount is
 		// how strongly (0-1).
-		CRT("crt", 0.8f);
+		CRT("crt", 0.8f),
+		// Defocus with a lens's character: a bladed iris with a bright
+		// rim, colour fringes, and cat's eyes towards the frame's edges;
+		// amount is its radius in texels.
+		BOKEH("bokeh", 2f);
 
 		@Nullable
 		public final String name;
@@ -48,19 +52,24 @@ public final class Upscaling {
 		}
 
 		public boolean hasAmount() {
-			return this == SINC || this == DEFOCUS || this == CRT;
+			return this == SINC || this == DEFOCUS || this == CRT || this == BOKEH;
+		}
+
+		// A radius in texels.
+		public boolean isRadius() {
+			return this == DEFOCUS || this == BOKEH;
 		}
 
 		public float minAmount() {
-			return this == SINC ? 2f : this == DEFOCUS ? 0.5f : 0f;
+			return this == SINC ? 2f : isRadius() ? 0.5f : 0f;
 		}
 
 		public float maxAmount() {
-			return this == SINC ? 6f : this == DEFOCUS ? 3.5f : 1f;
+			return this == SINC ? 6f : isRadius() ? 3.5f : 1f;
 		}
 
 		public float amountStep() {
-			return this == SINC ? 1f : this == DEFOCUS ? 0.25f : 0.05f;
+			return this == SINC ? 1f : isRadius() ? 0.25f : 0.05f;
 		}
 
 		@Nullable
@@ -112,6 +121,10 @@ public final class Upscaling {
 			}
 			if (filter == Filter.DEFOCUS) {
 				return Math.min(4, (int) Math.ceil(amount + 0.5f));
+			}
+			if (filter == Filter.BOKEH) {
+				// Its rim reaches a little past the radius.
+				return Math.min(5, (int) Math.ceil(amount * 1.2f + 0.5f));
 			}
 			return 1;
 		}

@@ -758,6 +758,7 @@
 	<string name="upscale_catmull">清晰三次（Catmull-Rom）</string>
 	<string name="upscale_sinc">Sinc（Lanczos）</string>
 	<string name="upscale_defocus">失焦</string>
+	<string name="upscale_bokeh">花式失焦（散景）</string>
 	<string name="upscale_crt">CRT 显像管</string>
 	<string name="upscale_edges">画面边缘之外</string>
 	<string name="upscale_edge_clamp">延伸边缘</string>

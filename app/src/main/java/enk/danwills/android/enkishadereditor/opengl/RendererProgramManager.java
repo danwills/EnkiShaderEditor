@@ -91,6 +91,8 @@ final class RendererProgramManager {
 			uniform sampler2D frame;
 			// UPSCALE
 			uniform float upscaleAmount;
+			// Seconds, wrapping now and then - for CRT's flicker and roll.
+			uniform float upscaleTime;
 
 			// The frame's visible texels (inside any cropped border): the
 			// first, and how many.
@@ -240,36 +242,131 @@ final class RendererProgramManager {
 				return sqrt(sum / max(weights, 1e-4));
 			}
 
-			// Nearest, as a CRT would show it: each row of texels a beam,
-			// fatter where brighter, between darker scanlines; each texel
-			// three phosphor stripes. upscaleAmount is how strongly; both
-			// fade out as texels shrink towards the screen's pixels.
+			float hash(vec2 p) {
+				return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+			}
+
+			// A texel row's colour along it at x: nearest, softened a little
+			// either side of each texel - l, m, r the texels left of, at and
+			// right of floor(x).
+			vec3 crtRow(vec3 l, vec3 m, vec3 r, float f) {
+				vec3 col = mix(m, l, 0.5 * (1.0 - smoothstep(0.0, 0.18, f)));
+				return mix(col, r, 0.5 * smoothstep(0.82, 1.0, f));
+			}
+
+			// Nearest, as an old TV would show it: the picture bulging a
+			// little, its corners rounded off; each row of texels a beam,
+			// fatter where brighter, between dark scanlines; a slot mask of
+			// phosphor triads wider than they're tall, every other row of
+			// them staggered; the red and blue guns a touch out of
+			// convergence; a faint glow, static, flicker, a slow rolling
+			// hum bar and the odd wobbling line. upscaleAmount is how
+			// strongly the scanlines and mask show; they fade out as texels
+			// shrink towards the screen's pixels.
 			vec4 crt(vec2 s) {
 				vec2 scale = resolution / count;
-				vec2 c = floor(s);
-				vec2 f = s - c;
+				float t = upscaleTime;
+				// The bulge, and the tube's rounded corners.
+				vec2 c = s / count * 2.0 - 1.0;
+				c *= 1.0 + 0.045 * (c.yx * c.yx);
+				vec2 corner = max(abs(c) - (1.0 - 0.06), 0.0);
+				float tube = smoothstep(0.06, 0.06 - 4.0 / min(resolution.x, resolution.y),
+						length(corner));
+				if (tube <= 0.0) {
+					return vec4(0.0, 0.0, 0.0, 1.0);
+				}
+				s = (c * 0.5 + 0.5) * count;
+				// Now and then a line wobbles sideways.
+				float line = floor(s.y);
+				float wobble = step(0.985, hash(vec2(line, floor(t * 20.0))));
+				s.x += wobble * (hash(vec2(line, t)) - 0.5) * 0.6;
+				vec2 i = floor(s);
+				vec2 f = s - i;
 				vec3 beams = vec3(0.0);
+				vec3 glow = vec3(0.0);
 				for (int y = -1; y <= 1; ++y) {
-					vec2 t = c + vec2(0.0, float(y));
-					vec3 col = texel(t).rgb;
-					col = mix(col, texel(t - vec2(1.0, 0.0)).rgb,
-							0.5 * (1.0 - smoothstep(0.0, 0.15, f.x)));
-					col = mix(col, texel(t + vec2(1.0, 0.0)).rgb,
-							0.5 * smoothstep(0.85, 1.0, f.x));
+					vec2 row = i + vec2(0.0, float(y));
+					vec3 l = texel(row - vec2(1.0, 0.0)).rgb;
+					vec3 m = texel(row).rgb;
+					vec3 r = texel(row + vec2(1.0, 0.0)).rgb;
+					// Red and blue a little either side of green.
+					vec3 col = vec3(crtRow(l, m, r, clamp(f.x + 0.09, 0.0, 1.0)).r,
+							crtRow(l, m, r, f.x).g,
+							crtRow(l, m, r, clamp(f.x - 0.09, 0.0, 1.0)).b);
 					col *= col;
-					float width = mix(0.2, 0.36, sqrt(dot(col, vec3(0.3, 0.6, 0.1))));
+					glow += (l * l + m * m + r * r);
+					float width = mix(0.13, 0.3, sqrt(dot(col, vec3(0.3, 0.6, 0.1))));
 					float dy = f.y - 0.5 - float(y);
 					beams += col * exp(-0.5 * dy * dy / (width * width));
 				}
-				vec4 plain = texel(c);
+				vec3 plain = texel(i).rgb;
+				plain *= plain;
 				float scanlines = upscaleAmount * smoothstep(2.0, 4.0, scale.y);
-				vec3 col = mix(plain.rgb * plain.rgb, beams * 1.35, scanlines);
-				float stripes = upscaleAmount * smoothstep(3.0, 6.0, scale.x);
-				float stripe = floor(f.x * 3.0);
-				vec3 mask = vec3(stripe == 0.0 ? 1.0 : 0.3, stripe == 1.0 ? 1.0 : 0.3,
-						stripe == 2.0 ? 1.0 : 0.3);
-				col *= mix(vec3(1.0), mask / 0.5333, stripes);
-				return vec4(sqrt(clamp(col, 0.0, 1.0)), plain.a);
+				vec3 col = mix(plain, beams * 1.7, scanlines);
+				// The slot mask: two rows of triads a texel row, staggered.
+				float maskRow = floor(s.y * 2.0);
+				float x = s.x + 0.5 * mod(maskRow, 2.0);
+				float stripe = floor(fract(x) * 3.0);
+				vec3 mask = vec3(stripe == 0.0 ? 1.0 : 0.25, stripe == 1.0 ? 1.0 : 0.25,
+						stripe == 2.0 ? 1.0 : 0.25);
+				float slot = fract(s.y * 2.0);
+				mask *= mix(0.55, 1.0, smoothstep(0.0, 0.14, slot) * smoothstep(1.0, 0.86, slot));
+				float stripes = upscaleAmount * smoothstep(3.0, 6.0, min(scale.x, scale.y * 0.5));
+				col *= mix(vec3(1.0), mask * 2.4, stripes);
+				col += glow / 9.0 * 0.12;
+				// The tube: darker towards its edges, a faint bar of hum
+				// rolling up it, a flicker, and static.
+				col *= 1.0 - 0.3 * pow(dot(c, c) * 0.5, 1.5);
+				col *= 1.0 - 0.05 * (0.5 + 0.5 * sin((s.y / count.y + t * 0.07) * 6.2831853));
+				col *= 1.0 + 0.015 * (hash(vec2(floor(t * 50.0), 1.0)) - 0.5);
+				col = sqrt(clamp(col, 0.0, 1.0));
+				col += (hash(gl_FragCoord.xy + fract(t) * 91.7) - 0.5) * 0.035;
+				return vec4(col * tube, 1.0);
+			}
+
+			// One channel's share of a bokeh: where o (from the texel's
+			// centre, in radii) falls in a seven-bladed iris, its rim
+			// brighter and its edge crisp - clipped, for a texel towards the
+			// frame's edges (v, -1 to 1 across it), by the lens barrel into
+			// a cat's eye.
+			float aperture(vec2 o, vec2 v, float soft) {
+				float a = atan(o.y, o.x) + 0.3;
+				float blade = 6.2831853 / 7.0;
+				float polygon = cos(blade * 0.5) / cos(mod(a, blade) - blade * 0.5);
+				float d = length(o) / mix(1.0, polygon, 0.55);
+				float inside = smoothstep(1.0 + soft, 1.0 - soft, d);
+				float barrel = smoothstep(1.0 + soft, 1.0 - soft, length(o + v * 0.6));
+				return inside * barrel * (1.0 + 1.1 * smoothstep(0.55, 1.0, d));
+			}
+
+			// A lens's out-of-focus blur, upscaleAmount texels across
+			// (radius): each texel's light spread over its bokeh - an
+			// iris shape with a bright rim, red's a touch bigger and blue's
+			// smaller for colour fringes, and cat's eyes towards the frame's
+			// edges - in roughly linear light.
+			vec4 bokeh(vec2 s) {
+				float r = upscaleAmount;
+				float soft = 0.6 / r;
+				vec2 c = floor(s);
+				vec2 middle = count * 0.5;
+				vec3 sum = vec3(0.0);
+				vec3 weights = vec3(0.0);
+				for (int y = -upscaleReach; y <= upscaleReach; ++y) {
+					for (int x = -upscaleReach; x <= upscaleReach; ++x) {
+						vec2 t = c + vec2(float(x), float(y));
+						vec2 o = (s - t - 0.5) / r;
+						if (dot(o, o) > 1.4) {
+							continue;
+						}
+						vec2 v = (t + 0.5 - middle) / middle;
+						vec3 w = vec3(aperture(o / 1.05, v, soft), aperture(o, v, soft),
+								aperture(o / 0.95, v, soft));
+						vec3 col = texel(t).rgb;
+						sum += col * col * w;
+						weights += w;
+					}
+				}
+				return vec4(sqrt(sum / max(weights, vec3(1e-4))), 1.0);
 			}
 
 			void main(void) {
@@ -297,6 +394,8 @@ final class RendererProgramManager {
 					c = defocus(s);
 				} else if (upscaleFilter == 8) {
 					c = crt(s);
+				} else if (upscaleFilter == 9) {
+					c = bokeh(s);
 				} else {
 					c = texel(floor(s));
 				}

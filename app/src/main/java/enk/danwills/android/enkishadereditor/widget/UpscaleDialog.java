@@ -43,6 +43,7 @@ public final class UpscaleDialog {
 			R.string.upscale_sinc,
 			R.string.upscale_defocus,
 			R.string.upscale_crt,
+			R.string.upscale_bokeh,
 	};
 	private static final int[] EDGE_NAMES = {
 			R.string.upscale_edge_clamp,
@@ -184,7 +185,7 @@ public final class UpscaleDialog {
 		amountSlider.setVisibility(hasAmount ? View.VISIBLE : View.GONE);
 		if (hasAmount) {
 			amountLabel.setText(filter == Filter.SINC ? R.string.upscale_lobes
-					: filter == Filter.DEFOCUS ? R.string.upscale_radius
+					: filter.isRadius() ? R.string.upscale_radius
 					: R.string.upscale_strength);
 			amountSlider.setValueFrom(filter.minAmount());
 			amountSlider.setValueTo(filter.maxAmount());

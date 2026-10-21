@@ -825,6 +825,7 @@
 	<string name="upscale_catmull">Чіткий кубічний (Кетмалл-Ром)</string>
 	<string name="upscale_sinc">Sinc (Ланцош)</string>
 	<string name="upscale_defocus">Розфокус</string>
+	<string name="upscale_bokeh">Вигадливий розфокус (боке)</string>
 	<string name="upscale_crt">ЕПТ</string>
 	<string name="upscale_edges">За краями кадру</string>
 	<string name="upscale_edge_clamp">Край</string>

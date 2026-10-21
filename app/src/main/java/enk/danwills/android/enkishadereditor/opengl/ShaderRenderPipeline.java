@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.opengl.GLES20;
+import android.os.SystemClock;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,6 +21,7 @@ final class ShaderRenderPipeline {
 	private static final String SURFACE_FRAME_SIZE = "frameSize";
 	private static final String SURFACE_CROP_PIXELS = "cropPixels";
 	private static final String SURFACE_UPSCALE_AMOUNT = "upscaleAmount";
+	private static final String SURFACE_UPSCALE_TIME = "upscaleTime";
 
 	private final float[] thumbnailResolution =
 			new float[]{THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT};
@@ -589,6 +591,8 @@ final class ShaderRenderPipeline {
 		surfaceBindings.setFloat2(SURFACE_FRAME_SIZE, frameSize);
 		surfaceBindings.setFloat(SURFACE_CROP_PIXELS, cropBorderPixel ? 1f : 0f);
 		surfaceBindings.setFloat(SURFACE_UPSCALE_AMOUNT, upscale.amount());
+		surfaceBindings.setFloat(SURFACE_UPSCALE_TIME,
+				(SystemClock.uptimeMillis() % 1_000_000L) / 1000f);
 		surfaceBindings.setTexture(SURFACE_FRAME, sourceTexture);
 		device.applyBindings(surfaceBindings);
 		device.clear(GLES20.GL_COLOR_BUFFER_BIT);
