@@ -27,7 +27,7 @@ final class ShaderRenderPipeline {
 	private final float[] frameSize = new float[2];
 	private boolean cropBorderPixel = false;
 	@NonNull
-	private UpscaleDirective.Upscale upscale = UpscaleDirective.Upscale.DEFAULT;
+	private Upscaling.Upscale upscale = Upscaling.Upscale.DEFAULT;
 	@Nullable
 	private GlProgram upscaleProgram;
 	@Nullable
@@ -441,10 +441,10 @@ final class ShaderRenderPipeline {
 	}
 
 	// How the on-screen surface pass scales the frame - see
-	// UpscaleDirective.
+	// Upscaling.
 	// program/bindings: its surface program (RendererProgramManager.
 	// getUpscaleBindings()), or null for the plain one.
-	void setUpscale(@NonNull UpscaleDirective.Upscale upscale, @Nullable GlProgram program,
+	void setUpscale(@NonNull Upscaling.Upscale upscale, @Nullable GlProgram program,
 			@Nullable ProgramBindings bindings) {
 		this.upscale = upscale;
 		upscaleProgram = program;

@@ -321,3 +321,15 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"Go ahead and install it."** Installed the keep-state-on-re-run build and replaced all three
   VTI shaders (1002-1004) with the NaN-only guard; Enki reopened. (The replace dropped the
   `///upscale:sinc` line Dan had added to 1002.)
+- **"Much larger, more verbose, colourful status toasts - every detail, icons, happy/sad - without
+  piling up; and leave the notification at the end saying Claude's finished."** Replaced the
+  toasts with a debug-only StatusOverlay (TestStatusReceiver): a panel of the last 8 lines over
+  every app, each with a kind's icon (good/bad/warn/build/...), `code`, numbers and good/bad
+  words coloured, fading after 20 s; touches pass through (0.8 opacity, as Android requires).
+  `status.sh done` now updates the notification to "Claude is all finished 😊" and leaves it;
+  the next run takes it down. `status.sh hide` clears the panel for screenshots.
+- **"Upscaling shouldn't be a property of the shader (the source change recompiles - a nasty
+  bump); keep it for the session, with a preference for the one to start on."** It's now the
+  view's (`Upscaling`, `ShaderRenderer.setUpscale()`), kept for the app's session, starting from
+  Settings → Performance → Default upscaling (same picker; stored as a spec string that falls
+  back to Default if the modes change). No `///upscale:` lines any more.

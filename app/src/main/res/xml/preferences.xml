@@ -46,6 +46,9 @@
 			android:defaultValue="1"/>
 	</PreferenceCategory>
 	<PreferenceCategory android:title="@string/performance">
+		<Preference
+			android:key="default_upscale"
+			android:title="@string/default_upscaling"/>
 		<ListPreference
 			android:key="live_render_mode"
 			android:title="@string/live_render_mode"

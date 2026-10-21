@@ -17,15 +17,15 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.slider.Slider;
 
 import enk.danwills.android.enkishadereditor.R;
-import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective.Edge;
-import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective.Filter;
-import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective.Upscale;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling.Edge;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling.Filter;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling.Upscale;
 
 // Picks how a frame rendered below the screen's resolution is scaled up to
-// it (see UpscaleDirective): a filter, what's past the frame's edges, and
-// for some filters an amount. Every change shows at once, the screen left
-// undimmed to see it; OK keeps it (as the shader's `///upscale:` line),
-// Cancel goes back.
+// it (see Upscaling): a filter, what's past the frame's edges, and for
+// some filters an amount. Every change shows at once, the screen left
+// undimmed to see it; OK keeps it (for the session, or - from Settings -
+// as the one each session starts with), Cancel goes back.
 public final class UpscaleDialog {
 	public interface Host {
 		void preview(@NonNull Upscale upscale);
@@ -54,6 +54,7 @@ public final class UpscaleDialog {
 	private final Activity activity;
 	private final Host host;
 	private final Upscale original;
+	private final boolean forDefault;
 	private Filter filter;
 	private Edge edge;
 	private float amount;
@@ -62,18 +63,26 @@ public final class UpscaleDialog {
 	private View edgeSection;
 
 	private UpscaleDialog(@NonNull Activity activity, @NonNull Upscale current,
-			@NonNull Host host) {
+			@NonNull Host host, boolean forDefault) {
 		this.activity = activity;
 		this.host = host;
+		this.forDefault = forDefault;
 		original = current;
 		filter = current.filter();
 		edge = current.edge();
 		amount = current.amount();
 	}
 
+	// forDefault: picking Settings' default, rather than the view's now.
 	public static void show(@NonNull Activity activity, @NonNull Upscale current,
-			@NonNull Host host) {
-		new UpscaleDialog(activity, current, host).show();
+			@NonNull Host host, boolean forDefault) {
+		new UpscaleDialog(activity, current, host, forDefault).show();
+	}
+
+	// The filter's name, as the dialog lists it.
+	@StringRes
+	public static int filterName(@NonNull Upscale upscale) {
+		return FILTER_NAMES[upscale.filter().ordinal()];
 	}
 
 	private void show() {
@@ -135,7 +144,7 @@ public final class UpscaleDialog {
 		column.addView(amountSlider, new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-		var hint = label(R.string.upscale_hint);
+		var hint = label(forDefault ? R.string.upscale_default_hint : R.string.upscale_hint);
 		hint.setAlpha(0.7f);
 		column.addView(hint);
 		updateExtras();
@@ -143,7 +152,7 @@ public final class UpscaleDialog {
 		var scroll = new ScrollView(activity);
 		scroll.addView(column);
 		AlertDialog dialog = new MaterialAlertDialogBuilder(activity)
-				.setTitle(R.string.upscaling)
+				.setTitle(forDefault ? R.string.default_upscaling : R.string.upscaling)
 				.setView(scroll)
 				.setPositiveButton(android.R.string.ok, (d, w) -> host.apply(current()))
 				.setNegativeButton(android.R.string.cancel, (d, w) -> host.preview(original))

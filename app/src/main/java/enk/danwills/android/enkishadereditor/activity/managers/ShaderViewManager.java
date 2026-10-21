@@ -40,7 +40,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
-import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
@@ -115,6 +115,9 @@ public class ShaderViewManager {
 	// setProjectSessionIfChanged().
 	private long appliedShaderId = -1;
 	private float appliedQuality = -1;
+	// See setUpscale() - static, so it outlives the activity.
+	@Nullable
+	private static Upscaling.Upscale sessionUpscale;
 	@Nullable
 	private String appliedSource;
 	@Nullable
@@ -158,6 +161,7 @@ public class ShaderViewManager {
 		this.qualitySpinner = qualitySpinner;
 		this.dataSource = dataSource;
 		this.listener = listener;
+		shaderView.getRenderer().setUpscale(getUpscale());
 		this.fullscreenExitGestureDetector = new FullscreenExitGestureDetector(
 				new FullscreenExitGestureDetector.Listener() {
 					@Override
@@ -1124,15 +1128,24 @@ public class ShaderViewManager {
 	// different shaders" case the risky-increase check needs to stay
 	// out of, since its basis (fpsAtCurrentQuality) is only ever
 	// meaningful for a genuine live quality change, not a fresh load.
-	// See ShaderRenderer.setUpscaleOverride().
-	public void setUpscaleOverride(@Nullable UpscaleDirective.Upscale upscale) {
-		shaderView.getRenderer().setUpscaleOverride(upscale);
+	// The view's upscaling for the rest of the app's session (see
+	// Upscaling) - across shaders, and the activity being made again.
+	public void setUpscale(@NonNull Upscaling.Upscale upscale) {
+		sessionUpscale = upscale;
+		previewUpscale(upscale);
+	}
+
+	// Shows `upscale` without keeping it - UpscaleDialog's live preview.
+	public void previewUpscale(@NonNull Upscaling.Upscale upscale) {
+		shaderView.getRenderer().setUpscale(upscale);
 		shaderView.requestRender();
 	}
 
+	// This session's, or the one Settings says to start with.
 	@NonNull
-	public UpscaleDirective.Upscale getUpscale() {
-		return shaderView.getRenderer().getUpscale();
+	public Upscaling.Upscale getUpscale() {
+		return sessionUpscale != null ? sessionUpscale
+				: ShaderEditorApp.preferences.getDefaultUpscale();
 	}
 
 	private void setQualityDirect(float quality) {

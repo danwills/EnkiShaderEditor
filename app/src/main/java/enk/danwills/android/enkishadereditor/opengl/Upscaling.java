@@ -4,27 +4,21 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-// How a frame rendered below the screen's resolution is scaled up to it:
-// a `///upscale:filter[,edge[,amount]]` line in any pass, e.g.
-// `///upscale:sinc`, `///upscale:defocus,mirror,2.5`. Without one the frame
-// is sampled as its backbuffer's filtering says (nearest, unless a
-// `///p:` preset says otherwise). Only the on-screen view is filtered -
-// thumbnails, captures and recordings are of the frame itself. See the
-// surface shader in RendererProgramManager.
-public final class UpscaleDirective {
-	private static final Pattern PATTERN = Pattern.compile(
-			"^[ \\t]*///upscale:([a-z]+)(?:,([a-z]+))?(?:,([0-9]*\\.?[0-9]+))?[ \\t]*$",
-			Pattern.MULTILINE);
-	// For finding any line to replace, valid or not.
-	public static final Pattern ANY_LINE = Pattern.compile(
-			"(?m)^[ \\t]*///upscale:.*\\n?");
-
+// How a frame rendered below the screen's resolution is scaled up to it on
+// screen: a filter, what its taps past the frame's edges read, and for some
+// filters an amount. A property of the view, not the shader - so choosing
+// one never touches (or recompiles) the source: ShaderViewManager keeps it
+// for the app's session, starting from Settings' default (a spec() string,
+// which parse() reads back, falling back to DEFAULT for anything it no
+// longer knows). Only the on-screen view is filtered - thumbnails,
+// captures and recordings are of the frame itself. See the surface shader
+// in RendererProgramManager.
+public final class Upscaling {
 	// The surface shader's upscaleFilter values are the ordinals.
 	public enum Filter {
-		// No line: the backbuffer's own filtering.
+		// The frame's own (backbuffer) filtering - nearest, unless a
+		// `///p:` preset says otherwise.
 		DEFAULT(null, 0f),
 		NEAREST("nearest", 0f),
 		// Nearest, but each texel's edge blended across a screen pixel
@@ -122,66 +116,42 @@ public final class UpscaleDirective {
 			return 1;
 		}
 
-		// The line that asks for this, or null for DEFAULT (no line).
-		@Nullable
-		public String line() {
-			if (filter.name == null) {
-				return null;
-			}
-			var line = new StringBuilder("///upscale:").append(filter.name);
-			boolean amount = filter.hasAmount() && amount() != filter.defaultAmount;
-			if (edge != Edge.CLAMP || amount) {
-				line.append(',').append(edge.name);
-			}
-			if (amount) {
-				line.append(',').append(String.format(Locale.ROOT, "%.2f", amount())
-						.replaceAll("0+$", "").replaceAll("\\.$", ""));
-			}
-			return line.toString();
+		// As Preferences keeps it: "filter,edge,amount", e.g. "sinc,clamp,3".
+		@NonNull
+		public String spec() {
+			return (filter.name != null ? filter.name : "default") + "," + edge.name + "," +
+					String.format(Locale.ROOT, "%.2f", amount);
 		}
-	}
 
-	private UpscaleDirective() {
-	}
-
-	// The first of `sources`' upscale lines, or DEFAULT.
-	@NonNull
-	public static Upscale find(@Nullable String... sources) {
-		if (sources == null) {
-			return Upscale.DEFAULT;
-		}
-		for (String source : sources) {
-			if (source == null) {
-				continue;
+		// spec()'s string back - or DEFAULT, for anything not (or no
+		// longer) known, the amount kept to its filter's range.
+		@NonNull
+		public static Upscale parse(@Nullable String spec) {
+			if (spec == null) {
+				return DEFAULT;
 			}
-			Matcher matcher = PATTERN.matcher(source);
-			if (!matcher.find()) {
-				continue;
-			}
-			Filter filter = Filter.named(matcher.group(1));
+			String[] parts = spec.split(",");
+			Filter filter = parts.length > 0 ? Filter.named(parts[0]) : null;
 			if (filter == null) {
-				return Upscale.DEFAULT;
+				return DEFAULT;
 			}
-			Edge edge = matcher.group(2) != null ? Edge.named(matcher.group(2)) : Edge.CLAMP;
+			Edge edge = parts.length > 1 ? Edge.named(parts[1]) : null;
 			float amount = filter.defaultAmount;
-			if (matcher.group(3) != null) {
-				amount = Math.max(filter.minAmount(), Math.min(filter.maxAmount(),
-						Float.parseFloat(matcher.group(3))));
+			if (parts.length > 2 && filter.hasAmount()) {
+				try {
+					amount = Math.max(filter.minAmount(), Math.min(filter.maxAmount(),
+							Float.parseFloat(parts[2])));
+				} catch (NumberFormatException e) {
+					amount = filter.defaultAmount;
+				}
 				if (filter == Filter.SINC) {
 					amount = Math.round(amount);
 				}
 			}
 			return new Upscale(filter, edge != null ? edge : Edge.CLAMP, amount);
 		}
-		return Upscale.DEFAULT;
 	}
 
-	// `source` with its upscale line (if any) replaced by `upscale`'s, at
-	// the top - or removed, for DEFAULT.
-	@NonNull
-	public static String apply(@NonNull String source, @NonNull Upscale upscale) {
-		String without = ANY_LINE.matcher(source).replaceAll("");
-		String line = upscale.line();
-		return line != null ? line + "\n" + without : without;
+	private Upscaling() {
 	}
 }

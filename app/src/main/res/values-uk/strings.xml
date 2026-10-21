@@ -833,6 +833,8 @@
 	<string name="upscale_edge_black">Чорний</string>
 	<string name="upscale_radius">Радіус (пікселі кадру)</string>
 	<string name="upscale_strength">Сила</string>
-	<string name="upscale_hint">Лише за якості нижче 1/1 і лише на екрані. Зберігається рядком ///upscale: на початку шейдера.</string>
+	<string name="upscale_hint">Лише на екрані й за якості нижче 1/1. Зберігається, доки застосунок відкритий; початкове задається в налаштуваннях.</string>
 	<string name="upscale_lobes">Пелюстки</string>
+	<string name="default_upscaling">Типове масштабування</string>
+	<string name="upscale_default_hint">Масштабування, з якого вигляд починає під час кожного запуску застосунку.</string>
 </resources>

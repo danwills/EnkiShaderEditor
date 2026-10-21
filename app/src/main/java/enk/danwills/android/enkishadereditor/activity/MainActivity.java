@@ -158,7 +158,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
-import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
@@ -2181,44 +2181,21 @@ public class MainActivity extends AppCompatActivity {
 		return name.length() > 40 ? name.substring(0, 40) : name;
 	}
 
-	// Upscaling… in the quality menu: tried out live, then written as the
-	// Image pass's `///upscale:` line - see UpscaleDirective. Comments
-	// don't change the compiled shader, so it isn't run again; the shown
-	// scaling stays overridden until it next is, by which time the line
-	// says the same.
+	// Upscaling… in the quality menu: tried out live, then kept for the
+	// session - the view's, not the shader's, so nothing's recompiled.
+	// Settings picks the one each session starts with.
 	private void showUpscaleDialog() {
 		UpscaleDialog.show(this, shaderViewManager.getUpscale(), new UpscaleDialog.Host() {
 			@Override
-			public void preview(@NonNull UpscaleDirective.Upscale upscale) {
-				shaderViewManager.setUpscaleOverride(upscale);
+			public void preview(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.previewUpscale(upscale);
 			}
 
 			@Override
-			public void apply(@NonNull UpscaleDirective.Upscale upscale) {
-				shaderViewManager.setUpscaleOverride(upscale);
-				writeUpscaleLine(upscale);
+			public void apply(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.setUpscale(upscale);
 			}
-		});
-	}
-
-	private void writeUpscaleLine(@NonNull UpscaleDirective.Upscale upscale) {
-		ShaderProjectSession session = shaderManager.getEditedProjectSession(
-				editorFragment.getText());
-		String entry = session.getProject().getEntryFilePath();
-		var file = session.getProject().getFile(entry);
-		if (file == null) {
-			return;
-		}
-		String updated = UpscaleDirective.apply(file.source(), upscale);
-		if (updated.equals(file.source())) {
-			return;
-		}
-		if (entry.equals(session.getActiveFilePath())) {
-			editorFragment.replaceAll(updated);
-		} else {
-			shaderManager.setFileSource(entry, updated);
-		}
-		shaderManager.setModified(true);
+		}, false);
 	}
 
 	// Makes `name` the shader's soundtrack: a `///mod:` line at the top of

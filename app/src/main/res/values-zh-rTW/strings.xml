@@ -766,6 +766,8 @@
 	<string name="upscale_edge_black">黑色</string>
 	<string name="upscale_radius">半徑（畫面像素）</string>
 	<string name="upscale_strength">強度</string>
-	<string name="upscale_hint">僅在品質低於 1/1 時、僅在螢幕上生效。以 ///upscale: 行儲存在著色器開頭。</string>
+	<string name="upscale_hint">僅在螢幕上、品質低於 1/1 時生效。應用程式開啟期間保持；啟動時用的在設定中選擇。</string>
 	<string name="upscale_lobes">瓣數</string>
+	<string name="default_upscaling">預設放大方式</string>
+	<string name="upscale_default_hint">每次開啟應用程式時檢視使用的放大方式。</string>
 </resources>

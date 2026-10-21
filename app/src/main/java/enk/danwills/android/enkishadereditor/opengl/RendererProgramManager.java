@@ -72,7 +72,7 @@ final class RendererProgramManager {
 				gl_Position = vec4(position, 0., 1.);
 			}
 			""";
-	// Scales the rendered frame to the screen, as an UpscaleDirective says:
+	// Scales the rendered frame to the screen, as an Upscaling says:
 	// compiled once per filter and edge (see surfaceSource()), their
 	// ordinals as upscaleFilter and upscaleEdge - constants, so each
 	// program is only the code its filter needs. Every filter but the
@@ -334,9 +334,6 @@ final class RendererProgramManager {
 			"^[ \\t]*///steps:([0-9]{1,3})[ \\t]*$", Pattern.MULTILINE);
 	private static final int MAX_STEPS = 64;
 	private int steps = 1;
-	// See getUpscale().
-	@NonNull
-	private UpscaleDirective.Upscale upscale = UpscaleDirective.Upscale.DEFAULT;
 	// The backbuffer parameters before the last prepareShaderSource(),
 	// as text - see backBufferParametersUnchanged().
 	@Nullable
@@ -404,7 +401,7 @@ final class RendererProgramManager {
 		var textureErrors = textureResources.load(context, device, texts);
 		var surfaceResult = device.createProgram(
 				FULL_SCREEN_VERTEX_SHADER,
-				surfaceSource(UpscaleDirective.Upscale.DEFAULT),
+				surfaceSource(Upscaling.Upscale.DEFAULT),
 				ShaderLineMapping.identity());
 		if (!surfaceResult.succeeded() || surfaceResult.getProgram() == null) {
 			return ReloadResult.failure(textureErrors, surfaceResult.getInfoLog());
@@ -551,12 +548,6 @@ final class RendererProgramManager {
 		return steps;
 	}
 
-	// How the frame's scaled to the screen - an `///upscale:` line in any
-	// pass (see UpscaleDirective).
-	@NonNull
-	UpscaleDirective.Upscale getUpscale() {
-		return upscale;
-	}
 
 	private static int findSteps(@NonNull String[] sources) {
 		for (String source : sources) {
@@ -665,7 +656,7 @@ final class RendererProgramManager {
 	}
 
 	@NonNull
-	private static String surfaceSource(@NonNull UpscaleDirective.Upscale upscale) {
+	private static String surfaceSource(@NonNull Upscaling.Upscale upscale) {
 		return SURFACE_FRAGMENT_SHADER.replace("// UPSCALE",
 				"#define upscaleFilter " + upscale.filter().ordinal() +
 						"\n#define upscaleEdge " + upscale.edge().ordinal() +
@@ -678,11 +669,11 @@ final class RendererProgramManager {
 	// only.
 	@Nullable
 	ProgramBindings getUpscaleBindings(@NonNull GlDevice device,
-			@NonNull UpscaleDirective.Upscale upscale) {
-		if (upscale.filter() == UpscaleDirective.Filter.DEFAULT || surfaceProgram == null) {
+			@NonNull Upscaling.Upscale upscale) {
+		if (upscale.filter() == Upscaling.Filter.DEFAULT || surfaceProgram == null) {
 			return null;
 		}
-		int key = (upscale.filter().ordinal() * UpscaleDirective.Edge.values().length +
+		int key = (upscale.filter().ordinal() * Upscaling.Edge.values().length +
 				upscale.edge().ordinal()) * 16 + upscale.reach();
 		if (key == upscaleKey) {
 			return upscaleBindings;
@@ -868,7 +859,6 @@ final class RendererProgramManager {
 		}
 		moduleName = ModuleDirective.find(all);
 		steps = findSteps(all);
-		upscale = UpscaleDirective.find(all);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}
 
