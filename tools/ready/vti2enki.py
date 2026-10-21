@@ -557,11 +557,13 @@ def overlay_code(p, chems):
 # state lives along the buffers' top row (the state row), one texel each.
 UI_COMMON = """\
 // The interface. Views: 0 colour; 1 every chemical, and the colour view,
-// as tiles; 2 one tile full screen. Buttons along the top of the tiles
-// view (only): the colour map (tap for the next), the brush (drag to set
-// what one finger paints; a second finger joining the drag sets what two
-// erase; tap to go back to the file's own), and composite colour (tap to
-// switch).
+// as tiles; 2 one tile full screen. Buttons just above the tiles (in the
+// tiles view only): the colour map (tap for the next, hold and drag up and
+// down to pick one), random (tap for a random composite look; hold to
+// wander through them, stopping a moment before letting go), the brush
+// (drag to set what one finger paints; a second finger joining the drag
+// sets what two erase; tap to go back to the file's own), and composite
+// colour (tap to switch).
 const int CHEMICALS = %(n)d;
 const int TILES = CHEMICALS + 1; // the chemicals, then the colour view
 const float MAPS = %(maps)d.0;   // 0 the file's own map, then colormaps' rows
@@ -569,13 +571,14 @@ const float MAPS = %(maps)d.0;   // 0 the file's own map, then colormaps' rows
 const int S_GESTURE = 0; // most fingers this touch, when it began, view, the tile shown
 const int S_TOUCH = 1;   // where it began (x, y), moved too far for a tap, tile it began on
 const int S_MODE = 2;    // composite, colour map, editing (1 colour, 2 weight, 3 brush,
-                         // 4 eraser), its chemical
+                         // 4 eraser, 5 picking a colour map, 6 wandering), its chemical
 const int S_DRAG = 3;    // the colour wheel's centre (x, y), last frame's finger centre (x, y)
 const int S_FINGERS = 4; // last frame's finger count, a chemical whose complement a two-
                          // finger tap switched (-1 none), 1 if a tap reset the brush, and
                          // 2 once started - see rdStarted()
 const int S_BRUSH = 5;   // what the brush paints (its two chemicals), and erases (two)
 const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dragging
+const int S_RANDOM = 7;  // the random look's seed, when wandering began, 1 while wandering
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
 const int S_POWER = 16;  // + a chemical: its composite power, complement (1: 1 - level)
 // The brush's chemicals (-1 none): what dragging it sets.
@@ -590,6 +593,8 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define WEIGHT_RATE 3.0   // weight per screen height dragged
 #define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
 #define BRUSH_RATE 1.0    // a chemical's whole range per screen width (or height) dragged
+#define RANDOM_RATE 1.5   // new random looks a second, wandering
+#define RANDOM_REWIND 0.25 // seconds back from letting go that wandering stops at
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
@@ -599,18 +604,37 @@ bool rdInBox(vec2 p, vec4 box) {
 	return all(greaterThanEqual(p, box.xy)) && all(lessThan(p, box.xy + box.zw));
 }
 
-// The colour map button, top left: origin, size.
-vec4 rdMapButton(vec2 screen) {
-	float u = rdUnit(screen);
-	vec2 size = vec2(0.3, 0.07) * u;
-	return vec4(0.04 * u, screen.y - 0.05 * u - size.y, size);
+// The tiles' layout (see rdTile()): columns, rows, one tile's size, and the
+// bottom left corner of them all.
+void rdTiles(vec2 screen, out int cols, out int rows, out vec2 size, out vec2 origin) {
+	float top = screen.y - 0.15 * rdUnit(screen);
+	cols = int(ceil(sqrt(float(TILES))));
+	rows = (TILES + cols - 1) / cols;
+	float scale = min(1.0 / float(cols), top / (float(rows) * screen.y));
+	size = screen * scale;
+	origin = vec2(screen.x - size.x * float(cols), top - size.y * float(rows)) * 0.5;
 }
 
-// The composite colour button, top right: centre, radius.
+// The bottom of the buttons' row: just above the tiles.
+float rdButtonsBottom(vec2 screen) {
+	int cols, rows;
+	vec2 size, origin;
+	rdTiles(screen, cols, rows, size, origin);
+	float u = rdUnit(screen);
+	return min(origin.y + size.y * float(rows) + 0.025 * u, screen.y - 0.12 * u);
+}
+
+// The colour map button, left: origin, size.
+vec4 rdMapButton(vec2 screen) {
+	float u = rdUnit(screen);
+	return vec4(0.04 * u, rdButtonsBottom(screen), vec2(0.3, 0.07) * u);
+}
+
+// The composite colour button, right: centre, radius.
 vec3 rdCompositeButton(vec2 screen) {
 	float u = rdUnit(screen);
 	float r = 0.045 * u;
-	return vec3(screen.x - 0.04 * u - r, screen.y - 0.05 * u - 0.035 * u, r);
+	return vec3(screen.x - 0.04 * u - r, rdButtonsBottom(screen) + 0.035 * u, r);
 }
 
 bool rdOnMapButton(vec2 p, vec2 screen) {
@@ -635,9 +659,36 @@ bool rdOnBrushButton(vec2 p, vec2 screen) {
 	return distance(p, b.xy) < b.z * 1.5;
 }
 
+// The random button, left of the brush one: centre, radius.
+vec3 rdRandomButton(vec2 screen) {
+	vec3 b = rdBrushButton(screen);
+	return vec3(b.x - b.z * 3.2, b.y, b.z);
+}
+
+bool rdOnRandomButton(vec2 p, vec2 screen) {
+	vec3 b = rdRandomButton(screen);
+	return distance(p, b.xy) < b.z * 1.5;
+}
+
 bool rdOnButton(vec2 p, vec2 screen) {
 	return rdOnMapButton(p, screen) || rdOnCompositeButton(p, screen) ||
-			rdOnBrushButton(p, screen);
+			rdOnBrushButton(p, screen) || rdOnRandomButton(p, screen);
+}
+
+// Held on the colour map button: a strip of every map, one a row from the
+// file's own at the top, down from the button - origin, size.
+vec4 rdMapPicker(vec2 screen) {
+	float u = rdUnit(screen);
+	vec4 b = rdMapButton(screen);
+	float bottom = 0.04 * u;
+	float top = b.y - 0.02 * u;
+	return vec4(b.x, bottom, b.z, top - bottom);
+}
+
+// The colour map slot at height y on the picker.
+float rdMapPickerSlot(float y, vec2 screen) {
+	vec4 r = rdMapPicker(screen);
+	return clamp(floor((r.y + r.w - y) / r.w * MAPS), 0.0, MAPS - 1.0);
 }
 
 // Chemical i's range on its tile (MASK_LOW_, MASK_HIGH_), as composite
@@ -650,12 +701,9 @@ vec2 maskRange(int i) {
 // Tile i in the tiles view (origin, size), below the buttons: each the
 // screen's shape, as many across as down - or one more.
 vec4 rdTile(int i, vec2 screen) {
-	float top = screen.y - 0.15 * rdUnit(screen);
-	int cols = int(ceil(sqrt(float(TILES))));
-	int rows = (TILES + cols - 1) / cols;
-	float scale = min(1.0 / float(cols), top / (float(rows) * screen.y));
-	vec2 size = screen * scale;
-	vec2 origin = vec2(screen.x - size.x * float(cols), top - size.y * float(rows)) * 0.5;
+	int cols, rows;
+	vec2 size, origin;
+	rdTiles(screen, cols, rows, size, origin);
 	int row = i / cols;
 	int col = i - row * cols;
 	return vec4(origin + vec2(float(col), float(rows - 1 - row)) * size, size);
@@ -743,6 +791,9 @@ void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, ou
 			vec2 at = pt.xy;
 			if (tiles && rdOnBrushButton(at, screen)) {
 				f.z = 1.0;
+			} else if (tiles && rdOnRandomButton(at, screen)) {
+				// A random look (see rdNextChemical()) - in composite.
+				m.x = 1.0;
 			} else if (tiles && rdOnMapButton(at, screen)) {
 				m.y = mod(pm.y + 1.0, MAPS);
 			} else if (tiles && rdOnCompositeButton(at, screen)) {
@@ -776,6 +827,20 @@ void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, ou
 		// second finger joining in, what two erase.
 		if (tiles && rdOnBrushButton(t.xy, screen) && g.x < 3.0) {
 			m.z = n >= 2 ? 4.0 : 3.0;
+		}
+		bool held1 = g.x < 1.5 && iTime - g.y >= PAINT_DELAY;
+		// Held on the colour map button: the map under the finger, on the
+		// picker.
+		if (tiles && held1 && rdOnMapButton(t.xy, screen)) {
+			m.z = 5.0;
+		}
+		if (m.z > 4.5 && m.z < 5.5) {
+			m.y = rdMapPickerSlot(first.y, screen);
+		}
+		// Held on random: wandering through random looks, in composite.
+		if (tiles && held1 && rdOnRandomButton(t.xy, screen)) {
+			m.z = 6.0;
+			m.x = 1.0;
 		}
 		// Composite colour is edited on the tiles: hold one finger on a
 		// chemical for its colour wheel; two drag its weight (up/down) and
@@ -835,11 +900,73 @@ vec4 rdNextBrush(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 f) {
 	return s;
 }
 
+// Whether this frame ends a tap on the random button.
+bool rdRandomTapped(ivec2 grid, vec2 screen) {
+	vec4 pg = rdState(S_GESTURE, grid);
+	vec4 pt = rdState(S_TOUCH, grid);
+	return pointerCount == 0 && pg.x > 0.0 && pg.x < 1.5 && pt.z < 0.5 &&
+			iTime - pg.y < TAP_TIME && pg.z > 0.5 && pg.z < 1.5 &&
+			rdOnRandomButton(pt.xy, screen);
+}
+
+// A new random look's seed - the same in every texel this frame.
+float rdNewSeed() {
+	return floor(fract(sin(iTime * 12.9898) * 43758.5453) * 500.0);
+}
+
+// The random texel next frame: m is the next mode.
+vec4 rdNextRandom(ivec2 grid, vec4 m) {
+	vec4 s = rdState(S_RANDOM, grid);
+	if (m.z > 5.5) {
+		return s.z > 0.5 ? s : vec4(rdNewSeed(), iTime, 1.0, 0.0);
+	}
+	return vec4(s.xy, 0.0, 0.0);
+}
+
+float rdHash(float seed, float k) {
+	return fract(sin(dot(vec2(seed, k), vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+// Parameter k of random look `seed`, wandering smoothly with t.
+float rdWander(float seed, float k, float t) {
+	float i = floor(t);
+	float f = t - i;
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(rdHash(seed + i, k), rdHash(seed + i + 1.0, k), f);
+}
+
+// Chemical chem's colour or power texel in random look `seed`, t seconds
+// into wandering: a hue, fairly saturated and bright, a weight, a power
+// and now and then its complement.
+vec4 rdRandomLook(int texel, int chem, float seed, float t) {
+	float k = float(chem) * 8.0;
+	float w = t * RANDOM_RATE;
+	if (texel < S_POWER) {
+		return vec4(fract(rdWander(seed, k, w) * 2.0), mix(0.5, 1.0, rdWander(seed, k + 1.0, w)),
+				mix(0.7, 1.0, rdWander(seed, k + 2.0, w)), mix(0.2, 2.0, rdWander(seed, k + 3.0, w)));
+	}
+	return vec4(exp(mix(-1.2, 1.2, rdWander(seed, k + 4.0, w))),
+			rdWander(seed, k + 5.0, w) > 0.7 ? 1.0 : 0.0, 0.0, 0.0);
+}
+
 // A chemical's composite colour or power texel, next frame: m, d and f
 // are the next mode, drag and fingers texels.
 vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) {
 	vec4 s = rdState(texel, grid);
 	int chem = texel >= S_POWER ? texel - S_POWER : texel - S_COLOUR;
+	// Random looks: wandering while random's held, then where it was a
+	// moment before it was let go; a tap, a new one.
+	vec4 r = rdState(S_RANDOM, grid);
+	if (m.z > 5.5) {
+		return r.z > 0.5 ? rdRandomLook(texel, chem, r.x, iTime - r.y)
+				: rdRandomLook(texel, chem, rdNewSeed(), 0.0);
+	}
+	if (r.z > 0.5) {
+		return rdRandomLook(texel, chem, r.x, max(iTime - r.y - RANDOM_REWIND, 0.0));
+	}
+	if (rdRandomTapped(grid, screen)) {
+		return rdRandomLook(texel, chem, rdNewSeed(), 0.0);
+	}
 	if (texel >= S_POWER && abs(f.y - float(chem)) < 0.5) {
 		s.y = 1.0 - s.y;
 	}
@@ -916,6 +1043,16 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 	return sum / max(weights, 1e-4);
 }
 
+// Chemical i's part in composite colour at q: its level (or complement)
+// to its power, in its colour, as bright as its weight (up to 1).
+vec3 rdContribution(int i, ivec2 q, ivec2 grid) {
+	vec4 c = rdState(S_COLOUR + i, grid);
+	vec4 power = rdState(S_POWER + i, grid);
+	float level = rdLevel(i, q);
+	level = power.y > 0.5 ? 1.0 - level : level;
+	return hsv2rgb(c.xyz) * pow(level, power.x) * min(c.w, 1.0);
+}
+
 vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
 	if (mode.x > 0.5) {
 		return rdComposite(q, grid);
@@ -924,10 +1061,14 @@ vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
 	return rdMap(clamp((chemical(ACTIVE, q) - range.x) / (range.y - range.x), 0.0, 1.0), mode.y);
 }
 
-// Tile k at uv (0-1 across it): a chemical's level, or the colour view.
+// Tile k at uv (0-1 across it): a chemical's level (in composite, its
+// part in it), or the colour view.
 vec3 rdTileColour(int k, vec2 uv, ivec2 grid, vec4 mode) {
 	ivec2 q = ivec2(clamp(uv, 0.0, 0.999) * vec2(grid));
-	return k < CHEMICALS ? vec3(rdLevel(k, q)) : rdColour(q, grid, mode);
+	if (k < CHEMICALS) {
+		return mode.x > 0.5 ? rdContribution(k, q, grid) : vec3(rdLevel(k, q));
+	}
+	return rdColour(q, grid, mode);
 }
 
 // The coverage of `code`'s glyph, at g (0-1 across its cell), drawn h
@@ -996,6 +1137,42 @@ vec4 rdCompositeButtonColour(vec2 p, vec2 screen, vec4 mode) {
 	return vec4(mix(inside, rainbow, ring), smoothstep(1.05, 0.98, r));
 }
 
+// The random button: a die's five, the face lit up while wandering.
+vec4 rdRandomButtonColour(vec2 p, vec2 screen, vec4 mode) {
+	vec3 b = rdRandomButton(screen);
+	vec2 v = (p - b.xy) / b.z;
+	float r = length(v);
+	if (r > 1.05) {
+		return vec4(0.0);
+	}
+	vec3 col = mode.z > 5.5 ? hsv2rgb(vec3(fract(iTime * 0.7), 0.6, 0.9)) : vec3(0.08);
+	vec2 pip = abs(v) - vec2(0.38);
+	float d = min(length(v), length(pip));
+	col = mix(col, vec3(0.95), smoothstep(0.17, 0.12, d));
+	col = mix(col, vec3(0.9), smoothstep(0.8, 0.86, r));
+	return vec4(col, smoothstep(1.05, 0.98, r));
+}
+
+// Picking a colour map: every map, a row each, the current one framed.
+vec4 rdMapPickerColour(vec2 p, vec2 screen, vec4 mode) {
+	vec4 r = rdMapPicker(screen);
+	float frame = 0.006 * rdUnit(screen);
+	if (!rdInBox(p, vec4(r.xy - frame, r.zw + 2.0 * frame))) {
+		return vec4(0.0);
+	}
+	if (!rdInBox(p, r)) {
+		return vec4(vec3(0.9), 1.0);
+	}
+	float slot = rdMapPickerSlot(p.y, screen);
+	float row = r.w / MAPS;
+	float bottom = r.y + r.w - (slot + 1.0) * row;
+	vec3 col = rdMap((p.x - r.x) / r.z, slot);
+	if (abs(slot - mode.y) < 0.5 && (p.y - bottom < frame * 1.5 || bottom + row - p.y < frame * 1.5)) {
+		col = vec3(1.0);
+	}
+	return vec4(col, 1.0);
+}
+
 // A chemical's level in its range, 0-1.
 float rdInRange(int i, float v) {
 	vec2 r = maskRange(max(i, 0));
@@ -1034,7 +1211,7 @@ vec4 rdBrushButtonColour(vec2 p, vec2 screen, ivec2 grid) {
 vec4 rdBrushPad(vec2 p, vec2 screen, ivec2 grid, bool erase) {
 	float u = rdUnit(screen);
 	float side = 0.42 * u;
-	vec2 origin = vec2(screen.x * 0.5 - side * 0.5, screen.y - 0.2 * u - side);
+	vec2 origin = vec2(screen.x * 0.5 - side * 0.5, rdButtonsBottom(screen) - 0.03 * u - side);
 	vec2 uv = (p - origin) / side;
 	if (any(lessThan(uv, vec2(-0.02))) || any(greaterThan(uv, vec2(1.02)))) {
 		return vec4(0.0);
@@ -1086,37 +1263,18 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 				col = vec3(0.25);
 			} else {
 				col = rdTileColour(k, uv, grid, mode);
-				float h = tile.w * 0.11;
-				vec2 corner = vec2(h * 0.3, tile.w - h * 1.15);
-				if (k < CHEMICALS) {
-					// Its letter, and in composite, its colour, weight (white)
-					// and power (yellow, 1 at the middle).
-					float ink = rdGlyph(float(97 + k), (inTile - corner) / h, h);
-					col = mix(col, vec3(0.0), rdGlyph(float(97 + k), (inTile - corner) / h, h * 0.4));
-					// Complemented in composite colour: in cyan, with a bar over
-					// it (as in 1 - a).
-					bool complement = rdState(S_POWER + k, grid).y > 0.5;
-					vec3 letter = complement ? vec3(0.3, 0.95, 1.0) : vec3(1.0, 0.85, 0.2);
-					col = mix(col, letter, ink);
-					vec2 over = inTile - corner - vec2(h * 0.18, h * 1.02);
-					if (complement && over.x > 0.0 && over.x < h * 0.42 && abs(over.y) < h * 0.05) {
-						col = letter;
+				// While two fingers drag its weight (white) and power (yellow,
+				// 1 at the middle): them, along its bottom.
+				if (k < CHEMICALS && mode.z > 1.5 && mode.z < 2.5 && abs(mode.w - float(k)) < 0.5) {
+					vec4 c = rdState(S_COLOUR + k, grid);
+					float power = rdState(S_POWER + k, grid).x;
+					float bar = tile.w * 0.04;
+					if (inTile.y < bar * 2.2 && inTile.y > bar * 1.2) {
+						col = mix(col, vec3(1.0), step(uv.x, c.w / 4.0) * 0.85);
 					}
-					if (mode.x > 0.5) {
-						vec4 c = rdState(S_COLOUR + k, grid);
-						float power = rdState(S_POWER + k, grid).x;
-						vec2 chip = vec2(tile.z - h * 0.8, tile.w - h * 0.65);
-						float d = distance(inTile, chip);
-						col = mix(col, vec3(1.0), smoothstep(h * 0.42, h * 0.38, d));
-						col = mix(col, hsv2rgb(c.xyz), smoothstep(h * 0.36, h * 0.32, d));
-						float bar = h * 0.18;
-						if (inTile.y < bar * 2.2 && inTile.y > bar * 1.2) {
-							col = mix(col, vec3(1.0), step(uv.x, c.w / 4.0) * 0.85);
-						}
-						if (inTile.y < bar && inTile.y > 0.0) {
-							float level = 0.5 + log(power) / log(10.0) * 0.5;
-							col = mix(col, vec3(1.0, 0.85, 0.2), step(uv.x, level) * 0.85);
-						}
+					if (inTile.y < bar && inTile.y > 0.0) {
+						float level = 0.5 + log(power) / log(10.0) * 0.5;
+						col = mix(col, vec3(1.0, 0.85, 0.2), step(uv.x, level) * 0.85);
 					}
 				}
 			}
@@ -1145,8 +1303,14 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		col = mix(col, b.rgb, b.a);
 		b = rdCompositeButtonColour(p, screen, mode);
 		col = mix(col, b.rgb, b.a);
-		if (mode.z > 2.5) {
+		b = rdRandomButtonColour(p, screen, mode);
+		col = mix(col, b.rgb, b.a);
+		if (mode.z > 2.5 && mode.z < 4.5) {
 			b = rdBrushPad(p, screen, grid, mode.z > 3.5);
+			col = mix(col, b.rgb, b.a);
+		}
+		if (mode.z > 4.5 && mode.z < 5.5) {
+			b = rdMapPickerColour(p, screen, mode);
 			col = mix(col, b.rgb, b.a);
 		}
 	}
@@ -1331,6 +1495,8 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
 	out.append(UI_COMMON % ui)
 	out.append("")
+	out.extend(SANE_CODE.splitlines())
+	out.append("")
 	if is_first_stage:
 		out.append(UI_UPDATE % ui)
 		out.append("")
@@ -1372,6 +1538,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\telse if (texel == S_BRUSH || texel == S_BRUSH_ON) {")
 		out.append("\t\t\tfragColor = rdNextBrush(texel, grid, screen, uiMode, uiFingers);")
 		out.append("\t\t}")
+		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
 		out.append("\t\telse if ((texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) ||")
 		out.append("\t\t\t\t(texel >= S_POWER && texel < S_POWER + CHEMICALS)) {")
 		out.append("\t\t\tfragColor = rdNextChemical(texel, grid, screen, uiMode, uiDrag, uiFingers);")
@@ -1426,10 +1593,15 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	for line in formula.splitlines():
 		out.append("\t" + line.strip() if line.strip() else "")
 	out.append("")
+	for c in mine:
+		out.append("\tfloat before_%s = %s;" % (c, c))
 	out.append("\t// Forward Euler:")
 	for c in mine:
 		out.append("\t%s += timestep * delta_%s;" % (c, c))
 	out.extend(paint_code(p, chems, mine, paint, erase, is_first_stage))
+	out.append("\t// Kept finite and within reach - see rdSane().")
+	for c in mine:
+		out.append("\t%s = rdSane(%s, before_%s, %d);" % (c, c, c, chem_index(c)))
 	out.append("\tfragColor = %s;" % result)
 	out.append("}")
 	return "\n".join(out)
@@ -1517,6 +1689,26 @@ def wide_laplacian_code(used_stencils, groups):
 		out.append("		laplacian_%s *= LAPLACIAN_SCALE * LAPLACIAN_SCALE;" % c)
 	out.append("	}")
 	return out
+
+
+SANE_CODE = """\
+// Chemical i's new value v, kept finite and within reach. A value gone
+// NaN or infinite - which the Laplacian would spread to every neighbour,
+// a stain taking over the screen - goes back to what it was this step
+// (or, were that bad too, its range's low end); and every value stays
+// within KEEP_RANGE of its range's widths past it, so a cell painted
+// into running away is stopped before it overflows.
+float rdSane(float v, float before, int i) {
+	vec2 r = maskRange(i);
+	if (isnan(v) || isinf(v) || !(abs(v) < 1e6)) {
+		v = isnan(before) || isinf(before) || !(abs(before) < 1e6) ? r.x : before;
+	}
+	if (KEEP_RANGE <= 0.0) {
+		return v;
+	}
+	float reach = KEEP_RANGE * (r.y - r.x);
+	return clamp(v, r.x - reach, r.y + reach);
+}"""
 
 
 def cell_code(p):
@@ -1706,6 +1898,9 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	params_block.append("// this. Above 1 it's a Gaussian's, wider the larger - see rdWideBlur() -")
 	params_block.append("// and slower, as it reads more cells.")
 	params_block.append("#define LAPLACIAN_SCALE 1.0")
+	params_block.append("// How far past its range (MASK_LOW_/MASK_HIGH_), in ranges' widths, a")
+	params_block.append("// chemical may go before it's clamped (0: never) - see rdSane().")
+	params_block.append("#define KEEP_RANGE 4.0")
 	active = setting(p, "active_chemical", "a")
 	if chem_index(active) >= p.n_chemicals:
 		active = "a"

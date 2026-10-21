@@ -295,3 +295,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   below 1 scales the stencil down, above 1 a Gaussian-based Laplacian (`rdWideBlur()`) whose
   width grows with the scale, so it stays stable at the same timestep. Tested at 2.0 at 1/32:
   much bigger blobs, stable, 49 fps.
+- **VTI interface list:** in composite, tiles (and a chemical full screen) show each chemical's
+  tinted, powered, weighted part (`rdContribution()`) - so the swatch circle and letter labels
+  are gone, and weight/power bars show only while two fingers drag them; the buttons sit just
+  above the tiles; holding the colour map button opens a strip of every map to drag through; a
+  new random button (tap: random composite look; hold: wander through looks, stopping a quarter
+  second before letting go).
+- **"Painting often gets taken over by black or a reddish (NaN?) colour - could clamping
+  help?"** Added `rdSane()` at the end of every step: NaN/infinite values go back to the cell's
+  previous value (a NaN otherwise spreads through the Laplacian), and each chemical is clamped
+  to `KEEP_RANGE` (4) range-widths past its mask range. Not yet tried on the phone.
