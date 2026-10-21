@@ -191,3 +191,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   Asked Dan to check for that banner; meanwhile CLAUDE.md says to dispatch by hand after a push.
 - **"I enabled workflows in the Actions tab."** To be confirmed by the next docs push to master;
   the manual fallback stays in CLAUDE.md until then.
+
+## 2026-10-21, branch `UltraRestArea`
+
+- **"A second app from this codebase, 'Ultra Rest Area': no Android UI at all, every screen
+  drawn by shaders, leading through a curated library of shader sets you can configure (audio
+  source etc.) with shader-drawn widgets. Thoughts? Branch: UltraRestArea."** Branch made. Liked
+  it; suggested a Gradle product flavour (its own app id, sharing the renderer), Java owning the
+  UI's state and hit-testing while shaders draw it, packs as the library, and noted the
+  unavoidable system bits (permission prompts, back gesture) - questions back to Dan before a
+  first milestone.
