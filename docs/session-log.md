@@ -352,3 +352,14 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   used the same incoming file, so waiting dialogs would all read the last one sent. No harm done
   (Dan replaced orbits first, which matched; the other two failed cleanly). Each import now
   gets its own file; resent the two grayscott shaders.
+- **CRT: stronger scanlines, triads wider than tall, old-TV imperfections; fancy defocus with a
+  shaped, sharp, chromatic bokeh and cat's-eye vignetting; brush a fixed share of the screen;
+  guided random walk updated every frame but much more gently; additive composite (can it go
+  black?).** CRT reworked (narrower beams, staggered slot mask, bulge/rounded corners,
+  convergence error, glow, static, flicker, hum bar, line wobble; `upscaleTime`). New "Fancy
+  defocus (bokeh)" filter: seven-bladed iris, bright rim, crisp edge, red/blue fringes, cat's
+  eyes. Brush: `BRUSH_SIZE` 0.05 of the grid's shorter side (`ERASE_SIZE` 1.5x) - an on-screen
+  size control is still to do. Wandering is now `rdWanderStep()` every step (RANDOM_NUDGE /
+  RANDOM_PULL 0.004) with snapshots for the rewind. Composite now adds (COMPOSITE_GAIN 1.6 for
+  an average look); weights -2..4, so 0 hides a chemical and negative darkens - before, nothing
+  could go black. Not yet tried on the phone.

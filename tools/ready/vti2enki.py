@@ -586,10 +586,14 @@ const int S_FINGERS = 4; // last frame's finger count, a chemical whose compleme
                          // 2 once started - see rdStarted()
 const int S_BRUSH = 5;   // what the brush paints (its two chemicals), and erases (two)
 const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dragging
-const int S_RANDOM = 7;  // the random look's seed, when wandering began, 1 while wandering
+const int S_RANDOM = 7;  // the random look's seed, when wandering began, 1 while wandering,
+                         // the RANDOM_REWIND period its snapshots were last taken in
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
 const int S_POWER = 16;  // + a chemical: its composite power, complement (1: 1 - level)
 const int S_MAP = 24;    // the colour map's frequency: how many times it runs over the range
+const int S_SNAP = 25;   // + a chemical: snapshots of its hue and weight; + CHEMICALS + a
+                         // chemical: of its power and complement - each the newer (x, y)
+                         // and older (z, w), for wandering's rewind
 // The brush's chemicals (-1 none): what dragging it sets.
 const ivec2 BRUSH_PAINT = ivec2(%(brush_paint)s);
 const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
@@ -600,10 +604,15 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define TAP_MOVE 0.03
 #define WHEEL_RADIUS 0.22 // of the screen's shorter side
 #define WEIGHT_RATE 3.0   // weight per screen height dragged
+// Composite colour adds its chemicals' parts: weights summing to about
+// this make an average look. A weight of 0 hides a chemical; below, it
+// darkens where it is.
+#define COMPOSITE_GAIN 1.6
 #define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
 #define BRUSH_RATE 1.0    // a chemical's whole range per screen width (or height) dragged
-#define RANDOM_RATE 0.25  // new random looks a second, wandering
-#define RANDOM_REWIND 0.25 // seconds back from letting go that wandering stops at
+#define RANDOM_REWIND 0.25 // wandering stops this to twice this before letting go
+#define RANDOM_NUDGE 0.004 // how far wandering moves a look by chance, a step
+#define RANDOM_PULL 0.004  // and how far towards one that shows every chemical
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
@@ -774,7 +783,8 @@ vec4 rdStartState(int texel) {
 	if (texel == S_GESTURE) return vec4(0.0, 0.0, %(view)s, 0.0);
 	if (texel == S_TOUCH || texel == S_MODE) return vec4(0.0, 0.0, 0.0, -1.0);
 	if (texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) {
-		return vec4(float(texel - S_COLOUR) / float(CHEMICALS), 0.8, 1.0, 1.0);
+		return vec4(float(texel - S_COLOUR) / float(CHEMICALS), 0.8, 1.0,
+				COMPOSITE_GAIN / float(CHEMICALS));
 	}
 	if (texel >= S_POWER && texel < S_POWER + CHEMICALS) return vec4(1.0, 0.0, 0.0, 0.0);
 	if (texel == S_BRUSH) return %(brush_start)s;
@@ -964,22 +974,31 @@ float rdNewSeed() {
 // The random texel next frame: m is the next mode.
 vec4 rdNextRandom(ivec2 grid, vec4 m) {
 	vec4 s = rdState(S_RANDOM, grid);
+	float period = floor(iTime / RANDOM_REWIND);
 	if (m.z > 5.5) {
-		return s.z > 0.5 ? s : vec4(rdNewSeed(), iTime, 1.0, 0.0);
+		return s.z > 0.5 ? vec4(s.xyz, period) : vec4(rdNewSeed(), iTime, 1.0, period);
 	}
-	return vec4(s.xy, 0.0, 0.0);
+	return vec4(s.xy, 0.0, period);
+}
+
+// A snapshot texel next frame: at each new RANDOM_REWIND period the newer
+// snapshot becomes the older, and the chemical's look now the newer - so
+// the older is always a period or two back.
+vec4 rdNextSnapshot(int texel, ivec2 grid) {
+	vec4 snap = rdState(texel, grid);
+	if (floor(iTime / RANDOM_REWIND) == rdState(S_RANDOM, grid).w) {
+		return snap;
+	}
+	int k = texel - S_SNAP;
+	if (k < CHEMICALS) {
+		vec4 now = rdState(S_COLOUR + k, grid);
+		return vec4(now.x, now.w, snap.xy);
+	}
+	return vec4(rdState(S_POWER + k - CHEMICALS, grid).xy, snap.xy);
 }
 
 float rdHash(float seed, float k) {
 	return fract(sin(dot(vec2(seed, k), vec2(12.9898, 78.233))) * 43758.5453);
-}
-
-// Parameter k of random look `seed`, wandering smoothly with t.
-float rdWander(float seed, float k, float t) {
-	float i = floor(t);
-	float f = t - i;
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(rdHash(seed + i, k), rdHash(seed + i + 1.0, k), f);
 }
 
 // Chemical i's levels (0-1 across its mask range) over an 8x8 sample of
@@ -1019,43 +1038,99 @@ float rdHueSpread(int rank) {
 	return v;
 }
 
-// Chemical chem's colour or power texel in random look `seed`, t seconds
-// into wandering. Steered, by how strongly the look's own wandering
-// says, towards one that shows every chemical clearly - from a sample of
-// the grid now: hues spread round the circle (complementary for the two
-// most varied), each chemical's power putting its typical level about
-// mid-way (its complement, if mostly high, so its features show bright),
-// and weights by how much it varies - with the rest left to chance.
-vec4 rdRandomLook(int texel, int chem, float seed, float t, ivec2 grid) {
-	float k = float(chem) * 8.0;
-	float w = t * RANDOM_RATE;
+// What would show chemical chem clearly, from a sample of the grid now:
+// its rank by how much it varies (0 the most), that variation's share of
+// all of theirs, and its levels' mean.
+void rdGuide(int chem, ivec2 grid, out int rank, out float share, out float mean) {
 	vec2 mine = rdLevelStats(chem, grid);
-	float most = 1e-3;
-	int rank = 0;
+	float total = 0.0;
+	rank = 0;
 	for (int j = 0; j < CHEMICALS; ++j) {
 		float sd = j == chem ? mine.y : rdLevelStats(j, grid).y;
-		most = max(most, sd);
+		total += sd;
 		if (sd > mine.y || (sd == mine.y && j < chem)) {
 			++rank;
 		}
 	}
-	float guide = mix(0.55, 0.95, rdWander(seed, 95.0, w * 0.3));
+	share = mine.y / max(total, 1e-3);
+	mean = mine.x;
+}
+
+// The weight that shows a chemical with `share` of the variation: some for
+// every chemical, more for the varied ones, adding up to COMPOSITE_GAIN.
+float rdGuidedWeight(float share) {
+	return COMPOSITE_GAIN * mix(1.0 / float(CHEMICALS), share, 0.6);
+}
+
+// The power putting a typical level (0-1) about mid-way.
+float rdGuidedPower(float typical) {
+	return clamp(log(0.4) / log(clamp(typical, 0.03, 0.97)), 0.25, 6.0);
+}
+
+// Chemical chem's colour or power texel in a new random look, `seed`'s:
+// hues spread round the circle by how much each chemical varies (see
+// rdGuide()), each power putting its typical level about mid-way (its
+// complement, if mostly high, so its features show bright), weights by
+// variation - each nudged by chance.
+vec4 rdRandomLook(int texel, int chem, float seed, ivec2 grid) {
+	float k = float(chem) * 8.0;
+	int rank;
+	float share, mean;
+	rdGuide(chem, grid, rank, share, mean);
 	if (texel < S_POWER) {
-		float hue = fract(rdWander(seed, 90.0, w * 0.5) + rdHueSpread(rank) +
-				(rdWander(seed, k, w) - 0.5) * 0.35 * (1.0 - guide));
-		float saturation = mix(0.75, 1.0, rdWander(seed, k + 1.0, w));
-		float value = mix(0.85, 1.0, rdWander(seed, k + 2.0, w));
-		float weight = mix(mix(0.2, 2.0, rdWander(seed, k + 3.0, w)),
-				0.3 + 1.4 * mine.y / most, guide);
-		return vec4(hue, saturation, value, weight);
+		float hue = fract(rdHash(seed, 90.0) + rdHueSpread(rank) + (rdHash(seed, k) - 0.5) * 0.15);
+		return vec4(hue, mix(0.75, 1.0, rdHash(seed, k + 1.0)), mix(0.85, 1.0, rdHash(seed, k + 2.0)),
+				rdGuidedWeight(share) * mix(0.6, 1.4, rdHash(seed, k + 3.0)));
 	}
-	bool high = mine.x > 0.55;
-	float typical = clamp(high ? 1.0 - mine.x : mine.x, 0.03, 0.97);
-	float power = exp(mix(mix(-1.2, 1.2, rdWander(seed, k + 4.0, w)),
-			clamp(log(log(0.4) / log(typical)), log(0.25), log(6.0)), guide));
-	float complement = guide > 0.7 ? (high ? 1.0 : 0.0)
-			: (rdWander(seed, k + 5.0, w) > 0.7 ? 1.0 : 0.0);
-	return vec4(power, complement, 0.0, 0.0);
+	bool high = mean > 0.55;
+	float power = rdGuidedPower(high ? 1.0 - mean : mean) * exp((rdHash(seed, k + 4.0) - 0.5) * 0.8);
+	return vec4(power, high ? 1.0 : 0.0, 0.0, 0.0);
+}
+
+// Chemical chem's colour or power texel s, one step of wandering on: a
+// little way by chance (RANDOM_NUDGE), and a little way (RANDOM_PULL)
+// towards what would show it clearly - its hue the biggest gap from the
+// most varied chemical's (see rdHueSpread()), its weight and power as
+// rdRandomLook() picks them, its complement now and then.
+vec4 rdWanderStep(int texel, int chem, vec4 s, ivec2 grid) {
+	float n = float(iFrame);
+	float k = float(chem) * 8.0;
+	int rank;
+	float share, mean;
+	rdGuide(chem, grid, rank, share, mean);
+	if (texel < S_POWER) {
+		int top = 0;
+		for (int j = 0; j < CHEMICALS; ++j) {
+			int r;
+			float sh, me;
+			if (j != chem) {
+				rdGuide(j, grid, r, sh, me);
+				if (r == 0) {
+					top = j;
+				}
+			} else if (rank == 0) {
+				top = j;
+			}
+		}
+		float want = fract(rdState(S_COLOUR + top, grid).x + rdHueSpread(rank));
+		float off = fract(want - s.x + 0.5) - 0.5;
+		s.x = fract(s.x + (rdHash(n, k) - 0.5) * RANDOM_NUDGE * 4.0 +
+				(top == chem ? 0.0 : off * RANDOM_PULL * 4.0));
+		s.y = clamp(s.y + (rdHash(n, k + 1.0) - 0.5) * RANDOM_NUDGE + (0.9 - s.y) * RANDOM_PULL, 0.5, 1.0);
+		s.z = clamp(s.z + (rdHash(n, k + 2.0) - 0.5) * RANDOM_NUDGE + (0.95 - s.z) * RANDOM_PULL, 0.6, 1.0);
+		s.w += (rdHash(n, k + 3.0) - 0.5) * RANDOM_NUDGE * 2.0 +
+				(rdGuidedWeight(share) - s.w) * RANDOM_PULL;
+		return s;
+	}
+	bool high = mean > 0.55;
+	float lp = log(max(s.x, 0.1));
+	lp += (rdHash(n, k + 4.0) - 0.5) * RANDOM_NUDGE * 4.0 +
+			(log(rdGuidedPower(high ? 1.0 - mean : mean)) - lp) * RANDOM_PULL;
+	s.x = clamp(exp(lp), 0.1, 10.0);
+	if ((s.y > 0.5) != high && rdHash(n, k + 5.0) < RANDOM_PULL) {
+		s.y = high ? 1.0 : 0.0;
+	}
+	return s;
 }
 
 // A chemical's composite colour or power texel, next frame: m, d and f
@@ -1067,14 +1142,15 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	// moment before it was let go; a tap, a new one.
 	vec4 r = rdState(S_RANDOM, grid);
 	if (m.z > 5.5) {
-		return r.z > 0.5 ? rdRandomLook(texel, chem, r.x, iTime - r.y, grid)
-				: rdRandomLook(texel, chem, rdNewSeed(), 0.0, grid);
+		return rdWanderStep(texel, chem, s, grid);
 	}
 	if (r.z > 0.5) {
-		return rdRandomLook(texel, chem, r.x, max(iTime - r.y - RANDOM_REWIND, 0.0), grid);
+		// Just let go: back to the older snapshot, a moment before.
+		vec4 snap = rdState(S_SNAP + (texel >= S_POWER ? CHEMICALS : 0) + chem, grid);
+		return texel < S_POWER ? vec4(snap.z, s.y, s.z, snap.w) : vec4(snap.zw, 0.0, 0.0);
 	}
 	if (rdRandomTapped(grid, screen)) {
-		return rdRandomLook(texel, chem, rdNewSeed(), 0.0, grid);
+		return rdRandomLook(texel, chem, rdNewSeed(), grid);
 	}
 	if (texel >= S_POWER && abs(f.y - float(chem)) < 0.5) {
 		s.y = 1.0 - s.y;
@@ -1092,7 +1168,7 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	if (m.z > 1.5 && m.z < 2.5 && pointerCount >= 2) {
 		vec2 moved = rdMoved(grid, screen);
 		if (texel < S_POWER) {
-			s.w = clamp(s.w + moved.y * WEIGHT_RATE, 0.0, 4.0);
+			s.w = clamp(s.w + moved.y * WEIGHT_RATE, -2.0, 4.0);
 		} else {
 			s.x = clamp(s.x * exp(moved.x * POWER_RATE), 0.1, 10.0);
 		}
@@ -1133,12 +1209,11 @@ vec3 rdMap(float t, float slot) {
 }
 
 // Composite colour: each chemical's level (or its complement, 1 - level),
-// raised to its power, times its colour and weight, over the weights' sum
-// - so a chemical with no weight has no effect, and the rest stay
-// normalised.
+// raised to its power, times its colour and weight, added up - so it can
+// be as bright as the weights make it; a weight of 0 hides a chemical, and
+// a negative one darkens where it is.
 vec3 rdComposite(ivec2 q, ivec2 grid) {
 	vec3 sum = vec3(0.0);
-	float weights = 0.0;
 	for (int i = 0; i < CHEMICALS; ++i) {
 		vec4 c = rdState(S_COLOUR + i, grid);
 		vec4 power = rdState(S_POWER + i, grid);
@@ -1147,19 +1222,21 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 		// so it stays 0-1.
 		level = power.y > 0.5 ? 1.0 - level : level;
 		sum += c.w * hsv2rgb(c.xyz) * pow(level, power.x);
-		weights += c.w;
 	}
-	return sum / max(weights, 1e-4);
+	return clamp(sum, 0.0, 1.0);
 }
 
 // Chemical i's part in composite colour at q: its level (or complement)
-// to its power, in its colour, as bright as its weight (up to 1).
+// to its power, in its colour, as bright as its weight makes it next to
+// an average one (COMPOSITE_GAIN over the chemicals) - a negative weight
+// shown as bright as its size.
 vec3 rdContribution(int i, ivec2 q, ivec2 grid) {
 	vec4 c = rdState(S_COLOUR + i, grid);
 	vec4 power = rdState(S_POWER + i, grid);
 	float level = rdLevel(i, q);
 	level = power.y > 0.5 ? 1.0 - level : level;
-	return hsv2rgb(c.xyz) * pow(level, power.x) * min(c.w, 1.0);
+	return hsv2rgb(c.xyz) * pow(level, power.x) *
+			clamp(abs(c.w) * float(CHEMICALS) / COMPOSITE_GAIN, 0.0, 1.0);
 }
 
 // t (0-1) run through the colour map S_MAP's frequency times over.
@@ -1418,7 +1495,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 					float power = rdState(S_POWER + k, grid).x;
 					float bar = tile.w * 0.04;
 					if (inTile.y < bar * 2.2 && inTile.y > bar * 1.2) {
-						col = mix(col, vec3(1.0), step(uv.x, c.w / 4.0) * 0.85);
+						col = mix(col, vec3(1.0), step(uv.x, (c.w + 2.0) / 6.0) * 0.85);
 					}
 					if (inTile.y < bar && inTile.y > 0.0) {
 						float level = 0.5 + log(power) / log(10.0) * 0.5;
@@ -1699,6 +1776,9 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\t}")
 		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
 		out.append("\t\telse if (texel == S_MAP) fragColor = rdNextMap(grid, screen, uiMode);")
+		out.append("\t\telse if (texel >= S_SNAP && texel < S_SNAP + 2 * CHEMICALS) {")
+		out.append("\t\t\tfragColor = rdNextSnapshot(texel, grid);")
+		out.append("\t\t}")
 		out.append("\t\telse if ((texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) ||")
 		out.append("\t\t\t\t(texel >= S_POWER && texel < S_POWER + CHEMICALS)) {")
 		out.append("\t\t\tfragColor = rdNextChemical(texel, grid, screen, uiMode, uiDrag, uiFingers);")
@@ -1893,7 +1973,7 @@ def paint_code(p, chems, mine, paint, erase, is_first_stage):
 	# once a touch has lasted PAINT_DELAY (so a tap, or the first of two
 	# fingers, doesn't), and not while editing composite colour. Painting
 	# is each frame's first step's; erasing every step's, within the wider
-	# ERASE_RADIUS.
+	# ERASE_SIZE (both by BRUSH_SIZE of the grid's shorter side).
 	painted = dict(paint)
 	erased = dict(erase)
 	out = [""]
@@ -1954,8 +2034,8 @@ def paint_code(p, chems, mine, paint, erase, is_first_stage):
 	out.append("\t\t} else if (view == 2 && shown < CHEMICALS) {")
 	out.append("\t\t\tonly = shown;")
 	out.append("\t\t}")
-	out.append("\t\tfloat away = distance(at, fragCoord);")
-	out.append("\t\tif (erasing && away < ERASE_RADIUS) {")
+	out.append("\t\tfloat away = distance(at, fragCoord) / (BRUSH_SIZE * float(min(grid.x, grid.y)));")
+	out.append("\t\tif (erasing && away < ERASE_SIZE) {")
 	out.append("\t\t\tif (only < 0) {")
 	for c in mine:
 		if c in erased:
@@ -1966,7 +2046,7 @@ def paint_code(p, chems, mine, paint, erase, is_first_stage):
 				value(c, erased, "MASK_LOW_")))
 	out.append("\t\t}")
 	if paints:
-		out.append("\t\tif (painting && away < PAINT_RADIUS) {")
+		out.append("\t\tif (painting && away < 1.0) {")
 		out.append("\t\t\tif (only < 0) {")
 		for c in mine:
 			if c in painted:
@@ -2062,9 +2142,11 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 
 	params_block.append("")
 	params_block.append("// Painting - what one finger sets, what two set (erasing), how far")
-	params_block.append("// round each (cells), and how long a touch lasts before it paints:")
-	params_block.append("#define PAINT_RADIUS 25.0")
-	params_block.append("#define ERASE_RADIUS 37.5")
+	params_block.append("// round each (the brush's radius, of the grid's shorter side - the")
+	params_block.append("// same on screen at any quality; the eraser's, times that), and how")
+	params_block.append("// long a touch lasts before it paints:")
+	params_block.append("#define BRUSH_SIZE 0.05")
+	params_block.append("#define ERASE_SIZE 1.5")
 	params_block.append("#define PAINT_DELAY 0.2 // seconds - a quicker touch is a tap")
 	for c, v in p.paint:
 		if v != "init":
