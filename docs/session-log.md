@@ -184,3 +184,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"Update the release install and merge this branch."** Release build installed (no database
   change since v15). `audio-and-shows` squash-merged into master as one commit, 1adcbc4; master
   not pushed yet - waiting for Dan's word.
+- **"Push master and delete the branch."** Done; the docs deploy didn't start from the push (it
+  never has - every run so far was manual), so it was started by hand and succeeded.
+  **"Could deployment be automatic?"** The workflow already asks to deploy on such pushes; likely
+  the fork safeguard (GitHub won't run push workflows on a fork until enabled in the Actions tab).
+  Asked Dan to check for that banner; meanwhile CLAUDE.md says to dispatch by hand after a push.

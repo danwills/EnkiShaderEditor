@@ -17,6 +17,9 @@ Two independent projects:
   `enk.danwills.android.enkishadereditor`. Java 17, Gradle Kotlin DSL, no Jetpack Compose.
 - `docs-site/` — a separate Astro static site (the project's public docs/landing page), deployed to
   GitHub Pages by `.github/workflows/deploy-docs.yml` on pushes touching `docs-site/**` or `FAQ.md`.
+  Push-triggered runs haven't been firing on this fork (as of 2026-10-21 only manual runs had
+  happened): after pushing master with docs changes, check `gh run list` and, if no run started,
+  `gh workflow run deploy-docs.yml --ref master`.
 
 ## Commands
 
