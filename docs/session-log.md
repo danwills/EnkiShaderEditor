@@ -247,3 +247,10 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   `tools/phone/add_shader.sh file.glsl [name]` - the file goes into the app's own storage with
   run-as, and the receiver replaces the shader of that name in place (same id) or adds it. No UI;
   refuses while Enki debug is on screen. Tested: replaced 1003 while Dan stayed in Materialistic.
+- **"The VTI shader runs out of time and resets after a while - can it simulate forever
+  (days)?"** The app's frame count returns to 0 whenever its surface is made again (screen
+  timeout, coming back to the app), though the buffers survive - and the converted shaders
+  started their pattern on iFrame == 0. They now start on a mark in their state row instead, so
+  only truly blank buffers (new, or cleared by Restart) start again. Nothing else limits a run:
+  `time` and `frame` don't wrap (frame overflows after ~12 days at 33 steps, harmlessly now).
+  Simulation pauses while the screen is off.

@@ -572,7 +572,8 @@ const int S_MODE = 2;    // composite, colour map, editing (1 colour, 2 weight, 
                          // 4 eraser), its chemical
 const int S_DRAG = 3;    // the colour wheel's centre (x, y), last frame's finger centre (x, y)
 const int S_FINGERS = 4; // last frame's finger count, a chemical whose complement a two-
-                         // finger tap switched (-1 none), 1 if a tap reset the brush
+                         // finger tap switched (-1 none), 1 if a tap reset the brush, and
+                         // 1 once started - see rdStarted()
 const int S_BRUSH = 5;   // what the brush paints (its two chemicals), and erases (two)
 const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dragging
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
@@ -671,6 +672,15 @@ int rdTileAt(vec2 p, vec2 screen) {
 
 vec4 rdState(int texel, ivec2 grid) {
 	return texelFetch(iChannel0, ivec2(texel, grid.y), 0);
+}
+
+// Whether the simulation has started: a mark in the state row, rather than
+// iFrame == 0 - the app's frame count goes back to 0 whenever its surface
+// is made again (the screen timing out, the app coming back), though the
+// buffers carry on; so only buffers that really are blank (new, or cleared
+// by Restart) start the initial pattern again.
+bool rdStarted(ivec2 grid) {
+	return rdState(S_FINGERS, grid).w > 0.5;
 }"""
 
 # The interface's state, worked out in each frame's first step (the same
@@ -698,7 +708,7 @@ vec4 rdStartState(int texel) {
 	}
 	if (texel >= S_POWER && texel < S_POWER + CHEMICALS) return vec4(1.0, 0.0, 0.0, 0.0);
 	if (texel == S_BRUSH) return %(brush_start)s;
-	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 0.0);
+	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 1.0);
 	return vec4(0.0);
 }
 
@@ -715,7 +725,7 @@ void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, ou
 	int n = pointerCount;
 	vec2 first = n > 0 ? pointers[0].xy : vec2(0.0);
 	vec2 centre = rdCentre();
-	f = vec4(float(n), -1.0, 0.0, 0.0);
+	f = vec4(float(n), -1.0, 0.0, 1.0);
 	bool tiles = pg.z > 0.5 && pg.z < 1.5;
 	bool tapped = pt.z < 0.5 && iTime - pg.y < TAP_TIME;
 	if (n == 0 && pg.x > 1.5 && pg.x < 2.5 && tapped && tiles) {
@@ -1338,7 +1348,8 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.append("\tivec2 grid = ivec2(size.x, size.y - 1);")
 	out.append("\tvec4 uiGesture, uiTouch, uiMode, uiDrag, uiFingers;")
 	if is_first_stage:
-		out.append("\tif (iFrame == 0) {")
+		out.append("\tbool starting = !rdStarted(grid);")
+		out.append("\tif (starting) {")
 		out.append("\t\tuiGesture = rdStartState(S_GESTURE);")
 		out.append("\t\tuiTouch = rdStartState(S_TOUCH);")
 		out.append("\t\tuiMode = rdStartState(S_MODE);")
@@ -1362,7 +1373,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\telse if (texel == S_MODE) fragColor = uiMode;")
 		out.append("\t\telse if (texel == S_DRAG) fragColor = uiDrag;")
 		out.append("\t\telse if (texel == S_FINGERS) fragColor = uiFingers;")
-		out.append("\t\telse if (iFrame == 0) fragColor = rdStartState(texel);")
+		out.append("\t\telse if (starting) fragColor = rdStartState(texel);")
 		out.append("\t\telse if (texel == S_BRUSH || texel == S_BRUSH_ON) {")
 		out.append("\t\t\tfragColor = rdNextBrush(texel, grid, screen, uiMode, uiFingers);")
 		out.append("\t\t}")
@@ -1377,7 +1388,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	mine = chems[group * 4:group * 4 + 4]
 	result = "vec4(%s)" % ", ".join(mine + ["0.0"] * (4 - len(mine)))
 	if is_first_stage:
-		out.append("\tif (iFrame == 0) {")
+		out.append("\tif (starting) {")
 		out.append("\t\t// The initial pattern.")
 		for c in chems:
 			out.append("\t\tfloat %s = 0.0;" % c)
