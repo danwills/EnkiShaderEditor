@@ -254,3 +254,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   only truly blank buffers (new, or cleared by Restart) start again. Nothing else limits a run:
   `time` and `frame` don't wrap (frame overflows after ~12 days at 33 steps, harmlessly now).
   Simulation pauses while the screen is off.
+- **"It's closed now, go for it."** Both shaders replaced in place (1002, 1003) with
+  `add_shader.sh` - no UI.
