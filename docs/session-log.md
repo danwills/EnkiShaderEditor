@@ -181,3 +181,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   post re-alerted, so the notification is now posted once per run and later updates are toasts
   only (toasts are silent). The one remaining sound can be silenced via the Shell app's
   notification settings on the phone.
+- **"Update the release install and merge this branch."** Release build installed (no database
+  change since v15). `audio-and-shows` squash-merged into master as one commit, 1adcbc4; master
+  not pushed yet - waiting for Dan's word.
