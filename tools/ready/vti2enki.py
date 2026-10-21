@@ -589,6 +589,7 @@ const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dr
 const int S_RANDOM = 7;  // the random look's seed, when wandering began, 1 while wandering
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
 const int S_POWER = 16;  // + a chemical: its composite power, complement (1: 1 - level)
+const int S_MAP = 24;    // the colour map's frequency: how many times it runs over the range
 // The brush's chemicals (-1 none): what dragging it sets.
 const ivec2 BRUSH_PAINT = ivec2(%(brush_paint)s);
 const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
@@ -601,7 +602,7 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define WEIGHT_RATE 3.0   // weight per screen height dragged
 #define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
 #define BRUSH_RATE 1.0    // a chemical's whole range per screen width (or height) dragged
-#define RANDOM_RATE 1.5   // new random looks a second, wandering
+#define RANDOM_RATE 0.25  // new random looks a second, wandering
 #define RANDOM_REWIND 0.25 // seconds back from letting go that wandering stops at
 
 float rdUnit(vec2 screen) {
@@ -693,6 +694,18 @@ vec4 rdMapPicker(vec2 screen) {
 	return vec4(b.x, bottom, b.z, top - bottom);
 }
 
+// Where, dragging right off the picker, the map's frequency starts being
+// set: 1 there, up to MAX_FREQUENCY at the screen's right edge.
+#define MAX_FREQUENCY 4.0
+float rdFrequencyStart(vec2 screen) {
+	vec4 r = rdMapPicker(screen);
+	return r.x + r.z + 0.1 * rdUnit(screen);
+}
+
+float rdFrequencyEnd(vec2 screen) {
+	return screen.x - 0.04 * rdUnit(screen);
+}
+
 // The colour map slot at height y on the picker.
 float rdMapPickerSlot(float y, vec2 screen) {
 	vec4 r = rdMapPicker(screen);
@@ -766,6 +779,7 @@ vec4 rdStartState(int texel) {
 	if (texel >= S_POWER && texel < S_POWER + CHEMICALS) return vec4(1.0, 0.0, 0.0, 0.0);
 	if (texel == S_BRUSH) return %(brush_start)s;
 	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 2.0);
+	if (texel == S_MAP) return vec4(1.0, 0.0, 0.0, 0.0);
 	return vec4(0.0);
 }
 
@@ -842,7 +856,9 @@ void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, ou
 		if (tiles && held1 && rdOnMapButton(t.xy, screen)) {
 			m.z = 5.0;
 		}
-		if (m.z > 4.5 && m.z < 5.5) {
+		// (Off its right, past a gap, the finger sets the map's frequency
+		// instead - see rdNextMap().)
+		if (m.z > 4.5 && m.z < 5.5 && first.x < rdFrequencyStart(screen)) {
 			m.y = rdMapPickerSlot(first.y, screen);
 		}
 		// Held on random: wandering through random looks, in composite.
@@ -908,6 +924,29 @@ vec4 rdNextBrush(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 f) {
 	return s;
 }
 
+// The colour map's frequency next frame: m is the next mode. Picking a
+// map, a finger dragged right off the picker sets it - 1 just past the
+// gap, MAX_FREQUENCY at the screen's edge, in eighths, whole numbers
+// sticky.
+vec4 rdNextMap(ivec2 grid, vec2 screen, vec4 m) {
+	vec4 s = rdState(S_MAP, grid);
+	if (m.z < 4.5 || m.z > 5.5 || pointerCount == 0) {
+		return s;
+	}
+	float x = pointers[0].x;
+	float start = rdFrequencyStart(screen);
+	if (x < start) {
+		return s;
+	}
+	float f = 1.0 + (MAX_FREQUENCY - 1.0) * clamp((x - start) / (rdFrequencyEnd(screen) - start), 0.0, 1.0);
+	f = floor(f * 8.0 + 0.5) / 8.0;
+	if (abs(f - floor(f + 0.5)) < 0.13) {
+		f = floor(f + 0.5);
+	}
+	s.x = f;
+	return s;
+}
+
 // Whether this frame ends a tap on the random button.
 bool rdRandomTapped(ivec2 grid, vec2 screen) {
 	vec4 pg = rdState(S_GESTURE, grid);
@@ -943,18 +982,80 @@ float rdWander(float seed, float k, float t) {
 	return mix(rdHash(seed + i, k), rdHash(seed + i + 1.0, k), f);
 }
 
+// Chemical i's levels (0-1 across its mask range) over an 8x8 sample of
+// the grid, each sample jittered off the lattice so a regular pattern
+// can't fool it: their mean and standard deviation.
+vec2 rdLevelStats(int i, ivec2 grid) {
+	vec2 r = maskRange(i);
+	float sum = 0.0;
+	float squares = 0.0;
+	for (int y = 0; y < 8; ++y) {
+		for (int x = 0; x < 8; ++x) {
+			vec2 jitter = vec2(rdHash(float(x), float(y)), rdHash(float(y) + 7.0, float(x)));
+			ivec2 q = ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid));
+			float level = clamp((rdChem(i, q) - r.x) / (r.y - r.x), 0.0, 1.0);
+			sum += level;
+			squares += level * level;
+		}
+	}
+	float mean = sum / 64.0;
+	return vec2(mean, sqrt(max(squares / 64.0 - mean * mean, 0.0)));
+}
+
+// Spread round the hue circle by rank: 0, a half, a quarter, three
+// quarters, an eighth... - so the two most varied chemicals get opposite
+// (complementary) hues, and each next one the biggest gap left.
+float rdHueSpread(int rank) {
+	float v = 0.0;
+	float f = 0.5;
+	int n = rank;
+	for (int k = 0; k < 3; ++k) {
+		if (n - (n / 2) * 2 == 1) {
+			v += f;
+		}
+		n /= 2;
+		f *= 0.5;
+	}
+	return v;
+}
+
 // Chemical chem's colour or power texel in random look `seed`, t seconds
-// into wandering: a hue, fairly saturated and bright, a weight, a power
-// and now and then its complement.
-vec4 rdRandomLook(int texel, int chem, float seed, float t) {
+// into wandering. Steered, by how strongly the look's own wandering
+// says, towards one that shows every chemical clearly - from a sample of
+// the grid now: hues spread round the circle (complementary for the two
+// most varied), each chemical's power putting its typical level about
+// mid-way (its complement, if mostly high, so its features show bright),
+// and weights by how much it varies - with the rest left to chance.
+vec4 rdRandomLook(int texel, int chem, float seed, float t, ivec2 grid) {
 	float k = float(chem) * 8.0;
 	float w = t * RANDOM_RATE;
-	if (texel < S_POWER) {
-		return vec4(fract(rdWander(seed, k, w) * 2.0), mix(0.5, 1.0, rdWander(seed, k + 1.0, w)),
-				mix(0.7, 1.0, rdWander(seed, k + 2.0, w)), mix(0.2, 2.0, rdWander(seed, k + 3.0, w)));
+	vec2 mine = rdLevelStats(chem, grid);
+	float most = 1e-3;
+	int rank = 0;
+	for (int j = 0; j < CHEMICALS; ++j) {
+		float sd = j == chem ? mine.y : rdLevelStats(j, grid).y;
+		most = max(most, sd);
+		if (sd > mine.y || (sd == mine.y && j < chem)) {
+			++rank;
+		}
 	}
-	return vec4(exp(mix(-1.2, 1.2, rdWander(seed, k + 4.0, w))),
-			rdWander(seed, k + 5.0, w) > 0.7 ? 1.0 : 0.0, 0.0, 0.0);
+	float guide = mix(0.55, 0.95, rdWander(seed, 95.0, w * 0.3));
+	if (texel < S_POWER) {
+		float hue = fract(rdWander(seed, 90.0, w * 0.5) + rdHueSpread(rank) +
+				(rdWander(seed, k, w) - 0.5) * 0.35 * (1.0 - guide));
+		float saturation = mix(0.75, 1.0, rdWander(seed, k + 1.0, w));
+		float value = mix(0.85, 1.0, rdWander(seed, k + 2.0, w));
+		float weight = mix(mix(0.2, 2.0, rdWander(seed, k + 3.0, w)),
+				0.3 + 1.4 * mine.y / most, guide);
+		return vec4(hue, saturation, value, weight);
+	}
+	bool high = mine.x > 0.55;
+	float typical = clamp(high ? 1.0 - mine.x : mine.x, 0.03, 0.97);
+	float power = exp(mix(mix(-1.2, 1.2, rdWander(seed, k + 4.0, w)),
+			clamp(log(log(0.4) / log(typical)), log(0.25), log(6.0)), guide));
+	float complement = guide > 0.7 ? (high ? 1.0 : 0.0)
+			: (rdWander(seed, k + 5.0, w) > 0.7 ? 1.0 : 0.0);
+	return vec4(power, complement, 0.0, 0.0);
 }
 
 // A chemical's composite colour or power texel, next frame: m, d and f
@@ -966,14 +1067,14 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	// moment before it was let go; a tap, a new one.
 	vec4 r = rdState(S_RANDOM, grid);
 	if (m.z > 5.5) {
-		return r.z > 0.5 ? rdRandomLook(texel, chem, r.x, iTime - r.y)
-				: rdRandomLook(texel, chem, rdNewSeed(), 0.0);
+		return r.z > 0.5 ? rdRandomLook(texel, chem, r.x, iTime - r.y, grid)
+				: rdRandomLook(texel, chem, rdNewSeed(), 0.0, grid);
 	}
 	if (r.z > 0.5) {
-		return rdRandomLook(texel, chem, r.x, max(iTime - r.y - RANDOM_REWIND, 0.0));
+		return rdRandomLook(texel, chem, r.x, max(iTime - r.y - RANDOM_REWIND, 0.0), grid);
 	}
 	if (rdRandomTapped(grid, screen)) {
-		return rdRandomLook(texel, chem, rdNewSeed(), 0.0);
+		return rdRandomLook(texel, chem, rdNewSeed(), 0.0, grid);
 	}
 	if (texel >= S_POWER && abs(f.y - float(chem)) < 0.5) {
 		s.y = 1.0 - s.y;
@@ -1061,12 +1162,19 @@ vec3 rdContribution(int i, ivec2 q, ivec2 grid) {
 	return hsv2rgb(c.xyz) * pow(level, power.x) * min(c.w, 1.0);
 }
 
+// t (0-1) run through the colour map S_MAP's frequency times over.
+float rdRepeat(float t, ivec2 grid) {
+	float f = rdState(S_MAP, grid).x;
+	return f > 1.001 ? fract(t * f) : t;
+}
+
 vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
 	if (mode.x > 0.5) {
 		return rdComposite(q, grid);
 	}
 	vec2 range = vec2(LOW, HIGH);
-	return rdMap(clamp((chemical(ACTIVE, q) - range.x) / (range.y - range.x), 0.0, 1.0), mode.y);
+	float t = clamp((chemical(ACTIVE, q) - range.x) / (range.y - range.x), 0.0, 1.0);
+	return rdMap(rdRepeat(t, grid), mode.y);
 }
 
 // Tile k at uv (0-1 across it): a chemical's level (in composite, its
@@ -1128,7 +1236,7 @@ vec4 rdMapButtonColour(vec2 p, vec2 screen, ivec2 grid, vec4 mode) {
 		int i = int(min(t * float(CHEMICALS), float(CHEMICALS) - 0.5));
 		return vec4(hsv2rgb(rdState(S_COLOUR + i, grid).xyz), 1.0);
 	}
-	return vec4(rdMap(t, mode.y), 1.0);
+	return vec4(rdMap(rdRepeat(t, grid), mode.y), 1.0);
 }
 
 // The composite button: a rainbow ring, filled in while composite is on.
@@ -1179,6 +1287,38 @@ vec4 rdMapPickerColour(vec2 p, vec2 screen, vec4 mode) {
 		col = vec3(1.0);
 	}
 	return vec4(col, 1.0);
+}
+
+// Picking a map: off the picker's right, the frequency zone - a tick at
+// each whole frequency, a bright line at the map's, and it written out
+// (like "x2.5") at the top.
+vec4 rdFrequencyColour(vec2 p, vec2 screen, ivec2 grid) {
+	vec4 r = rdMapPicker(screen);
+	float start = rdFrequencyStart(screen);
+	float end = rdFrequencyEnd(screen);
+	if (p.x < start || p.x > end || p.y < r.y || p.y > r.y + r.w) {
+		return vec4(0.0);
+	}
+	float f = rdState(S_MAP, grid).x;
+	float px = 1.5;
+	vec3 col = vec3(0.05);
+	for (int i = 1; i <= int(MAX_FREQUENCY); ++i) {
+		float x = start + (end - start) * (float(i) - 1.0) / (MAX_FREQUENCY - 1.0);
+		col = mix(col, vec3(0.45), step(abs(p.x - x), px));
+	}
+	float at = start + (end - start) * (f - 1.0) / (MAX_FREQUENCY - 1.0);
+	col = mix(col, vec3(1.0, 0.85, 0.2), step(abs(p.x - at), px * 2.0));
+	// "x" and the frequency to two places.
+	float h = 0.06 * rdUnit(screen);
+	vec2 at0 = vec2(start + h * 0.3, r.y + r.w - h * 1.3);
+	int hundredths = int(f * 100.0 + 0.5);
+	float codes[5] = float[5](120.0, float(48 + hundredths / 100), 46.0,
+			float(48 + (hundredths / 10) %% 10), float(48 + hundredths %% 10));
+	for (int c = 0; c < 5; ++c) {
+		float ink = rdGlyph(codes[c], (p - at0 - vec2(float(c) * h * 0.55, 0.0)) / h, h);
+		col = mix(col, vec3(1.0), ink);
+	}
+	return vec4(col, 0.85);
 }
 
 // A chemical's level in its range, 0-1.
@@ -1319,6 +1459,8 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		}
 		if (mode.z > 4.5 && mode.z < 5.5) {
 			b = rdMapPickerColour(p, screen, mode);
+			col = mix(col, b.rgb, b.a);
+			b = rdFrequencyColour(p, screen, grid);
 			col = mix(col, b.rgb, b.a);
 		}
 	}
@@ -1506,6 +1648,15 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.extend(SANE_CODE.splitlines())
 	out.append("")
 	if is_first_stage:
+		out.append("// Chemical i (0 = a) at cell q, as the last step left it.")
+		out.append("float rdChem(int i, ivec2 q) {")
+		if groups > 1:
+			out.append("\treturn i < 4 ? texelFetch(iChannel0, q, 0)[i] : "
+					"texelFetch(iChannel1, q, 0)[i - 4];")
+		else:
+			out.append("\treturn texelFetch(iChannel0, q, 0)[i];")
+		out.append("}")
+		out.append("")
 		out.append(UI_UPDATE % ui)
 		out.append("")
 	out.append("void mainImage(out vec4 fragColor, vec2 fragCoord) {")
@@ -1547,6 +1698,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\t\tfragColor = rdNextBrush(texel, grid, screen, uiMode, uiFingers);")
 		out.append("\t\t}")
 		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
+		out.append("\t\telse if (texel == S_MAP) fragColor = rdNextMap(grid, screen, uiMode);")
 		out.append("\t\telse if ((texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) ||")
 		out.append("\t\t\t\t(texel >= S_POWER && texel < S_POWER + CHEMICALS)) {")
 		out.append("\t\t\tfragColor = rdNextChemical(texel, grid, screen, uiMode, uiDrag, uiFingers);")

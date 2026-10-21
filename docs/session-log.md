@@ -339,3 +339,12 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   `setProjectSessionIfChanged()` path) - fixed and confirmed: an edit re-runs with 0 new
   buffers. Set sinc + periodic edges through the new view-only picker (no rebuild), saw Settings'
   new Default upscaling entry, and returning from Settings kept the sim too.
+- **"Random colour walk much slower, heading towards high-contrast, complementary looks that show
+  all the reagents - guided by sampling the buffers"** and **"adjustable ramp frequency, by
+  dragging right off the gradient picker, up to 4x."** Random looks now change about every 4 s
+  (RANDOM_RATE 0.25) and are steered (by a wandering amount) by an 8x8 sample of each chemical:
+  hues spread by variation rank (top two complementary), powers putting the typical level
+  mid-way (complement if mostly high), weights by variation. Picking a map, dragging right past a
+  gap sets its frequency (1-4, eighths, whole numbers sticky), shown in a zone with ticks and
+  "x2.50". Dan: the conversions match Ready "pretty much perfectly"; he has ~9 GB of VTIs to
+  turn into packs for Enki and Ultra Rest Area later.
