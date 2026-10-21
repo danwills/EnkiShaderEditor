@@ -201,3 +201,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   UI's state and hit-testing while shaders draw it, packs as the library, and noted the
   unavoidable system bits (permission prompts, back gesture) - questions back to Dan before a
   first milestone.
+- **"No editor, bundled sets first, make a first menu shader; visual style to explore - metaballs
+  that blob together for snapping, reaction-diffusion guided into UI shapes, even RD 'machines'
+  like GoL computers. App id is good - document the plan."** Wrote `docs/ultra-rest-area.md`:
+  decisions, architecture, the three visual directions, milestones (first: the flavour and a
+  metaball menu), open questions.
