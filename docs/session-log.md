@@ -372,3 +372,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   B-spline up - cheap at any radius (sigma 0.5-8). Capture: Include Upscaling under Match App
   Res draws each frame through the upscaling at the view's size, Video Scale 1. Not yet tried on
   the phone.
+- Installed that build silently (Dan in another app).
