@@ -1,13 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: lets the test tooling show a toast on the phone -
-     see TestStatusToastReceiver and tools/phone/status.sh. Exported with no
-     permission on purpose: adb's shell has to reach it, and all it can do is
-     show a toast. -->
+<!-- Debug builds only: lets the test tooling show a toast on the phone
+     (TestStatusToastReceiver, tools/phone/status.sh) and put shaders in the
+     library (ShaderImportReceiver, tools/phone/add_shader.sh). Exported with
+     no permission on purpose: adb's shell has to reach them. The import only
+     reads files in the app's own storage, which only run-as can write. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:tools="http://schemas.android.com/tools">
 	<application>
 		<receiver
 			android:name=".receiver.TestStatusToastReceiver"
+			android:exported="true"
+			tools:ignore="ExportedReceiver"/>
+		<!-- Imports a shader the tooling wrote into the app's own files
+		     (tools/phone/add_shader.sh) - see ShaderImportReceiver. -->
+		<receiver
+			android:name=".receiver.ShaderImportReceiver"
 			android:exported="true"
 			tools:ignore="ExportedReceiver"/>
 	</application>

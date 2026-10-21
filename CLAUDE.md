@@ -59,6 +59,9 @@ When driving Dan's phone over adb (only when he's said it's free):
   the test moves on, and run `tools/phone/status.sh check` between steps. If it fails, Dan swiped
   the notification away to interrupt: finish the step in hand (don't leave a dialog half-done),
   note where the test got to so it can be picked up later, and stop.
+- To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]` (no UI:
+  it replaces a shader of that name in place, or adds one), not the Paste dialog. It refuses while
+  Enki debug is on screen.
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
   stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`.

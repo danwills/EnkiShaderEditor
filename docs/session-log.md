@@ -241,3 +241,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   tile to complement it. Levels are already clamped 0-1 to the tile's range (MASK_LOW/HIGH)
   before the power, so 1 - level can't go negative; that range doubles as a levels/contrast
   control. Composite was already what the colour tile full screen and the colour view show.
+- **"Phone's free, load them."** Deleted the two old copies and loaded the new ones through the
+  Paste dialog (ids 1002, 1003); phone back on Materialistic. **"We need a better way of you
+  adding shaders to the library!"** Added one: the debug build's `ShaderImportReceiver` plus
+  `tools/phone/add_shader.sh file.glsl [name]` - the file goes into the app's own storage with
+  run-as, and the receiver replaces the shader of that name in place (same id) or adds it. No UI;
+  refuses while Enki debug is on screen. Tested: replaced 1003 while Dan stayed in Materialistic.
