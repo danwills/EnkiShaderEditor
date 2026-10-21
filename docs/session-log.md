@@ -364,3 +364,11 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   an average look); weights -2..4, so 0 hides a chemical and negative darkens - before, nothing
   could go black. Not yet tried on the phone.
 - Installed that build and replaced 1002-1004 silently while Dan was in another app (no taps).
+- **"CRT: turn the bulge down (taps don't line up), bigger softer phosphors, scanlines still not
+  showing - like a CRT seen close up. A Gaussian upscaler. And the upscaling in captures (a
+  tickbox, with Match App Res, Video Scale 1)."** CRT: bulge 0.045 -> 0.012, smaller corners;
+  lines at least 8 px apart (virtual lines at high res), beams narrower; soft cosine-profile
+  slot-mask triads at least 12 px wide. Gaussian: separable blur at the frame's own size, then
+  B-spline up - cheap at any radius (sigma 0.5-8). Capture: Include Upscaling under Match App
+  Res draws each frame through the upscaling at the view's size, Video Scale 1. Not yet tried on
+  the phone.

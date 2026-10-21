@@ -4493,6 +4493,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
 	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
 	private static final String PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK = "custom_res_match_device_playback";
+	private static final String PREF_CUSTOM_RES_INCLUDE_UPSCALING = "custom_res_include_upscaling";
 	private static final String PREF_CUSTOM_RES_RESTART_SHADER = "custom_res_restart_shader";
 	// Stores the button's resource *name* (e.g. "screenshot_copy"), not
 	// its numeric id - those get renumbered whenever resources are added,
@@ -4737,6 +4738,9 @@ public class MainActivity extends AppCompatActivity {
 		matchAppResBox.setChecked(
 				prefs.getBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK, false));
 		explainOnLongPress(matchAppResBox, R.string.higher_res_match_device_playback);
+		CheckBox includeUpscalingBox = view.findViewById(R.id.custom_include_upscaling);
+		includeUpscalingBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_INCLUDE_UPSCALING, false));
+		explainOnLongPress(includeUpscalingBox, R.string.higher_res_include_upscaling);
 		EditText oversampleView = view.findViewById(R.id.custom_oversample);
 		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
 		explainOnLongPress(view.findViewById(R.id.custom_oversample_label), R.string.higher_res_oversample);
@@ -4783,6 +4787,7 @@ public class MainActivity extends AppCompatActivity {
 			oversampleView.setEnabled(!matching);
 			bucketSizeSpinner.setEnabled(!matching);
 			sequenceViews.videoScaleView.setEnabled(!matching);
+			includeUpscalingBox.setEnabled(matching);
 		};
 		// Mirrors the shader's own current live resolution exactly
 		// (reading the renderer's actual surface size directly, not
@@ -4808,8 +4813,9 @@ public class MainActivity extends AppCompatActivity {
 			heightView.setText(String.valueOf(matchHeight));
 			oversampleView.setText("1");
 			bucketSizeSpinner.setSelection(TileBucketSize.MAX.ordinal());
-			sequenceViews.videoScaleView.setText(
-					String.valueOf(Math.max(1, Math.round(1f / quality))));
+			// Included, the upscaling does the scaling.
+			sequenceViews.videoScaleView.setText(includeUpscalingBox.isChecked() ? "1"
+					: String.valueOf(Math.max(1, Math.round(1f / quality))));
 		};
 		updateMatchAppResEnablement.run();
 		if (matchAppResBox.isChecked()) {
@@ -4818,6 +4824,11 @@ public class MainActivity extends AppCompatActivity {
 		matchAppResBox.setOnCheckedChangeListener((button, checked) -> {
 			updateMatchAppResEnablement.run();
 			if (checked) {
+				applyMatchAppResSetting.run();
+			}
+		});
+		includeUpscalingBox.setOnCheckedChangeListener((button, checked) -> {
+			if (matchAppResBox.isChecked()) {
 				applyMatchAppResSetting.run();
 			}
 		});
@@ -4948,7 +4959,13 @@ public class MainActivity extends AppCompatActivity {
 					.putBoolean(PREF_CUSTOM_RES_RESTART_SHADER, restartShaderBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
 							matchAppResBox.isChecked())
+					.putBoolean(PREF_CUSTOM_RES_INCLUDE_UPSCALING, includeUpscalingBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
+			// Included, the frames come out at the view's size.
+			boolean upscaled = matchAppResBox.isChecked() && includeUpscalingBox.isChecked();
+			shaderViewManager.setCaptureUpscaled(upscaled);
+			int frameWidth = upscaled ? shaderViewManager.getViewWidth() : width;
+			int frameHeight = upscaled ? shaderViewManager.getViewHeight() : height;
 			if (sequenceViews.sequenceBox.isChecked()) {
 				int frameCount = parsePositiveInt(sequenceViews.frameCountView.getText().toString());
 				float fps = parsePositiveFloat(sequenceViews.fpsView.getText().toString());
@@ -4965,13 +4982,13 @@ public class MainActivity extends AppCompatActivity {
 						parsePositiveInt(sequenceViews.videoScaleView.getText().toString()));
 				VideoFormat videoFormat = ShaderEditorApp.preferences.getVideoFormat();
 				if (sequenceViews.createVideoBox.isChecked() &&
-						!videoFormat.supportsSize(width * videoScale, height * videoScale)) {
+						!videoFormat.supportsSize(frameWidth * videoScale, frameHeight * videoScale)) {
 					// Caught now, rather than after rendering every frame.
 					new MaterialAlertDialogBuilder(this)
 							.setMessage(getString(R.string.video_format_size_unsupported,
 									getResources().getStringArray(R.array.video_format_names)[
 											videoFormat.ordinal()],
-									(width * videoScale) + " × " + (height * videoScale)))
+									(frameWidth * videoScale) + " × " + (frameHeight * videoScale)))
 							.setPositiveButton(android.R.string.ok, null)
 							.show();
 					return;
@@ -4990,7 +5007,7 @@ public class MainActivity extends AppCompatActivity {
 						wasPaused,
 						resolvedBucketSize -> {
 							restartShaderIf(restartShaderBox.isChecked());
-							runFrameSequenceCapture(width, height, oversample,
+							runFrameSequenceCapture(width, height, frameWidth, frameHeight, oversample,
 									preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder,
 									skipFrames, frameCount, fps, sequenceViews.createVideoBox.isChecked(),
 									videoQuality, videoScale, sequenceViews.cleanupImagesBox.isChecked(),
@@ -5717,7 +5734,10 @@ public class MainActivity extends AppCompatActivity {
 	// that succeeded, deletes the per-frame images. No "Save and Open" at
 	// the end - opening a single image wouldn't make sense for a batch
 	// of them - just a toast summarizing what happened.
-	private void runFrameSequenceCapture(int width, int height, int oversample,
+	// frameWidth/frameHeight: the frames' size as saved - width x height,
+	// or the view's when the capture includes the upscaling.
+	private void runFrameSequenceCapture(int width, int height, int frameWidth, int frameHeight,
+			int oversample,
 			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
 			@NonNull TileRenderOrder initialTileOrder, int skipFrames,
 			int numFrames, float virtualFps, boolean createVideo, int videoQuality,
@@ -6114,9 +6134,10 @@ public class MainActivity extends AppCompatActivity {
 				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + "." +
 						videoFormat.extension;
 				videoUri = videoFormat == VideoFormat.GIF
-						? GifEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
-								videoFilename, videoProgress)
-						: VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
+						? GifEncoder.encode(this, frameUris, frameWidth, frameHeight, videoScale,
+								virtualFps, videoFilename, videoProgress)
+						: VideoEncoder.encode(this, frameUris, frameWidth, frameHeight, videoScale,
+								virtualFps,
 								videoQuality, videoFormat, videoFilename, videoProgress);
 				if (videoUri != null && cleanupImages) {
 					runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));

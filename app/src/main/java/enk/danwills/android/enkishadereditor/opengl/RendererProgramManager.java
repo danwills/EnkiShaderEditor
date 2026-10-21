@@ -254,69 +254,87 @@ final class RendererProgramManager {
 				return mix(col, r, 0.5 * smoothstep(0.82, 1.0, f));
 			}
 
-			// Nearest, as an old TV would show it: the picture bulging a
-			// little, its corners rounded off; each row of texels a beam,
-			// fatter where brighter, between dark scanlines; a slot mask of
-			// phosphor triads wider than they're tall, every other row of
-			// them staggered; the red and blue guns a touch out of
-			// convergence; a faint glow, static, flicker, a slow rolling
-			// hum bar and the odd wobbling line. upscaleAmount is how
-			// strongly the scanlines and mask show; they fade out as texels
-			// shrink towards the screen's pixels.
+			// One line of the tube at x: the frame's row(s) at texel height
+			// ty, nearest along it with softened sides, red and blue a touch
+			// out of convergence (by conv texels) - in roughly linear light.
+			vec3 crtLine(float x, float ty, float conv, inout vec3 glow) {
+				float r0 = floor(ty - 0.5);
+				float blend = ty - 0.5 - r0;
+				float i = floor(x);
+				float f = x - i;
+				vec3 col = vec3(0.0);
+				for (int k = 0; k < 2; ++k) {
+					vec2 row = vec2(i, r0 + float(k));
+					vec3 l = texel(row - vec2(1.0, 0.0)).rgb;
+					vec3 m = texel(row).rgb;
+					vec3 r = texel(row + vec2(1.0, 0.0)).rgb;
+					vec3 c = vec3(crtRow(l, m, r, clamp(f + conv, 0.0, 1.0)).r, crtRow(l, m, r, f).g,
+							crtRow(l, m, r, clamp(f - conv, 0.0, 1.0)).b);
+					float w = k == 0 ? 1.0 - blend : blend;
+					col += c * c * w;
+					glow += (l * l + m * m + r * r) * w;
+				}
+				return col;
+			}
+
+			// Nearest, as an old TV seen up close would show it: lines at
+			// least 8 screen pixels apart (one a texel row, at low
+			// resolutions), each a beam fatter where brighter between dark
+			// scanlines; a slot mask of soft phosphor triads at least 12
+			// pixels across and wider than they're tall, every other row of
+			// them staggered; and its imperfections - a slight bulge, the
+			// corners rounded off, red and blue a touch out of convergence,
+			// a faint glow, static, flicker, a slow hum bar rolling up and
+			// the odd wobbling line. upscaleAmount is how strongly the
+			// scanlines and mask show.
 			vec4 crt(vec2 s) {
 				vec2 scale = resolution / count;
 				float t = upscaleTime;
-				// The bulge, and the tube's rounded corners.
+				// The bulge (subtle - a touch lands near where it's drawn),
+				// and the tube's rounded corners.
 				vec2 c = s / count * 2.0 - 1.0;
-				c *= 1.0 + 0.045 * (c.yx * c.yx);
-				vec2 corner = max(abs(c) - (1.0 - 0.06), 0.0);
-				float tube = smoothstep(0.06, 0.06 - 4.0 / min(resolution.x, resolution.y),
+				c *= 1.0 + 0.012 * (c.yx * c.yx);
+				vec2 corner = max(abs(c) - (1.0 - 0.03), 0.0);
+				float tube = smoothstep(0.03, 0.03 - 3.0 / min(resolution.x, resolution.y),
 						length(corner));
 				if (tube <= 0.0) {
 					return vec4(0.0, 0.0, 0.0, 1.0);
 				}
 				s = (c * 0.5 + 0.5) * count;
-				// Now and then a line wobbles sideways.
-				float line = floor(s.y);
+				// The tube's lines, in screen pixels and in lines.
+				float lineHeight = max(scale.y, 8.0);
+				float ly = s.y * scale.y / lineHeight;
+				float line = floor(ly);
 				float wobble = step(0.985, hash(vec2(line, floor(t * 20.0))));
-				s.x += wobble * (hash(vec2(line, t)) - 0.5) * 0.6;
-				vec2 i = floor(s);
-				vec2 f = s - i;
+				float x = s.x + wobble * (hash(vec2(line, t)) - 0.5) * 3.0 / scale.x;
+				float conv = max(0.09, 1.2 / scale.x);
 				vec3 beams = vec3(0.0);
 				vec3 glow = vec3(0.0);
-				for (int y = -1; y <= 1; ++y) {
-					vec2 row = i + vec2(0.0, float(y));
-					vec3 l = texel(row - vec2(1.0, 0.0)).rgb;
-					vec3 m = texel(row).rgb;
-					vec3 r = texel(row + vec2(1.0, 0.0)).rgb;
-					// Red and blue a little either side of green.
-					vec3 col = vec3(crtRow(l, m, r, clamp(f.x + 0.09, 0.0, 1.0)).r,
-							crtRow(l, m, r, f.x).g,
-							crtRow(l, m, r, clamp(f.x - 0.09, 0.0, 1.0)).b);
-					col *= col;
-					glow += (l * l + m * m + r * r);
-					float width = mix(0.13, 0.3, sqrt(dot(col, vec3(0.3, 0.6, 0.1))));
-					float dy = f.y - 0.5 - float(y);
+				for (int k = -1; k <= 1; ++k) {
+					float j = line + float(k);
+					vec3 col = crtLine(x, (j + 0.5) * lineHeight / scale.y, conv, glow);
+					float width = mix(0.12, 0.26, sqrt(dot(col, vec3(0.3, 0.6, 0.1))));
+					float dy = ly - j - 0.5;
 					beams += col * exp(-0.5 * dy * dy / (width * width));
 				}
-				vec3 plain = texel(i).rgb;
+				vec3 plain = texel(floor(s)).rgb;
 				plain *= plain;
-				float scanlines = upscaleAmount * smoothstep(2.0, 4.0, scale.y);
-				vec3 col = mix(plain, beams * 1.7, scanlines);
-				// The slot mask: two rows of triads a texel row, staggered.
-				float maskRow = floor(s.y * 2.0);
-				float x = s.x + 0.5 * mod(maskRow, 2.0);
-				float stripe = floor(fract(x) * 3.0);
-				vec3 mask = vec3(stripe == 0.0 ? 1.0 : 0.25, stripe == 1.0 ? 1.0 : 0.25,
-						stripe == 2.0 ? 1.0 : 0.25);
-				float slot = fract(s.y * 2.0);
-				mask *= mix(0.55, 1.0, smoothstep(0.0, 0.14, slot) * smoothstep(1.0, 0.86, slot));
-				float stripes = upscaleAmount * smoothstep(3.0, 6.0, min(scale.x, scale.y * 0.5));
-				col *= mix(vec3(1.0), mask * 2.4, stripes);
-				col += glow / 9.0 * 0.12;
+				vec3 col = mix(plain, beams * 1.9, upscaleAmount);
+				// The slot mask, in screen pixels: soft stripes of red, green
+				// and blue, two rows of triads a line, staggered.
+				float triad = max(scale.x, 12.0);
+				vec2 m = gl_FragCoord.xy / vec2(triad, triad * 0.55);
+				float mx = m.x + 0.5 * mod(floor(m.y), 2.0);
+				vec3 phase = fract(mx) - vec3(1.0 / 6.0, 0.5, 5.0 / 6.0);
+				phase -= floor(phase + 0.5);
+				vec3 mask = 0.3 + 0.7 * pow(0.5 + 0.5 * cos(phase * 6.2831853), vec3(1.5));
+				float slot = fract(m.y);
+				mask *= mix(0.6, 1.0, smoothstep(0.0, 0.2, slot) * smoothstep(1.0, 0.8, slot));
+				col *= mix(vec3(1.0), mask * 2.1, upscaleAmount);
+				col += glow / 6.0 * 0.12;
 				// The tube: darker towards its edges, a faint bar of hum
 				// rolling up it, a flicker, and static.
-				col *= 1.0 - 0.3 * pow(dot(c, c) * 0.5, 1.5);
+				col *= 1.0 - 0.25 * pow(dot(c, c) * 0.5, 1.5);
 				col *= 1.0 - 0.05 * (0.5 + 0.5 * sin((s.y / count.y + t * 0.07) * 6.2831853));
 				col *= 1.0 + 0.015 * (hash(vec2(floor(t * 50.0), 1.0)) - 0.5);
 				col = sqrt(clamp(col, 0.0, 1.0));
@@ -396,6 +414,10 @@ final class RendererProgramManager {
 					c = crt(s);
 				} else if (upscaleFilter == 9) {
 					c = bokeh(s);
+				} else if (upscaleFilter == 10) {
+					// Gaussian: the frame's already blurred (the pipeline's
+					// preBlur()); scaled up smoothly.
+					c = cubic(s, true);
 				} else {
 					c = texel(floor(s));
 				}
@@ -452,6 +474,12 @@ final class RendererProgramManager {
 	@Nullable
 	private ProgramBindings upscaleBindings;
 	private int upscaleKey = -1;
+	// See getBlurBindings().
+	@Nullable
+	private GlProgram blurProgram;
+	@Nullable
+	private ProgramBindings blurBindings;
+	private int blurKey = -1;
 	@Nullable
 	private GlProgram mainProgram;
 	@Nullable
@@ -711,6 +739,7 @@ final class RendererProgramManager {
 	void releaseForReload(@NonNull GlDevice device) {
 		device.deleteProgram(surfaceProgram);
 		device.deleteProgram(upscaleProgram);
+		device.deleteProgram(blurProgram);
 		device.deleteProgram(mainProgram);
 		if (mainSourceText != null) {
 			mainSourceText.release(device);
@@ -795,6 +824,99 @@ final class RendererProgramManager {
 	@Nullable
 	GlProgram getUpscaleProgram() {
 		return upscaleProgram;
+	}
+
+	// Blurs the frame by a Gaussian, one way (direction: (1, 0) across,
+	// (0, 1) up) a pass, at the frame's own size - its edges as
+	// upscaleEdge says - for Upscaling's Gaussian. sigma in texels.
+	private static final String BLUR_FRAGMENT_SHADER = """
+			#ifdef GL_FRAGMENT_PRECISION_HIGH
+			precision highp float;
+			#else
+			precision mediump float;
+			#endif
+
+			uniform vec2 frameSize;
+			uniform float cropPixels;
+			uniform sampler2D frame;
+			uniform vec2 direction;
+			uniform float sigma;
+			// UPSCALE
+
+			vec2 first;
+			vec2 count;
+
+			float edgeIndex(float i, float n) {
+				if (upscaleEdge == 1) {
+					return mod(i, n);
+				}
+				if (upscaleEdge == 2) {
+					float m = mod(i, 2.0 * n);
+					return m < n ? m : 2.0 * n - 1.0 - m;
+				}
+				return clamp(i, 0.0, n - 1.0);
+			}
+
+			vec4 texel(vec2 i) {
+				if (upscaleEdge == 3 && (any(lessThan(i, vec2(0.0))) ||
+						any(greaterThanEqual(i, count)))) {
+					return vec4(0.0, 0.0, 0.0, 1.0);
+				}
+				vec2 j = vec2(edgeIndex(i.x, count.x), edgeIndex(i.y, count.y));
+				return texture2D(frame, (first + j + 0.5) / frameSize);
+			}
+
+			void main(void) {
+				first = vec2(cropPixels);
+				count = frameSize - 2.0 * cropPixels;
+				vec2 i = floor(gl_FragCoord.xy) - first;
+				float reach = ceil(3.0 * sigma);
+				vec4 sum = vec4(0.0);
+				float weights = 0.0;
+				for (int k = -32; k <= 32; ++k) {
+					float o = float(k);
+					if (abs(o) > reach) {
+						continue;
+					}
+					float w = exp(-0.5 * o * o / (sigma * sigma));
+					sum += texel(i + direction * o) * w;
+					weights += w;
+				}
+				gl_FragColor = sum / weights;
+			}
+			""";
+
+	// The blur program for `upscale`'s edge, compiled the first time it's
+	// asked for (and kept while it's the one asked for), or null if
+	// `upscale` isn't Gaussian or it won't compile. GL thread only.
+	@Nullable
+	ProgramBindings getBlurBindings(@NonNull GlDevice device, @NonNull Upscaling.Upscale upscale) {
+		if (upscale.filter() != Upscaling.Filter.GAUSSIAN || surfaceProgram == null) {
+			return null;
+		}
+		int key = upscale.edge().ordinal();
+		if (key == blurKey) {
+			return blurBindings;
+		}
+		device.deleteProgram(blurProgram);
+		blurProgram = null;
+		blurBindings = null;
+		blurKey = key;
+		var result = device.createProgram(FULL_SCREEN_VERTEX_SHADER,
+				BLUR_FRAGMENT_SHADER.replace("// UPSCALE", "#define upscaleEdge " + key),
+				ShaderLineMapping.identity());
+		if (!result.succeeded() || result.getProgram() == null) {
+			Log.w(TAG, "Blur won't compile: " + result.getInfoLog());
+			return null;
+		}
+		blurProgram = result.getProgram();
+		blurBindings = new ProgramBindings(blurProgram);
+		return blurBindings;
+	}
+
+	@Nullable
+	GlProgram getBlurProgram() {
+		return blurProgram;
 	}
 
 	@Nullable
@@ -966,6 +1088,9 @@ final class RendererProgramManager {
 		upscaleProgram = null;
 		upscaleBindings = null;
 		upscaleKey = -1;
+		blurProgram = null;
+		blurBindings = null;
+		blurKey = -1;
 		mainProgram = null;
 		surfaceBindings = null;
 		mainSourceText = null;

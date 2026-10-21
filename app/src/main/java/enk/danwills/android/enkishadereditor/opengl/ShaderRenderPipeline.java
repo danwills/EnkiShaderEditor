@@ -34,6 +34,14 @@ final class ShaderRenderPipeline {
 	private GlProgram upscaleProgram;
 	@Nullable
 	private ProgramBindings upscaleBindings;
+	// Gaussian's blur (see preBlur()): its program, and its two targets on
+	// the live context, the frame's size.
+	@Nullable
+	private GlProgram blurProgram;
+	@Nullable
+	private ProgramBindings blurBindings;
+	private final GlTexture2D[] blurTextures = new GlTexture2D[2];
+	private final GlFramebuffer[] blurFramebuffers = new GlFramebuffer[2];
 	private final TextureParameters thumbnailTextureParameters =
 			new TextureParameters(
 					GLES20.GL_LINEAR,
@@ -86,10 +94,15 @@ final class ShaderRenderPipeline {
 		thumbnailFramebuffer = null;
 		thumbnailTexture = null;
 		standInFrame = null;
+		for (int i = 0; i < 2; ++i) {
+			blurFramebuffers[i] = null;
+			blurTextures[i] = null;
+		}
 		discardTargets();
 	}
 
 	void releaseTargets() {
+		releaseBlurTargets();
 		for (int i = 0; i < framebuffers.length; ++i) {
 			device.deleteFramebuffer(framebuffers[i]);
 			framebuffers[i] = null;
@@ -446,11 +459,61 @@ final class ShaderRenderPipeline {
 	// Upscaling.
 	// program/bindings: its surface program (RendererProgramManager.
 	// getUpscaleBindings()), or null for the plain one.
+	// blurProgram/blurBindings: Gaussian's blur (RendererProgramManager.
+	// getBlurBindings()), or null.
 	void setUpscale(@NonNull Upscaling.Upscale upscale, @Nullable GlProgram program,
-			@Nullable ProgramBindings bindings) {
+			@Nullable ProgramBindings bindings, @Nullable GlProgram blurProgram,
+			@Nullable ProgramBindings blurBindings) {
 		this.upscale = upscale;
 		upscaleProgram = program;
 		upscaleBindings = bindings;
+		this.blurProgram = blurProgram;
+		this.blurBindings = blurBindings;
+	}
+
+	// Gaussian's first step: `source` blurred at its own size, across then
+	// up, into textures[1] - by `useDevice`, into the targets given (made,
+	// at the source's size, when missing or the wrong size).
+	@NonNull
+	private GlTexture2D preBlur(@NonNull GlDevice useDevice, @NonNull GlTexture2D source,
+			@NonNull GlTexture2D[] textures, @NonNull GlFramebuffer[] framebuffers,
+			@NonNull GlProgram program, @NonNull ProgramBindings bindings, boolean cropBorderPixel) {
+		int w = source.getWidth();
+		int h = source.getHeight();
+		for (int i = 0; i < 2; ++i) {
+			if (textures[i] == null || textures[i].getWidth() != w || textures[i].getHeight() != h) {
+				useDevice.deleteFramebuffer(framebuffers[i]);
+				useDevice.deleteTexture(textures[i]);
+				textures[i] = useDevice.createTexture2D();
+				useDevice.allocateTexture2D(textures[i], w, h);
+				useDevice.applyTextureParameters(textures[i], new BackBufferParameters());
+				framebuffers[i] = useDevice.createFramebuffer();
+				useDevice.attachColor(framebuffers[i], textures[i]);
+			}
+		}
+		float[] size = {w, h};
+		for (int pass = 0; pass < 2; ++pass) {
+			useDevice.bindFramebuffer(framebuffers[pass]);
+			useDevice.setViewport(0, 0, w, h);
+			bindings.clear();
+			bindings.setFloat2(SURFACE_FRAME_SIZE, size);
+			bindings.setFloat(SURFACE_CROP_PIXELS, cropBorderPixel ? 1f : 0f);
+			bindings.setFloat2("direction", pass == 0 ? new float[]{1f, 0f} : new float[]{0f, 1f});
+			bindings.setFloat("sigma", upscale.amount());
+			bindings.setTexture(SURFACE_FRAME, pass == 0 ? source : textures[0]);
+			useDevice.applyBindings(bindings);
+			useDevice.draw(fullScreenQuadMesh, program);
+		}
+		return textures[1];
+	}
+
+	private void releaseBlurTargets() {
+		for (int i = 0; i < 2; ++i) {
+			device.deleteFramebuffer(blurFramebuffers[i]);
+			device.deleteTexture(blurTextures[i]);
+			blurFramebuffers[i] = null;
+			blurTextures[i] = null;
+		}
 	}
 
 	@Nullable
@@ -474,6 +537,30 @@ final class ShaderRenderPipeline {
 		device.bindFramebuffer(null);
 		device.deleteFramebuffer(framebuffer);
 		return image;
+	}
+
+	// `source` scaled to width x height through the upscaling's surface
+	// program (bindings/program - or, for the default, the plain one), as
+	// the screen shows it, encoded as `encoding` - for a capture that
+	// includes the upscaling. On `useDevice`, which may be a capture's
+	// shared context.
+	@Nullable
+	byte[] readUpscaled(@NonNull GlDevice useDevice, @NonNull GlTexture2D source, int width,
+			int height, @NonNull ProgramBindings bindings, @NonNull GlProgram program,
+			@NonNull ImageEncoding encoding) {
+		GlTexture2D target = useDevice.createTexture2D();
+		useDevice.allocateTexture2D(target, width, height);
+		GlFramebuffer framebuffer = useDevice.createFramebuffer();
+		useDevice.attachColor(framebuffer, target);
+		try {
+			drawSurfaceInto(useDevice, source, width, height, framebuffer, bindings, program,
+					false);
+			return readPixels(width, height, encoding);
+		} finally {
+			useDevice.bindFramebuffer(null);
+			useDevice.deleteFramebuffer(framebuffer);
+			useDevice.deleteTexture(target);
+		}
 	}
 
 	void swapTargets() {
@@ -577,7 +664,46 @@ final class ShaderRenderPipeline {
 			surfaceProgram = upscaleProgram;
 			surfaceBindings = upscaleBindings;
 		}
+		drawSurfaceInto(device, sourceTexture, drawWidth, drawHeight, targetFramebuffer,
+				surfaceBindings, surfaceProgram, cropBorderPixel);
+	}
 
+	private void drawSurfaceInto(@NonNull GlDevice device, @NonNull GlTexture2D sourceTexture,
+			int drawWidth, int drawHeight, @Nullable GlFramebuffer targetFramebuffer,
+			@NonNull ProgramBindings surfaceBindings, @NonNull GlProgram surfaceProgram,
+			boolean cropBorderPixel) {
+		// Gaussian blurs the frame first, at its own size - into the live
+		// targets on screen, into throwaway ones for a capture.
+		if (upscale.filter() == Upscaling.Filter.GAUSSIAN && blurProgram != null &&
+				blurBindings != null && surfaceProgram == upscaleProgram) {
+			if (device == this.device) {
+				drawScaled(device, preBlur(device, sourceTexture, blurTextures, blurFramebuffers,
+								blurProgram, blurBindings, cropBorderPixel), drawWidth, drawHeight,
+						targetFramebuffer, surfaceBindings, surfaceProgram, cropBorderPixel);
+				return;
+			}
+			var textures = new GlTexture2D[2];
+			var framebuffers = new GlFramebuffer[2];
+			try {
+				drawScaled(device, preBlur(device, sourceTexture, textures, framebuffers,
+								blurProgram, blurBindings, cropBorderPixel), drawWidth, drawHeight,
+						targetFramebuffer, surfaceBindings, surfaceProgram, cropBorderPixel);
+			} finally {
+				for (int i = 0; i < 2; ++i) {
+					device.deleteFramebuffer(framebuffers[i]);
+					device.deleteTexture(textures[i]);
+				}
+			}
+			return;
+		}
+		drawScaled(device, sourceTexture, drawWidth, drawHeight, targetFramebuffer,
+				surfaceBindings, surfaceProgram, cropBorderPixel);
+	}
+
+	private void drawScaled(@NonNull GlDevice device, @NonNull GlTexture2D sourceTexture,
+			int drawWidth, int drawHeight, @Nullable GlFramebuffer targetFramebuffer,
+			@NonNull ProgramBindings surfaceBindings, @NonNull GlProgram surfaceProgram,
+			boolean cropBorderPixel) {
 		device.bindFramebuffer(targetFramebuffer);
 		device.setViewport(0, 0, drawWidth, drawHeight);
 		drawResolution[0] = drawWidth;

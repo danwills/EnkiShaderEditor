@@ -758,6 +758,7 @@
 	<string name="upscale_catmull">清晰三次（Catmull-Rom）</string>
 	<string name="upscale_sinc">Sinc（Lanczos）</string>
 	<string name="upscale_defocus">失焦</string>
+	<string name="upscale_gaussian">高斯（柔和）</string>
 	<string name="upscale_bokeh">花式失焦（散景）</string>
 	<string name="upscale_crt">CRT 映像管</string>
 	<string name="upscale_edges">畫面邊緣之外</string>
@@ -771,4 +772,6 @@
 	<string name="upscale_lobes">瓣數</string>
 	<string name="default_upscaling">預設放大方式</string>
 	<string name="upscale_default_hint">每次開啟應用程式時檢視使用的放大方式。</string>
+	<string name="higher_res_include_upscaling_label">包含放大效果</string>
+	<string name="higher_res_include_upscaling">包含放大效果 - 僅在「符合應用程式解析度」時：擷取的畫面與螢幕顯示一致，按螢幕尺寸經目前放大方式（品質選單中的「放大方式…」）輸出，因此影片縮放為 1</string>
 </resources>

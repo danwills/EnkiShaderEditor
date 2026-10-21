@@ -825,6 +825,7 @@
 	<string name="upscale_catmull">Чіткий кубічний (Кетмалл-Ром)</string>
 	<string name="upscale_sinc">Sinc (Ланцош)</string>
 	<string name="upscale_defocus">Розфокус</string>
+	<string name="upscale_gaussian">Гаусове (м\'яке)</string>
 	<string name="upscale_bokeh">Вигадливий розфокус (боке)</string>
 	<string name="upscale_crt">ЕПТ</string>
 	<string name="upscale_edges">За краями кадру</string>
@@ -838,4 +839,6 @@
 	<string name="upscale_lobes">Пелюстки</string>
 	<string name="default_upscaling">Типове масштабування</string>
 	<string name="upscale_default_hint">Масштабування, з якого вигляд починає під час кожного запуску застосунку.</string>
+	<string name="higher_res_include_upscaling_label">Включити масштабування</string>
+	<string name="higher_res_include_upscaling">Включити масштабування - лише з «Як у застосунку»: знімки виходять такими, як на екрані, розміром екрана з поточним масштабуванням (Масштабування… у меню якості), тож масштаб відео дорівнює 1</string>
 </resources>

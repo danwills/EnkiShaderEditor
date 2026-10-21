@@ -797,6 +797,7 @@
 	<string name="upscale_catmull">Crisp cubic (Catmull-Rom)</string>
 	<string name="upscale_sinc">Sinc (Lanczos)</string>
 	<string name="upscale_defocus">Defocus</string>
+	<string name="upscale_gaussian">Gaussian (soft)</string>
 	<string name="upscale_bokeh">Fancy defocus (bokeh)</string>
 	<string name="upscale_crt">CRT</string>
 	<string name="upscale_edges">Past the frame\'s edges</string>
@@ -810,4 +811,6 @@
 	<string name="upscale_lobes">Lobes</string>
 	<string name="default_upscaling">Default upscaling</string>
 	<string name="upscale_default_hint">The upscaling the view starts with each time the app opens.</string>
+	<string name="higher_res_include_upscaling_label">Include upscaling</string>
+	<string name="higher_res_include_upscaling">Include Upscaling - only with Match App Res Setting: captures come out as the screen shows them, at the screen\'s size through the current upscaling (Upscaling… in the quality menu), so Video Scale is 1</string>
 </resources>

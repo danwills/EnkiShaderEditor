@@ -54,6 +54,17 @@
 			android:checked="false"
 			android:text="@string/higher_res_match_device_playback_label" />
 
+		<!-- Only while Match App Res Setting is on: the capture comes out
+		     as the screen shows it, through the upscaling, at the view's
+		     size - Video Scale 1. See ShaderRenderer.setCaptureUpscaled(). -->
+		<CheckBox
+			android:id="@+id/custom_include_upscaling"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="24dp"
+			android:checked="false"
+			android:text="@string/higher_res_include_upscaling_label" />
+
 		<!-- Only affects what picking one of the "x Device Res" presets
 		     does - see MainActivity's own wiring; never touches
 		     anything for "Resolution" (the no-op placeholder) or a

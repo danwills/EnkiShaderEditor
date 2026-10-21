@@ -44,6 +44,7 @@ public final class UpscaleDialog {
 			R.string.upscale_defocus,
 			R.string.upscale_crt,
 			R.string.upscale_bokeh,
+			R.string.upscale_gaussian,
 	};
 	private static final int[] EDGE_NAMES = {
 			R.string.upscale_edge_clamp,

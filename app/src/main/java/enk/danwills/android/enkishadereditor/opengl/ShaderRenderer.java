@@ -232,6 +232,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See setUpscale().
 	@NonNull
 	private volatile Upscaling.Upscale upscale = Upscaling.Upscale.DEFAULT;
+	// See setCaptureUpscaled().
+	private volatile boolean captureUpscaled;
 	private volatile boolean redisplayRequested;
 	// The view's size, for requestRedisplay().
 	private int viewWidth;
@@ -984,9 +986,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		var upscale = getUpscale();
 		var upscaleBindings = programManager.getUpscaleBindings(device, upscale);
+		var blurBindings = programManager.getBlurBindings(device, upscale);
 		renderPipeline.setUpscale(upscale,
 				upscaleBindings != null ? programManager.getUpscaleProgram() : null,
-				upscaleBindings);
+				upscaleBindings, blurBindings != null ? programManager.getBlurProgram() : null,
+				blurBindings);
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -2027,9 +2031,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// the buffer chain it reads - so a buffer shader captures the
 			// live renderer's own completed frame instead, which only
 			// exists at the live render size.
-			return oversample == 1 && isLiveRenderSize(width, height)
-					? renderPipeline.readCompletedFrame(captureEncoding)
-					: null;
+			if (oversample != 1 || !isLiveRenderSize(width, height)) {
+				return null;
+			}
+			if (captureUpscaled) {
+				GlTexture2D frame = renderPipeline.getBackTexture();
+				return frame != null ? readUpscaled(useDevice, frame) : null;
+			}
+			return renderPipeline.readCompletedFrame(captureEncoding);
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
@@ -2071,7 +2080,53 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return null;
 			}
 		}
+		if (captureUpscaled && oversample == 1 && isLiveRenderSize(width, height)) {
+			GlTexture2D frame = useDevice.createTexture2D();
+			try {
+				String error = useDevice.uploadTexture2D(frame, bitmap, true);
+				if (error != null) {
+					return null;
+				}
+				useDevice.applyTextureParameters(frame, new BackBufferParameters());
+				return readUpscaled(useDevice, frame);
+			} finally {
+				useDevice.deleteTexture(frame);
+			}
+		}
 		return captureEncoding.encode(bitmap);
+	}
+
+	// A captured frame at the live render size as the screen shows it: at
+	// the view's size, through the upscaling - see setCaptureUpscaled().
+	@Nullable
+	private byte[] readUpscaled(@NonNull GlDevice useDevice, @NonNull GlTexture2D frame) {
+		// Compiled already (it's what's on screen), so only looked up here.
+		var bindings = programManager.getUpscaleBindings(device, upscale);
+		var program = bindings != null ? programManager.getUpscaleProgram()
+				: programManager.getSurfaceProgram();
+		if (bindings == null) {
+			bindings = programManager.getSurfaceBindings();
+		}
+		if (program == null || bindings == null || viewWidth <= 0 || viewHeight <= 0) {
+			return null;
+		}
+		return renderPipeline.readUpscaled(useDevice, frame, viewWidth, viewHeight, bindings, program,
+				captureEncoding);
+	}
+
+	// Whether a capture at the live render size (Match App Res) comes out
+	// as the screen shows it - at the view's size, upscaled as it is -
+	// rather than the frame itself.
+	public void setCaptureUpscaled(boolean upscaled) {
+		captureUpscaled = upscaled;
+	}
+
+	public int getViewWidth() {
+		return viewWidth;
+	}
+
+	public int getViewHeight() {
+		return viewHeight;
 	}
 
 	// Must be called on the GL thread (e.g. via

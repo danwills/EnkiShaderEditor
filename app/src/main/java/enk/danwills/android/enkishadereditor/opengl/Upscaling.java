@@ -40,7 +40,11 @@ public final class Upscaling {
 		// Defocus with a lens's character: a bladed iris with a bright
 		// rim, colour fringes, and cat's eyes towards the frame's edges;
 		// amount is its radius in texels.
-		BOKEH("bokeh", 2f);
+		BOKEH("bokeh", 2f),
+		// Soft whatever the radius: the frame blurred at its own size by
+		// a Gaussian (amount: its sigma, in texels - see the pipeline's
+		// preBlur()), then scaled up smoothly (B-spline).
+		GAUSSIAN("gaussian", 1.5f);
 
 		@Nullable
 		public final String name;
@@ -52,12 +56,13 @@ public final class Upscaling {
 		}
 
 		public boolean hasAmount() {
-			return this == SINC || this == DEFOCUS || this == CRT || this == BOKEH;
+			return this == SINC || this == DEFOCUS || this == CRT || this == BOKEH ||
+					this == GAUSSIAN;
 		}
 
 		// A radius in texels.
 		public boolean isRadius() {
-			return this == DEFOCUS || this == BOKEH;
+			return this == DEFOCUS || this == BOKEH || this == GAUSSIAN;
 		}
 
 		public float minAmount() {
@@ -65,7 +70,7 @@ public final class Upscaling {
 		}
 
 		public float maxAmount() {
-			return this == SINC ? 6f : isRadius() ? 3.5f : 1f;
+			return this == SINC ? 6f : this == GAUSSIAN ? 8f : isRadius() ? 3.5f : 1f;
 		}
 
 		public float amountStep() {

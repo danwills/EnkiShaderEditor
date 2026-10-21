@@ -963,6 +963,19 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getRenderWidth();
 	}
 
+	// See ShaderRenderer.setCaptureUpscaled().
+	public void setCaptureUpscaled(boolean upscaled) {
+		shaderView.getRenderer().setCaptureUpscaled(upscaled);
+	}
+
+	public int getViewWidth() {
+		return shaderView.getRenderer().getViewWidth();
+	}
+
+	public int getViewHeight() {
+		return shaderView.getRenderer().getViewHeight();
+	}
+
 	public int getRenderHeight() {
 		return shaderView.getRenderer().getRenderHeight();
 	}
