@@ -113,6 +113,7 @@ import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.fragment.AbstractSamplerPropertiesFragment;
 import enk.danwills.android.enkishadereditor.graphics.BitmapEditor;
+import enk.danwills.android.enkishadereditor.BuildConfig;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.activity.managers.ExtraKeysManager;
 import enk.danwills.android.enkishadereditor.activity.managers.MainMenuManager;
@@ -176,6 +177,8 @@ import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 import enk.danwills.android.enkishadereditor.widget.UpdatePackDialog;
 
 public class MainActivity extends AppCompatActivity {
+	// See reloadReplacedShader().
+	public static final String EXTRA_RELOAD_SHADER = "reload_shader";
 	private static final String CODE_VISIBLE = "code_visible";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
 	private static final String CRASH_RECOVERY_COMMENT = """
@@ -1378,7 +1381,27 @@ public class MainActivity extends AppCompatActivity {
 	@Override
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
+		if (reloadReplacedShader(intent)) {
+			return;
+		}
 		offerSharedText(intent);
+	}
+
+	// Debug builds only: the test tooling replaced a shader in the database
+	// while this was open (see ShaderImportReceiver in src/debug) - if it's
+	// the open one, reload it, dropping the version in memory rather than
+	// saving it over the new one.
+	private boolean reloadReplacedShader(@Nullable Intent intent) {
+		if (!BuildConfig.DEBUG || intent == null || !intent.hasExtra(EXTRA_RELOAD_SHADER)) {
+			return false;
+		}
+		long id = intent.getLongExtra(EXTRA_RELOAD_SHADER, 0);
+		if (id > 0 && id == shaderManager.getSelectedShaderId()) {
+			shaderManager.setModified(false);
+			shaderManager.selectShader(id);
+		}
+		shaderListManager.loadShadersAsync();
+		return true;
 	}
 
 	@Override

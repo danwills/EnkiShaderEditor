@@ -256,3 +256,12 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   Simulation pauses while the screen is off.
 - **"It's closed now, go for it."** Both shaders replaced in place (1002, 1003) with
   `add_shader.sh` - no UI.
+- **"Now it doesn't do the noisy initialisation - gotta paint to start it."** The app clears new
+  buffers to black with alpha 1, which read as the "started" mark (w > 0.5). The mark is now 2.
+  (On the way, found and deleted a stray nameless copy, id 1001, left by an earlier paste.)
+  Dan: "nice the startup is back now!"
+- **"If Enki's open when shaders come over, could it ask whether to discard the current versions or
+  ignore the import?"** The debug build's receiver now opens a see-through ShaderImportActivity
+  over whatever's showing, with Replace/Ignore; Replace on the open shader reloads it in the
+  editor (a debug-only `reload_shader` extra on MainActivity) without saving the old version.
+  Tested on the phone: both shaders replaced through the dialog, the open one reloading.

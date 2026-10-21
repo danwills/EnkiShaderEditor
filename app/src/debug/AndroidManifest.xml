@@ -17,5 +17,11 @@
 			android:name=".receiver.ShaderImportReceiver"
 			android:exported="true"
 			tools:ignore="ExportedReceiver"/>
+		<!-- Asks before importing while the app's on screen. -->
+		<activity
+			android:name=".activity.ShaderImportActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:theme="@style/DebugImportTheme"/>
 	</application>
 </manifest>
