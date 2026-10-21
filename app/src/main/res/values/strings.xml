@@ -787,4 +787,24 @@
 		<item quantity="one">Rename %d shader from this list? Their dates stay as they are.</item>
 		<item quantity="other">Rename %d shaders from this list? Their dates stay as they are.</item>
 	</plurals>
+	<string name="upscaling_menu">Upscaling…</string>
+	<string name="upscaling">Upscaling</string>
+	<string name="upscale_default">Default (as the backbuffer\'s filtering)</string>
+	<string name="upscale_nearest">Nearest</string>
+	<string name="upscale_sharp">Sharp pixels</string>
+	<string name="upscale_linear">Bilinear</string>
+	<string name="upscale_bspline">Smooth (B-spline)</string>
+	<string name="upscale_catmull">Crisp cubic (Catmull-Rom)</string>
+	<string name="upscale_sinc">Sinc (Lanczos)</string>
+	<string name="upscale_defocus">Defocus</string>
+	<string name="upscale_crt">CRT</string>
+	<string name="upscale_edges">Past the frame\'s edges</string>
+	<string name="upscale_edge_clamp">Clamp</string>
+	<string name="upscale_edge_periodic">Periodic</string>
+	<string name="upscale_edge_mirror">Mirror</string>
+	<string name="upscale_edge_black">Black</string>
+	<string name="upscale_radius">Radius (frame pixels)</string>
+	<string name="upscale_strength">Strength</string>
+	<string name="upscale_hint">Only when the quality is below 1/1, and only on screen. Saved as an ///upscale: line at the top of the shader.</string>
+	<string name="upscale_lobes">Lobes</string>
 </resources>

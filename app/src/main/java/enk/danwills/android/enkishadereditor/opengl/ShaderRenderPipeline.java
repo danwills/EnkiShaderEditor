@@ -19,12 +19,19 @@ final class ShaderRenderPipeline {
 	private static final String SURFACE_FRAME = "frame";
 	private static final String SURFACE_FRAME_SIZE = "frameSize";
 	private static final String SURFACE_CROP_PIXELS = "cropPixels";
+	private static final String SURFACE_UPSCALE_AMOUNT = "upscaleAmount";
 
 	private final float[] thumbnailResolution =
 			new float[]{THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT};
 	private final float[] drawResolution = new float[2];
 	private final float[] frameSize = new float[2];
 	private boolean cropBorderPixel = false;
+	@NonNull
+	private UpscaleDirective.Upscale upscale = UpscaleDirective.Upscale.DEFAULT;
+	@Nullable
+	private GlProgram upscaleProgram;
+	@Nullable
+	private ProgramBindings upscaleBindings;
 	private final TextureParameters thumbnailTextureParameters =
 			new TextureParameters(
 					GLES20.GL_LINEAR,
@@ -433,6 +440,17 @@ final class ShaderRenderPipeline {
 		this.cropBorderPixel = cropBorderPixel;
 	}
 
+	// How the on-screen surface pass scales the frame - see
+	// UpscaleDirective.
+	// program/bindings: its surface program (RendererProgramManager.
+	// getUpscaleBindings()), or null for the plain one.
+	void setUpscale(@NonNull UpscaleDirective.Upscale upscale, @Nullable GlProgram program,
+			@Nullable ProgramBindings bindings) {
+		this.upscale = upscale;
+		upscaleProgram = program;
+		upscaleBindings = bindings;
+	}
+
 	@Nullable
 	GlTexture2D getBackTexture() {
 		return targetTextures[backTarget];
@@ -552,6 +570,11 @@ final class ShaderRenderPipeline {
 		if (sourceTexture == null) {
 			return;
 		}
+		// Only on screen: a thumbnail is of the frame itself.
+		if (targetFramebuffer == null && upscaleProgram != null && upscaleBindings != null) {
+			surfaceProgram = upscaleProgram;
+			surfaceBindings = upscaleBindings;
+		}
 
 		device.bindFramebuffer(targetFramebuffer);
 		device.setViewport(0, 0, drawWidth, drawHeight);
@@ -565,6 +588,7 @@ final class ShaderRenderPipeline {
 				drawResolution);
 		surfaceBindings.setFloat2(SURFACE_FRAME_SIZE, frameSize);
 		surfaceBindings.setFloat(SURFACE_CROP_PIXELS, cropBorderPixel ? 1f : 0f);
+		surfaceBindings.setFloat(SURFACE_UPSCALE_AMOUNT, upscale.amount());
 		surfaceBindings.setTexture(SURFACE_FRAME, sourceTexture);
 		device.applyBindings(surfaceBindings);
 		device.clear(GLES20.GL_COLOR_BUFFER_BIT);

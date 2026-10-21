@@ -229,6 +229,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile ImageEncoding captureEncoding = ImageEncoding.PNG;
 	private volatile boolean blankFrameRequested;
 	// See requestRedisplay().
+	// See setUpscaleOverride().
+	@Nullable
+	private volatile UpscaleDirective.Upscale upscaleOverride;
 	private volatile boolean redisplayRequested;
 	// The view's size, for requestRedisplay().
 	private int viewWidth;
@@ -404,6 +407,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// contents and backbuffer are all kept, not restarted.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
+		// The new source's own `///upscale:` line from now on.
+		upscaleOverride = null;
 		if (keepState) {
 			builtinUniforms.keepClockThroughNextSurface();
 		} else {
@@ -597,6 +602,22 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// exactly as it was, not one step on.
 	public void requestRedisplay() {
 		redisplayRequested = true;
+	}
+
+	// Shows the frame scaled as `upscale` says rather than as the shader's
+	// `///upscale:` line does (see UpscaleDirective) - for trying them out
+	// before the line's written; null goes back to the line's. A new
+	// shader clears it.
+	public void setUpscaleOverride(@Nullable UpscaleDirective.Upscale upscale) {
+		upscaleOverride = upscale;
+		redisplayRequested = true;
+	}
+
+	// How the frame's being scaled to the screen now.
+	@NonNull
+	public UpscaleDirective.Upscale getUpscale() {
+		var override = upscaleOverride;
+		return override != null ? override : programManager.getUpscale();
 	}
 
 	public void resumeClock() {
@@ -966,6 +987,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			pendingTextReload = false;
 			programManager.reloadTexts(context, device);
 		}
+		var upscale = getUpscale();
+		var upscaleBindings = programManager.getUpscaleBindings(device, upscale);
+		renderPipeline.setUpscale(upscale,
+				upscaleBindings != null ? programManager.getUpscaleProgram() : null,
+				upscaleBindings);
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);

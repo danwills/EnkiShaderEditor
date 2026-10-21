@@ -158,6 +158,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
+import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
@@ -175,6 +176,7 @@ import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 import enk.danwills.android.enkishadereditor.widget.UpdatePackDialog;
+import enk.danwills.android.enkishadereditor.widget.UpscaleDialog;
 
 public class MainActivity extends AppCompatActivity {
 	// See reloadReplacedShader().
@@ -1618,6 +1620,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onUpscalingRequested() {
+				showUpscaleDialog();
+			}
+
+			@Override
 			public void onFullscreenExitGesture() {
 				setFullscreen(false);
 			}
@@ -2172,6 +2179,46 @@ public class MainActivity extends AppCompatActivity {
 			name = "mod_" + name;
 		}
 		return name.length() > 40 ? name.substring(0, 40) : name;
+	}
+
+	// Upscaling… in the quality menu: tried out live, then written as the
+	// Image pass's `///upscale:` line - see UpscaleDirective. Comments
+	// don't change the compiled shader, so it isn't run again; the shown
+	// scaling stays overridden until it next is, by which time the line
+	// says the same.
+	private void showUpscaleDialog() {
+		UpscaleDialog.show(this, shaderViewManager.getUpscale(), new UpscaleDialog.Host() {
+			@Override
+			public void preview(@NonNull UpscaleDirective.Upscale upscale) {
+				shaderViewManager.setUpscaleOverride(upscale);
+			}
+
+			@Override
+			public void apply(@NonNull UpscaleDirective.Upscale upscale) {
+				shaderViewManager.setUpscaleOverride(upscale);
+				writeUpscaleLine(upscale);
+			}
+		});
+	}
+
+	private void writeUpscaleLine(@NonNull UpscaleDirective.Upscale upscale) {
+		ShaderProjectSession session = shaderManager.getEditedProjectSession(
+				editorFragment.getText());
+		String entry = session.getProject().getEntryFilePath();
+		var file = session.getProject().getFile(entry);
+		if (file == null) {
+			return;
+		}
+		String updated = UpscaleDirective.apply(file.source(), upscale);
+		if (updated.equals(file.source())) {
+			return;
+		}
+		if (entry.equals(session.getActiveFilePath())) {
+			editorFragment.replaceAll(updated);
+		} else {
+			shaderManager.setFileSource(entry, updated);
+		}
+		shaderManager.setModified(true);
 	}
 
 	// Makes `name` the shader's soundtrack: a `///mod:` line at the top of

@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.opengl;
 
+import android.util.Log;
 import android.content.Context;
 
 import androidx.annotation.NonNull;
@@ -13,6 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class RendererProgramManager {
+	private static final String TAG = "RendererPrograms";
 	// A buffer pass's program freshly compiled from source this reload,
 	// for the caller to persist - see ReloadResult.freshBinary.
 	record FreshBufferBinary(int buffer, @NonNull String sourceText,
@@ -70,6 +72,12 @@ final class RendererProgramManager {
 				gl_Position = vec4(position, 0., 1.);
 			}
 			""";
+	// Scales the rendered frame to the screen, as an UpscaleDirective says:
+	// compiled once per filter and edge (see surfaceSource()), their
+	// ordinals as upscaleFilter and upscaleEdge - constants, so each
+	// program is only the code its filter needs. Every filter but the
+	// default reads texel centres itself, so the frame texture's own
+	// filtering doesn't matter to it.
 	private static final String SURFACE_FRAGMENT_SHADER = """
 			#ifdef GL_FRAGMENT_PRECISION_HIGH
 			precision highp float;
@@ -81,13 +89,221 @@ final class RendererProgramManager {
 			uniform vec2 frameSize;
 			uniform float cropPixels;
 			uniform sampler2D frame;
+			// UPSCALE
+			uniform float upscaleAmount;
+
+			// The frame's visible texels (inside any cropped border): the
+			// first, and how many.
+			vec2 first;
+			vec2 count;
+
+			float edgeIndex(float i, float n) {
+				if (upscaleEdge == 1) {
+					return mod(i, n);
+				}
+				if (upscaleEdge == 2) {
+					float m = mod(i, 2.0 * n);
+					return m < n ? m : 2.0 * n - 1.0 - m;
+				}
+				return clamp(i, 0.0, n - 1.0);
+			}
+
+			// Visible texel i (counted from the first), past the edges as
+			// upscaleEdge says.
+			vec4 texel(vec2 i) {
+				if (upscaleEdge == 3 && (any(lessThan(i, vec2(0.0))) ||
+						any(greaterThanEqual(i, count)))) {
+					return vec4(0.0, 0.0, 0.0, 1.0);
+				}
+				vec2 j = vec2(edgeIndex(i.x, count.x), edgeIndex(i.y, count.y));
+				return texture2D(frame, (first + j + 0.5) / frameSize);
+			}
+
+			// s: the position in texels. sharp: blend only across the
+			// screen pixel or so at each texel's edge.
+			vec4 bilinear(vec2 s, bool sharp) {
+				vec2 p = s - 0.5;
+				vec2 i = floor(p);
+				vec2 f = p - i;
+				if (sharp) {
+					vec2 scale = resolution / count;
+					f = clamp((f - 0.5) * scale + 0.5, 0.0, 1.0);
+				}
+				return mix(mix(texel(i), texel(i + vec2(1.0, 0.0)), f.x),
+						mix(texel(i + vec2(0.0, 1.0)), texel(i + 1.0), f.x), f.y);
+			}
+
+			vec4 cubicWeights(float f, bool bspline) {
+				float f2 = f * f;
+				float f3 = f2 * f;
+				if (bspline) {
+					return vec4(1.0 - 3.0 * f + 3.0 * f2 - f3, 3.0 * f3 - 6.0 * f2 + 4.0,
+							-3.0 * f3 + 3.0 * f2 + 3.0 * f + 1.0, f3) / 6.0;
+				}
+				return vec4(-f3 + 2.0 * f2 - f, 3.0 * f3 - 5.0 * f2 + 2.0,
+						-3.0 * f3 + 4.0 * f2 + f, f3 - f2) / 2.0;
+			}
+
+			vec4 cubicRow(vec2 i, float y, vec4 w) {
+				return texel(i + vec2(-1.0, y)) * w.x + texel(i + vec2(0.0, y)) * w.y +
+						texel(i + vec2(1.0, y)) * w.z + texel(i + vec2(2.0, y)) * w.w;
+			}
+
+			vec4 cubic(vec2 s, bool bspline) {
+				vec2 p = s - 0.5;
+				vec2 i = floor(p);
+				vec2 f = p - i;
+				vec4 wx = cubicWeights(f.x, bspline);
+				vec4 wy = cubicWeights(f.y, bspline);
+				return cubicRow(i, -1.0, wx) * wy.x + cubicRow(i, 0.0, wx) * wy.y +
+						cubicRow(i, 1.0, wx) * wy.z + cubicRow(i, 2.0, wx) * wy.w;
+			}
+
+			float lanczos(float x) {
+				float a = float(upscaleReach);
+				if (abs(x) < 1e-4) {
+					return 1.0;
+				}
+				if (abs(x) >= a) {
+					return 0.0;
+				}
+				float px = 3.14159265 * x;
+				return a * sin(px) * sin(px / a) / (px * px);
+			}
+
+			// Visible texel i's texture coordinate along an axis of n
+			// texels starting at `start`, past the edges as upscaleEdge
+			// says - or -1 for black.
+			float coordinate(float i, float n, float start, float size) {
+				if (upscaleEdge == 3 && (i < 0.0 || i >= n)) {
+					return -1.0;
+				}
+				return (start + edgeIndex(i, n) + 0.5) / size;
+			}
+
+			// Its taps (upscaleReach lobes each side, 2 x upscaleReach a
+			// row) - weights and coordinates worked out once a row and
+			// column, as the weights are separable.
+			vec4 sinc(vec2 s) {
+				vec2 p = s - 0.5;
+				vec2 i = floor(p);
+				vec2 f = p - i;
+				float wx[2 * upscaleReach];
+				float wy[2 * upscaleReach];
+				float ux[2 * upscaleReach];
+				float uy[2 * upscaleReach];
+				float sx = 0.0;
+				float sy = 0.0;
+				for (int k = 0; k < 2 * upscaleReach; ++k) {
+					float o = float(k - upscaleReach + 1);
+					wx[k] = lanczos(o - f.x);
+					wy[k] = lanczos(o - f.y);
+					ux[k] = coordinate(i.x + o, count.x, first.x, frameSize.x);
+					uy[k] = coordinate(i.y + o, count.y, first.y, frameSize.y);
+					sx += wx[k];
+					sy += wy[k];
+				}
+				vec4 sum = vec4(0.0);
+				for (int y = 0; y < 2 * upscaleReach; ++y) {
+					vec4 row = vec4(0.0);
+					for (int x = 0; x < 2 * upscaleReach; ++x) {
+						vec4 v = ux[x] < 0.0 || uy[y] < 0.0 ? vec4(0.0, 0.0, 0.0, 1.0)
+								: texture2D(frame, vec2(ux[x], uy[y]));
+						row += v * wx[x];
+					}
+					sum += row * wy[y];
+				}
+				return sum / (sx * sy);
+			}
+
+			// A lens's out-of-focus disc, upscaleAmount texels across
+			// (radius), its rim a little brighter, in roughly linear light.
+			vec4 defocus(vec2 s) {
+				float r = upscaleAmount;
+				vec2 c = floor(s);
+				vec4 sum = vec4(0.0);
+				float weights = 0.0;
+				for (int y = -upscaleReach; y <= upscaleReach; ++y) {
+					for (int x = -upscaleReach; x <= upscaleReach; ++x) {
+						vec2 t = c + vec2(float(x), float(y));
+						float d = length(t + 0.5 - s);
+						float w = clamp(r + 0.5 - d, 0.0, 1.0);
+						if (w <= 0.0) {
+							continue;
+						}
+						w *= 1.0 + 0.6 * smoothstep(r * 0.5, r + 0.5, d);
+						vec4 v = texel(t);
+						sum += v * v * w;
+						weights += w;
+					}
+				}
+				return sqrt(sum / max(weights, 1e-4));
+			}
+
+			// Nearest, as a CRT would show it: each row of texels a beam,
+			// fatter where brighter, between darker scanlines; each texel
+			// three phosphor stripes. upscaleAmount is how strongly; both
+			// fade out as texels shrink towards the screen's pixels.
+			vec4 crt(vec2 s) {
+				vec2 scale = resolution / count;
+				vec2 c = floor(s);
+				vec2 f = s - c;
+				vec3 beams = vec3(0.0);
+				for (int y = -1; y <= 1; ++y) {
+					vec2 t = c + vec2(0.0, float(y));
+					vec3 col = texel(t).rgb;
+					col = mix(col, texel(t - vec2(1.0, 0.0)).rgb,
+							0.5 * (1.0 - smoothstep(0.0, 0.15, f.x)));
+					col = mix(col, texel(t + vec2(1.0, 0.0)).rgb,
+							0.5 * smoothstep(0.85, 1.0, f.x));
+					col *= col;
+					float width = mix(0.2, 0.36, sqrt(dot(col, vec3(0.3, 0.6, 0.1))));
+					float dy = f.y - 0.5 - float(y);
+					beams += col * exp(-0.5 * dy * dy / (width * width));
+				}
+				vec4 plain = texel(c);
+				float scanlines = upscaleAmount * smoothstep(2.0, 4.0, scale.y);
+				vec3 col = mix(plain.rgb * plain.rgb, beams * 1.35, scanlines);
+				float stripes = upscaleAmount * smoothstep(3.0, 6.0, scale.x);
+				float stripe = floor(f.x * 3.0);
+				vec3 mask = vec3(stripe == 0.0 ? 1.0 : 0.3, stripe == 1.0 ? 1.0 : 0.3,
+						stripe == 2.0 ? 1.0 : 0.3);
+				col *= mix(vec3(1.0), mask / 0.5333, stripes);
+				return vec4(sqrt(clamp(col, 0.0, 1.0)), plain.a);
+			}
+
 			void main(void) {
 				vec2 uv = gl_FragCoord.xy / resolution.xy;
-				vec2 inset = cropPixels / frameSize;
-				uv = inset + uv * (1.0 - 2.0 * inset);
-				gl_FragColor = texture2D(frame,uv).rgba;
+				if (upscaleFilter == 0) {
+					vec2 inset = cropPixels / frameSize;
+					gl_FragColor = texture2D(frame, inset + uv * (1.0 - 2.0 * inset));
+					return;
+				}
+				first = vec2(cropPixels);
+				count = frameSize - 2.0 * cropPixels;
+				vec2 s = uv * count;
+				vec4 c;
+				if (upscaleFilter == 2) {
+					c = bilinear(s, true);
+				} else if (upscaleFilter == 3) {
+					c = bilinear(s, false);
+				} else if (upscaleFilter == 4) {
+					c = cubic(s, true);
+				} else if (upscaleFilter == 5) {
+					c = cubic(s, false);
+				} else if (upscaleFilter == 6) {
+					c = sinc(s);
+				} else if (upscaleFilter == 7) {
+					c = defocus(s);
+				} else if (upscaleFilter == 8) {
+					c = crt(s);
+				} else {
+					c = texel(floor(s));
+				}
+				gl_FragColor = c;
 			}
 			""";
+
 
 	private final int maxTextures;
 
@@ -118,6 +334,9 @@ final class RendererProgramManager {
 			"^[ \\t]*///steps:([0-9]{1,3})[ \\t]*$", Pattern.MULTILINE);
 	private static final int MAX_STEPS = 64;
 	private int steps = 1;
+	// See getUpscale().
+	@NonNull
+	private UpscaleDirective.Upscale upscale = UpscaleDirective.Upscale.DEFAULT;
 	// The backbuffer parameters before the last prepareShaderSource(),
 	// as text - see backBufferParametersUnchanged().
 	@Nullable
@@ -131,6 +350,12 @@ final class RendererProgramManager {
 	private int version = 2;
 	@Nullable
 	private GlProgram surfaceProgram;
+	// See getUpscaleBindings().
+	@Nullable
+	private GlProgram upscaleProgram;
+	@Nullable
+	private ProgramBindings upscaleBindings;
+	private int upscaleKey = -1;
 	@Nullable
 	private GlProgram mainProgram;
 	@Nullable
@@ -179,7 +404,7 @@ final class RendererProgramManager {
 		var textureErrors = textureResources.load(context, device, texts);
 		var surfaceResult = device.createProgram(
 				FULL_SCREEN_VERTEX_SHADER,
-				SURFACE_FRAGMENT_SHADER,
+				surfaceSource(UpscaleDirective.Upscale.DEFAULT),
 				ShaderLineMapping.identity());
 		if (!surfaceResult.succeeded() || surfaceResult.getProgram() == null) {
 			return ReloadResult.failure(textureErrors, surfaceResult.getInfoLog());
@@ -326,6 +551,13 @@ final class RendererProgramManager {
 		return steps;
 	}
 
+	// How the frame's scaled to the screen - an `///upscale:` line in any
+	// pass (see UpscaleDirective).
+	@NonNull
+	UpscaleDirective.Upscale getUpscale() {
+		return upscale;
+	}
+
 	private static int findSteps(@NonNull String[] sources) {
 		for (String source : sources) {
 			if (source == null) {
@@ -388,6 +620,7 @@ final class RendererProgramManager {
 	// texture the previous shader sampled, on every single shader switch.
 	void releaseForReload(@NonNull GlDevice device) {
 		device.deleteProgram(surfaceProgram);
+		device.deleteProgram(upscaleProgram);
 		device.deleteProgram(mainProgram);
 		if (mainSourceText != null) {
 			mainSourceText.release(device);
@@ -429,6 +662,49 @@ final class RendererProgramManager {
 	@Nullable
 	GlProgram getSurfaceProgram() {
 		return surfaceProgram;
+	}
+
+	@NonNull
+	private static String surfaceSource(@NonNull UpscaleDirective.Upscale upscale) {
+		return SURFACE_FRAGMENT_SHADER.replace("// UPSCALE",
+				"#define upscaleFilter " + upscale.filter().ordinal() +
+						"\n#define upscaleEdge " + upscale.edge().ordinal() +
+						"\n#define upscaleReach " + upscale.reach());
+	}
+
+	// The surface program for `upscale`, compiled the first time it's
+	// asked for (and kept while it's the one asked for), or null for the
+	// default - getSurfaceProgram()'s - or if it won't compile. GL thread
+	// only.
+	@Nullable
+	ProgramBindings getUpscaleBindings(@NonNull GlDevice device,
+			@NonNull UpscaleDirective.Upscale upscale) {
+		if (upscale.filter() == UpscaleDirective.Filter.DEFAULT || surfaceProgram == null) {
+			return null;
+		}
+		int key = (upscale.filter().ordinal() * UpscaleDirective.Edge.values().length +
+				upscale.edge().ordinal()) * 16 + upscale.reach();
+		if (key == upscaleKey) {
+			return upscaleBindings;
+		}
+		device.deleteProgram(upscaleProgram);
+		upscaleProgram = null;
+		upscaleBindings = null;
+		upscaleKey = key;
+		var result = device.createProgram(FULL_SCREEN_VERTEX_SHADER, surfaceSource(upscale),
+				ShaderLineMapping.identity());
+		if (!result.succeeded() || result.getProgram() == null) {
+			Log.w(TAG, "Upscale " + upscale + " won't compile: " + result.getInfoLog());
+			return null;
+		}
+		upscaleProgram = result.getProgram();
+		upscaleBindings = new ProgramBindings(upscaleProgram);
+		return upscaleBindings;
+	}
+
+	@Nullable
+	GlProgram getUpscaleProgram() {
+		return upscaleProgram;
 	}
 
 	@Nullable
@@ -592,11 +868,15 @@ final class RendererProgramManager {
 		}
 		moduleName = ModuleDirective.find(all);
 		steps = findSteps(all);
+		upscale = UpscaleDirective.find(all);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}
 
 	private void clearPrograms() {
 		surfaceProgram = null;
+		upscaleProgram = null;
+		upscaleBindings = null;
+		upscaleKey = -1;
 		mainProgram = null;
 		surfaceBindings = null;
 		mainSourceText = null;

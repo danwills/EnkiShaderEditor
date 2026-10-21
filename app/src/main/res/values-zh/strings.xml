@@ -748,4 +748,24 @@
 	<plurals name="batch_list_summary">
 		<item quantity="other">按此列表重命名 %d 个着色器？日期保持不变。</item>
 	</plurals>
+	<string name="upscaling_menu">放大方式…</string>
+	<string name="upscaling">放大方式</string>
+	<string name="upscale_default">默认（按 backbuffer 的过滤）</string>
+	<string name="upscale_nearest">最近邻</string>
+	<string name="upscale_sharp">锐利像素</string>
+	<string name="upscale_linear">双线性</string>
+	<string name="upscale_bspline">平滑（B 样条）</string>
+	<string name="upscale_catmull">清晰三次（Catmull-Rom）</string>
+	<string name="upscale_sinc">Sinc（Lanczos）</string>
+	<string name="upscale_defocus">失焦</string>
+	<string name="upscale_crt">CRT 显像管</string>
+	<string name="upscale_edges">画面边缘之外</string>
+	<string name="upscale_edge_clamp">延伸边缘</string>
+	<string name="upscale_edge_periodic">周期</string>
+	<string name="upscale_edge_mirror">镜像</string>
+	<string name="upscale_edge_black">黑色</string>
+	<string name="upscale_radius">半径（画面像素）</string>
+	<string name="upscale_strength">强度</string>
+	<string name="upscale_hint">仅在质量低于 1/1 时、仅在屏幕上生效。以 ///upscale: 行保存在着色器开头。</string>
+	<string name="upscale_lobes">瓣数</string>
 </resources>

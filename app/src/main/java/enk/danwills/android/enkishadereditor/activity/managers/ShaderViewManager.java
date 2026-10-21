@@ -17,6 +17,7 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
+import enk.danwills.android.enkishadereditor.opengl.UpscaleDirective;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
@@ -66,6 +68,9 @@ public class ShaderViewManager {
 		void onFullscreenExitPhaseChanged(@NonNull FullscreenExitGestureDetector.Phase phase);
 
 		void onFullscreenExitGesture();
+
+		// The quality menu's last entry, Upscaling… - see UpscaleDialog.
+		void onUpscalingRequested();
 	}
 
 	@NonNull
@@ -1105,6 +1110,17 @@ public class ShaderViewManager {
 	// different shaders" case the risky-increase check needs to stay
 	// out of, since its basis (fpsAtCurrentQuality) is only ever
 	// meaningful for a genuine live quality change, not a fresh load.
+	// See ShaderRenderer.setUpscaleOverride().
+	public void setUpscaleOverride(@Nullable UpscaleDirective.Upscale upscale) {
+		shaderView.getRenderer().setUpscaleOverride(upscale);
+		shaderView.requestRender();
+	}
+
+	@NonNull
+	public UpscaleDirective.Upscale getUpscale() {
+		return shaderView.getRenderer().getUpscale();
+	}
+
 	private void setQualityDirect(float quality) {
 		for (int i = 0; i < qualityValues.length; ++i) {
 			if (qualityValues[i] == quality) {
@@ -1252,10 +1268,12 @@ public class ShaderViewManager {
 			qualityValues[i] = Float.parseFloat(qualityStringValues[i]);
 		}
 
-		ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
-				activity,
-				R.array.quality_names,
-				R.layout.spinner_item_quality);
+		// The qualities, then Upscaling…, which opens its dialog rather
+		// than being selected.
+		var names = new ArrayList<CharSequence>(Arrays.asList(
+				activity.getResources().getStringArray(R.array.quality_names)));
+		names.add(activity.getString(R.string.upscaling_menu));
+		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names);
 		adapter.setDropDownViewResource(
 				android.R.layout.simple_spinner_dropdown_item);
 		qualitySpinner.setAdapter(adapter);
@@ -1263,6 +1281,11 @@ public class ShaderViewManager {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view,
 					int position, long id) {
+				if (position >= qualityValues.length) {
+					revertSelectionToCurrentQuality();
+					listener.onUpscalingRequested();
+					return;
+				}
 				float q = qualityValues[position];
 				// The spinner's own displayed selection has already
 				// moved to `position` by the time this fires (that's
