@@ -318,3 +318,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"The guard should only clamp off NaN and Inf, not otherwise clamp anything."** Done: rdSane()
   now only replaces NaN/infinite values (tested from the float's bits, `rdBad()`) with the
   previous value (or 0); KEEP_RANGE is gone.
+- **"Go ahead and install it."** Installed the keep-state-on-re-run build and replaced all three
+  VTI shaders (1002-1004) with the NaN-only guard; Enki reopened. (The replace dropped the
+  `///upscale:sinc` line Dan had added to 1002.)
