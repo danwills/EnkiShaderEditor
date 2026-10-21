@@ -573,7 +573,7 @@ const int S_MODE = 2;    // composite, colour map, editing (1 colour, 2 weight, 
 const int S_DRAG = 3;    // the colour wheel's centre (x, y), last frame's finger centre (x, y)
 const int S_FINGERS = 4; // last frame's finger count, a chemical whose complement a two-
                          // finger tap switched (-1 none), 1 if a tap reset the brush, and
-                         // 1 once started - see rdStarted()
+                         // 2 once started - see rdStarted()
 const int S_BRUSH = 5;   // what the brush paints (its two chemicals), and erases (two)
 const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dragging
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
@@ -678,9 +678,10 @@ vec4 rdState(int texel, ivec2 grid) {
 // iFrame == 0 - the app's frame count goes back to 0 whenever its surface
 // is made again (the screen timing out, the app coming back), though the
 // buffers carry on; so only buffers that really are blank (new, or cleared
-// by Restart) start the initial pattern again.
+// by Restart) start the initial pattern again. The mark is 2, not 1: the
+// app clears new buffers to black with an alpha of 1.
 bool rdStarted(ivec2 grid) {
-	return rdState(S_FINGERS, grid).w > 0.5;
+	return rdState(S_FINGERS, grid).w > 1.5;
 }"""
 
 # The interface's state, worked out in each frame's first step (the same
@@ -708,7 +709,7 @@ vec4 rdStartState(int texel) {
 	}
 	if (texel >= S_POWER && texel < S_POWER + CHEMICALS) return vec4(1.0, 0.0, 0.0, 0.0);
 	if (texel == S_BRUSH) return %(brush_start)s;
-	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 1.0);
+	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 2.0);
 	return vec4(0.0);
 }
 
@@ -725,7 +726,7 @@ void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, ou
 	int n = pointerCount;
 	vec2 first = n > 0 ? pointers[0].xy : vec2(0.0);
 	vec2 centre = rdCentre();
-	f = vec4(float(n), -1.0, 0.0, 1.0);
+	f = vec4(float(n), -1.0, 0.0, 2.0);
 	bool tiles = pg.z > 0.5 && pg.z < 1.5;
 	bool tapped = pt.z < 0.5 && iTime - pg.y < TAP_TIME;
 	if (n == 0 && pg.x > 1.5 && pg.x < 2.5 && tapped && tiles) {
