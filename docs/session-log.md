@@ -305,3 +305,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   help?"** Added `rdSane()` at the end of every step: NaN/infinite values go back to the cell's
   previous value (a NaN otherwise spreads through the Laplacian), and each chemical is clamped
   to `KEEP_RANGE` (4) range-widths past its mask range. Not yet tried on the phone.
+- **"The sim still resets after a while - can they last forever?"** The phone's log showed the
+  buffers made afresh ~2 s after each dialog closed: Run mode Automatic re-runs a shader 2 s after
+  any edit (Upscaling…'s OK writes a line), and every run started buffer shaders over. Now a
+  re-run of the shader that's running, at the same quality, keeps its clock and buffers
+  (`ShaderViewManager.rerunProjectSession()`, as ShaderToy does); switching shaders, a quality
+  change or Restart still start over.
+- **Dan's own VTI, orbits_ddd_epochs_init.djw** (complex-number orbit rule): the converter now
+  maps OpenCL's `atan2` (and atan2pi, sinpi/cospi/tanpi, expm1, log1p). rdSane()'s clamp range
+  is now the wider of a chemical's mask range and LOW..HIGH, so this rule's a and b (default 0-1
+  masks) aren't clamped tightly.

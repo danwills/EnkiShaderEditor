@@ -7239,7 +7239,7 @@ public class MainActivity extends AppCompatActivity {
 			projectSession = shaderManager.getEditedProjectSession(src);
 		}
 		if (ShaderEditorApp.preferences.doesRunInBackground()) {
-			shaderViewManager.setProjectSession(projectSession);
+			shaderViewManager.rerunProjectSession(projectSession);
 		} else {
 			navigationManager.showPreview(projectSession,
 					shaderManager.previewShaderLauncher);

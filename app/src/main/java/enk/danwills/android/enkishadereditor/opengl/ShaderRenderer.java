@@ -401,10 +401,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		setFragmentShader(source, bufferSources, quality, shaderId, false);
 	}
 
-	// keepState: the new source is the same shader with only some values
-	// changed (Adjust Defines' live mode swapping #defines for uniforms
-	// and back), so it carries on from where it is - the clock, buffer
-	// contents and backbuffer are all kept, not restarted.
+	// keepState: the new source is the same shader, changed (Adjust
+	// Defines' live mode swapping #defines for uniforms and back, or an
+	// edit run again - ShaderViewManager.rerunProjectSession()), so it
+	// carries on from where it is - the clock, buffer contents and
+	// backbuffer are all kept, not restarted.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
 		// The new source's own `///upscale:` line from now on.

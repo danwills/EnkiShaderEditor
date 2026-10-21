@@ -513,6 +513,20 @@ public class ShaderViewManager {
 				projectSession.getShaderId());
 	}
 
+	// Runs the editor's version of a shader: if it's the one running (at
+	// the same quality), carrying on from where it is - its clock and
+	// buffers kept, as ShaderToy does - so editing a simulation doesn't
+	// start it over (Restart does); otherwise as setProjectSession().
+	public void rerunProjectSession(@NonNull ShaderProjectSession projectSession) {
+		long id = projectSession.getShaderId();
+		if (!paused && id > 0 && id == appliedShaderId &&
+				projectSession.getQuality() == appliedQuality) {
+			setProjectSessionKeepingState(projectSession, false);
+		} else {
+			setProjectSession(projectSession);
+		}
+	}
+
 	// Swaps in a changed version of the running shader without
 	// restarting it - see ShaderRenderer.setFragmentShader()'s keepState.
 	// For Adjust Defines' live mode, which swaps #defines for uniforms
