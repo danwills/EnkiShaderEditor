@@ -218,3 +218,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   plays it with ShowActivity's new quiet mode (no titles/toasts). Three bundled sets from Enki's
   samples (Drift, Life, Demoscene) install into its own database as packs. Metaball icon rendered
   by `tools/ura/make_icon.py`. Both flavours lint at 0 errors, 50 warnings.
+- **"Give it a go now, then back to VTIs."** Tested on the phone: the menu draws three glossy
+  merging blobs with their names; tapping Drift swells it over the screen and the set plays with
+  no titles; Back returns to the menu, reset. To tune later: the tiles sit close enough to always
+  merge, and the names' letters are spaced wide.
