@@ -1607,9 +1607,9 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	for c in mine:
 		out.append("\t%s += timestep * delta_%s;" % (c, c))
 	out.extend(paint_code(p, chems, mine, paint, erase, is_first_stage))
-	out.append("\t// Kept finite and within reach - see rdSane().")
+	out.append("\t// Kept finite - see rdSane().")
 	for c in mine:
-		out.append("\t%s = rdSane(%s, before_%s, %d);" % (c, c, c, chem_index(c)))
+		out.append("\t%s = rdSane(%s, before_%s);" % (c, c, c))
 	out.append("\tfragColor = %s;" % result)
 	out.append("}")
 	return "\n".join(out)
@@ -1700,24 +1700,18 @@ def wide_laplacian_code(used_stencils, groups):
 
 
 SANE_CODE = """\
-// Chemical i's new value v, kept finite and within reach. A value gone
-// NaN or infinite - which the Laplacian would spread to every neighbour,
-// a stain taking over the screen - goes back to what it was this step
-// (or, were that bad too, its range's low end); and every value stays
-// within KEEP_RANGE of its range's widths past it, so a cell painted
-// into running away is stopped before it overflows. Its range: its mask
-// range, or the colour view's (LOW to HIGH) where that's wider.
-float rdSane(float v, float before, int i) {
-	vec2 mask = maskRange(i);
-	vec2 r = vec2(min(mask.x, float(LOW)), max(mask.y, float(HIGH)));
-	if (isnan(v) || isinf(v) || !(abs(v) < 1e6)) {
-		v = isnan(before) || isinf(before) || !(abs(before) < 1e6) ? r.x : before;
-	}
-	if (KEEP_RANGE <= 0.0) {
-		return v;
-	}
-	float reach = KEEP_RANGE * (r.y - r.x);
-	return clamp(v, r.x - reach, r.y + reach);
+// Whether v is NaN or infinite - from its bits (its exponent all ones),
+// as compilers may take isnan()/isinf() to be always false.
+bool rdBad(float v) {
+	return (floatBitsToUint(v) & 0x7f800000u) == 0x7f800000u;
+}
+
+// Chemical value v, kept finite: gone NaN or infinite - which the
+// Laplacian would spread to every neighbour, a stain taking over the
+// screen - it goes back to what it was this step (or 0, were that bad
+// too). Nothing else is touched.
+float rdSane(float v, float before) {
+	return rdBad(v) ? (rdBad(before) ? 0.0 : before) : v;
 }"""
 
 
@@ -1908,9 +1902,6 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	params_block.append("// this. Above 1 it's a Gaussian's, wider the larger - see rdWideBlur() -")
 	params_block.append("// and slower, as it reads more cells.")
 	params_block.append("#define LAPLACIAN_SCALE 1.0")
-	params_block.append("// How far past its range (MASK_LOW_/MASK_HIGH_, or LOW/HIGH if wider), in")
-	params_block.append("// ranges' widths, a chemical may go before it's clamped (0: never) - see rdSane().")
-	params_block.append("#define KEEP_RANGE 4.0")
 	active = setting(p, "active_chemical", "a")
 	if chem_index(active) >= p.n_chemicals:
 		active = "a"

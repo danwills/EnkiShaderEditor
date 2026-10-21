@@ -315,3 +315,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   maps OpenCL's `atan2` (and atan2pi, sinpi/cospi/tanpi, expm1, log1p). rdSane()'s clamp range
   is now the wider of a chemical's mask range and LOW..HIGH, so this rule's a and b (default 0-1
   masks) aren't clamped tightly.
+- **"The guard should only clamp off NaN and Inf, not otherwise clamp anything."** Done: rdSane()
+  now only replaces NaN/infinite values (tested from the float's bits, `rdBad()`) with the
+  previous value (or 0); KEEP_RANGE is gone.
