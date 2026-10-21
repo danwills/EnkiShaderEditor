@@ -233,3 +233,11 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   button, composite with wheel/weight/power). Both VTIs loaded into Enki debug under their file
   names. **"Buttons only on the all-reagents screen."** Done. **"Another circle to edit the main
   brush's paint colour."** Asked what it should change.
+- **"3: a circle in the top row - drag it to edit the brush's values, and if a second finger
+  joins the drag, the eraser's. Grade and tint each reagent on the tiles screen and see the sum
+  full screen, for recordings. And a 'complement' (1 - reagent) per reagent - can it go
+  negative?"** Added the brush button (drag: paint values of its two chemicals, shown on a pad;
+  second finger: erase values; tap: back to the file's own) and a two-finger tap on a reagent's
+  tile to complement it. Levels are already clamped 0-1 to the tile's range (MASK_LOW/HIGH)
+  before the power, so 1 - level can't go negative; that range doubles as a levels/contrast
+  control. Composite was already what the colour tile full screen and the colour view show.
