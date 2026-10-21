@@ -363,3 +363,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   RANDOM_PULL 0.004) with snapshots for the rewind. Composite now adds (COMPOSITE_GAIN 1.6 for
   an average look); weights -2..4, so 0 hides a chemical and negative darkens - before, nothing
   could go black. Not yet tried on the phone.
+- Installed that build and replaced 1002-1004 silently while Dan was in another app (no taps).
