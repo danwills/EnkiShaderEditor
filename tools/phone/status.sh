@@ -1,24 +1,35 @@
 #!/bin/sh
-# A status notification on the test phone while Claude drives it over
-# adb, so Dan can see what's happening - and an interrupt: swiping the
-# notification away asks Claude to wrap up the step it's on, put the
-# phone back as it found it, and stop (see CLAUDE.md, "Testing on the
-# phone"). Posted by the phone's shell (`cmd notification`), so no app
-# is involved. Each post and done also shows as a toast, over whatever is
-# on screen, through the Enki *debug* build's TestStatusToastReceiver
-# (src/debug) - quietly skipped if that isn't installed.
+# Claude's status on the test phone while it drives it over adb, so Dan
+# can see what's happening - and an interrupt: swiping the notification
+# away asks Claude to wrap up the step it's on, put the phone back as it
+# found it, and stop (see CLAUDE.md, "Testing on the phone").
 #
-#   status.sh post "Opening Adjust Defines..."   a toast (and, the first
-#                                                time, the notification)
-#   status.sh check                              exit 1 if it was swiped away
-#   status.sh done "Back to Materialistic"       take it away; a long toast
+# The notification is posted by the phone's shell (`cmd notification`),
+# so no app is involved; at the end it stays, saying Claude's finished,
+# until the next run replaces it. The running commentary shows over
+# whatever is on screen in the Enki *debug* build's StatusOverlay (through
+# TestStatusReceiver, src/debug; its overlay permission granted here with
+# appops) - a panel of the last few lines, each fading after a while, so
+# nothing queues up. Without the debug build it's quietly skipped.
+#
+#   status.sh post "Opening `Adjust Defines`..." [KIND]
+#                     a line (and, the first time in a run, the notification);
+#                     KIND picks its icon and colour: info step look tap type
+#                     wait build install load think good bad warn happy sad
+#                     party, or any emoji. `code`, numbers and good/bad words
+#                     are coloured too.
+#   status.sh check   exit 1 if the notification was swiped away
+#   status.sh hide    clear the panel for a moment (a clean screenshot)
+#   status.sh done "Back to Materialistic" [sad]
+#                     the last line, big and happy (or sad), and the
+#                     notification left saying Claude's finished
 #
 # ANDROID_SERIAL picks the phone, as for adb.
 
-# The shell can't cancel a notification, only snooze it - so `done`
-# snoozes it for a year, and each test run gets a tag of its own (kept
-# here between calls), so a later run's posts never land in a snoozed one.
+PKG=enk.danwills.android.enkishadereditor.debug
+# This run's notification tag, and the last finished run's (left up).
 STATE="${TMPDIR:-/tmp}/enki-phone-status-tag"
+FINISHED="${TMPDIR:-/tmp}/enki-phone-status-finished"
 
 tag() {
 	if [ ! -s "$STATE" ]; then
@@ -32,38 +43,58 @@ quote() {
 	printf "'%s'" "$(printf %s "$1" | sed "s/'/’/g")"
 }
 
-# extra: more `am broadcast` extras, e.g. "--ez long true".
-toast() {
-	adb shell "am broadcast -n enk.danwills.android.enkishadereditor.debug/enk.danwills.android.enkishadereditor.receiver.TestStatusToastReceiver --es text $(quote "$1") $2" >/dev/null 2>&1
+# extras: more `am broadcast` extras.
+say() {
+	adb shell "am broadcast -n $PKG/enk.danwills.android.enkishadereditor.receiver.TestStatusReceiver $1" >/dev/null 2>&1
 }
 
-# The notification's key, if it's still there.
+# A notification's key, by tag, if it's still there.
 key() {
-	adb shell cmd notification list | tr -d '\r' | grep "|$(tag)|" | head -n 1
+	adb shell cmd notification list | tr -d '\r' | grep "|$1|" | head -n 1
+}
+
+# The shell can't cancel a notification, only snooze it - for a year.
+remove() {
+	k=$(key "$1")
+	if [ -n "$k" ]; then
+		adb shell "cmd notification snooze --for 31536000000 $(quote "$k")" >/dev/null
+	fi
 }
 
 case "$1" in
 post)
-	# Posted once a run: every post makes the notification sound again,
-	# so the updates after the first are toasts only.
+	# Posted once a run (each post makes its sound again), after taking
+	# down the last run's finished one.
 	if [ ! -s "$STATE" ]; then
-		adb shell "cmd notification post -S bigtext -t $(quote "Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
+		[ -s "$FINISHED" ] && remove "$(cat "$FINISHED")" && rm -f "$FINISHED"
+		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
+		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
-	toast "Claude: ${2:-Testing...}"
+	say "--es text $(quote "${2:-Testing...}") --es kind $(quote "${3:-step}")"
 	;;
 check)
-	[ -n "$(key)" ]
+	[ -n "$(key "$(tag)")" ]
+	;;
+hide)
+	say "--ez hide true"
 	;;
 done)
-	k=$(key)
-	if [ -n "$k" ]; then
-		adb shell "cmd notification snooze --for 31536000000 $(quote "$k")" >/dev/null
+	t=$(tag)
+	if [ "$3" = sad ]; then
+		title="😢 Claude has stopped"
+		kind=sad
+	else
+		title="😊 Claude is all finished"
+		kind=happy
 	fi
+	# Updated in place - left up, so it's clear nothing's driving the phone.
+	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "Nothing is driving your phone now. ${2:-}")" >/dev/null
+	echo "$t" > "$FINISHED"
 	rm -f "$STATE"
-	toast "😊 Phone is yours - ${2:-finished testing.}" "--ez long true"
+	say "--es text $(quote "${2:-Finished testing} - the phone's all yours!") --es kind $kind --ez done true"
 	;;
 *)
-	echo "usage: $0 post TEXT | check | done [TEXT]" >&2
+	echo "usage: $0 post TEXT [KIND] | check | hide | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac

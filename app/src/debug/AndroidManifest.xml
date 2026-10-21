@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: lets the test tooling show a toast on the phone
-     (TestStatusToastReceiver, tools/phone/status.sh) and put shaders in the
+<!-- Debug builds only: lets the test tooling show its status on the phone
+     (TestStatusReceiver and its StatusOverlay, tools/phone/status.sh - the
+     overlay permission granted with appops) and put shaders in the
      library (ShaderImportReceiver, tools/phone/add_shader.sh). Exported with
      no permission on purpose: adb's shell has to reach them. The import only
      reads files in the app's own storage, which only run-as can write. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:tools="http://schemas.android.com/tools">
+	<!-- For StatusOverlay, over every app. -->
+	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 	<application>
 		<receiver
-			android:name=".receiver.TestStatusToastReceiver"
+			android:name=".receiver.TestStatusReceiver"
 			android:exported="true"
 			tools:ignore="ExportedReceiver"/>
 		<!-- Imports a shader the tooling wrote into the app's own files
