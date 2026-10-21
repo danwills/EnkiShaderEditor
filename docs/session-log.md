@@ -276,3 +276,22 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   picked from the quality menu, or a separate simulation resolution; for the Laplacian, a
   strength knob (dx already does this), wider stencils, smooth blur-based kernels, and
   per-chemical, oriented or painted scales.
+
+## 2026-10-22
+
+- **"Go ahead with the upscale one - can we include a sinc filter, a few-pixel 'defocussed' look,
+  and a NearestN-plus-CRT one for lulzies? All respecting a frame edge mode (periodic, clamp,
+  mirror, black)."** Built `///upscale:filter[,edge[,amount]]` (UpscaleDirective): nearest,
+  sharp pixels, bilinear, B-spline, Catmull-Rom, sinc (Lanczos, 2-6 lobes), defocus (radius),
+  CRT (strength), each with the four edge modes, on screen only. Upscaling… at the bottom of the
+  quality menu opens a live-preview dialog; OK writes the line without re-running. First version
+  ran at ~7 fps (one shader, runtime branches); now one small program per filter/edge/reach:
+  sinc 40 fps, defocus 39, CRT 38 on the phone at 1/32.
+- **"Doesn't look very sharp for sinc!?"** It's right for smooth content: sinc rebuilds the
+  smoothest signal through the pixels, and these blobs are smooth at 1/32, so there's no edge to
+  ring at. Added a Lobes amount (more ringing); 6 lobes costs ~6 fps and still shows no ringing
+  here.
+- **"2 is really what I meant"** (the smooth wide Laplacian) - vti2enki's `LAPLACIAN_SCALE`:
+  below 1 scales the stencil down, above 1 a Gaussian-based Laplacian (`rdWideBlur()`) whose
+  width grows with the scale, so it stays stable at the same timestep. Tested at 2.0 at 1/32:
+  much bigger blobs, stable, 49 fps.

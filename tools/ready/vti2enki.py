@@ -1327,6 +1327,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("}")
 		out.append("")
 	out.extend(cell_code(p))
+	out.extend(wide_blur_code(used_stencils, groups))
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
 	out.append(UI_COMMON % ui)
 	out.append("")
@@ -1410,6 +1411,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t// Keywords needed:")
 	for s, c in used_stencils:
 		out.append("\tfloat %s;" % stencil_code(s, c))
+	out.extend(wide_laplacian_code(used_stencils, groups))
 	if "x_pos" in tokens:
 		out.append("\tfloat x_pos = float(p.x) / float(grid.x);")
 	if "y_pos" in tokens:
@@ -1442,6 +1444,79 @@ COLORMAP_NAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 def colormap_names():
 	with open(COLORMAP_NAMES) as f:
 		return [line.strip() for line in f if line.strip()]
+
+
+def wide_laplacians(used_stencils):
+	return [c for s, c in used_stencils if s.label == "laplacian"]
+
+
+def wide_blur_code(used_stencils, groups):
+	"""rdWideBlur(): the Gaussian blur of each needed group's cells that the
+	wide Laplacian (LAPLACIAN_SCALE > 1) is worked out from."""
+	needed = sorted({chem_index(c) // 4 for c in wide_laplacians(used_stencils)})
+	if not needed:
+		return []
+	outs = ", ".join("out vec4 blur%d" % g for g in needed)
+	out = [
+		"// The wide Laplacian (LAPLACIAN_SCALE above 1) is a Gaussian's: the blur's",
+		"// difference from the cell, over the blur's variance - which works out the",
+		"// Laplacian of what's smooth at the blur's scale. The blur widens with the",
+		"// scale, so it stays as stable as the 3x3 one, at the same timestep.",
+		"#define LAPLACIAN_SIGMA 0.7",
+		"#define LAPLACIAN_REACH 12",
+		"void rdWideBlur(ivec2 p, ivec2 grid, %s, out float variance) {" % outs,
+		"	float sigma = LAPLACIAN_SCALE * LAPLACIAN_SIGMA;",
+		"	int reach = min(int(ceil(2.5 * sigma)), LAPLACIAN_REACH);",
+	]
+	for g in needed:
+		out.append("	blur%d = vec4(0.0);" % g)
+	out += [
+		"	float weights = 0.0;",
+		"	variance = 0.0;",
+		"	for (int y = -reach; y <= reach; ++y) {",
+		"		for (int x = -reach; x <= reach; ++x) {",
+		"			float w = exp(-0.5 * float(x * x + y * y) / (sigma * sigma));",
+		"			ivec2 q = rdCell(p + ivec2(x, y), grid);",
+	]
+	for g in needed:
+		out.append("			blur%d += w * texelFetch(iChannel%d, q, 0);" % (g, g))
+	out += [
+		"			weights += w;",
+		"			variance += w * float(x * x);",
+		"		}",
+		"	}",
+	]
+	for g in needed:
+		out.append("	blur%d /= weights;" % g)
+	out += ["	variance /= weights;", "}", ""]
+	return out
+
+
+def wide_laplacian_code(used_stencils, groups):
+	"""In the pass's main: the Laplacians at LAPLACIAN_SCALE - scaled down as
+	they are, below 1; the Gaussian's (rdWideBlur()), above."""
+	chems = wide_laplacians(used_stencils)
+	if not chems:
+		return []
+	needed = sorted({chem_index(c) // 4 for c in chems})
+	out = [
+		"	if (LAPLACIAN_SCALE > 1.0) {",
+		"		float variance;",
+	]
+	for g in needed:
+		out.append("		vec4 blur%d;" % g)
+	out.append("		rdWideBlur(p, grid, %s, variance);" % ", ".join(
+			"blur%d" % g for g in needed))
+	out.append("		float wide = 2.0 * LAPLACIAN_SCALE * LAPLACIAN_SCALE / (variance * dx * dx);")
+	for c in chems:
+		i = chem_index(c)
+		out.append("		laplacian_%s = wide * (blur%d.%s - %s);" % (
+				c, i // 4, CHANNELS[i % 4], cell_name(c, (0, 0))))
+	out.append("	} else {")
+	for c in chems:
+		out.append("		laplacian_%s *= LAPLACIAN_SCALE * LAPLACIAN_SCALE;" % c)
+	out.append("	}")
+	return out
 
 
 def cell_code(p):
@@ -1627,6 +1702,10 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 		params_block.append("#define %s %s" % (safe_name(name), glsl_float(value)))
 	if not any(n == "dx" for n, _ in params):
 		params_block.append("#define dx 1.0 // grid spacing")
+	params_block.append("// The Laplacian's scale: patterns grow (or, below 1, shrink) by about")
+	params_block.append("// this. Above 1 it's a Gaussian's, wider the larger - see rdWideBlur() -")
+	params_block.append("// and slower, as it reads more cells.")
+	params_block.append("#define LAPLACIAN_SCALE 1.0")
 	active = setting(p, "active_chemical", "a")
 	if chem_index(active) >= p.n_chemicals:
 		active = "a"
