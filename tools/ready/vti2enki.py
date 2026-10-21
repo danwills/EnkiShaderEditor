@@ -196,6 +196,14 @@ OPENCL_FUNCTIONS = {
 	"fmod": "float fmod(float x, float y) { return x - y * trunc(x / y); }",
 	"mad": "float mad(float a, float b, float c) { return a * b + c; }",
 	"hypot": "float hypot(float x, float y) { return sqrt(x * x + y * y); }",
+	# OpenCL's two-argument arctangent is GLSL's two-argument atan.
+	"atan2": "float atan2(float y, float x) { return atan(y, x); }",
+	"atan2pi": "float atan2pi(float y, float x) { return atan(y, x) * 0.3183098862; }",
+	"sinpi": "float sinpi(float x) { return sin(x * 3.1415926536); }",
+	"cospi": "float cospi(float x) { return cos(x * 3.1415926536); }",
+	"tanpi": "float tanpi(float x) { return tan(x * 3.1415926536); }",
+	"expm1": "float expm1(float x) { return exp(x) - 1.0; }",
+	"log1p": "float log1p(float x) { return log(1.0 + x); }",
 	"rsqrt": "float rsqrt(float x) { return inversesqrt(x); }",
 	"cbrt": "float cbrt(float x) { return sign(x) * pow(abs(x), 1.0 / 3.0); }",
 	"exp10": "float exp10(float x) { return pow(10.0, x); }",
@@ -1697,9 +1705,11 @@ SANE_CODE = """\
 // a stain taking over the screen - goes back to what it was this step
 // (or, were that bad too, its range's low end); and every value stays
 // within KEEP_RANGE of its range's widths past it, so a cell painted
-// into running away is stopped before it overflows.
+// into running away is stopped before it overflows. Its range: its mask
+// range, or the colour view's (LOW to HIGH) where that's wider.
 float rdSane(float v, float before, int i) {
-	vec2 r = maskRange(i);
+	vec2 mask = maskRange(i);
+	vec2 r = vec2(min(mask.x, float(LOW)), max(mask.y, float(HIGH)));
 	if (isnan(v) || isinf(v) || !(abs(v) < 1e6)) {
 		v = isnan(before) || isinf(before) || !(abs(before) < 1e6) ? r.x : before;
 	}
@@ -1898,8 +1908,8 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	params_block.append("// this. Above 1 it's a Gaussian's, wider the larger - see rdWideBlur() -")
 	params_block.append("// and slower, as it reads more cells.")
 	params_block.append("#define LAPLACIAN_SCALE 1.0")
-	params_block.append("// How far past its range (MASK_LOW_/MASK_HIGH_), in ranges' widths, a")
-	params_block.append("// chemical may go before it's clamped (0: never) - see rdSane().")
+	params_block.append("// How far past its range (MASK_LOW_/MASK_HIGH_, or LOW/HIGH if wider), in")
+	params_block.append("// ranges' widths, a chemical may go before it's clamped (0: never) - see rdSane().")
 	params_block.append("#define KEEP_RANGE 4.0")
 	active = setting(p, "active_chemical", "a")
 	if chem_index(active) >= p.n_chemicals:
