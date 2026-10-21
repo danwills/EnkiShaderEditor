@@ -206,3 +206,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   like GoL computers. App id is good - document the plan."** Wrote `docs/ultra-rest-area.md`:
   decisions, architecture, the three visual directions, milestones (first: the flavour and a
   metaball menu), open questions.
+- **"The UI could be so fascinating people just play with it - could sell 'RD-machine
+  contraption packs' instead?"** Yes: a contraption ships as a pack like any set (same store and
+  delivery), and a playable home screen doubles as the free sample. Added to the plan.

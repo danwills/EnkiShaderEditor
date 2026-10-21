@@ -86,6 +86,18 @@ colliding waves and solitons. So:
 
 An art piece as much as a UI - probably for special screens and moments rather than every control.
 
+## The UI as the content
+
+Dan's thought (2026-10-21): the UI could be so fascinating that some people just keep playing with
+it instead of going on to the shader sets - and that's fine. It suggests:
+- **Contraption packs** - curated reaction-diffusion machines (sorting machines, prime finders,
+  chain reactions, small puzzles with a goal) sold alongside, or instead of, shader sets. A
+  contraption is a multipass shader plus a little description of its channels, gates and inputs,
+  so it ships as a pack exactly like a set: same store, same delivery.
+- **The menu as the free sample** - if the home screen is itself a playable machine, it's both the
+  way in and the hook; packs sell more of the same feeling.
+- So it's worth making the reaction-diffusion menu genuinely *playable* early, not just navigable.
+
 ## Milestones (proposed)
 
 1. **Scaffold and a metaball menu.** The product flavour; a full-screen, immersive activity with
