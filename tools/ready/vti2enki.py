@@ -1131,7 +1131,11 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	} else if (view == 2) {
 		col = rdTileColour(shown, p / screen, grid, mode);
 	} else {
-		ivec2 q = ivec2(p.x, p.y * float(grid.y) / screen.y);
+		// One screen row per grid row: the screen has one more than the
+		// grid (the state row), and stretching the grid over it showed
+		// its middle row twice. The extra row at the top wraps (or
+		// clamps) instead.
+		ivec2 q = rdCell(ivec2(p), grid);
 		col = rdColour(q, grid, mode);
 	}
 	if (view == 1) {
@@ -1322,18 +1326,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.extend(overlay_code(p, chems))
 		out.append("}")
 		out.append("")
-	# Wrap or clamp at the edges, as Ready's wrap attribute says.
-	out.append("ivec2 rdCell(ivec2 p, ivec2 size) {")
-	if p.wrap:
-		out.append("\tp.x += p.x < 0 ? size.x : 0;")
-		out.append("\tp.x -= p.x >= size.x ? size.x : 0;")
-		out.append("\tp.y += p.y < 0 ? size.y : 0;")
-		out.append("\tp.y -= p.y >= size.y ? size.y : 0;")
-		out.append("\treturn p;")
-	else:
-		out.append("\treturn clamp(p, ivec2(0), size - 1);")
-	out.append("}")
-	out.append("")
+	out.extend(cell_code(p))
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
 	out.append(UI_COMMON % ui)
 	out.append("")
@@ -1449,6 +1442,23 @@ COLORMAP_NAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 def colormap_names():
 	with open(COLORMAP_NAMES) as f:
 		return [line.strip() for line in f if line.strip()]
+
+
+def cell_code(p):
+	"""rdCell(): wraps or clamps a cell at the grid's edges, as Ready's wrap
+	attribute says."""
+	out = ["ivec2 rdCell(ivec2 p, ivec2 size) {"]
+	if p.wrap:
+		out.append("\tp.x += p.x < 0 ? size.x : 0;")
+		out.append("\tp.x -= p.x >= size.x ? size.x : 0;")
+		out.append("\tp.y += p.y < 0 ? size.y : 0;")
+		out.append("\tp.y -= p.y >= size.y ? size.y : 0;")
+		out.append("\treturn p;")
+	else:
+		out.append("\treturn clamp(p, ivec2(0), size - 1);")
+	out.append("}")
+	out.append("")
+	return out
 
 
 def paint_code(p, chems, mine, paint, erase, is_first_stage):
@@ -1715,6 +1725,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	image.append("")
 	image.append(UI_COMMON % p.ui)
 	image.append("")
+	image.extend(cell_code(p))
 	image.append("// Chemical i (0 = a) at cell q.")
 	image.append("float chemical(int i, ivec2 q) {")
 	if groups > 1:

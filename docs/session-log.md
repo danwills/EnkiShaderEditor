@@ -265,3 +265,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   over whatever's showing, with Replace/Ignore; Replace on the open shader reloads it in the
   editor (a debug-only `reload_shader` extra on MainActivity) without saving the old version.
   Tested on the phone: both shaders replaced through the dialog, the open one reloading.
+- **"A repeated row of pixels in the centre (rendering, not the sim)."** The buffers have one row
+  more than the grid (the state row); the colour view stretched the grid's rows over the screen's,
+  so the middle row showed twice. Now one screen row per grid row, the extra top row wrapping (or
+  clamping) - rdCell() is shared with the Image pass for that. Sent both shaders over (the
+  phone asks, as Enki's open).
