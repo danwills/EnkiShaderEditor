@@ -373,3 +373,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   Res draws each frame through the upscaling at the view's size, Video Scale 1. Not yet tried on
   the phone.
 - Installed that build silently (Dan in another app).
+- **"I tried the fancy bokeh (AMAZING) and it worked great in a capture!"** - Include Upscaling confirmed on the phone with Fancy defocus.
