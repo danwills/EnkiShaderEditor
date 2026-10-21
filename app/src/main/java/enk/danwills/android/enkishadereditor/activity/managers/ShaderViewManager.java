@@ -473,7 +473,8 @@ public class ShaderViewManager {
 			}
 			return;
 		}
-		setProjectSession(projectSession);
+		// An edit to the shader that's running carries on from where it is.
+		rerunProjectSession(projectSession);
 	}
 
 	private boolean isRunning(@NonNull ShaderProjectSession projectSession) {

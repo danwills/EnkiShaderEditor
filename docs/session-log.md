@@ -333,3 +333,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   view's (`Upscaling`, `ShaderRenderer.setUpscale()`), kept for the app's session, starting from
   Settings → Performance → Default upscaling (same picker; stored as a spec string that falls
   back to Default if the modes change). No `///upscale:` lines any more.
+- **"Get them on the phone, and do some housekeeping so you can go on about it."** Installed;
+  narrated everything in the new panel. Re-imported 1002 without its old `///upscale:` line.
+  Found the keep-state-on-edit fix didn't cover Run mode Automatic (its own
+  `setProjectSessionIfChanged()` path) - fixed and confirmed: an edit re-runs with 0 new
+  buffers. Set sinc + periodic edges through the new view-only picker (no rebuild), saw Settings'
+  new Default upscaling entry, and returning from Settings kept the sim too.
