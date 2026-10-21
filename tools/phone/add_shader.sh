@@ -29,10 +29,13 @@ else
 	adb shell am force-stop "$PKG"
 fi
 adb push "$file" /data/local/tmp/enki-import.glsl >/dev/null
-adb shell "cat /data/local/tmp/enki-import.glsl | run-as $PKG sh -c 'mkdir -p files/import && cat > files/import/incoming.glsl'"
+# A file of its own each time: several sent while Enki's on screen wait in
+# their dialogs together, each for its own.
+incoming="incoming-$(date +%s%N).glsl"
+adb shell "cat /data/local/tmp/enki-import.glsl | run-as $PKG sh -c 'mkdir -p files/import && cat > files/import/$incoming'"
 adb shell rm -f /data/local/tmp/enki-import.glsl
 q=$(printf "'%s'" "$(printf %s "$name" | sed "s/'/’/g")")
-adb shell "am broadcast -n $PKG/enk.danwills.android.enkishadereditor.receiver.ShaderImportReceiver --es name $q --es file incoming.glsl --ef quality $quality" >/dev/null
+adb shell "am broadcast -n $PKG/enk.danwills.android.enkishadereditor.receiver.ShaderImportReceiver --es name $q --es file $incoming --ef quality $quality" >/dev/null
 if [ -n "$on_screen" ]; then
 	echo "Enki debug is on screen - asking on the phone."
 	exit 0

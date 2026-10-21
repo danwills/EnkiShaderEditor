@@ -348,3 +348,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   gap sets its frequency (1-4, eighths, whole numbers sticky), shown in a zone with ticks and
   "x2.50". Dan: the conversions match Ready "pretty much perfectly"; he has ~9 GB of VTIs to
   turn into packs for Enki and Ultra Rest Area later.
+- Sending three shaders at once while Enki was open exposed an add_shader.sh bug: every import
+  used the same incoming file, so waiting dialogs would all read the last one sent. No harm done
+  (Dan replaced orbits first, which matched; the other two failed cleanly). Each import now
+  gets its own file; resent the two grayscott shaders.
