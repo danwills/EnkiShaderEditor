@@ -552,64 +552,425 @@ def overlay_code(p, chems):
 	return lines
 
 
-# Gestures, kept in the state row's first texel from frame to frame.
-GESTURE = """\
-// The touch and view state (the state row's first texel): x the most
-// fingers down at once in this touch (0: none), y when it started
-// (iTime), z the view (0 colour, 1 every chemical as a mask) - which
-// a third finger switches.
-vec4 rdNextState(vec4 s) {
-	if (pointerCount == 0) {
-		return vec4(0.0, 0.0, s.z, 0.0);
+# The interface, shared by every pass - so a touch means the same to the
+# buffers, which act on it, as to the Image pass, which draws it. Its
+# state lives along the buffers' top row (the state row), one texel each.
+UI_COMMON = """\
+// The interface. Views: 0 colour; 1 every chemical, and the colour view,
+// as tiles; 2 one tile full screen. Buttons along the top of the tiles
+// view (only): the colour map (tap for the next), and composite colour
+// (tap to switch).
+const int CHEMICALS = %(n)d;
+const int TILES = CHEMICALS + 1; // the chemicals, then the colour view
+const float MAPS = %(maps)d.0;   // 0 the file's own map, then colormaps' rows
+// The state row's texels:
+const int S_GESTURE = 0; // most fingers this touch, when it began, view, the tile shown
+const int S_TOUCH = 1;   // where it began (x, y), moved too far for a tap, tile it began on
+const int S_MODE = 2;    // composite, colour map, editing (1 colour, 2 weight), its chemical
+const int S_DRAG = 3;    // the colour wheel's centre (x, y), last frame's finger centre (x, y)
+const int S_FINGERS = 4; // last frame's finger count
+const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
+const int S_POWER = 16;  // + a chemical: its composite power
+
+// A touch shorter than this, moving less than TAP_MOVE of the screen's
+// shorter side, is a tap.
+#define TAP_TIME PAINT_DELAY
+#define TAP_MOVE 0.03
+#define WHEEL_RADIUS 0.22 // of the screen's shorter side
+#define WEIGHT_RATE 3.0   // weight per screen height dragged
+#define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
+
+float rdUnit(vec2 screen) {
+	return min(screen.x, screen.y);
+}
+
+bool rdInBox(vec2 p, vec4 box) {
+	return all(greaterThanEqual(p, box.xy)) && all(lessThan(p, box.xy + box.zw));
+}
+
+// The colour map button, top left: origin, size.
+vec4 rdMapButton(vec2 screen) {
+	float u = rdUnit(screen);
+	vec2 size = vec2(0.3, 0.07) * u;
+	return vec4(0.04 * u, screen.y - 0.05 * u - size.y, size);
+}
+
+// The composite colour button, top right: centre, radius.
+vec3 rdCompositeButton(vec2 screen) {
+	float u = rdUnit(screen);
+	float r = 0.045 * u;
+	return vec3(screen.x - 0.04 * u - r, screen.y - 0.05 * u - 0.035 * u, r);
+}
+
+bool rdOnMapButton(vec2 p, vec2 screen) {
+	vec4 b = rdMapButton(screen);
+	float pad = 0.02 * rdUnit(screen);
+	return rdInBox(p, vec4(b.xy - pad, b.zw + 2.0 * pad));
+}
+
+bool rdOnCompositeButton(vec2 p, vec2 screen) {
+	vec3 b = rdCompositeButton(screen);
+	return distance(p, b.xy) < b.z * 1.5;
+}
+
+bool rdOnButton(vec2 p, vec2 screen) {
+	return rdOnMapButton(p, screen) || rdOnCompositeButton(p, screen);
+}
+
+// Tile i in the tiles view (origin, size), below the buttons: each the
+// screen's shape, as many across as down - or one more.
+vec4 rdTile(int i, vec2 screen) {
+	float top = screen.y - 0.15 * rdUnit(screen);
+	int cols = int(ceil(sqrt(float(TILES))));
+	int rows = (TILES + cols - 1) / cols;
+	float scale = min(1.0 / float(cols), top / (float(rows) * screen.y));
+	vec2 size = screen * scale;
+	vec2 origin = vec2(screen.x - size.x * float(cols), top - size.y * float(rows)) * 0.5;
+	int row = i / cols;
+	int col = i - row * cols;
+	return vec4(origin + vec2(float(col), float(rows - 1 - row)) * size, size);
+}
+
+int rdTileAt(vec2 p, vec2 screen) {
+	for (int i = 0; i < TILES; ++i) {
+		if (rdInBox(p, rdTile(i, screen))) {
+			return i;
+		}
 	}
-	float most = max(s.x, float(pointerCount));
-	float start = s.x == 0.0 ? iTime : s.y;
-	float view = most >= 3.0 && s.x < 3.0 ? 1.0 - s.z : s.z;
-	return vec4(most, start, view, 0.0);
+	return -1;
+}
+
+vec4 rdState(int texel, ivec2 grid) {
+	return texelFetch(iChannel0, ivec2(texel, grid.y), 0);
 }"""
 
-# The Image pass's other view: every chemical side by side, each as a
-# black-and-white mask, labelled.
-MASK_VIEW = """\
-const int CHEMICALS = %(n)d;
+# The interface's state, worked out in each frame's first step (the same
+# way by every pass of it) - see UI_COMMON's S_* texels.
+UI_UPDATE = """\
+// Where the fingers are centred.
+vec2 rdCentre() {
+	vec2 c = vec2(0.0);
+	for (int i = 0; i < 10; ++i) {
+		if (i >= pointerCount) {
+			break;
+		}
+		c += pointers[i].xy;
+	}
+	return c / max(float(pointerCount), 1.0);
+}
 
-vec3 maskView(vec2 fragCoord, vec2 screen, ivec2 grid) {
-	// Tiles the screen's shape, as many across as down - or one more.
-	int cols = int(ceil(sqrt(float(CHEMICALS))));
-	int rows = (CHEMICALS + cols - 1) / cols;
-	float scale = 1.0 / float(max(cols, rows));
-	vec2 tile = screen * scale;
-	vec2 origin = (screen - tile * vec2(cols, rows)) * 0.5;
-	vec2 at = fragCoord - origin;
-	ivec2 t = ivec2(floor(at / tile));
-	// Rows from the top.
-	int i = (rows - 1 - t.y) * cols + t.x;
-	if (any(lessThan(at, vec2(0.0))) || t.x >= cols || t.y >= rows || i >= CHEMICALS) {
-		return vec3(0.0);
+// Each texel's start: the first view, every chemical's composite colour
+// round the hue circle, weight and power 1.
+vec4 rdStartState(int texel) {
+	if (texel == S_GESTURE) return vec4(0.0, 0.0, %(view)s, 0.0);
+	if (texel == S_TOUCH || texel == S_MODE) return vec4(0.0, 0.0, 0.0, -1.0);
+	if (texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) {
+		return vec4(float(texel - S_COLOUR) / float(CHEMICALS), 0.8, 1.0, 1.0);
 	}
-	vec2 uv = fract(at / tile);
-	vec2 inTile = uv * tile;
-	if (any(lessThan(inTile, vec2(1.5))) || any(greaterThan(inTile, tile - 1.5))) {
-		return vec3(0.25); // the gap between tiles
+	if (texel >= S_POWER && texel < S_POWER + CHEMICALS) return vec4(1.0, 0.0, 0.0, 0.0);
+	return vec4(0.0);
+}
+
+// The next frame's gesture, touch, mode, drag and fingers texels.
+void rdNextState(ivec2 grid, vec2 screen, out vec4 g, out vec4 t, out vec4 m, out vec4 d,
+		out vec4 f) {
+	vec4 pg = rdState(S_GESTURE, grid);
+	vec4 pt = rdState(S_TOUCH, grid);
+	vec4 pm = rdState(S_MODE, grid);
+	g = pg;
+	t = pt;
+	m = pm;
+	d = rdState(S_DRAG, grid);
+	int n = pointerCount;
+	vec2 first = n > 0 ? pointers[0].xy : vec2(0.0);
+	vec2 centre = rdCentre();
+	if (n == 0) {
+		if (pg.x > 0.0 && pg.x < 1.5 && pt.z < 0.5 && iTime - pg.y < TAP_TIME) {
+			// A tap: in the tiles view a button or a tile, full screen back
+			// to the tiles.
+			vec2 at = pt.xy;
+			bool tiles = pg.z > 0.5 && pg.z < 1.5;
+			if (tiles && rdOnMapButton(at, screen)) {
+				m.y = mod(pm.y + 1.0, MAPS);
+			} else if (tiles && rdOnCompositeButton(at, screen)) {
+				m.x = 1.0 - pm.x;
+			} else if (tiles) {
+				int hit = rdTileAt(at, screen);
+				if (hit >= 0) {
+					g.z = 2.0;
+					g.w = float(hit);
+				}
+			} else if (pg.z > 1.5) {
+				g.z = 1.0;
+			}
+		}
+		g.x = 0.0;
+		m.z = 0.0;
+	} else {
+		if (pg.x == 0.0) {
+			g.y = iTime;
+			t = vec4(first, 0.0, float(rdTileAt(first, screen)));
+		}
+		g.x = max(pg.x, float(n));
+		if (distance(first, t.xy) > TAP_MOVE * rdUnit(screen)) {
+			t.z = 1.0;
+		}
+		// Three fingers: into the tiles, or out of them to colour.
+		if (g.x >= 3.0 && pg.x < 3.0) {
+			g.z = pg.z < 0.5 ? 1.0 : 0.0;
+		}
+		// Composite colour is edited on the tiles: hold one finger on a
+		// chemical for its colour wheel; two drag its weight (up/down) and
+		// power (sideways).
+		bool held = g.x < 3.0 && iTime - g.y >= PAINT_DELAY;
+		bool onChemical = t.w > -0.5 && t.w < float(CHEMICALS) - 0.5;
+		if (pm.x > 0.5 && g.z > 0.5 && g.z < 1.5 && held && onChemical) {
+			if (n == 1 && pm.z < 0.5) {
+				m.z = 1.0;
+				m.w = t.w;
+				// Centred so the finger starts on the chemical's colour.
+				vec4 c = rdState(S_COLOUR + int(t.w + 0.5), grid);
+				float a = c.x * 6.28318531;
+				d.xy = t.xy - WHEEL_RADIUS * rdUnit(screen) * c.y * vec2(cos(a), sin(a));
+			} else if (n >= 2) {
+				m.z = 2.0;
+				m.w = t.w;
+			}
+		}
 	}
-	ivec2 q = ivec2(uv * vec2(grid));
+	d.zw = centre;
+	f = vec4(float(n), 0.0, 0.0, 0.0);
+}
+
+// A chemical's composite colour or power texel, next frame: m and d are
+// the next mode and drag texels.
+vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d) {
+	vec4 s = rdState(texel, grid);
+	int chem = texel >= S_POWER ? texel - S_POWER : texel - S_COLOUR;
+	if (abs(m.w - float(chem)) > 0.5 || pointerCount == 0) {
+		return s;
+	}
+	if (m.z > 0.5 && m.z < 1.5 && texel < S_POWER) {
+		vec2 v = pointers[0].xy - d.xy;
+		s.x = fract(atan(v.y, v.x) / 6.28318531);
+		s.y = clamp(length(v) / (WHEEL_RADIUS * rdUnit(screen)), 0.0, 1.0);
+	}
+	// Two fingers: by how far their centre moved since last frame - not
+	// across a change in how many there are.
+	if (m.z > 1.5 && pointerCount >= 2 &&
+			float(pointerCount) == rdState(S_FINGERS, grid).x) {
+		vec2 moved = (rdCentre() - rdState(S_DRAG, grid).zw) / rdUnit(screen);
+		if (texel < S_POWER) {
+			s.w = clamp(s.w + moved.y * WEIGHT_RATE, 0.0, 4.0);
+		} else {
+			s.x = clamp(s.x * exp(moved.x * POWER_RATE), 0.1, 10.0);
+		}
+	}
+	return s;
+}"""
+
+# The Image pass: the views, the buttons and the composite colour wheel.
+IMAGE_VIEWS = """\
+const int ACTIVE = %(active)d; // the chemical the colour view shows
+
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+
+vec3 hsv2rgb(vec3 c) {
+	vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+	return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+}
+
+// Chemical i at q, 0-1 across its mask range.
+float rdLevel(int i, ivec2 q) {
 	vec2 range = maskRange(i);
-	vec3 col = vec3(clamp((chemical(i, q) - range.x) / (range.y - range.x), 0.0, 1.0));
-	// Its letter, top left.
-	float h = tile.y * 0.12;
-	vec2 g = (inTile - vec2(h * 0.3, tile.y - h * 1.15)) / h;
-	if (all(greaterThanEqual(g, vec2(0.0))) && all(lessThan(g, vec2(1.0)))) {
-		float code = float(97 + i);
-		vec2 cell = vec2(mod(code, 16.0), 15.0 - floor(code / 16.0));
-		float d = texture(font, (cell + g) / 16.0).r;
-		float w = 0.5 / h * 16.0;
-		col = mix(col, vec3(0.0), smoothstep(0.35, 0.45, d));
-		col = mix(col, vec3(1.0, 0.85, 0.2), smoothstep(0.5 - w, 0.5 + w, d));
+	return clamp((chemical(i, q) - range.x) / (range.y - range.x), 0.0, 1.0);
+}
+
+// Colour map slot `slot` at t (0-1): 0 the file's own, then colormaps'
+// rows.
+vec3 rdMap(float t, float slot) {
+	if (slot < 0.5) {
+		return colourMap(mix(LOW, HIGH, t));
 	}
-	return col;
+	return texture(colormaps, vec2(t, 1.0 - (slot - 0.5) / float(colormapCount))).rgb;
+}
+
+// Composite colour: each chemical's level, raised to its power, times its
+// colour and weight, over the weights' sum - so a chemical with no weight
+// has no effect, and the rest stay normalised.
+vec3 rdComposite(ivec2 q, ivec2 grid) {
+	vec3 sum = vec3(0.0);
+	float weights = 0.0;
+	for (int i = 0; i < CHEMICALS; ++i) {
+		vec4 c = rdState(S_COLOUR + i, grid);
+		float power = rdState(S_POWER + i, grid).x;
+		sum += c.w * hsv2rgb(c.xyz) * pow(rdLevel(i, q), power);
+		weights += c.w;
+	}
+	return sum / max(weights, 1e-4);
+}
+
+vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
+	if (mode.x > 0.5) {
+		return rdComposite(q, grid);
+	}
+	vec2 range = vec2(LOW, HIGH);
+	return rdMap(clamp((chemical(ACTIVE, q) - range.x) / (range.y - range.x), 0.0, 1.0), mode.y);
+}
+
+// Tile k at uv (0-1 across it): a chemical's level, or the colour view.
+vec3 rdTileColour(int k, vec2 uv, ivec2 grid, vec4 mode) {
+	ivec2 q = ivec2(clamp(uv, 0.0, 0.999) * vec2(grid));
+	return k < CHEMICALS ? vec3(rdLevel(k, q)) : rdColour(q, grid, mode);
+}
+
+// The coverage of `code`'s glyph, at g (0-1 across its cell), drawn h
+// pixels high.
+float rdGlyph(float code, vec2 g, float h) {
+	if (any(lessThan(g, vec2(0.0))) || any(greaterThanEqual(g, vec2(1.0)))) {
+		return 0.0;
+	}
+	vec2 cell = vec2(mod(code, 16.0), 15.0 - floor(code / 16.0));
+	float d = texture(font, (cell + g) / 16.0).r;
+	float w = 8.0 / h;
+	return smoothstep(0.5 - w, 0.5 + w, d);
+}
+
+// The colour wheel - hue round it, saturation out from the middle - with
+// a ring where `current` is; alpha in w.
+vec4 rdWheel(vec2 p, vec2 centre, float radius, vec3 current) {
+	vec2 v = p - centre;
+	float r = length(v) / radius;
+	float edge = 1.5 / radius;
+	if (r > 1.0 + edge * 4.0) {
+		return vec4(0.0);
+	}
+	float hue = fract(atan(v.y, v.x) / 6.28318531);
+	vec3 col = hsv2rgb(vec3(hue, min(r, 1.0), current.z));
+	float a = current.x * 6.28318531;
+	vec2 mark = centre + radius * current.y * vec2(cos(a), sin(a));
+	float ring = abs(distance(p, mark) - radius * 0.08);
+	col = mix(col, vec3(1.0), 1.0 - smoothstep(0.0, radius * 0.02, ring));
+	float rim = smoothstep(1.0 + edge, 1.0, r);
+	col = mix(vec3(0.0), col, smoothstep(1.0 + edge * 4.0, 1.0 + edge, r) > 0.0 && r > 1.0 ? 0.0 : 1.0);
+	return vec4(col, max(rim, smoothstep(1.0 + edge * 4.0, 1.0, r) * 0.6));
+}
+
+// The colour map button: the current map (or, in composite, each
+// chemical's colour) along it, framed.
+vec4 rdMapButtonColour(vec2 p, vec2 screen, ivec2 grid, vec4 mode) {
+	vec4 b = rdMapButton(screen);
+	float frame = 0.006 * rdUnit(screen);
+	vec4 outer = vec4(b.xy - frame, b.zw + 2.0 * frame);
+	if (!rdInBox(p, outer)) {
+		return vec4(0.0);
+	}
+	if (!rdInBox(p, b)) {
+		return vec4(vec3(0.9), 1.0);
+	}
+	float t = (p.x - b.x) / b.z;
+	if (mode.x > 0.5) {
+		int i = int(min(t * float(CHEMICALS), float(CHEMICALS) - 0.5));
+		return vec4(hsv2rgb(rdState(S_COLOUR + i, grid).xyz), 1.0);
+	}
+	return vec4(rdMap(t, mode.y), 1.0);
+}
+
+// The composite button: a rainbow ring, filled in while composite is on.
+vec4 rdCompositeButtonColour(vec2 p, vec2 screen, vec4 mode) {
+	vec3 b = rdCompositeButton(screen);
+	vec2 v = p - b.xy;
+	float r = length(v) / b.z;
+	if (r > 1.05) {
+		return vec4(0.0);
+	}
+	vec3 rainbow = hsv2rgb(vec3(fract(atan(v.y, v.x) / 6.28318531), 0.9, 1.0));
+	float ring = smoothstep(0.62, 0.68, r);
+	vec3 inside = mode.x > 0.5 ? hsv2rgb(vec3(fract(iTime * 0.1), 0.25, 1.0)) : vec3(0.08);
+	return vec4(mix(inside, rainbow, ring), smoothstep(1.05, 0.98, r));
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+	ivec2 size = textureSize(iChannel0, 0);
+	vec2 screen = vec2(size);
+	// The buffers' top row is the interface's state - see UI_COMMON.
+	ivec2 grid = ivec2(size.x, size.y - 1);
+	vec4 gesture = rdState(S_GESTURE, grid);
+	vec4 mode = rdState(S_MODE, grid);
+	vec4 drag = rdState(S_DRAG, grid);
+	int view = int(gesture.z + 0.5);
+	int shown = int(gesture.w + 0.5);
+	vec2 p = fragCoord;
+	float u = rdUnit(screen);
+	vec3 col;
+	if (view == 1) {
+		col = vec3(0.04);
+		int k = rdTileAt(p, screen);
+		if (k >= 0) {
+			vec4 tile = rdTile(k, screen);
+			vec2 uv = (p - tile.xy) / tile.zw;
+			vec2 inTile = p - tile.xy;
+			if (any(lessThan(inTile, vec2(2.0))) || any(greaterThan(inTile, tile.zw - 2.0))) {
+				col = vec3(0.25);
+			} else {
+				col = rdTileColour(k, uv, grid, mode);
+				float h = tile.w * 0.11;
+				vec2 corner = vec2(h * 0.3, tile.w - h * 1.15);
+				if (k < CHEMICALS) {
+					// Its letter, and in composite, its colour, weight (white)
+					// and power (yellow, 1 at the middle).
+					float ink = rdGlyph(float(97 + k), (inTile - corner) / h, h);
+					col = mix(col, vec3(0.0), rdGlyph(float(97 + k), (inTile - corner) / h, h * 0.4));
+					col = mix(col, vec3(1.0, 0.85, 0.2), ink);
+					if (mode.x > 0.5) {
+						vec4 c = rdState(S_COLOUR + k, grid);
+						float power = rdState(S_POWER + k, grid).x;
+						vec2 chip = vec2(tile.z - h * 0.8, tile.w - h * 0.65);
+						float d = distance(inTile, chip);
+						col = mix(col, vec3(1.0), smoothstep(h * 0.42, h * 0.38, d));
+						col = mix(col, hsv2rgb(c.xyz), smoothstep(h * 0.36, h * 0.32, d));
+						float bar = h * 0.18;
+						if (inTile.y < bar * 2.2 && inTile.y > bar * 1.2) {
+							col = mix(col, vec3(1.0), step(uv.x, c.w / 4.0) * 0.85);
+						}
+						if (inTile.y < bar && inTile.y > 0.0) {
+							float level = 0.5 + log(power) / log(10.0) * 0.5;
+							col = mix(col, vec3(1.0, 0.85, 0.2), step(uv.x, level) * 0.85);
+						}
+					}
+				}
+			}
+		}
+		// The colour wheel while a chemical's colour is being edited - kept
+		// off the colour tile.
+		if (mode.z > 0.5 && mode.z < 1.5 && !rdInBox(p, rdTile(CHEMICALS, screen))) {
+			vec4 c = rdState(S_COLOUR + int(mode.w + 0.5), grid);
+			vec4 wheel = rdWheel(p, drag.xy, WHEEL_RADIUS * u, c.xyz);
+			col = mix(col, wheel.rgb, wheel.a);
+		}
+	} else if (view == 2) {
+		col = rdTileColour(shown, p / screen, grid, mode);
+	} else {
+		ivec2 q = ivec2(p.x, p.y * float(grid.y) / screen.y);
+		col = rdColour(q, grid, mode);
+	}
+	if (view == 1) {
+		vec4 b = rdMapButtonColour(p, screen, grid, mode);
+		col = mix(col, b.rgb, b.a);
+		b = rdCompositeButtonColour(p, screen, mode);
+		col = mix(col, b.rgb, b.a);
+	}
+	fragColor = vec4(col, 1.0);
 }"""
 
 INIT_HELPERS = """\
+
 // The initial pattern's pieces - see Ready's overlays.cpp. rel: the
 // cell's position as a fraction of the grid.
 float rdRandom(ivec2 p, int salt) {
@@ -682,7 +1043,7 @@ float rdSine(vec2 rel, vec2 p1, vec2 p2, float phase, float amplitude) {
 # Every identifier the helper functions use - a parameter named like one
 # is renamed, as their #defines come before them.
 GLSL_RESERVED |= set(TOKEN.findall(
-		RD_POW + "\n".join(OPENCL_FUNCTIONS.values()) + GESTURE + INIT_HELPERS +
+		RD_POW + "\n".join(OPENCL_FUNCTIONS.values()) + UI_COMMON + UI_UPDATE + INIT_HELPERS +
 		"ivec2 rdCell(ivec2 p, ivec2 size)"))
 
 # endregion
@@ -793,26 +1154,50 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\treturn clamp(p, ivec2(0), size - 1);")
 	out.append("}")
 	out.append("")
+	ui = {"n": p.n_chemicals, "maps": p.maps, "view": "1.0" if p.start_masks else "0.0"}
+	out.append(UI_COMMON % ui)
+	out.append("")
 	if is_first_stage:
-		out.append(GESTURE)
+		out.append(UI_UPDATE % ui)
 		out.append("")
 	out.append("void mainImage(out vec4 fragColor, vec2 fragCoord) {")
 	out.append("\tivec2 p = ivec2(fragCoord);")
 	out.append("\tivec2 size = textureSize(iChannel0, 0);")
-	out.append("\t// The top row holds state (see rdNextState()); the grid's below it.")
+	out.append("\tvec2 screen = vec2(size);")
+	out.append("\t// The top row holds the interface's state (UI_COMMON's S_*); the")
+	out.append("\t// grid's below it.")
 	out.append("\tivec2 grid = ivec2(size.x, size.y - 1);")
+	out.append("\tvec4 uiGesture, uiTouch, uiMode, uiDrag, uiFingers;")
 	if is_first_stage:
-		out.append("\tvec4 state = iFrame == 0 ? vec4(0.0, 0.0, %s, 0.0) :" %
-				("1.0" if p.start_masks else "0.0"))
-		out.append("\t\t\trdNextState(texelFetch(iChannel0, ivec2(0, grid.y), 0));")
+		out.append("\tif (iFrame == 0) {")
+		out.append("\t\tuiGesture = rdStartState(S_GESTURE);")
+		out.append("\t\tuiTouch = rdStartState(S_TOUCH);")
+		out.append("\t\tuiMode = rdStartState(S_MODE);")
+		out.append("\t\tuiDrag = rdStartState(S_DRAG);")
+		out.append("\t\tuiFingers = rdStartState(S_FINGERS);")
+		out.append("\t} else {")
+		out.append("\t\trdNextState(grid, screen, uiGesture, uiTouch, uiMode, uiDrag, uiFingers);")
+		out.append("\t}")
 	else:
 		out.append("\t// This frame's, from its first step.")
-		out.append("\tvec4 state = texelFetch(iChannel0, ivec2(0, grid.y), 0);")
+		out.append("\tuiGesture = rdState(S_GESTURE, grid);")
+		out.append("\tuiTouch = rdState(S_TOUCH, grid);")
+		out.append("\tuiMode = rdState(S_MODE, grid);")
 	out.append("\tif (p.y == grid.y) {")
 	if group > 0:
 		out.append("\t\tfragColor = vec4(0.0);")
 	elif is_first_stage:
-		out.append("\t\tfragColor = state;")
+		out.append("\t\tint texel = p.x;")
+		out.append("\t\tif (texel == S_GESTURE) fragColor = uiGesture;")
+		out.append("\t\telse if (texel == S_TOUCH) fragColor = uiTouch;")
+		out.append("\t\telse if (texel == S_MODE) fragColor = uiMode;")
+		out.append("\t\telse if (texel == S_DRAG) fragColor = uiDrag;")
+		out.append("\t\telse if (texel == S_FINGERS) fragColor = uiFingers;")
+		out.append("\t\telse if (iFrame == 0) fragColor = rdStartState(texel);")
+		out.append("\t\telse if ((texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) ||")
+		out.append("\t\t\t\t(texel >= S_POWER && texel < S_POWER + CHEMICALS)) {")
+		out.append("\t\t\tfragColor = rdNextChemical(texel, grid, screen, uiMode, uiDrag);")
+		out.append("\t\t} else fragColor = vec4(0.0);")
 	else:
 		out.append("\t\tfragColor = texelFetch(iChannel0, p, 0);")
 	out.append("\t\treturn;")
@@ -865,41 +1250,105 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.append("\t// Forward Euler:")
 	for c in mine:
 		out.append("\t%s += timestep * delta_%s;" % (c, c))
-	if erase or (is_first_stage and paint):
-		out.append("")
-		out.append("\t// Painting, once a touch has lasted PAINT_DELAY seconds (so the")
-		out.append("\t// first of two fingers doesn't paint before the second lands). One")
-		out.append("\t// finger paints within PAINT_RADIUS cells, in each frame's first")
-		out.append("\t// step; two erase within ERASE_RADIUS, in every step, for the rest")
-		out.append("\t// of that touch; three do neither (they switch views).")
-		out.append("\tbool touching = state.x > 0.0 && state.x < 3.0 && "
-				"iTime - state.y >= PAINT_DELAY;")
-		out.append("\tbool erasing = touching && state.x >= 2.0;")
-		if is_first_stage and paint:
-			out.append("\tbool painting = touching && !erasing;")
-		inits = [c for c, v in paint if v == "init"] if is_first_stage else []
-		if inits:
-			out.append("\tfloat %s;" % ", ".join("init_" + c for c in chems))
-			out.append("\tif (painting) {")
-			out.append("\t\trdInitial(p, grid, iFrame, %s);" %
-					", ".join("init_" + c for c in chems))
-			out.append("\t}")
-		out.append("\tfor (int i = 0; i < pointerCount; ++i) {")
-		out.append("\t\tfloat away = distance(pointers[i].xy, fragCoord);")
-		if erase:
-			out.append("\t\tif (erasing && away < ERASE_RADIUS) {")
-			for c, _ in erase:
-				out.append("\t\t\t%s = ERASE_%s;" % (c, c))
-			out.append("\t\t}")
-		if is_first_stage and paint:
-			out.append("\t\tif (painting && away < PAINT_RADIUS) {")
-			for c, v in paint:
-				out.append("\t\t\t%s = %s;" % (c, "init_" + c if v == "init" else "PAINT_" + c))
-			out.append("\t\t}")
-		out.append("\t}")
+	out.extend(paint_code(p, chems, mine, paint, erase, is_first_stage))
 	out.append("\tfragColor = %s;" % result)
 	out.append("}")
 	return "\n".join(out)
+
+
+COLORMAP_NAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "colormaps",
+		"names.txt")
+
+
+# The rows of the app's built-in `colormaps` texture - see
+# tools/colormaps/make_atlas.py.
+def colormap_names():
+	with open(COLORMAP_NAMES) as f:
+		return [line.strip() for line in f if line.strip()]
+
+
+def paint_code(p, chems, mine, paint, erase, is_first_stage):
+	# Painting, as the interface's state says: in the colour view (or the
+	# colour tile, full screen or tiled) one finger paints PAINT_* (or the
+	# initial pattern) and two erase to ERASE_*; on a chemical's tile, or
+	# a chemical full screen, just that chemical - to its paint value, or
+	# else its mask view's HIGH, and to its erase value, or else LOW. Only
+	# once a touch has lasted PAINT_DELAY (so a tap, or the first of two
+	# fingers, doesn't), and not while editing composite colour. Painting
+	# is each frame's first step's; erasing every step's, within the wider
+	# ERASE_RADIUS.
+	painted = dict(paint)
+	erased = dict(erase)
+	out = [""]
+	out.append("\t// Painting - see paint_code() in tools/ready/vti2enki.py.")
+	out.append("\tbool touching = uiGesture.x > 0.0 && uiGesture.x < 3.0 && iTime - uiGesture.y >= PAINT_DELAY && "
+			"uiMode.z < 0.5;")
+	out.append("\tbool erasing = touching && uiGesture.x >= 2.0;")
+	paints = is_first_stage
+	if paints:
+		out.append("\tbool painting = touching && !erasing;")
+	else:
+		out.append("\tbool painting = false;")
+	out.append("\tint view = int(uiGesture.z + 0.5);")
+	out.append("\tint shown = int(uiGesture.w + 0.5);")
+	if paints and any(v == "init" for v in painted.values()) and p.overlays:
+		out.append("\tfloat %s;" % ", ".join("init_" + c for c in chems))
+		out.append("\tif (painting) {")
+		out.append("\t\trdInitial(p, grid, iFrame, %s);" % ", ".join("init_" + c for c in chems))
+		out.append("\t}")
+
+	def value(c, table, fallback):
+		v = table.get(c)
+		if v == "init":
+			return "init_" + c
+		if v is not None:
+			return ("PAINT_" if table is painted else "ERASE_") + c
+		return fallback + c
+
+	out.append("\tfor (int i = 0; i < pointerCount; ++i) {")
+	out.append("\t\tif (!touching) {")
+	out.append("\t\t\tbreak;")
+	out.append("\t\t}")
+	out.append("\t\tvec2 at = pointers[i].xy;")
+	out.append("\t\tif (view == 1 && rdOnButton(at, screen)) {")
+	out.append("\t\t\tcontinue;")
+	out.append("\t\t}")
+	out.append("\t\tint only = -1; // a chemical alone, or -1 for the colour view's")
+	out.append("\t\tif (view == 1) {")
+	out.append("\t\t\tint hit = rdTileAt(at, screen);")
+	out.append("\t\t\tif (hit < 0) {")
+	out.append("\t\t\t\tcontinue;")
+	out.append("\t\t\t}")
+	out.append("\t\t\tvec4 tile = rdTile(hit, screen);")
+	out.append("\t\t\tat = (at - tile.xy) / tile.zw * vec2(grid);")
+	out.append("\t\t\tonly = hit < CHEMICALS ? hit : -1;")
+	out.append("\t\t} else if (view == 2 && shown < CHEMICALS) {")
+	out.append("\t\t\tonly = shown;")
+	out.append("\t\t}")
+	out.append("\t\tfloat away = distance(at, fragCoord);")
+	out.append("\t\tif (erasing && away < ERASE_RADIUS) {")
+	out.append("\t\t\tif (only < 0) {")
+	for c in mine:
+		if c in erased:
+			out.append("\t\t\t\t%s = ERASE_%s;" % (c, c))
+	out.append("\t\t\t}")
+	for c in mine:
+		out.append("\t\t\tif (only == %d) %s = %s;" % (chem_index(c), c,
+				value(c, erased, "MASK_LOW_")))
+	out.append("\t\t}")
+	if paints:
+		out.append("\t\tif (painting && away < PAINT_RADIUS) {")
+		out.append("\t\t\tif (only < 0) {")
+		for c in mine:
+			if c in painted:
+				out.append("\t\t\t\t%s = %s;" % (c, value(c, painted, "MASK_HIGH_")))
+		out.append("\t\t\t}")
+		for c in mine:
+			out.append("\t\t\tif (only == %d) %s = %s;" % (chem_index(c), c,
+					value(c, painted, "MASK_HIGH_")))
+		out.append("\t\t}")
+	out.append("\t}")
+	return out
 
 
 def colour_function(p, colormap):
@@ -909,20 +1358,6 @@ def colour_function(p, colormap):
 	if colormap == "HSV blend":
 		lo = colour_setting(p, "color_low", (0.0, 0.0, 1.0))
 		hi = colour_setting(p, "color_high", (1.0, 0.0, 0.0))
-		out.append("vec3 rgb2hsv(vec3 c) {")
-		out.append("\tvec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);")
-		out.append("\tvec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));")
-		out.append("\tvec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));")
-		out.append("\tfloat d = q.x - min(q.w, q.y);")
-		out.append("\treturn vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), "
-				"d / (q.x + 1e-10), q.x);")
-		out.append("}")
-		out.append("")
-		out.append("vec3 hsv2rgb(vec3 c) {")
-		out.append("\tvec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);")
-		out.append("\treturn c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);")
-		out.append("}")
-		out.append("")
 		out.append("// Ready's \"HSV blend\" from color_low to color_high.")
 		out.append("vec3 colourMap(float v) {")
 		out.append("\tfloat t = clamp((v - LOW) / (HIGH - LOW), 0.0, 1.0);")
@@ -964,6 +1399,8 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 		start_masks=False, steps=4):
 	p = read_vti(path)
 	p.start_masks = start_masks
+	# Colour map slots: the file's own, then the app's `colormaps` rows.
+	p.maps = 1 + len(colormap_names())
 	chems = chem_names(p.n_chemicals)
 	p.paint = [(c, v) for c, v in parse_paint(paint_spec) if c in chems]
 	if not p.overlays and any(v == "init" for _, v in p.paint):
@@ -984,24 +1421,35 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 		params_block.append("#define %s %s" % (safe_name(name), glsl_float(value)))
 	if not any(n == "dx" for n, _ in params):
 		params_block.append("#define dx 1.0 // grid spacing")
-	if p.paint or p.erase:
-		params_block.append("")
-		params_block.append("// Painting - what one finger sets, what two or more set (erasing),")
-		params_block.append("// and how far round each (cells):")
-		params_block.append("#define PAINT_RADIUS 25.0")
-		params_block.append("#define ERASE_RADIUS 37.5")
-		params_block.append("#define PAINT_DELAY 0.15 // seconds")
-		for c, v in p.paint:
-			if v != "init":
-				params_block.append("#define PAINT_%s %s" % (c, glsl_float(v)))
-		for c, v in p.erase:
-			params_block.append("#define ERASE_%s %s" % (c, glsl_float(v)))
-
 	active = setting(p, "active_chemical", "a")
 	if chem_index(active) >= p.n_chemicals:
 		active = "a"
 	ai = chem_index(active)
 	low, high, colour_code = colour_function(p, colormap)
+
+	params_block.append("")
+	params_block.append("// Painting - what one finger sets, what two set (erasing), how far")
+	params_block.append("// round each (cells), and how long a touch lasts before it paints:")
+	params_block.append("#define PAINT_RADIUS 25.0")
+	params_block.append("#define ERASE_RADIUS 37.5")
+	params_block.append("#define PAINT_DELAY 0.2 // seconds - a quicker touch is a tap")
+	for c, v in p.paint:
+		if v != "init":
+			params_block.append("#define PAINT_%s %s" % (c, glsl_float(v)))
+	for c, v in p.erase:
+		params_block.append("#define ERASE_%s %s" % (c, glsl_float(v)))
+	params_block.append("")
+	params_block.append("// The colour view's range (Ready's low and high), and each chemical's")
+	params_block.append("// on its tile - black at LOW, white at HIGH; a chemical painted on its")
+	params_block.append("// own is painted to HIGH, erased to LOW, unless PAINT_/ERASE_ say:")
+	display_start = len(params_block) - 3
+	params_block.append("#define LOW %s" % glsl_float(low))
+	params_block.append("#define HIGH %s" % glsl_float(high))
+	for c in chems:
+		lo, hi = (low, high) if c == active else (0.0, 1.0)
+		params_block.append("#define MASK_LOW_%s %s" % (c, glsl_float(lo)))
+		params_block.append("#define MASK_HIGH_%s %s" % (c, glsl_float(hi)))
+	display_block = params_block[display_start:]
 
 	title = os.path.splitext(os.path.basename(path))[0]
 	image = []
@@ -1036,16 +1484,14 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	for g in range(groups):
 		image.append("uniform sampler2D iChannel%d; ///buf:%s;" % (g, BUFFERS[last * groups + g]))
 	image.append("uniform sampler2D font;")
+	image.append("uniform sampler2D colormaps; // the app's built-in colour maps, one per row")
+	image.append("uniform int colormapCount;")
 	image.append("")
-	image.append("#define LOW %s" % glsl_float(low))
-	image.append("#define HIGH %s" % glsl_float(high))
-	image.append("// The mask view's range for each chemical: black at LOW, white at HIGH.")
-	for c in chems:
-		lo, hi = (low, high) if c == active else (0.0, 1.0)
-		image.append("#define MASK_LOW_%s %s" % (c, glsl_float(lo)))
-		image.append("#define MASK_HIGH_%s %s" % (c, glsl_float(hi)))
+	image.extend(display_block)
 	image.append("")
 	image.append(colour_code)
+	image.append("")
+	image.append(UI_COMMON % {"n": p.n_chemicals, "maps": p.maps})
 	image.append("")
 	image.append("// Chemical i (0 = a) at cell q.")
 	image.append("float chemical(int i, ivec2 q) {")
@@ -1062,20 +1508,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	image.append("\treturn vec2(0.0, 1.0);")
 	image.append("}")
 	image.append("")
-	image.append(MASK_VIEW % {"n": p.n_chemicals})
-	image.append("")
-	image.append("void mainImage(out vec4 fragColor, vec2 fragCoord) {")
-	image.append("\tivec2 size = textureSize(iChannel0, 0);")
-	image.append("\t// The top row is state (see the buffers' rdNextState()).")
-	image.append("\tivec2 grid = ivec2(size.x, size.y - 1);")
-	image.append("\tif (texelFetch(iChannel0, ivec2(0, grid.y), 0).z > 0.5) {")
-	image.append("\t\tfragColor = vec4(maskView(fragCoord, vec2(size), grid), 1.0);")
-	image.append("\t\treturn;")
-	image.append("\t}")
-	image.append("\tivec2 q = ivec2(fragCoord.x, fragCoord.y * float(grid.y) / float(size.y));")
-	image.append("\tfragColor = vec4(colourMap(chemical(%d, q)), 1.0);" % ai)
-	image.append("}")
-
+	image.append(IMAGE_VIEWS % {"active": ai})
 	text = "\n".join(image) + "\n"
 	for stage in range(stages):
 		for group in range(groups):

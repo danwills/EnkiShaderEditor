@@ -379,6 +379,8 @@
 	<string name="date_time">Год, месяц, день и время в секундах</string>
 	<string name="daytime">Часы, минуты и секунды</string>
 	<string name="font_atlas">Встроенный атлас глифов (16×16 ячеек с кодами символов 0–255, поле расстояний со знаком: 0.5 на краю, больше внутри)</string>
+	<string name="colormaps_atlas">Цветовые карты (Ready, затем CET), по одной в строке</string>
+	<string name="colormap_count">Количество цветовых карт</string>
 	<string name="keyboard_texture">Нажатые, удерживаемые и переключённые клавиши, как текстура клавиатуры ShaderToy 256×3 (коды клавиш JavaScript; строка 0 — удержание, 1 — нажатие в этом кадре, 2 — переключение)</string>
 	<string name="typed_char">Символ, введённый в этом кадре, или 0 (8 — Backspace, 9 — Tab, 10 — Enter, 127 — Delete)</string>
 	<string name="source_text">Исходный текст этого прохода: один тексель на символ, строка n текстуры — строка n кода. R — код символа, G×256+B — его номер по порядку чтения, A = 1 для символа</string>

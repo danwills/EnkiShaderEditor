@@ -80,6 +80,9 @@ final class BuiltinUniforms {
 	// The built-in `font`, if a shader uses it - see FontTexture.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// See ColormapTexture.
+	@Nullable
+	private GlTexture2D colormapTexture;
 	// Keys, if a shader uses them - see KeyboardInput.
 	@Nullable
 	private KeyboardInput keyboard;
@@ -421,6 +424,10 @@ final class BuiltinUniforms {
 		if (fontTexture != null) {
 			bindings.setTexture(ShaderRenderer.UNIFORM_FONT, fontTexture);
 		}
+		if (colormapTexture != null) {
+			bindings.setTexture(ShaderRenderer.UNIFORM_COLORMAPS, colormapTexture);
+			bindings.setInt(ShaderRenderer.UNIFORM_COLORMAP_COUNT, colormapTexture.getHeight());
+		}
 		if (keyboard != null) {
 			keyboard.apply(device, bindings);
 		}
@@ -480,6 +487,10 @@ final class BuiltinUniforms {
 
 	void setFontTexture(@Nullable GlTexture2D fontTexture) {
 		this.fontTexture = fontTexture;
+	}
+
+	void setColormapTexture(@Nullable GlTexture2D colormapTexture) {
+		this.colormapTexture = colormapTexture;
 	}
 
 	void setSourceText(@Nullable SourceText sourceText) {

@@ -222,3 +222,14 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   merging blobs with their names; tapping Drift swells it over the screen and the set plays with
   no titles; Back returns to the menu, reset. To tune later: the tiles sit close enough to always
   merge, and the names' letters are spaced wide.
+- **"Another VTI - convert both, named after the files. In the all-reagents view add the colour
+  view too; tap a tile for it full screen (painting only that reagent), tap to go back, three
+  fingers to exit; painting on a tile paints only that reagent. A gradient button cycling Ready's
+  maps and all the CET maps (I have a copy); a rainbow button for composite colour (each reagent
+  to a power, times a colour and weight, over the weights' sum); hold a reagent tile for an HSV
+  wheel, two fingers for its weight."** Built: a built-in `colormaps` texture in the app (Ready's
+  ten + all 77 CET maps - Dan's 59 CSVs plus 18 newer from colorcet; CC BY 4.0, credited), and the
+  converter's interface rebuilt around a state row (views, taps, per-reagent painting, map
+  button, composite with wheel/weight/power). Both VTIs loaded into Enki debug under their file
+  names. **"Buttons only on the all-reagents screen."** Done. **"Another circle to edit the main
+  brush's paint colour."** Asked what it should change.

@@ -379,6 +379,8 @@
 	<string name="date_time">Year, month, day and time in seconds</string>
 	<string name="daytime">Hour, minute and seconds</string>
 	<string name="font_atlas">Built-in glyph atlas (16×16 cells of character codes 0–255, as a signed distance field: 0.5 on the edge, higher inside)</string>
+	<string name="colormaps_atlas">Colour maps (Ready’s, then the CET maps), one per row</string>
+	<string name="colormap_count">Number of colour maps</string>
 	<string name="keyboard_texture">Keys held, pressed and toggled, as ShaderToy\'s 256×3 keyboard texture (JavaScript key codes; row 0 held, 1 pressed this frame, 2 toggled)</string>
 	<string name="typed_char">The character typed this frame, or 0 (8 Backspace, 9 Tab, 10 Enter, 127 Delete)</string>
 	<string name="source_text">This pass\'s own source text: one texel per character, row n is line n. R = character code, G×256+B = its index in reading order, A = 1 for a character</string>

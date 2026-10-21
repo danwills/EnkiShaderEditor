@@ -132,6 +132,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT_VERSION = "sourceTextVersion";
 	// The built-in glyph atlas - see FontTexture.
 	public static final String UNIFORM_FONT = "font";
+	// See ColormapTexture.
+	public static final String UNIFORM_COLORMAPS = "colormaps";
+	public static final String UNIFORM_COLORMAP_COUNT = "colormapCount";
 	// Keys for shaders - see KeyboardInput.
 	public static final String UNIFORM_KEYBOARD = "keyboard";
 	public static final String UNIFORM_TYPED_CHAR = "typedChar";
@@ -351,6 +354,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See updateFontTexture() - GL thread only.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// See updateColormapTexture() - GL thread only.
+	@Nullable
+	private GlTexture2D colormapTexture;
 	// See updateKeyboard().
 	@NonNull
 	private final KeyboardInput keyboardInput = new KeyboardInput();
@@ -710,6 +716,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		discardContextResources();
 		redoFrameStamp = -1;
 		fontTexture = null;
+		colormapTexture = null;
 		keyboardInput.discard();
 		blackTexture = device.createTexture2D();
 		device.allocateTexture2D(blackTexture, 1, 1);
@@ -797,6 +804,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				updateBufferMipmapNeeds();
 				programManager.createMainSourceText(context, device, tabWidth());
 				updateFontTexture();
+				updateColormapTexture();
 				updateKeyboard();
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
@@ -1366,6 +1374,21 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			fontTexture = null;
 		}
 		builtinUniforms.setFontTexture(fontTexture);
+	}
+
+	// As updateFontTexture(), for `colormaps` (no channel form).
+	private void updateColormapTexture() {
+		boolean used = false;
+		for (var program : programManager.getPassPrograms()) {
+			used |= device.hasUniform(program, UNIFORM_COLORMAPS);
+		}
+		if (used && colormapTexture == null) {
+			colormapTexture = ColormapTexture.create(context, device);
+		} else if (!used && colormapTexture != null) {
+			device.deleteTexture(colormapTexture);
+			colormapTexture = null;
+		}
+		builtinUniforms.setColormapTexture(colormapTexture);
 	}
 
 	// Keys go to the shader only while it uses them - see KeyboardInput

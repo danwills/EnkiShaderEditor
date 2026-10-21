@@ -106,6 +106,14 @@ public class PresetUniformAdapter extends BaseAdapter implements Filterable {
 						ShaderRenderer.UNIFORM_FONT,
 						context.getString(R.string.font_atlas)),
 				new Uniform(
+						"sampler2D",
+						ShaderRenderer.UNIFORM_COLORMAPS,
+						context.getString(R.string.colormaps_atlas)),
+				new Uniform(
+						"int",
+						ShaderRenderer.UNIFORM_COLORMAP_COUNT,
+						context.getString(R.string.colormap_count)),
+				new Uniform(
 						"int",
 						ShaderRenderer.UNIFORM_FRAME_NUMBER,
 						context.getString(R.string.frame_number)),

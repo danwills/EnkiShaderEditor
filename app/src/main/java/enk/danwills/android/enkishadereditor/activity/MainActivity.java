@@ -681,6 +681,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final Set<String> BUILT_IN_SAMPLERS = Set.of(
 			ShaderRenderer.UNIFORM_BACKBUFFER, ShaderRenderer.UNIFORM_SOURCE_TEXT,
 			ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR, ShaderRenderer.UNIFORM_FONT,
+			ShaderRenderer.UNIFORM_COLORMAPS,
 			ShaderRenderer.UNIFORM_KEYBOARD, ShaderRenderer.UNIFORM_AUDIO_SPECTRUM,
 			ShaderRenderer.UNIFORM_CAMERA_BACK, ShaderRenderer.UNIFORM_CAMERA_FRONT);
 	private static final Pattern SAMPLER_DECLARATION = Pattern.compile(
