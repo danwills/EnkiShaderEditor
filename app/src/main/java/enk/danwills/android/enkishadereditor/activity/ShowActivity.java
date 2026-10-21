@@ -64,6 +64,9 @@ import enk.danwills.android.enkishadereditor.widget.ShaderView;
 public class ShowActivity extends AppCompatActivity {
 	private static final String TAG = "ShowActivity";
 	public static final String PACK_ID = "pack_id";
+	// No title text and no toasts - nothing but the shaders (Ultra Rest
+	// Area, which shows no Android UI).
+	public static final String QUIET = "quiet";
 	private static final long TITLE_MILLIS = 2500;
 	private static final long KEY_FRAME_MILLIS = 33;
 	private static final long FADE_MILLIS = 250;
@@ -73,8 +76,13 @@ public class ShowActivity extends AppCompatActivity {
 			"(?m)^[ \\t]*///mod:[A-Za-z0-9_]*[ \\t]*$");
 
 	public static void start(@NonNull Context context, @NonNull String packId) {
+		start(context, packId, false);
+	}
+
+	public static void start(@NonNull Context context, @NonNull String packId, boolean quiet) {
 		context.startActivity(new Intent(context, ShowActivity.class)
-				.putExtra(PACK_ID, packId));
+				.putExtra(PACK_ID, packId)
+				.putExtra(QUIET, quiet));
 	}
 
 	// One shader's turn, ready to run. sound: what's heard, shown under
@@ -163,6 +171,7 @@ public class ShowActivity extends AppCompatActivity {
 	private long slideElapsed;
 	private int failedInARow;
 	private boolean started;
+	private boolean quiet;
 
 	@Override
 	protected void onCreate(Bundle state) {
@@ -173,6 +182,7 @@ public class ShowActivity extends AppCompatActivity {
 			return;
 		}
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		quiet = getIntent().getBooleanExtra(QUIET, false);
 
 		var taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
 			@Override
@@ -232,6 +242,9 @@ public class ShowActivity extends AppCompatActivity {
 		int pad = (int) (24 * getResources().getDisplayMetrics().density);
 		titleView.setPadding(pad, pad, pad, pad);
 		titleView.setAlpha(0f);
+		if (quiet) {
+			titleView.setVisibility(View.GONE);
+		}
 
 		var layout = new FrameLayout(this);
 		layout.addView(shaderView);
@@ -257,7 +270,7 @@ public class ShowActivity extends AppCompatActivity {
 					return;
 				}
 				if (loaded == null || loaded.slides().isEmpty()) {
-					Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
+					nothingToPlay();
 					finish();
 					return;
 				}
@@ -300,6 +313,12 @@ public class ShowActivity extends AppCompatActivity {
 		handler.removeCallbacksAndMessages(null);
 		if (shaderView != null) {
 			shaderView.getRenderer().releaseSound();
+		}
+	}
+
+	private void nothingToPlay() {
+		if (!quiet) {
+			Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
 		}
 	}
 
@@ -382,7 +401,7 @@ public class ShowActivity extends AppCompatActivity {
 
 	private void onSlideFailed() {
 		if (++failedInARow >= slides.size()) {
-			Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
+			nothingToPlay();
 			finish();
 			return;
 		}

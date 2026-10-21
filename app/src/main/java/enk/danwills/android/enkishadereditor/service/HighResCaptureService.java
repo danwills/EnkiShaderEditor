@@ -108,7 +108,8 @@ public class HighResCaptureService extends Service {
 	// service's own notification), and if it were somehow revoked
 	// between calls, NotificationManagerCompat.notify() just silently
 	// drops the update rather than throwing - nothing to crash-guard.
-	@SuppressLint("MissingPermission")
+	// (NotificationPermission: see onStartCommand().)
+	@SuppressLint({"MissingPermission", "NotificationPermission"})
 	public static void updateProgress(@NonNull Context context, int percent) {
 		lastPercent = percent;
 		NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, buildNotification(context, percent));
@@ -171,7 +172,10 @@ public class HighResCaptureService extends Service {
 
 	// Same MissingPermission non-issue as updateProgress() above for the
 	// priority-action branch's own notify() call.
-	@SuppressLint("MissingPermission")
+	// ForegroundServiceType/NotificationPermission: Ultra Rest Area's
+	// manifest (src/ultrarestarea) removes this service and those
+	// permissions - this code never runs there, but lint can't tell.
+	@SuppressLint({"MissingPermission", "ForegroundServiceType", "NotificationPermission"})
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		String action = intent == null ? null : intent.getAction();

@@ -28,6 +28,21 @@ android {
 		}
 	}
 
+	// Two apps from one codebase: Enki Shader Editor, and Ultra Rest Area
+	// (docs/ultra-rest-area.md) - every screen a shader, no Android UI.
+	// The flavour's own source set (src/ultrarestarea) adds its activity
+	// and takes away Enki's editor, launcher and permissions.
+	flavorDimensions += "app"
+	productFlavors {
+		create("enki") {
+			dimension = "app"
+		}
+		create("ultrarestarea") {
+			dimension = "app"
+			applicationId = "enk.danwills.ultrarestarea"
+		}
+	}
+
 	buildTypes {
 		debug {
 			applicationIdSuffix = ".debug"

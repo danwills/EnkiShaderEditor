@@ -17,9 +17,10 @@ This document captures how the app is structured today so you can change it conf
 - Build variants: `debug` and `release`; release is minified/resource-shrunk and expects signing env vars (`ANDROID_KEY_*`).
 - View binding + `BuildConfig` generation are enabled. Compose is not used.
 - Helpful commands:
-  - `./gradlew assembleDebug` (or `make debug`) – build APK.
-  - `./gradlew assembleRelease` and `./gradlew bundleRelease` – ship builds.
-  - `./gradlew lintDebug`, `make lint`, `make infer`, `make avocado` – lint/static analysis/drawable checks.
+  - Two product flavours: `enki` (this app) and `ultrarestarea` (Ultra Rest Area - every screen a shader; `app/src/ultrarestarea`, `docs/ultra-rest-area.md`), so tasks carry the flavour.
+  - `./gradlew assembleEnkiDebug` (or `make debug`) – build APK (`make ura-debug` for Ultra Rest Area).
+  - `./gradlew assembleEnkiRelease` and `./gradlew bundleEnkiRelease` – ship builds.
+  - `./gradlew lintEnkiDebug`, `make lint`, `make infer`, `make avocado` – lint/static analysis/drawable checks.
   - `make install`, `make start`, `make uninstall` – adb helpers.
 - Version catalog (`gradle/libs.versions.toml:1`) centralizes dependency versions (AppCompat 1.7, Material 1.12, Preference 1.2, CameraX 1.4, AGP 8.12).
 - Fastlane metadata lives in `fastlane/` for Play/F-Droid; SVG assets are under `svg/`.
@@ -185,7 +186,7 @@ This document captures how the app is structured today so you can change it conf
 ---
 
 ## 12. Debugging, logging, and testing
-- The project doesn’t ship automated unit/instrumentation tests. Rely on manual testing, lint (`./gradlew lintDebug`), and static analyses (`make infer`).
+- The project doesn’t ship automated unit/instrumentation tests. Rely on manual testing, lint (`./gradlew lintEnkiDebug`, and `lintUltrarestareaDebug`), and static analyses (`make infer`).
 - Debug builds enable StrictMode (thread + VM violations), so fix any disk/network access on the main thread before shipping.
 - Compile/GLSL errors:
   - For live preview (`ShaderView`), errors are surfaced through the UI (Snackbar + `ErrorListModal`).

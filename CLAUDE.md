@@ -25,11 +25,18 @@ Two independent projects:
 ## Commands
 
 ### Android app (run from repo root)
-- `./gradlew assembleDebug` or `make debug` — build debug APK.
-- `make install` / `make start` / `make uninstall` — adb install/launch/uninstall the debug build.
-- `./gradlew assembleRelease` / `make release` — release build (minified, resource-shrunk; requires
-  `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
-- `./gradlew lintDebug` or `make lint` — Android lint.
+- Two apps, as product flavours of one module: `enki` (Enki Shader Editor) and `ultrarestarea`
+  (Ultra Rest Area, `src/ultrarestarea` - see `docs/ultra-rest-area.md`). Tasks and APK paths carry
+  the flavour: `app/build/outputs/apk/<flavour>/<type>/app-<flavour>-<type>.apk`. A plain
+  `assembleDebug`/`assembleRelease` builds both.
+- `./gradlew assembleEnkiDebug` or `make debug` — build Enki's debug APK (`make ura-debug` for
+  Ultra Rest Area's).
+- `make install` / `make start` / `make uninstall` — adb install/launch/uninstall Enki's debug
+  build (`make ura-install` / `make ura-start` for Ultra Rest Area's).
+- `./gradlew assembleEnkiRelease` / `make release` — release build (minified, resource-shrunk;
+  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
+- `./gradlew lintEnkiDebug` or `make lint` — Android lint (`lintUltrarestareaDebug` for the other
+  app; both should stay at the 50-warning baseline).
 - `make infer` — runs Facebook Infer static analysis over a clean assembleDebug.
 - `make avocado` — optimizes vector drawables under `app/src/main/res` in place.
 - `make meminfo` / `make glxinfo` — adb dumpsys helpers for memory/gfx debugging on a connected device.

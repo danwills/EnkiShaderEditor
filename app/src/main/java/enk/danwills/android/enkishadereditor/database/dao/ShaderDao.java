@@ -255,6 +255,13 @@ public class ShaderDao {
 		return null;
 	}
 
+	// Marks a shader as installed from a pack (null for the user's own) -
+	// as a pack's install does (see importShaders()), for code adding a
+	// pack's shaders itself (Ultra Rest Area's bundled sets).
+	public void setPackId(long id, @Nullable String packId) {
+		tagShader(dbHelper.getWritableDatabase(), id, packId);
+	}
+
 	public void updateShaderName(long id, @NonNull String name) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		var cv = new ContentValues();

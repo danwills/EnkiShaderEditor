@@ -209,3 +209,12 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"The UI could be so fascinating people just play with it - could sell 'RD-machine
   contraption packs' instead?"** Yes: a contraption ships as a pack like any set (same store and
   delivery), and a playable home screen doubles as the free sample. Added to the plan.
+- **"Go ahead with milestone 1."** Built: Gradle product flavours `enki` and `ultrarestarea`
+  (app id `enk.danwills.ultrarestarea`); Ultra Rest Area's manifest drops Enki's launcher, editor,
+  wallpaper, capture services and every permission (the APK asks for none). Its launcher,
+  `RestAreaActivity`, is one full-screen shader (`rest_menu.glsl`): sets as glossy metaballs, the
+  finger a blob that merges into them, names drawn with the SDF font from a shader text; Java owns
+  layout and hit-testing and passes them as uniforms. A tap grows the set to fill the screen and
+  plays it with ShowActivity's new quiet mode (no titles/toasts). Three bundled sets from Enki's
+  samples (Drift, Life, Demoscene) install into its own database as packs. Metaball icon rendered
+  by `tools/ura/make_icon.py`. Both flavours lint at 0 errors, 50 warnings.

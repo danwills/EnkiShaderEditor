@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.service;
 
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -60,6 +61,10 @@ public class AudioCaptureForegroundService extends Service {
 		}
 	}
 
+	// ForegroundServiceType/NotificationPermission: Ultra Rest Area's
+	// manifest (src/ultrarestarea) removes this service and those
+	// permissions - this code never runs there, but lint can't tell.
+	@SuppressLint("ForegroundServiceType")
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
 		Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
