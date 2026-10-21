@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.shaderorg;
 import androidx.annotation.NonNull;
 
 import java.util.List;
+import java.util.Set;
 
 import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 
@@ -27,6 +28,13 @@ public final class ShaderNameTreeBuilder {
 	@NonNull
 	public static ShaderNameNode build(
 			@NonNull List<ShaderInfo> shaders, @NonNull String unnamedGroupLabel) {
+		return build(shaders, unnamedGroupLabel, Set.of());
+	}
+
+	// showPackIds: the presentation packs (see ShaderNameNode.show).
+	@NonNull
+	public static ShaderNameNode build(@NonNull List<ShaderInfo> shaders,
+			@NonNull String unnamedGroupLabel, @NonNull Set<String> showPackIds) {
 		ShaderNameNode root = new ShaderNameNode("");
 		for (ShaderInfo shader : shaders) {
 			String title = shader.getTitle();
@@ -47,6 +55,8 @@ public final class ShaderNameTreeBuilder {
 				if (pack == null) {
 					pack = new ShaderNameNode(key);
 					pack.label = packTitle;
+					pack.packId = shader.packId();
+					pack.show = showPackIds.contains(shader.packId());
 					root.children.put(key, pack);
 				}
 				node = pack;

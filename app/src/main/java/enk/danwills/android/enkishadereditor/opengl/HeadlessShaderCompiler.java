@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntConsumer;
 
@@ -26,6 +27,10 @@ public final class HeadlessShaderCompiler {
 	}
 
 	public record Result(int compiled, int skipped, int failed, int total) {
+	}
+
+	// One shader's passes for warm(), as the renderer will be given them.
+	public record Passes(long id, @NonNull String source, @Nullable String[] buffers) {
 	}
 
 	// Matches ShaderRenderer.MAX_TEXTURES - how many samplers
@@ -84,6 +89,75 @@ public final class HeadlessShaderCompiler {
 			return new Result(compiled, skipped, failed, total);
 		} finally {
 			egl.destroy();
+		}
+	}
+
+	// Every pass of each shader in turn - the Image pass and its buffer
+	// passes - into `cache`, skipping what it already holds: e.g. a
+	// show's next shaders, so each loads from a binary when its turn
+	// comes. Blocks; one background thread, as compileAll().
+	public void warm(@NonNull List<Passes> shaders, @NonNull ProgramBinaryCache cache) {
+		HeadlessEglSession egl = HeadlessEglSession.create();
+		if (egl == null) {
+			return;
+		}
+		try {
+			GlDevice device = new GlDevice(MAX_TEXTURES);
+			String driverSignature = ProgramBinaryKey.driverSignature();
+			for (Passes shader : shaders) {
+				if (cancelled.get()) {
+					return;
+				}
+				String sourceHash = ProgramBinaryKey.sourceHash(shader.source(), egl.version);
+				if (cache.get(shader.id(), sourceHash, driverSignature) == null) {
+					compileOne(device, shader.id(), shader.source(), egl.version, sourceHash,
+							driverSignature, cache);
+				}
+				String[] buffers = shader.buffers();
+				for (int buffer = 0; buffers != null && buffer < buffers.length; ++buffer) {
+					String text = buffers[buffer];
+					if (text == null || cancelled.get()) {
+						continue;
+					}
+					String bufferHash = ProgramBinaryKey.sourceHash(text, egl.version);
+					if (cache.getBuffer(shader.id(), buffer, bufferHash, driverSignature) ==
+							null) {
+						ProgramBinary binary = compile(device, text, egl.version);
+						if (binary != null) {
+							cache.putBuffer(shader.id(), buffer, binary, bufferHash,
+									driverSignature);
+						}
+					}
+				}
+			}
+		} finally {
+			egl.destroy();
+		}
+	}
+
+	// A pass's program binary, as the renderer would build it, or null.
+	@Nullable
+	private static ProgramBinary compile(@NonNull GlDevice device, @NonNull String source,
+			int version) {
+		var prepared = ShaderSourcePreparer.prepare(source, version, MAX_TEXTURES);
+		var fragment = prepared.getFragmentShader();
+		if (fragment == null) {
+			return null;
+		}
+		var result = device.createProgram(
+				prepared.getVertexShader(
+						RendererProgramManager.FULL_SCREEN_VERTEX_SHADER,
+						RendererProgramManager.FULL_SCREEN_VERTEX_SHADER_3,
+						version),
+				fragment.getSource(),
+				fragment.getLineMapping());
+		if (!result.succeeded() || result.getProgram() == null) {
+			return null;
+		}
+		try {
+			return device.getProgramBinary(result.getProgram());
+		} finally {
+			device.deleteProgram(result.getProgram());
 		}
 	}
 

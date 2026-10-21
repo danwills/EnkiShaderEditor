@@ -140,6 +140,18 @@ public class TextureDao {
 		}
 	}
 
+	// The id of the texture called `name`, or -1.
+	public long getTextureId(@NonNull String name) {
+		SQLiteDatabase db = dbHelper.getReadableDatabase();
+		try (Cursor cursor = db.rawQuery(
+				"SELECT " + DatabaseContract.TextureColumns._ID +
+						" FROM " + DatabaseContract.TextureColumns.TABLE_NAME +
+						" WHERE " + DatabaseContract.TextureColumns.NAME + " = ?",
+				new String[]{name})) {
+			return cursor.moveToFirst() ? cursor.getLong(0) : -1;
+		}
+	}
+
 	public void removeTexture(long id) {
 		SQLiteDatabase db = dbHelper.getWritableDatabase();
 		db.delete(DatabaseContract.TextureColumns.TABLE_NAME,

@@ -191,6 +191,12 @@
 			android:entryValues="@array/sensor_delay_values"
 			android:defaultValue="Normal"/>
 		<androidx.preference.SwitchPreferenceCompat
+			android:key="use_own_sound_audio"
+			android:title="@string/use_own_sound_audio"
+			android:summary="@string/use_own_sound_audio_summary"
+			android:checked="true"
+			android:defaultValue="true"/>
+		<androidx.preference.SwitchPreferenceCompat
 			android:key="use_microphone_audio"
 			android:title="@string/use_microphone_audio"
 			android:summary="@string/use_microphone_audio_summary"

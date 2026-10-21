@@ -25,10 +25,12 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -40,6 +42,7 @@ import enk.danwills.android.enkishadereditor.adapter.ShaderTreeAdapter;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataRecords.ShaderInfo;
 import enk.danwills.android.enkishadereditor.database.DataSource;
+import enk.danwills.android.enkishadereditor.shaderorg.NameMatch;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderNameNode;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
@@ -69,6 +72,14 @@ public class ShaderListManager {
 		// Long-pressing a group in the name tree: build a shader pack
 		// starting from every shader in it, titled after the group.
 		void onBuildShaderPack(@NonNull List<Long> shaderIds, @NonNull String title);
+
+		// Tapping a presentation pack's row: play it - see ShowActivity.
+		void onPlayShow(@NonNull String packId);
+
+		// Long-pressing a pack's row: Edit Pack, or Update Version.
+		void onEditPack(@NonNull String packId);
+
+		void onUpdatePack(@NonNull String packId);
 	}
 
 	private final Activity activity;
@@ -79,18 +90,22 @@ public class ShaderListManager {
 	private final ShaderTreeAdapter shaderTreeAdapter;
 	private final ShaderSimilarity similarityIndex = new ShaderSimilarity();
 	private final Random random = new Random();
+	private static final String PREF_TREE_NEWEST = "sidebar_tree_newest_first";
 
 	@Nullable
 	private final Button treeToggleButton;
 	@Nullable
 	private final Button showSimilarButton;
 	@Nullable
+	private final CheckBox newestFirstBox;
+	@Nullable
 	private final ColorStateList treeToggleDefaultTint;
 	@Nullable
 	private final ColorStateList showSimilarDefaultTint;
 
 	private List<ShaderInfo> lastLoadedShaders = new ArrayList<>();
-	private boolean treeMode = false;
+	// The name tree is the default view; the tree button toggles it off.
+	private boolean treeMode = true;
 	private boolean similarFilterMode = false;
 	private long selectedShaderId = 0;
 	private long similarityReferenceId = 0;
@@ -126,13 +141,15 @@ public class ShaderListManager {
 
 		shaderAdapter = new ShaderAdapter(activity);
 		shaderTreeAdapter = new ShaderTreeAdapter(activity);
-		listView.setAdapter(shaderAdapter);
+		listView.setAdapter(treeMode ? shaderTreeAdapter : shaderAdapter);
 
 		listView.setEmptyView(activity.findViewById(R.id.no_shaders));
 		listView.setOnItemClickListener((parent, view, position, id) -> {
 			if (treeMode) {
 				var row = shaderTreeAdapter.getRow(position);
-				if (row.isSelectable()) {
+				if (row.node().show && row.node().packId != null) {
+					listener.onPlayShow(row.node().packId);
+				} else if (row.isSelectable()) {
 					listener.onShaderSelected(row.node().shader.id());
 				} else {
 					shaderTreeAdapter.toggleExpand(position);
@@ -148,6 +165,28 @@ public class ShaderListManager {
 				var ids = new ArrayList<Long>();
 				collectShaderIds(row.node(), ids);
 				Runnable buildPack = () -> listener.onBuildShaderPack(ids, row.node().getLabel());
+				String packId = row.node().packId;
+				if (shader == null && packId != null) {
+					// A pack: play it (a show), or edit it.
+					var menu = new PopupMenu(activity, view);
+					if (row.node().show) {
+						menu.getMenu().add(0, 1, 0, R.string.play_show);
+					}
+					menu.getMenu().add(0, 2, 1, R.string.edit_pack);
+					menu.getMenu().add(0, 3, 2, R.string.update_pack_version);
+					menu.setOnMenuItemClickListener(item -> {
+						if (item.getItemId() == 1) {
+							listener.onPlayShow(packId);
+						} else if (item.getItemId() == 2) {
+							listener.onEditPack(packId);
+						} else {
+							listener.onUpdatePack(packId);
+						}
+						return true;
+					});
+					menu.show();
+					return true;
+				}
 				if (shader == null) {
 					// A group only: building a pack is all there is to do.
 					if (!ids.isEmpty()) {
@@ -213,14 +252,28 @@ public class ShaderListManager {
 		if (findShaderButton != null) {
 			findShaderButton.setOnClickListener(v -> listener.onFindShader());
 		}
+		// The tree button starts lit, as tree view is the default.
+		updateToggleButtonStates();
 
 		CheckBox packsOnlyBox = activity.findViewById(R.id.filter_shaders_packs);
 		if (packsOnlyBox != null) {
 			packsOnlyBox.setOnCheckedChangeListener((box, checked) -> {
 				packsOnly = checked;
-				shaderAdapter.setHighlightPacks(!checked);
-				shaderTreeAdapter.setHighlightPacks(!checked);
 				refreshDisplayedAdapters();
+			});
+		}
+
+		// Remembered, unlike the filters above and below.
+		newestFirstBox = activity.findViewById(R.id.sort_tree_newest);
+		if (newestFirstBox != null) {
+			var prefs = ShaderEditorApp.preferences.getSharedPreferences();
+			boolean newestFirst = prefs.getBoolean(PREF_TREE_NEWEST, false);
+			newestFirstBox.setChecked(newestFirst);
+			shaderTreeAdapter.setNewestFirst(newestFirst);
+			newestFirstBox.setVisibility(treeMode ? View.VISIBLE : View.GONE);
+			newestFirstBox.setOnCheckedChangeListener((box, checked) -> {
+				prefs.edit().putBoolean(PREF_TREE_NEWEST, checked).apply();
+				shaderTreeAdapter.setNewestFirst(checked);
 			});
 		}
 
@@ -284,7 +337,11 @@ public class ShaderListManager {
 			executor.execute(() -> {
 				List<ShaderInfo> shaders = dataSource.shader.getShaders(
 						ShaderEditorApp.preferences.sortByLastModification());
-				handler.post(() -> onShadersLoaded(shaders));
+				Set<String> shows = dataSource.pack.getShowPackIds();
+				handler.post(() -> {
+					shaderTreeAdapter.setShowPackIds(shows);
+					onShadersLoaded(shaders);
+				});
 			});
 		} catch (RejectedExecutionException ignored) {
 			reloadGate.abort();
@@ -374,18 +431,32 @@ public class ShaderListManager {
 			}
 			data = packShaders;
 		}
+		Map<Long, Double> scores = null;
 		if (textFilterEnabled && !textFilterQuery.isEmpty()) {
+			// Best matches first - see NameMatch.
+			scores = new HashMap<>();
 			List<ShaderInfo> filtered = new ArrayList<>();
 			for (ShaderInfo shader : data) {
 				String title = shader.getTitle();
-				if (title != null && title.toLowerCase(Locale.ROOT).contains(textFilterQuery)) {
+				double score = title != null ? NameMatch.score(textFilterQuery, title, false) : 0;
+				if (score > 0) {
+					scores.put(shader.id(), score);
 					filtered.add(shader);
 				}
 			}
+			sortByScore(filtered, scores);
 			data = filtered;
 		}
 		shaderAdapter.setData(data);
+		shaderTreeAdapter.setMatchScores(scores);
 		shaderTreeAdapter.setData(data);
+	}
+
+	// Best first; equal scores keep their order (List.sort is stable).
+	private static void sortByScore(@NonNull List<ShaderInfo> shaders,
+			@NonNull Map<Long, Double> scores) {
+		shaders.sort((a, b) -> Double.compare(
+				scores.getOrDefault(b.id(), 0.0), scores.getOrDefault(a.id(), 0.0)));
 	}
 
 	@Nullable
@@ -401,6 +472,9 @@ public class ShaderListManager {
 	private void toggleTreeMode() {
 		treeMode = !treeMode;
 		listView.setAdapter(treeMode ? shaderTreeAdapter : shaderAdapter);
+		if (newestFirstBox != null) {
+			newestFirstBox.setVisibility(treeMode ? View.VISIBLE : View.GONE);
+		}
 	}
 
 	// Called once the user has confirmed settings in the config dialog
@@ -528,7 +602,9 @@ public class ShaderListManager {
 		return picked;
 	}
 
-	// Returns matching shaders in the same order they're currently displayed.
+	// Returns matching shaders best first (see NameMatch): a match in the
+	// name beats one only in the source, and equal matches keep the order
+	// they're displayed in.
 	@NonNull
 	public List<ShaderInfo> findMatches(
 			@NonNull String query, boolean searchSource, boolean fuzzy) {
@@ -539,16 +615,22 @@ public class ShaderListManager {
 		Map<Long, String> sources = searchSource
 				? dataSource.shader.getAllShaderSources()
 				: Collections.emptyMap();
+		Map<Long, Double> scores = new HashMap<>();
 		for (ShaderInfo shader : shaderAdapter.getShaders()) {
 			String title = shader.getTitle();
-			boolean nameMatches = title != null && matches(query, title, fuzzy);
-			String source = sources.get(shader.id());
-			boolean sourceMatches = searchSource && source != null &&
-					matches(query, source, fuzzy);
-			if (nameMatches || sourceMatches) {
+			double score = title != null ? NameMatch.score(query, title, fuzzy) : 0;
+			if (score == 0 && searchSource) {
+				String source = sources.get(shader.id());
+				if (source != null && matches(query, source, fuzzy)) {
+					score = 0.5;
+				}
+			}
+			if (score > 0) {
+				scores.put(shader.id(), score);
 				matches.add(shader);
 			}
 		}
+		sortByScore(matches, scores);
 		return matches;
 	}
 
@@ -568,19 +650,7 @@ public class ShaderListManager {
 			@NonNull String query, @NonNull String target, boolean fuzzy) {
 		String q = query.toLowerCase(Locale.ROOT);
 		String t = target.toLowerCase(Locale.ROOT);
-		return fuzzy ? fuzzyMatch(q, t) : t.contains(q);
-	}
-
-	// Subsequence match: every character of `query` must appear in
-	// `target` in order, though not necessarily contiguously.
-	private static boolean fuzzyMatch(@NonNull String query, @NonNull String target) {
-		int qi = 0;
-		for (int ti = 0; ti < target.length() && qi < query.length(); ++ti) {
-			if (target.charAt(ti) == query.charAt(qi)) {
-				++qi;
-			}
-		}
-		return qi == query.length();
+		return fuzzy ? NameMatch.fuzzyMatches(q, t) : t.contains(q);
 	}
 
 	public void editShaderName(final long id, @NonNull String name) {

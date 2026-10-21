@@ -35,11 +35,47 @@ final class BufferText {
 			return null;
 		}
 		device.bindFramebuffer(framebuffer);
-		int[] codes = pass.isHalfFloat()
+		int[] codes = pass.isFloat()
 				? readFloatCodes(width, height)
 				: readByteCodes(device, width, height);
 		device.bindFramebuffer(null);
 		return codes != null ? decode(codes, width, height, endWithNewline) : null;
+	}
+
+	// The whole of `pass`'s latest frame as RGBA bytes, bottom row first
+	// as GL has it - each channel clamped to 0-1, so a half-float buffer
+	// holding byte values (k / 255) comes out exactly. GL thread only.
+	// Null if it can't be read.
+	@Nullable
+	static ByteBuffer readRgba(@NonNull GlDevice device, @NonNull BufferPass pass) {
+		GlFramebuffer framebuffer = pass.getCurrentFramebuffer();
+		int width = pass.getWidth();
+		int height = pass.getHeight();
+		if (framebuffer == null || width <= 0 || height <= 0) {
+			return null;
+		}
+		device.bindFramebuffer(framebuffer);
+		ByteBuffer rgba = ByteBuffer.allocateDirect(width * height * 4)
+				.order(ByteOrder.nativeOrder());
+		try {
+			if (!pass.isFloat()) {
+				device.readPixels(0, 0, width, height, rgba);
+				return rgba;
+			}
+			ByteBuffer floats = ByteBuffer.allocateDirect(width * height * 16)
+					.order(ByteOrder.nativeOrder());
+			GLES20.glReadPixels(0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_FLOAT, floats);
+			if (GLES20.glGetError() != GLES20.GL_NO_ERROR) {
+				Log.w(TAG, "Can't read this buffer back as floats");
+				return null;
+			}
+			for (int i = 0; i < width * height * 4; ++i) {
+				rgba.put(i, (byte) toCode(floats.getFloat(i * 4)));
+			}
+			return rgba;
+		} finally {
+			device.bindFramebuffer(null);
+		}
 	}
 
 	@NonNull

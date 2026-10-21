@@ -25,6 +25,11 @@ public final class ShaderNameNode {
 	// happens to share its name.
 	@Nullable
 	public String label;
+	// On a pack's node: the pack's id, and whether it's a presentation
+	// pack, played as a show when its row is tapped - see ShowActivity.
+	@Nullable
+	public String packId;
+	public boolean show;
 
 	public ShaderNameNode(@NonNull String token) {
 		this.token = token;

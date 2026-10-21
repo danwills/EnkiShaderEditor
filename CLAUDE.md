@@ -39,6 +39,19 @@ Two independent projects:
 - `npm run build` — static build (what CI runs).
 - `npm run preview` — preview the built output.
 
+## Testing on the phone
+
+When driving Dan's phone over adb (only when he's said it's free):
+- Note what's on screen first (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
+- Keep a status notification (and a toast, via the debug build's TestStatusToastReceiver) up
+  with `tools/phone/status.sh post "what I'm doing"`, updated as
+  the test moves on, and run `tools/phone/status.sh check` between steps. If it fails, Dan swiped
+  the notification away to interrupt: finish the step in hand (don't leave a dialog half-done),
+  note where the test got to so it can be picked up later, and stop.
+- Either way, finish by putting the phone back: reopen the previous app
+  (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
+  stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`.
+
 ## Conventions
 
 - Indentation is tabs, not spaces; `.editorconfig` is authoritative if a contributor enables
@@ -48,5 +61,9 @@ Two independent projects:
   (`git merge <branch> --squash`), write a proper commit message.
 - String resources: when adding/changing a string, update it for all supported languages under
   `app/src/main/res/values-*`, not just the default `values`.
+- Keep `docs/session-log.md` up to date continuously: after each request from Dan, append an
+  entry under today's date - the gist of what he asked (quoted where short) and a line or two on
+  what was done or answered - and commit it with the related work (or on its own). Don't let it
+  lapse across context compaction; rebuild any missing entries from what's known.
 - Release prep touches `CHANGELOG.md`, `fastlane/metadata/**/changelogs`, and the version in
   `app/build.gradle.kts` together — see AGENTS.md §13.

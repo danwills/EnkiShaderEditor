@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,9 +42,6 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private final int textColorSelected;
 	private final int textColorUnselected;
 	private final int textColorPack;
-	// Whether pack shaders' names get their own colour - see
-	// setHighlightPacks().
-	private boolean highlightPacks = true;
 	private final int textColorGroup;
 	private final Drawable highlightRing;
 	private final int indentPx;
@@ -61,6 +59,8 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private static final double AUTO_EXPAND_THRESHOLD = 0.8;
 
 	private ShaderNameNode root = new ShaderNameNode("");
+	@NonNull
+	private Set<String> showPackIds = Set.of();
 	private List<Row> visibleRows = Collections.emptyList();
 	private long selectedShaderId = 0;
 	private long highlightedShaderId = 0;
@@ -70,6 +70,19 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	// match are auto-expanded.
 	@Nullable
 	private Map<Long, Double> similarityScores;
+	// Children ordered by the newest shader in their subtree (by code
+	// change, as the flat list's "sort by last modification") rather
+	// than alphabetically. Packs still come first.
+	private boolean newestFirst;
+	// The sidebar filter's match scores (see NameMatch), keyed by shader
+	// id: when set, children are ordered by the best match in their
+	// subtree first, then as usual.
+	@Nullable
+	private Map<Long, Double> matchScores;
+	// Each node's best match, worked out once per setData().
+	private final Map<ShaderNameNode, Double> bestMatches = new IdentityHashMap<>();
+	// Each node's newest sourceModified, worked out once per setData().
+	private final Map<ShaderNameNode, String> newest = new IdentityHashMap<>();
 
 	public ShaderTreeAdapter(Context context) {
 		textColorSelected = ContextCompat.getColor(context, R.color.accent);
@@ -84,17 +97,55 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		unnamedGroupLabel = context.getString(R.string.unnamed_shaders_group);
 	}
 
+	// The presentation packs - see ShaderNameNode.show. Takes effect with
+	// the next setData().
+	public void setShowPackIds(@NonNull Set<String> ids) {
+		showPackIds = ids;
+	}
+
 	public void setData(@NonNull List<ShaderInfo> shaders) {
-		root = ShaderNameTreeBuilder.build(shaders, unnamedGroupLabel);
+		root = ShaderNameTreeBuilder.build(shaders, unnamedGroupLabel, showPackIds);
+		newest.clear();
+		findNewest(root);
+		bestMatches.clear();
+		if (matchScores != null) {
+			findBestMatch(root);
+		}
 		rebuildVisibleRows();
 		notifyDataSetChanged();
 	}
 
-	// Shaders installed from a shader pack are named in their own colour
-	// to tell them apart - not needed while only pack shaders are shown.
-	public void setHighlightPacks(boolean highlightPacks) {
-		this.highlightPacks = highlightPacks;
+	// Takes effect with the next setData(). Null for the usual order.
+	public void setMatchScores(@Nullable Map<Long, Double> scores) {
+		matchScores = scores;
+	}
+
+	public void setNewestFirst(boolean newestFirst) {
+		this.newestFirst = newestFirst;
+		rebuildVisibleRows();
 		notifyDataSetChanged();
+	}
+
+	// Dates are "yyyy-MM-dd HH:mm:ss", so they compare as strings.
+	@NonNull
+	private String findNewest(@NonNull ShaderNameNode node) {
+		String best = "";
+		if (node.shader != null) {
+			String date = node.shader.sourceModified() != null
+					? node.shader.sourceModified()
+					: node.shader.modified();
+			if (date != null) {
+				best = date;
+			}
+		}
+		for (ShaderNameNode child : node.children.values()) {
+			String date = findNewest(child);
+			if (date.compareTo(best) > 0) {
+				best = date;
+			}
+		}
+		newest.put(node, best);
+		return best;
 	}
 
 	public void setSelectedId(long id) {
@@ -255,6 +306,19 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		List<ShaderNameNode> children = new ArrayList<>(node.children.values());
 		if (similarityScores != null) {
 			children.sort((a, b) -> Double.compare(bestScore(b), bestScore(a)));
+		} else if (newestFirst || matchScores != null) {
+			children.sort((a, b) -> {
+				if (matchScores != null) {
+					int byMatch = Double.compare(bestMatch(b), bestMatch(a));
+					if (byMatch != 0) {
+						return byMatch;
+					}
+				}
+				if (a.isPack() != b.isPack()) {
+					return a.isPack() ? -1 : 1;
+				}
+				return newestFirst ? newestOf(b).compareTo(newestOf(a)) : 0;
+			});
 		}
 		for (ShaderNameNode child : children) {
 			String childPath = path.isEmpty() ? child.token : path + "/" + child.token;
@@ -264,6 +328,29 @@ public class ShaderTreeAdapter extends BaseAdapter {
 				flatten(child, depth + 1, childPath, out);
 			}
 		}
+	}
+
+	private double findBestMatch(@NonNull ShaderNameNode node) {
+		double best = 0;
+		if (node.shader != null && matchScores != null) {
+			best = matchScores.getOrDefault(node.shader.id(), 0.0);
+		}
+		for (ShaderNameNode child : node.children.values()) {
+			best = Math.max(best, findBestMatch(child));
+		}
+		bestMatches.put(node, best);
+		return best;
+	}
+
+	private double bestMatch(@NonNull ShaderNameNode node) {
+		Double best = bestMatches.get(node);
+		return best != null ? best : 0;
+	}
+
+	@NonNull
+	private String newestOf(@NonNull ShaderNameNode node) {
+		String date = newest.get(node);
+		return date != null ? date : "";
 	}
 
 	private class ViewHolder {
@@ -311,15 +398,17 @@ public class ShaderTreeAdapter extends BaseAdapter {
 				}
 				title.setTextColor(shader.id() == selectedShaderId
 						? textColorSelected
-						: highlightPacks && shader.isFromPack()
+						: shader.isFromPack()
 								? textColorPack
 								: textColorUnselected);
 			} else {
-				icon.setImageResource(row.node().isPack()
-						? R.drawable.ic_pack
-						: R.drawable.ic_quick_reference_all);
+				icon.setImageResource(row.node().show
+						? R.drawable.ic_play_arrow
+						: row.node().isPack()
+								? R.drawable.ic_pack
+								: R.drawable.ic_quick_reference_all);
 				title.setText(row.node().getLabel());
-				title.setTextColor(highlightPacks && row.node().isPack()
+				title.setTextColor(row.node().isPack()
 						? textColorPack
 						: textColorGroup);
 			}

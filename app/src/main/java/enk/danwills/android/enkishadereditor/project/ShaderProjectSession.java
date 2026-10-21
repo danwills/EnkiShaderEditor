@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.project;
 import androidx.annotation.NonNull;
 
 import java.io.Serializable;
+import java.util.Map;
 import java.util.Objects;
 
 public final class ShaderProjectSession implements Serializable {
@@ -96,6 +97,20 @@ public final class ShaderProjectSession implements Serializable {
 	@NonNull
 	public ShaderProjectSession withBufferSources(@NonNull String[] sources) {
 		ShaderProject updated = project.withBufferSources(sources);
+		return new ShaderProjectSession(
+				updated,
+				updated.hasFile(activeFilePath)
+						? activeFilePath
+						: updated.getEntryFilePath(),
+				quality,
+				shaderId);
+	}
+
+	// See ShaderProject.withTexts(). Falls back to the entry file if the
+	// active one was a text that's gone.
+	@NonNull
+	public ShaderProjectSession withTexts(@NonNull Map<String, String> texts) {
+		ShaderProject updated = project.withTexts(texts);
 		return new ShaderProjectSession(
 				updated,
 				updated.hasFile(activeFilePath)

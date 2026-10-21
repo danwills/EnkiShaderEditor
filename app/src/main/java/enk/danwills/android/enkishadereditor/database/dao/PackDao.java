@@ -15,8 +15,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DatabaseContract;
@@ -70,6 +72,7 @@ public class PackDao {
 		cv.put(DatabaseContract.PackColumns.INSTALLED,
 				new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()));
 		cv.put(DatabaseContract.PackColumns.SOURCE, source);
+		cv.put(DatabaseContract.PackColumns.SHOW, pack.show());
 		db.insertWithOnConflict(DatabaseContract.PackColumns.TABLE_NAME, null, cv,
 				SQLiteDatabase.CONFLICT_REPLACE);
 	}
@@ -92,6 +95,41 @@ public class PackDao {
 		return thumbs;
 	}
 
+	// The ids of this pack's installed shaders, by name - a show's
+	// order.
+	@NonNull
+	public List<Long> getShaderIds(@NonNull String packId) {
+		var ids = new ArrayList<Long>();
+		SQLiteDatabase db = dbHelper.getReadableDatabase();
+		try (var cursor = db.query(DatabaseContract.ShaderColumns.TABLE_NAME,
+				new String[]{DatabaseContract.ShaderColumns._ID},
+				DatabaseContract.ShaderColumns.PACK_ID + " = ?", new String[]{packId},
+				null, null, DatabaseContract.ShaderColumns.NAME + " COLLATE NOCASE")) {
+			while (cursor.moveToNext()) {
+				ids.add(cursor.getLong(0));
+			}
+		}
+		return ids;
+	}
+
+	// The ids of the installed packs that are shows - see
+	// DatabaseContract.PackColumns.SHOW.
+	@NonNull
+	public Set<String> getShowPackIds() {
+		var ids = new HashSet<String>();
+		SQLiteDatabase db = dbHelper.getReadableDatabase();
+		try (var cursor = db.query(DatabaseContract.PackColumns.TABLE_NAME,
+				new String[]{DatabaseContract.PackColumns.PACK_ID},
+				DatabaseContract.PackColumns.SHOW + " IS NOT NULL AND " +
+						DatabaseContract.PackColumns.SHOW + " != ''",
+				null, null, null, null)) {
+			while (cursor.moveToNext()) {
+				ids.add(cursor.getString(0));
+			}
+		}
+		return ids;
+	}
+
 	// How many of the library's shaders came from this pack.
 	public int countShaders(@NonNull String packId) {
 		SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -109,7 +147,8 @@ public class PackDao {
 	// Device-specific columns (compiled binaries, timings, fps) are left
 	// out. Replaces `file` if it exists.
 	public void writePackFile(@NonNull File file, @NonNull List<Long> shaderIds,
-			@NonNull Collection<String> textureNames, @NonNull DataRecords.ShaderPack info) {
+			@NonNull Collection<String> textureNames, @NonNull Collection<String> moduleNames,
+			@NonNull DataRecords.ShaderPack info) {
 		SQLiteDatabase main = dbHelper.getReadableDatabase();
 		if (file.exists() && !file.delete()) {
 			throw new SQLiteException("Can't replace " + file);
@@ -124,10 +163,14 @@ public class PackDao {
 				copySchema(main, pack, DatabaseContract.ShaderColumns.TABLE_NAME);
 				copySchema(main, pack, DatabaseContract.BufferColumns.TABLE_NAME);
 				copySchema(main, pack, DatabaseContract.TextureColumns.TABLE_NAME);
+				copySchema(main, pack, DatabaseContract.ModuleColumns.TABLE_NAME);
+				copySchema(main, pack, DatabaseContract.TextColumns.TABLE_NAME);
 				copyRows(main, pack, DatabaseContract.ShaderColumns.TABLE_NAME,
 						DatabaseContract.ShaderColumns._ID + " IN (" + ids + ")", null);
 				copyRows(main, pack, DatabaseContract.BufferColumns.TABLE_NAME,
 						DatabaseContract.BufferColumns.SHADER_ID + " IN (" + ids + ")", null);
+				copyRows(main, pack, DatabaseContract.TextColumns.TABLE_NAME,
+						DatabaseContract.TextColumns.SHADER_ID + " IN (" + ids + ")", null);
 				if (!textureNames.isEmpty()) {
 					String placeholders = String.join(",",
 							Collections.nCopies(textureNames.size(), "?"));
@@ -135,6 +178,26 @@ public class PackDao {
 							DatabaseContract.TextureColumns.NAME + " IN (" + placeholders + ")",
 							textureNames.toArray(new String[0]));
 				}
+				// The tracker modules their `///mod:` lines play.
+				if (!moduleNames.isEmpty()) {
+					String placeholders = String.join(",",
+							Collections.nCopies(moduleNames.size(), "?"));
+					copyRows(main, pack, DatabaseContract.ModuleColumns.TABLE_NAME,
+							DatabaseContract.ModuleColumns.NAME + " IN (" + placeholders + ")",
+							moduleNames.toArray(new String[0]));
+				}
+				// An installed pack's shaders are "<Pack Title>: <name>" here
+				// - back to <name>, as installing adds the title again.
+				pack.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " +
+						DatabaseContract.ShaderColumns.NAME + " = substr(" +
+						DatabaseContract.ShaderColumns.NAME + ", instr(" +
+						DatabaseContract.ShaderColumns.NAME + ", ?) + ?) WHERE " +
+						DatabaseContract.ShaderColumns.PACK_ID + " IS NOT NULL AND " +
+						DatabaseContract.ShaderColumns.PACK_ID + " != '' AND instr(" +
+						DatabaseContract.ShaderColumns.NAME + ", ?) > 0",
+						new Object[]{DataRecords.ShaderInfo.PACK_NAME_SEPARATOR,
+								DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length(),
+								DataRecords.ShaderInfo.PACK_NAME_SEPARATOR});
 				pack.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME + " SET " +
 						DatabaseContract.ShaderColumns.COMPILED_BINARY + " = NULL, " +
 						DatabaseContract.ShaderColumns.COMPILED_BINARY_FORMAT + " = NULL, " +
@@ -171,7 +234,8 @@ public class PackDao {
 				DatabaseContract.PackInfoColumns.AUTHOR + " TEXT," +
 				DatabaseContract.PackInfoColumns.VERSION + " INTEGER," +
 				DatabaseContract.PackInfoColumns.CREATED + " DATETIME," +
-				DatabaseContract.PackInfoColumns.FORMAT + " INTEGER);");
+				DatabaseContract.PackInfoColumns.FORMAT + " INTEGER," +
+				DatabaseContract.PackInfoColumns.SHOW + " TEXT);");
 		var cv = new ContentValues();
 		cv.put(DatabaseContract.PackInfoColumns.PACK_ID, info.packId());
 		cv.put(DatabaseContract.PackInfoColumns.TITLE, info.title());
@@ -182,6 +246,7 @@ public class PackDao {
 				new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()));
 		cv.put(DatabaseContract.PackInfoColumns.FORMAT,
 				DatabaseContract.PackInfoColumns.CURRENT_FORMAT);
+		cv.put(DatabaseContract.PackInfoColumns.SHOW, info.show());
 		pack.insert(DatabaseContract.PackInfoColumns.TABLE_NAME, null, cv);
 
 		pack.execSQL("CREATE TABLE " + DatabaseContract.PackMediaColumns.TABLE_NAME + " (" +
@@ -247,7 +312,8 @@ public class PackDao {
 				CursorHelpers.getString(cursor, DatabaseContract.PackColumns.AUTHOR),
 				CursorHelpers.getInt(cursor, DatabaseContract.PackColumns.VERSION),
 				CursorHelpers.getString(cursor, DatabaseContract.PackColumns.INSTALLED),
-				CursorHelpers.getString(cursor, DatabaseContract.PackColumns.SOURCE));
+				CursorHelpers.getString(cursor, DatabaseContract.PackColumns.SOURCE),
+				CursorHelpers.getString(cursor, DatabaseContract.PackColumns.SHOW));
 	}
 
 	private static void createPacksTable(@NonNull SQLiteDatabase db) {
@@ -258,7 +324,8 @@ public class PackDao {
 				DatabaseContract.PackColumns.AUTHOR + " TEXT," +
 				DatabaseContract.PackColumns.VERSION + " INTEGER," +
 				DatabaseContract.PackColumns.INSTALLED + " DATETIME," +
-				DatabaseContract.PackColumns.SOURCE + " TEXT);");
+				DatabaseContract.PackColumns.SOURCE + " TEXT," +
+				DatabaseContract.PackColumns.SHOW + " TEXT);");
 	}
 
 	private static boolean hasPacksTable(@NonNull SQLiteDatabase db) {
@@ -314,6 +381,11 @@ public class PackDao {
 					// See ShaderDao's v12 step - those test installs are
 					// forgotten along with their tags.
 					db.execSQL("DELETE FROM " + DatabaseContract.PackColumns.TABLE_NAME + ";");
+				}
+				if (oldVersion >= 11 && oldVersion < 14) {
+					// Presentation packs (a table made above already has it).
+					db.execSQL("ALTER TABLE " + DatabaseContract.PackColumns.TABLE_NAME +
+							" ADD COLUMN " + DatabaseContract.PackColumns.SHOW + " TEXT;");
 				}
 			}
 

@@ -1,6 +1,7 @@
 package enk.danwills.android.enkishadereditor.project;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Iterator;
@@ -14,6 +15,9 @@ public final class ShaderProjectPaths {
 	public static final int MAX_BUFFERS = 4;
 	private static final String BUFFER_DIRECTORY = "buffers/";
 	private static final String BUFFER_EXTENSION = ".glsl";
+	// A shader's named texts (see ShaderTextDao) live at text/<name>.txt.
+	private static final String TEXT_DIRECTORY = "text/";
+	private static final String TEXT_EXTENSION = ".txt";
 
 	private ShaderProjectPaths() {
 	}
@@ -74,6 +78,23 @@ public final class ShaderProjectPaths {
 			}
 		}
 		return -1;
+	}
+
+	@NonNull
+	public static String getTextPath(@NonNull String name) {
+		return TEXT_DIRECTORY + name + TEXT_EXTENSION;
+	}
+
+	// The text a path is for, or null if it isn't a text's.
+	@Nullable
+	public static String getTextName(@NonNull String path) {
+		String normalized = normalize(path);
+		if (!normalized.startsWith(TEXT_DIRECTORY) || !normalized.endsWith(TEXT_EXTENSION)) {
+			return null;
+		}
+		String name = normalized.substring(TEXT_DIRECTORY.length(),
+				normalized.length() - TEXT_EXTENSION.length());
+		return name.isEmpty() || name.contains("/") ? null : name;
 	}
 
 	public static char getBufferLetter(int buffer) {

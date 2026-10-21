@@ -103,7 +103,7 @@ public final class Database {
 		private final List<DatabaseTable> tables;
 
 		private OpenHelper(Context context, List<DatabaseTable> tables) {
-			super(context, DatabaseContract.FILE_NAME, null, 13);
+			super(context, DatabaseContract.FILE_NAME, null, 15);
 			this.tables = tables;
 		}
 

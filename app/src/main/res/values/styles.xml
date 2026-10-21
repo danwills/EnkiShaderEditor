@@ -3,6 +3,10 @@
 		<item name="background">@android:color/transparent</item>
 		<item name="preferenceTheme">@style/PreferenceThemeOverlay</item>
 		<item name="buttonStyle">@style/ButtonTheme</item>
+		<!-- No round handle under the cursor in the app's text fields (the
+		     code editor puts the platform's back - see ShaderEditor.init());
+		     the selection handles stay. -->
+		<item name="android:textSelectHandle">@drawable/text_handle_none</item>
 	</style>
 
 	<style name="SplashTheme" parent="@style/AppTheme">

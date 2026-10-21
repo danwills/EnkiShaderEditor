@@ -8,6 +8,9 @@ import androidx.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 final class RendererProgramManager {
 	// A buffer pass's program freshly compiled from source this reload,
@@ -94,6 +97,8 @@ final class RendererProgramManager {
 	@Nullable
 	private String[] bufferSourceTexts;
 	@NonNull
+	private volatile Map<String, String> texts = Map.of();
+	@NonNull
 	private PreparedShaderSource preparedShaderSource = PreparedShaderSource.empty();
 	// In buffer order, only the buffers the shader actually has.
 	@NonNull
@@ -102,6 +107,17 @@ final class RendererProgramManager {
 	// thread - same idea as staleTextureResources.
 	@NonNull
 	private final List<BufferPass> staleBufferPasses = new ArrayList<>();
+	// See getSoundPass().
+	@Nullable
+	private BufferPass soundPass;
+	// See getModuleName().
+	@Nullable
+	private String moduleName;
+	// See getSteps().
+	private static final Pattern STEPS = Pattern.compile(
+			"^[ \\t]*///steps:([0-9]{1,3})[ \\t]*$", Pattern.MULTILINE);
+	private static final int MAX_STEPS = 64;
+	private int steps = 1;
 	// The backbuffer parameters before the last prepareShaderSource(),
 	// as text - see backBufferParametersUnchanged().
 	@Nullable
@@ -132,6 +148,17 @@ final class RendererProgramManager {
 		prepareShaderSource();
 	}
 
+	// The shader's texts (see ShaderTextDao) - for the next reload, or
+	// reloadTexts(). Any thread.
+	void setTexts(@NonNull Map<String, String> texts) {
+		this.texts = Map.copyOf(texts);
+	}
+
+	// GL thread: the texts' textures made again from setTexts()'s.
+	void reloadTexts(@NonNull Context context, @NonNull GlDevice device) {
+		textureResources.reloadTexts(context, device, texts);
+	}
+
 	void setFragmentShader(@Nullable String source, @Nullable String[] bufferSources) {
 		sourceText = source;
 		bufferSourceTexts = bufferSources != null ? bufferSources.clone() : null;
@@ -149,7 +176,7 @@ final class RendererProgramManager {
 			@NonNull BufferBinaryLookup bufferBinaries) {
 		clearPrograms();
 
-		var textureErrors = textureResources.load(context, device);
+		var textureErrors = textureResources.load(context, device, texts);
 		var surfaceResult = device.createProgram(
 				FULL_SCREEN_VERTEX_SHADER,
 				SURFACE_FRAGMENT_SHADER,
@@ -195,7 +222,7 @@ final class RendererProgramManager {
 
 		var freshBufferBinaries = new ArrayList<FreshBufferBinary>();
 		var bufferErrors = new ArrayList<ShaderError>();
-		for (var pass : bufferPasses) {
+		for (var pass : allBufferPasses()) {
 			GlProgram program = buildBufferProgram(device, pass, bufferBinaries,
 					freshBufferBinaries, bufferErrors);
 			pass.setProgram(program);
@@ -205,7 +232,7 @@ final class RendererProgramManager {
 			// any other compile error - there'd be no sensible picture.
 			device.deleteProgram(surfaceResult.getProgram());
 			device.deleteProgram(mainResult.getProgram());
-			for (var pass : bufferPasses) {
+			for (var pass : allBufferPasses()) {
 				device.deleteProgram(pass.getProgram());
 				pass.setProgram(null);
 			}
@@ -271,12 +298,57 @@ final class RendererProgramManager {
 		if (mainProgram != null) {
 			programs.add(mainProgram);
 		}
-		for (var pass : bufferPasses) {
+		for (var pass : allBufferPasses()) {
 			if (pass.getProgram() != null) {
 				programs.add(pass.getProgram());
 			}
 		}
 		return programs;
+	}
+
+	// The Sound pass, if the shader has one - a buffer that makes sound
+	// rather than a picture (see SoundOutput). Not in getBufferPasses().
+	@Nullable
+	BufferPass getSoundPass() {
+		return soundPass;
+	}
+
+	// The tracker module the shader plays (a `///mod:` line), or null.
+	@Nullable
+	String getModuleName() {
+		return moduleName;
+	}
+
+	// How many times the buffer passes run for each frame drawn - a
+	// `///steps:N` line in any pass (1-64), else 1. A simulation in its
+	// buffers then moves N steps a frame, for one Image pass.
+	int getSteps() {
+		return steps;
+	}
+
+	private static int findSteps(@NonNull String[] sources) {
+		for (String source : sources) {
+			if (source == null) {
+				continue;
+			}
+			Matcher matcher = STEPS.matcher(source);
+			if (matcher.find()) {
+				return Math.max(1, Math.min(MAX_STEPS, Integer.parseInt(matcher.group(1))));
+			}
+		}
+		return 1;
+	}
+
+	// The drawn buffer passes and the Sound pass - everything with a
+	// program to build and release.
+	@NonNull
+	private List<BufferPass> allBufferPasses() {
+		if (soundPass == null) {
+			return bufferPasses;
+		}
+		var all = new ArrayList<>(bufferPasses);
+		all.add(soundPass);
+		return all;
 	}
 
 	// Clean source text of a buffer pass, for the binary cache key.
@@ -298,7 +370,7 @@ final class RendererProgramManager {
 	void discardContextResources() {
 		clearPrograms();
 		textureResources.discard();
-		for (var pass : bufferPasses) {
+		for (var pass : allBufferPasses()) {
 			pass.discard();
 		}
 		// The context these belonged to is already gone - nothing left
@@ -328,7 +400,7 @@ final class RendererProgramManager {
 		// Only programs: these passes were made since the last reload,
 		// so any render targets they have are ones they've just adopted
 		// to keep (see adoptBufferTargets()).
-		for (var pass : bufferPasses) {
+		for (var pass : allBufferPasses()) {
 			pass.releaseProgram(device);
 		}
 		for (var stale : staleBufferPasses) {
@@ -468,7 +540,7 @@ final class RendererProgramManager {
 		// the GL thread - this runs on the UI thread, with the GL thread
 		// paused, so it can't touch GL itself.
 		staleTextureResources.add(textureResources);
-		staleBufferPasses.addAll(bufferPasses);
+		staleBufferPasses.addAll(allBufferPasses());
 		previousBackBufferParameters = preparedShaderSource.getFragmentShader() != null
 				? preparedShaderSource.getBackBufferParameters().toString()
 				: null;
@@ -483,6 +555,7 @@ final class RendererProgramManager {
 			samplers.putIfAbsent(sampler.name(), sampler);
 		}
 		var passes = new ArrayList<BufferPass>();
+		BufferPass sound = null;
 		if (bufferSourceTexts != null) {
 			for (int buffer = 0; buffer < bufferSourceTexts.length; ++buffer) {
 				String bufferSource = bufferSourceTexts[buffer];
@@ -490,7 +563,12 @@ final class RendererProgramManager {
 					continue;
 				}
 				var prepared = ShaderSourcePreparer.prepare(bufferSource, version, maxTextures);
-				passes.add(new BufferPass(buffer, bufferSource, prepared));
+				var pass = new BufferPass(buffer, bufferSource, prepared);
+				if (ShaderSourcePreparer.isSoundSource(bufferSource) && sound == null) {
+					sound = pass;
+				} else {
+					passes.add(pass);
+				}
 				for (var sampler : prepared.getSamplers()) {
 					samplers.putIfAbsent(sampler.name(), sampler);
 				}
@@ -506,6 +584,14 @@ final class RendererProgramManager {
 			}
 		}
 		bufferPasses = List.copyOf(passes);
+		soundPass = sound;
+		String[] all = new String[1 + (bufferSourceTexts != null ? bufferSourceTexts.length : 0)];
+		all[0] = sourceText;
+		if (bufferSourceTexts != null) {
+			System.arraycopy(bufferSourceTexts, 0, all, 1, bufferSourceTexts.length);
+		}
+		moduleName = ModuleDirective.find(all);
+		steps = findSteps(all);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}
 

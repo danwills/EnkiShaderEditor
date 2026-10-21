@@ -71,6 +71,12 @@ final class BuiltinUniforms {
 	// The Image pass's `sourceText`, if it uses it - see SourceText.
 	@Nullable
 	private SourceText sourceText;
+	// A `///mod:` soundtrack, if the shader has one - see ModulePlayer.
+	@Nullable
+	private ModulePlayer modulePlayer;
+	// For `soundTime` - see SoundOutput.nextTime().
+	@Nullable
+	private SoundOutput soundOutput;
 	// The built-in `font`, if a shader uses it - see FontTexture.
 	@Nullable
 	private GlTexture2D fontTexture;
@@ -271,10 +277,15 @@ final class BuiltinUniforms {
 	SurfaceState updateSurface(int width, int height, long now) {
 		// Excludes the recreate gap from `runtime` either way.
 		runtimeClock.pause();
-		if (keepClockOnNextSurface) {
-			// See setQuality() - time, frame and startRandom carry on.
-			keepClockOnNextSurface = false;
-		} else {
+		// Only a clock that's already running can carry on: a renderer that
+		// hasn't had a surface yet (the activity just recreated, say, then
+		// handed the shader's own quality) has never started it, and `time`
+		// would read as the phone's uptime - big enough to lose float
+		// precision, so everything driven by it stepped and smeared.
+		boolean keepClock = keepClockOnNextSurface && resolution[0] > 0;
+		keepClockOnNextSurface = false;
+		// Otherwise (see setQuality()) time, frame and startRandom carry on.
+		if (!keepClock) {
 			pausedAtNanos = -1;
 			startTime = now;
 			startRandom = (float) Math.random();
@@ -404,7 +415,7 @@ final class BuiltinUniforms {
 			bindings.setTexture(ShaderRenderer.UNIFORM_BACKBUFFER, backBufferTexture);
 		}
 		cameraUniforms.apply(bindings);
-		audioUniforms.apply(device);
+		audioUniforms.apply(device, ownSoundTap());
 		// Before the saved textures, so one saved as "font" (or
 		// "keyboard") wins.
 		if (fontTexture != null) {
@@ -420,6 +431,13 @@ final class BuiltinUniforms {
 			ShaderRenderer.applySourceText(bindings, sourceText);
 		}
 		liveDefines.apply(bindings);
+		if (modulePlayer != null) {
+			modulePlayer.bind(bindings);
+		}
+		if (soundOutput != null) {
+			bindings.setFloat(ShaderRenderer.UNIFORM_SOUND_TIME, soundOutput.nextTime());
+			bindings.setInt(ShaderRenderer.UNIFORM_SOUND_SAMPLE, soundOutput.nextSample());
+		}
 
 		return new PreparedFrame(
 				bindings,
@@ -432,12 +450,45 @@ final class BuiltinUniforms {
 		this.keyboard = keyboard;
 	}
 
+	void setModulePlayer(@Nullable ModulePlayer modulePlayer) {
+		this.modulePlayer = modulePlayer;
+	}
+
+	void setSoundOutput(@Nullable SoundOutput soundOutput) {
+		this.soundOutput = soundOutput;
+	}
+
+	// See BuiltinAudioUniforms.setOwnSound().
+	void setOwnSound(boolean expected) {
+		audioUniforms.setOwnSound(expected);
+	}
+
+	// What audioSpectrum hears of the app's own sound: the module if it's
+	// playing, else the Sound pass if that is.
+	@Nullable
+	private OwnSoundTap ownSoundTap() {
+		OwnSoundTap moduleTap = modulePlayer != null ? modulePlayer.getTap() : null;
+		OwnSoundTap soundTap = soundOutput != null ? soundOutput.getTap() : null;
+		if (moduleTap != null && moduleTap.isPlaying()) {
+			return moduleTap;
+		}
+		if (soundTap != null && soundTap.isPlaying()) {
+			return soundTap;
+		}
+		return moduleTap != null ? moduleTap : soundTap;
+	}
+
 	void setFontTexture(@Nullable GlTexture2D fontTexture) {
 		this.fontTexture = fontTexture;
 	}
 
 	void setSourceText(@Nullable SourceText sourceText) {
 		this.sourceText = sourceText;
+	}
+
+	// `frame` - see ShaderRenderer.setStepFrame().
+	int getFrameNumber() {
+		return frameNum;
 	}
 
 	@NonNull
@@ -548,6 +599,7 @@ final class BuiltinUniforms {
 	private void bindShaderToyUniforms(
 			@NonNull ProgramBindings bindings,
 			float delta) {
+		bindings.setFloat(ShaderRenderer.UNIFORM_ST_SAMPLE_RATE, SoundOutput.SAMPLE_RATE);
 		lastBoundTime = delta;
 		float timeDelta = previousFrameTime < 0 ? 0f : Math.max(0f, delta - previousFrameTime);
 		bindings.setFloat(ShaderRenderer.UNIFORM_ST_TIME, delta);

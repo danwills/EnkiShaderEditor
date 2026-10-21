@@ -85,6 +85,10 @@ public class MainMenuManager {
 
 		void onBatchShaders();
 
+		void onSaveBufferAsTexture();
+
+		void onImportModule();
+
 		void onPlayLocalMusic();
 	}
 
@@ -172,6 +176,9 @@ public class MainMenuManager {
 		setMoreOptionsClickListener(R.id.build_shader_pack, navigationActions::onBuildShaderPack);
 		setMoreOptionsClickListener(R.id.get_shader_pack, navigationActions::onGetShaderPack);
 		setMoreOptionsClickListener(R.id.batch_shaders, navigationActions::onBatchShaders);
+		setMoreOptionsClickListener(R.id.save_buffer_as_texture,
+				navigationActions::onSaveBufferAsTexture);
+		setMoreOptionsClickListener(R.id.import_module, navigationActions::onImportModule);
 		setMoreOptionsClickListener(R.id.play_local_music, navigationActions::onPlayLocalMusic);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 

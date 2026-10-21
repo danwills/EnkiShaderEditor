@@ -106,7 +106,13 @@ public final class DataRecords {
 			@Nullable
 			String installed,
 			@Nullable
-			String source
+			String source,
+			// See DatabaseContract.PackColumns.SHOW and PackShow.
+			@Nullable
+			String show
 	) {
+		public boolean isShow() {
+			return show != null && !show.isEmpty();
+		}
 	}
 }

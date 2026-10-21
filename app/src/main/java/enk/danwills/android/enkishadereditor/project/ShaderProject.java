@@ -150,6 +150,36 @@ public final class ShaderProject implements Serializable {
 		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
 	}
 
+	// The project's texts (see ShaderProjectPaths.getTextPath()), name ->
+	// text, in file order.
+	@NonNull
+	public Map<String, String> getTexts() {
+		var texts = new LinkedHashMap<String, String>();
+		for (ShaderProjectFile file : files) {
+			String name = ShaderProjectPaths.getTextName(file.path());
+			if (name != null) {
+				texts.put(name, file.source());
+			}
+		}
+		return texts;
+	}
+
+	// Replaces every text file with `texts`, keeping all other files.
+	@NonNull
+	public ShaderProject withTexts(@NonNull Map<String, String> texts) {
+		ArrayList<ShaderProjectFile> updatedFiles = new ArrayList<>(files.size());
+		for (ShaderProjectFile file : files) {
+			if (ShaderProjectPaths.getTextName(file.path()) == null) {
+				updatedFiles.add(file);
+			}
+		}
+		for (var entry : texts.entrySet()) {
+			updatedFiles.add(new ShaderProjectFile(
+					ShaderProjectPaths.getTextPath(entry.getKey()), entry.getValue()));
+		}
+		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
+	}
+
 	@NonNull
 	private static String requireText(String value, String name) {
 		String text = Objects.requireNonNull(value, name).trim();

@@ -28,6 +28,9 @@ public class Preferences {
 	public static final String SENSOR_DELAY = "sensor_delay";
 	public static final String USE_MICROPHONE_AUDIO = "use_microphone_audio";
 	public static final String USE_SYSTEM_AUDIO = "use_system_audio";
+	// audioSpectrum hears the shader's own Sound pass or tracker module,
+	// when it has one, in place of the microphone/system capture.
+	public static final String USE_OWN_SOUND_AUDIO = "use_own_sound_audio";
 	// See MainActivity.showLocalMusicPlayerDialog() - a third
 	// audioSpectrum source (an in-app MP3 player, so visuals sync to
 	// chosen music without needing the system-audio-capture consent
@@ -146,6 +149,7 @@ public class Preferences {
 	private int sensorDelay = SensorManager.SENSOR_DELAY_NORMAL;
 	private boolean useMicrophoneAudio = true;
 	private boolean useSystemAudio = false;
+	private boolean useOwnSoundAudio = true;
 	private boolean useLocalPlaybackAudio = false;
 	@Nullable
 	private String localPlaybackDirectory = null;
@@ -229,6 +233,9 @@ public class Preferences {
 		useSystemAudio = preferences.getBoolean(
 				USE_SYSTEM_AUDIO,
 				useSystemAudio);
+		useOwnSoundAudio = preferences.getBoolean(
+				USE_OWN_SOUND_AUDIO,
+				useOwnSoundAudio);
 		useLocalPlaybackAudio = preferences.getBoolean(
 				USE_LOCAL_PLAYBACK_AUDIO,
 				useLocalPlaybackAudio);
@@ -507,6 +514,10 @@ public class Preferences {
 
 	public boolean useSystemAudio() {
 		return useSystemAudio;
+	}
+
+	public boolean useOwnSoundAudio() {
+		return useOwnSoundAudio;
 	}
 
 	public boolean useLocalPlaybackAudio() {

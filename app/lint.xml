@@ -5,4 +5,9 @@
 		replaces our custom splash screen anyway, which is exactly what
 		we want. So there is no reason to complain. -->
 	<issue id="CustomSplashScreen" severity="ignore"/>
+	<!-- IBXM, a third-party library kept as it was written - see its
+		README.md. -->
+	<issue id="all">
+		<ignore path="src/main/java/ibxm/**"/>
+	</issue>
 </lint>

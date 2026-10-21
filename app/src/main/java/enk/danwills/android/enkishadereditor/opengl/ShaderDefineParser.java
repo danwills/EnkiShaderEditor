@@ -235,8 +235,11 @@ public final class ShaderDefineParser {
 	// with DefineAdapter's own per-component vector sliders (see
 	// bindVector()), which have no surrounding #define text to re-parse.
 	@NonNull
+	// Sized to the value itself - a small one (a reaction rate of 0.042,
+	// say) gets a small range rather than at least -2 to 2, where a touch
+	// threw it anywhere - and to -2..2 only for 0.
 	public static float[] inferSliderRange(float numeric) {
-		float base = Math.max(Math.abs(numeric), 1f);
+		float base = numeric != 0f ? Math.abs(numeric) : 1f;
 		float span = base * 2f;
 		float lo = Math.min(0f, numeric - span);
 		float hi = Math.max(0f, numeric + span);

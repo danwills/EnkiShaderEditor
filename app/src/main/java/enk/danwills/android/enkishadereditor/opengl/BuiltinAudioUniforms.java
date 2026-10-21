@@ -45,6 +45,18 @@ final class BuiltinAudioUniforms {
 	// user specifically opened that player to drive the visuals from it.
 	private int localPlaybackAudioSessionId = 0;
 	private boolean needsAudioCaptureConsent;
+	// The app's own sound (see setOwnSound()): while the shader has some
+	// and use_own_sound_audio is on, audioSpectrum comes from it in place
+	// of any capture - nothing recorded, so no permission or prompt.
+	private boolean ownSoundExpected;
+	@Nullable
+	private AudioSpectrumListener ownListener;
+	@Nullable
+	private OwnSoundTap ownTap;
+	private int ownEpoch;
+	private long ownRead;
+	@NonNull
+	private short[] ownSamples = new short[0];
 	// Set once releaseMediaProjection() has run (Activity being destroyed
 	// for good) - see setMediaProjection() below for why this is needed
 	// in addition to that method already being synchronized.
@@ -96,9 +108,27 @@ final class BuiltinAudioUniforms {
 		}
 	}
 
-	synchronized void apply(@NonNull GlDevice device) {
+	// Whether the shader makes its own sound (a Sound pass or a module).
+	// Before configure() for a new shader, so it needn't open a capture
+	// only to close it again; any time after, it reopens what's wanted.
+	synchronized void setOwnSound(boolean expected) {
+		if (expected == ownSoundExpected) {
+			return;
+		}
+		ownSoundExpected = expected;
+		if (spectrumTextureBinding != null) {
+			unregisterListener();
+			openListenerIfNeeded();
+		}
+	}
+
+	// tap: what the app's own sound is playing, or null for none.
+	synchronized void apply(@NonNull GlDevice device, @Nullable OwnSoundTap tap) {
 		var binding = spectrumTextureBinding;
 		var listener = audioSpectrumListener;
+		if (binding != null && tap != null && wantsOwnSound()) {
+			listener = feedOwnSound(tap);
+		}
 		if (binding == null || listener == null) {
 			return;
 		}
@@ -177,6 +207,7 @@ final class BuiltinAudioUniforms {
 	synchronized void release() {
 		spectrumTextureBinding = null;
 		unregisterListener();
+		releaseOwnListener();
 	}
 
 	// Called when the Activity is being destroyed for good, to fully end
@@ -206,10 +237,57 @@ final class BuiltinAudioUniforms {
 		return listener != null && listener.isReceivingAudio();
 	}
 
+	private boolean wantsOwnSound() {
+		return ownSoundExpected && ShaderEditorApp.preferences.useOwnSoundAudio();
+	}
+
+	// What's been heard since last time, into ownListener.
+	@NonNull
+	private AudioSpectrumListener feedOwnSound(@NonNull OwnSoundTap tap) {
+		var listener = ownListener;
+		if (listener == null) {
+			listener = new AudioSpectrumListener();
+			listener.setFullIntervalMode(
+					!ShaderEditorApp.preferences.audioSpectrumShaderToyCompatible());
+			listener.registerPushed();
+			ownListener = listener;
+		}
+		long heard = tap.getHeard();
+		if (tap != ownTap || tap.getEpoch() != ownEpoch || heard < ownRead) {
+			ownTap = tap;
+			ownEpoch = tap.getEpoch();
+			ownRead = Math.max(0, heard - AudioSpectrumListener.TEXTURE_WIDTH * 2);
+		}
+		int count = (int) Math.min(heard - ownRead, 16384);
+		if (count > 0) {
+			if (ownSamples.length < count) {
+				ownSamples = new short[Math.max(count, 4096)];
+			}
+			tap.read(heard, count, ownSamples);
+			listener.push(ownSamples, count);
+		}
+		ownRead = heard;
+		return listener;
+	}
+
+	private void releaseOwnListener() {
+		if (ownListener != null) {
+			ownListener.unregister();
+			ownListener = null;
+		}
+		ownTap = null;
+	}
+
 	private void openListenerIfNeeded() {
 		if (spectrumTextureBinding == null || audioSpectrumListener != null) {
 			return;
 		}
+		if (wantsOwnSound()) {
+			// The shader's own sound drives it - see apply().
+			consentAlreadyRequested = false;
+			return;
+		}
+		releaseOwnListener();
 
 		boolean wantsLocalPlayback = ShaderEditorApp.preferences.useLocalPlaybackAudio()
 				&& localPlaybackAudioSessionId != 0;

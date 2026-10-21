@@ -19,11 +19,13 @@ import androidx.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
+import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 
 public class ShaderRenderer implements GLSurfaceView.Renderer {
@@ -183,6 +185,15 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_ST_MOUSE = "iMouse";
 	public static final String UNIFORM_ST_DATE = "iDate";
 	public static final String UNIFORM_ST_CHANNEL_RESOLUTION = "iChannelResolution";
+	public static final String UNIFORM_ST_SAMPLE_RATE = "iSampleRate";
+	// See SoundOutput.nextTime().
+	public static final String UNIFORM_SOUND_TIME = "soundTime";
+	public static final String UNIFORM_SOUND_SAMPLE = "soundSample";
+	// A `///mod:` soundtrack's state - see ModulePlayer.
+	public static final String UNIFORM_MODULE_INFO = "moduleInfo";
+	public static final String UNIFORM_MODULE_SCOPE = "moduleScope";
+	public static final String UNIFORM_MODULE_TIME = "moduleTime";
+	public static final String UNIFORM_MODULE_ROW = "moduleRow";
 
 	private static final int MAX_TEXTURES = 32;
 	private static final long FPS_UPDATE_FREQUENCY_NS = 200000000L;
@@ -226,6 +237,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	@Nullable
 	private GlTexture2D blackTexture;
 	private boolean halfFloatBuffers;
+	private boolean float32Buffers;
 	private final boolean[] bufferNeedsMipmaps = new boolean[ChannelParameters.MAX_CHANNELS];
 	private final float[] channelResolution = new float[ChannelParameters.MAX_CHANNELS * 3];
 	private volatile long nextFpsUpdate;
@@ -234,6 +246,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private static final double FPS_SMOOTHING_NANOS = 1_000_000_000.0;
 	private volatile int lastFps;
 	// See setFragmentShader()/onViewResumed()/onDrawFrame().
+	private volatile boolean pendingTextReload;
 	private volatile boolean pendingReload;
 	private volatile boolean pendingReconfigure;
 	private volatile boolean pendingFirstFrameNotify;
@@ -343,6 +356,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private final KeyboardInput keyboardInput = new KeyboardInput();
 	private volatile boolean keyboardWanted;
 	private volatile boolean redoRequested;
+	@NonNull
+	private final SoundOutput soundOutput = new SoundOutput();
+	// See updateSound() - GL thread only.
+	@Nullable
+	private ModulePlayer modulePlayer;
+	private volatile boolean soundEnabled = true;
+	// See setShowSoundtrack().
+	private volatile boolean continuousSound;
+	@Nullable
+	private volatile String soundtrackModule;
 	private int redoFrameStamp = -1;
 	@Nullable
 	private ProgramBinaryCache programBinaryCache;
@@ -350,6 +373,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public ShaderRenderer(Context context) {
 		this.context = context;
 		builtinUniforms = new BuiltinUniforms(context);
+		builtinUniforms.setSoundOutput(soundOutput);
 	}
 
 	public void setVersion(int version) {
@@ -394,6 +418,16 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		pendingReload = true;
 	}
 
+	// The shader's texts (see ShaderTextDao): for the next
+	// setFragmentShader(), or - live, the shader unchanged - made into
+	// textures again on the next frame, without recompiling or restarting.
+	public void setShaderTexts(@NonNull Map<String, String> texts, boolean live) {
+		programManager.setTexts(texts);
+		if (live) {
+			pendingTextReload = true;
+		}
+	}
+
 	// While paused: the next frame draws the last one again, from the
 	// same inputs (each buffer's and the backbuffer's previous frame), at
 	// the same time and frame number - so a paused simulation shows a
@@ -419,6 +453,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		for (var pass : programManager.getBufferPasses()) {
 			if (pass.buffer == buffer && pass.hasTargets()) {
 				return BufferText.read(device, pass, endWithNewline);
+			}
+		}
+		return null;
+	}
+
+	// Offscreen buffer `buffer` (0 = A) as RGBA bytes, bottom row first,
+	// and its size - see BufferText.readRgba(). Null if it can't be read.
+	// GL thread only.
+	public record BufferPixels(int width, int height, @NonNull java.nio.ByteBuffer rgba) {
+	}
+
+	@Nullable
+	public BufferPixels readBufferPixels(int buffer) {
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.buffer == buffer && pass.hasTargets()) {
+				var rgba = BufferText.readRgba(device, pass);
+				return rgba != null ? new BufferPixels(pass.getWidth(), pass.getHeight(), rgba) : null;
 			}
 		}
 		return null;
@@ -491,6 +542,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// feedback shader's accumulated image is discarded too.
 	public void restartTime() {
 		redoFrameStamp = -1;
+		soundOutput.restart();
+		if (modulePlayer != null) {
+			modulePlayer.restart();
+		}
 		builtinUniforms.restart(System.nanoTime());
 		renderPipeline.clearTargets();
 		for (var pass : programManager.getBufferPasses()) {
@@ -660,6 +715,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		device.allocateTexture2D(blackTexture, 1, 1);
 		device.updateTexture2D(blackTexture, java.nio.ByteBuffer.allocateDirect(4));
 		halfFloatBuffers = glVersion >= 3 && device.supportsHalfFloatTargets();
+		float32Buffers = glVersion >= 3 && device.supportsFloatTargets();
 		var thumbnailErrors = renderPipeline.createContextResources();
 		if (!thumbnailErrors.isEmpty()) {
 			submitErrors(thumbnailErrors);
@@ -668,7 +724,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		pendingReload = false;
 		pendingReconfigure = false;
 		abandonProgressiveFrame();
+		soundOutput.discardTarget();
+		if (modulePlayer != null) {
+			modulePlayer.discardTextures();
+		}
 		reloadProgram();
+		updateSound(false);
 	}
 
 	// Compile (or load from the binary cache) the current prepared shader
@@ -814,6 +875,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public void setContinuousRendering(boolean continuous) {
 		continuousRendering = continuous;
 		lastFrameStartNanos = 0;
+		if (!continuous) {
+			// Paused: the sound stops where it is and carries on from
+			// there - see renderSound().
+			soundOutput.pause();
+			if (modulePlayer != null) {
+				modulePlayer.setPaused(true);
+			}
+		}
 	}
 
 	// In continuous mode the GL thread loops draw -> swap -> draw, and
@@ -876,6 +945,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// one's stashed state.
 			stateRowMigrationPending = false;
 			reloadProgram();
+			updateSound(keepState);
 		} else if (pendingReconfigure) {
 			pendingReconfigure = false;
 			abandonProgressiveFrame();
@@ -883,6 +953,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (program != null) {
 				configureUniforms(program);
 			}
+		}
+		if (pendingTextReload) {
+			pendingTextReload = false;
+			programManager.reloadTexts(context, device);
 		}
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
@@ -954,6 +1028,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		checkAutoSwitchToProgressive(getChainRows());
 
+		updateModule();
 		var frame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
 		if (frame == null) {
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT |
@@ -965,6 +1040,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 		int height = renderPipeline.getTargetHeight();
 		drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(), height);
+		renderSound(frame.bindings(), mainProgram);
 		renderPipeline.renderSurfacePass(
 				surfaceBindings,
 				surfaceProgram,
@@ -1003,8 +1079,13 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			redoFrameStamp = -1;
 			return;
 		}
-		drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(),
-				renderPipeline.getTargetHeight());
+		redoingStep = true;
+		try {
+			drawChainRows(frame.bindings(), mainProgram, 0, getChainRows(),
+					renderPipeline.getTargetHeight());
+		} finally {
+			redoingStep = false;
+		}
 		renderPipeline.renderSurfacePass(
 				surfaceBindings,
 				surfaceProgram,
@@ -1033,6 +1114,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		int height = renderPipeline.getTargetHeight();
 		int chainRows = getChainRows();
 		adaptProgressiveRows(chainRows);
+		updateModule();
 		if (progressiveFrame == null ||
 				builtinUniforms.getBeginFrameCount() != progressiveFrameStamp) {
 			progressiveFrame = builtinUniforms.beginFrame(device, renderPipeline.getBackTexture());
@@ -1065,6 +1147,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				? Math.max(1, Math.min(remaining, progressiveRowsPerStep))
 				: remaining;
 		drawChainRows(frame.bindings(), mainProgram, progressiveRowsDone, rows, height);
+		// Every step, not just completed frames: the sound needs feeding
+		// at the display's rate however slow the picture is.
+		renderSound(frame.bindings(), mainProgram);
 		progressiveRowsDone += rows;
 		progressiveLastRows = rows;
 		++progressiveStepsThisFrame;
@@ -1113,14 +1198,38 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		return !programManager.getBufferPasses().isEmpty();
 	}
 
-	// Rows in one whole frame of the pass chain: each buffer pass, then
-	// the Image pass, all at the render size.
+	// Rows in one whole frame of the pass chain: each buffer pass - as
+	// many times over as the shader's steps (see chainSteps()) - then the
+	// Image pass, all at the render size.
 	private int getChainRows() {
-		return renderPipeline.getTargetHeight() * (programManager.getBufferPasses().size() + 1);
+		return renderPipeline.getTargetHeight() *
+				(programManager.getBufferPasses().size() * chainSteps() + 1);
+	}
+
+	// Set while redoLastStep() draws: only the last of a frame's steps is
+	// done again.
+	private boolean redoingStep;
+
+	// Times the buffer passes run per frame drawn - a `///steps:N` line
+	// (see RendererProgramManager.getSteps()), but once when redoing.
+	private int chainSteps() {
+		return redoingStep ? 1 : programManager.getSteps();
+	}
+
+	// With several steps a frame, `frame`/`iFrame` count steps, not frames:
+	// step s of frame f is f * steps + s - so `iFrame == 0` (a simulation's
+	// start) is only ever the very first step. The Image pass gets the
+	// frame's last.
+	private void setStepFrame(@NonNull ProgramBindings bindings, int step) {
+		int steps = programManager.getSteps();
+		int number = builtinUniforms.getFrameNumber() * steps + step;
+		bindings.setInt(UNIFORM_FRAME_NUMBER, number);
+		bindings.setInt(UNIFORM_ST_FRAME, number);
 	}
 
 	private void configureUniforms(@NonNull GlProgram mainProgram) {
 		builtinUniforms.setSourceText(programManager.getMainSourceText());
+		builtinUniforms.setOwnSound(hasOwnSound());
 		builtinUniforms.configure(
 				device,
 				mainProgram,
@@ -1138,7 +1247,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				if (errors == null) {
 					errors = new ArrayList<>();
 				}
-				pass.ensureTargets(device, width, height, halfFloatBuffers, errors);
+				pass.ensureTargets(device, width, height, halfFloatBuffers, float32Buffers,
+						errors);
 			}
 		}
 		if (errors != null && !errors.isEmpty()) {
@@ -1181,12 +1291,18 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		var passes = programManager.getBufferPasses();
 		int width = renderPipeline.getTargetWidth();
 		GlTexture2D mainBackTexture = renderPipeline.getBackTexture();
+		int steps = chainSteps();
+		boolean stepping = programManager.getSteps() > 1;
+		int lastStep = programManager.getSteps() - 1;
 		for (int done = start, end = start + rows; done < end; ) {
 			int passIndex = done / height;
 			int y0 = done % height;
 			int n = Math.min(end - done, height - y0);
-			if (passIndex < passes.size()) {
-				var pass = passes.get(passIndex);
+			if (passIndex < passes.size() * steps) {
+				var pass = passes.get(passIndex % passes.size());
+				if (stepping) {
+					setStepFrame(bindings, redoingStep ? lastStep : passIndex / passes.size());
+				}
 				var program = pass.getProgram();
 				var framebuffer = pass.getRenderFramebuffer();
 				if (program != null && framebuffer != null) {
@@ -1207,6 +1323,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					}
 				}
 			} else {
+				if (stepping) {
+					setStepFrame(bindings, lastStep);
+				}
 				bindings.retarget(mainProgram);
 				bindChannels(bindings, programManager.getPreparedShaderSource(), passes);
 				bindSourceText(bindings, mainProgram, programManager.getMainSourceText());
@@ -1300,6 +1419,97 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	private static int tabWidth() {
 		return ShaderEditorApp.preferences.getTabWidth();
+	}
+
+	// Whether Sound passes and `///mod:` soundtracks play at all - not
+	// for a live wallpaper.
+	public void setSoundEnabled(boolean enabled) {
+		soundEnabled = enabled;
+	}
+
+	// The view's going for good (its activity is finishing): the sound
+	// stops and its threads end. UI thread, with the view paused - the GL
+	// thread isn't drawing, and the GL objects go with the context.
+	public void releaseSound() {
+		soundOutput.stop();
+		var player = modulePlayer;
+		modulePlayer = null;
+		builtinUniforms.setModulePlayer(null);
+		if (player != null) {
+			player.stop();
+		}
+	}
+
+	// A show's soundtrack (see ShowActivity): the sound carries on through
+	// shader changes instead of starting again with each one, and
+	// `module`, if set, plays in place of any `///mod:` line.
+	public void setShowSoundtrack(boolean continuous, @Nullable String module) {
+		continuousSound = continuous;
+		soundtrackModule = module;
+	}
+
+	// Feeds the Sound pass's output to the speaker - see SoundOutput.
+	// Only while running: paused, the sound pauses too.
+	private void renderSound(@NonNull ProgramBindings bindings, @NonNull GlProgram mainProgram) {
+		var pass = programManager.getSoundPass();
+		var program = pass != null ? pass.getProgram() : null;
+		if (program == null || !continuousRendering || !soundEnabled) {
+			return;
+		}
+		bindings.retarget(program);
+		bindChannels(bindings, pass.prepared, programManager.getBufferPasses());
+		soundOutput.render(device, renderPipeline, bindings, program);
+		bindings.retarget(mainProgram);
+	}
+
+	// After a reload: silent if there's no Sound pass any more, and from
+	// the start for a new shader - but carrying on where it was for the
+	// same one changed in place (keepState). The same for a `///mod:`
+	// soundtrack, which is only made afresh when it's a different one.
+	private void updateSound(boolean keepState) {
+		if (programManager.getSoundPass() == null) {
+			soundOutput.stop();
+		} else if (!keepState && !continuousSound) {
+			soundOutput.restart();
+		}
+		String module = soundtrackModule;
+		String name = !soundEnabled ? null
+				: module != null ? module : programManager.getModuleName();
+		if (modulePlayer != null && !modulePlayer.getName().equals(name)) {
+			modulePlayer.stop();
+			modulePlayer.releaseTextures(device);
+			modulePlayer = null;
+		}
+		if (name != null && modulePlayer == null) {
+			byte[] data = Database.getInstance(context).getDataSource().module.getModuleData(name);
+			modulePlayer = data != null ? ModulePlayer.create(name, data) : null;
+			if (modulePlayer != null) {
+				modulePlayer.start();
+			} else {
+				Log.w(TAG, "No module called " + name);
+			}
+		} else if (modulePlayer != null && !keepState && !continuousSound) {
+			modulePlayer.restart();
+		}
+		builtinUniforms.setModulePlayer(modulePlayer);
+		builtinUniforms.setOwnSound(hasOwnSound());
+	}
+
+	// Whether the shader (or a show's soundtrack) makes sound of its own,
+	// for audioSpectrum to hear - see BuiltinAudioUniforms.setOwnSound().
+	private boolean hasOwnSound() {
+		return soundEnabled && (programManager.getSoundPass() != null ||
+				soundtrackModule != null || programManager.getModuleName() != null);
+	}
+
+	// Each frame: the soundtrack keeps time with the shader, and its
+	// textures show what's being heard.
+	private void updateModule() {
+		var player = modulePlayer;
+		if (player != null) {
+			player.setPaused(!continuousRendering);
+			player.update(device);
+		}
 	}
 
 	private void bindChannels(@NonNull ProgramBindings bindings,
@@ -1615,7 +1825,22 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	}
 
 	public void unregisterListeners() {
+		unregisterListeners(false);
+	}
+
+	// forShaderChange: the view's only pausing to swap the shader (see
+	// ShaderView.setFragmentShader()) - a show's continuous soundtrack
+	// (setShowSoundtrack()) plays on through it.
+	public void unregisterListeners(boolean forShaderChange) {
 		builtinUniforms.release();
+		if (forShaderChange && continuousSound) {
+			return;
+		}
+		// The view's pausing - no more frames to keep the sound fed.
+		soundOutput.pause();
+		if (modulePlayer != null) {
+			modulePlayer.setPaused(true);
+		}
 	}
 
 	public void touchAt(MotionEvent e) {

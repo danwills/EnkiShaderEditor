@@ -73,6 +73,13 @@ public final class ShaderDefine {
 	@Nullable
 	public String liveError;
 
+	// Adjust Defines in a multipass shader also lists the other passes'
+	// defines (one entry per name): the path of the pass this one was
+	// found in, or null for the open pass's own. Every pass with a define
+	// of the same name gets its edits - see MainActivity.withDefines().
+	@Nullable
+	public String passPath;
+
 	public ShaderDefine(@NonNull String name, @NonNull Type type, int lineIndex,
 			@NonNull String indent, @NonNull String value, @Nullable String comment,
 			float sliderMin, float sliderMax,

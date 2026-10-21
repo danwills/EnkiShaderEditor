@@ -388,6 +388,7 @@ public class ShaderDao {
 				new String[]{String.valueOf(id), created});
 		if (removed > 0) {
 			BufferDao.deleteBuffers(db, id);
+			ShaderTextDao.deleteTexts(db, id);
 		}
 		return removed > 0;
 	}
@@ -398,6 +399,7 @@ public class ShaderDao {
 				DatabaseContract.ShaderColumns._ID + " = ?",
 				new String[]{String.valueOf(id)});
 		BufferDao.deleteBuffers(db, id);
+		ShaderTextDao.deleteTexts(db, id);
 	}
 	// endregion
 
@@ -697,9 +699,10 @@ public class ShaderDao {
 							sourceModifiedDate,
 							cursor.getBlob(thumbIndex),
 							cursor.getFloat(qualityIndex));
-					if (shaderId < 1 || !BufferDao.importBuffers(dst, src,
-							CursorHelpers.getLong(cursor, DatabaseContract.ShaderColumns._ID),
-							shaderId)) {
+					long fromId = CursorHelpers.getLong(cursor,
+							DatabaseContract.ShaderColumns._ID);
+					if (shaderId < 1 || !BufferDao.importBuffers(dst, src, fromId, shaderId) ||
+							!ShaderTextDao.importTexts(dst, src, fromId, shaderId)) {
 						success = false;
 						break;
 					}
@@ -760,6 +763,7 @@ public class ShaderDao {
 				DatabaseContract.ShaderColumns._ID + " = ?",
 				new String[]{String.valueOf(id)});
 		BufferDao.deleteBuffers(db, id);
+		ShaderTextDao.deleteTexts(db, id);
 	}
 
 	private static void tagShader(SQLiteDatabase db, long shaderId, String packId) {

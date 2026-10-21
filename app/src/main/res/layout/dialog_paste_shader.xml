@@ -1,32 +1,78 @@
-<ScrollView
+<!-- The buttons are at the top, so the on-screen keyboard (raised for
+     the name) can't cover them. -->
+<LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
-	android:layout_height="wrap_content">
+	android:layout_height="wrap_content"
+	android:orientation="vertical">
 
 	<LinearLayout
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:orientation="vertical"
-		android:padding="16dp">
+		tools:ignore="ButtonOrder"
+		android:orientation="horizontal"
+		android:gravity="center_vertical"
+		android:paddingStart="16dp"
+		android:paddingEnd="16dp"
+		android:paddingTop="8dp">
 
-		<!-- Starts blank, unlike e.g. the custom-resolution dialog's
-		     oversample field - a plain hint is enough here, no separate
-		     persistent label needed, since a blank EditText actually
-		     shows its hint. -->
-		<EditText
-			android:id="@+id/paste_shader_name"
-			android:layout_width="match_parent"
+		<Button
+			android:id="@+id/paste_shader_add_as_child"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:hint="@string/paste_shader_name_hint"
-			android:inputType="text"
-			android:maxLines="1" />
+			android:text="@string/paste_add_as_child" />
 
-		<RadioGroup
-			android:id="@+id/paste_shader_quality_options"
-			android:layout_width="match_parent"
+		<View
+			android:layout_width="0dp"
+			android:layout_height="1dp"
+			android:layout_weight="1" />
+
+		<Button
+			android:id="@+id/paste_shader_cancel"
+			style="?attr/borderlessButtonStyle"
+			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:layout_marginTop="16dp"
-			android:orientation="vertical" />
+			android:text="@android:string/cancel" />
 
+		<Button
+			android:id="@+id/paste_shader_ok"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:text="@android:string/ok" />
 	</LinearLayout>
-</ScrollView>
+
+	<ScrollView
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content">
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:orientation="vertical"
+			android:padding="16dp">
+
+			<!-- Starts blank, unlike e.g. the custom-resolution dialog's
+			     oversample field - a plain hint is enough here, no separate
+			     persistent label needed, since a blank EditText actually
+			     shows its hint. -->
+			<EditText
+				android:id="@+id/paste_shader_name"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:hint="@string/paste_shader_name_hint"
+				android:inputType="text"
+				android:importantForAutofill="no"
+				android:maxLines="1" />
+
+			<RadioGroup
+				android:id="@+id/paste_shader_quality_options"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="16dp"
+				android:orientation="vertical" />
+
+		</LinearLayout>
+	</ScrollView>
+</LinearLayout>

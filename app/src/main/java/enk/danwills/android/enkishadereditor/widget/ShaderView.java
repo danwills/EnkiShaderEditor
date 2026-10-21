@@ -92,7 +92,8 @@ public class ShaderView extends GLSurfaceView {
 	// keepState: see ShaderRenderer.setFragmentShader().
 	public void setFragmentShader(String src, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
-		onPause();
+		super.onPause();
+		renderer.unregisterListeners(true);
 		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources), quality,
 				shaderId, keepState);
 		onResume();
@@ -153,6 +154,31 @@ public class ShaderView extends GLSurfaceView {
 		return result[0];
 	}
 
+	// See ShaderRenderer.readBufferPixels(), waiting for the GL thread -
+	// not on the UI thread.
+	@Nullable
+	public ShaderRenderer.BufferPixels readBufferPixelsAndWait(int buffer) {
+		ShaderRenderer.BufferPixels[] result = new ShaderRenderer.BufferPixels[1];
+		CountDownLatch done = new CountDownLatch(1);
+		queueEvent(() -> {
+			try {
+				result[0] = renderer.readBufferPixels(buffer);
+			} finally {
+				done.countDown();
+			}
+		});
+		requestRender();
+		try {
+			if (!done.await(10, TimeUnit.SECONDS)) {
+				return null;
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		}
+		return result[0];
+	}
+
 	// When pasting text from other apps, e.g. Gmail, the text is
 	// sometimes tainted with useless non-ascii characters that can raise
 	// an exception in the shader compiler. To still allow UTF-8
@@ -193,7 +219,9 @@ public class ShaderView extends GLSurfaceView {
 		setPreserveEGLContextOnPause(true);
 	}
 
-	private static String removeNonAscii(String text) {
+	// As setFragmentShader() cleans what it's given - so a binary made
+	// ahead from the same text matches (see HeadlessShaderCompiler.warm()).
+	public static String removeNonAscii(String text) {
 		return text == null
 				? null
 				: text.replaceAll("[^\\x0A\\x09\\x20-\\x7E]", "");

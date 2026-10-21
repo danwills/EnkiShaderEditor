@@ -145,12 +145,22 @@ public class PreviewActivity extends AppCompatActivity {
 		shaderView.onPause();
 	}
 
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+		// No more sound from a Sound pass or `///mod:` line.
+		if (shaderView != null) {
+			shaderView.getRenderer().releaseSound();
+		}
+	}
+
 	private boolean setShaderFromIntent(Intent intent) {
 		ShaderProjectSession projectSession = getProjectSession(intent);
 		if (shaderView == null || projectSession == null) {
 			return false;
 		}
 
+		shaderView.getRenderer().setShaderTexts(projectSession.getProject().getTexts(), false);
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				projectSession.getProject().getBufferSources(),

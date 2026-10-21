@@ -48,7 +48,11 @@ send some Bitcoin decimals to `bc1q2guk2rpll587aymrfadkdtpq32448x5khk5j8z`.
 
 See [FAQ.md](FAQ.md) for frequently asked questions.
 
-## Third-party assets
+## Third-party code and assets
+
+* Tracker module playback (MOD, S3M, XM) uses [IBXM](https://github.com/martincameron/micromod)
+	by Martin Cameron, under the [BSD-3-Clause licence](app/src/main/java/ibxm/LICENCE) - see
+	`app/src/main/java/ibxm/README.md`.
 
 * The built-in `font` texture is rendered from
 	[IBM Plex Mono](https://github.com/IBM/plex), Copyright © 2017 IBM Corp., under the

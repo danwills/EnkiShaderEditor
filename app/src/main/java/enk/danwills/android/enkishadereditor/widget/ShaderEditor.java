@@ -2,9 +2,11 @@ package enk.danwills.android.enkishadereditor.widget;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Parcelable;
 import android.text.Editable;
@@ -21,6 +23,7 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.LineHeightSpan;
 import android.text.style.ReplacementSpan;
 import android.util.AttributeSet;
+import android.view.ContextThemeWrapper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
@@ -172,6 +175,26 @@ public class ShaderEditor extends LineNumberEditText {
 			@Nullable AttributeSet attrs) {
 		super(context, attrs);
 		init(context);
+	}
+
+	// The app's theme hides the cursor's insertion handle (see AppTheme),
+	// but in code it's how to move the cursor precisely - so the editor
+	// gets the platform's back. Only settable from Android 10.
+	private void restoreInsertionHandle(@NonNull Context context) {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+			return;
+		}
+		var platform = new ContextThemeWrapper(context, android.R.style.Theme_DeviceDefault);
+		TypedArray attrs = platform.obtainStyledAttributes(
+				new int[]{android.R.attr.textSelectHandle});
+		try {
+			Drawable handle = attrs.getDrawable(0);
+			if (handle != null) {
+				setTextSelectHandle(handle);
+			}
+		} finally {
+			attrs.recycle();
+		}
 	}
 
 	@Nullable
@@ -703,6 +726,7 @@ public class ShaderEditor extends LineNumberEditText {
 	private void init(@NonNull Context context) {
 		// Setting this through XML does not work
 		setHorizontallyScrolling(true);
+		restoreInsertionHandle(context);
 
 		setFilters(new InputFilter[]{(source,
 				start, end,

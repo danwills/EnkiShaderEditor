@@ -24,6 +24,18 @@ const base = import.meta.env.BASE_URL;
       Made with help from <a href="https://claude.ai" target="_blank" rel="noopener noreferrer">Claude</a>.
     </p>
 
+    <div class="footer-credits">
+      <span class="footer-credits-label">Built with</span>
+      <a class="footer-credit" href="https://github.com/martincameron/micromod" target="_blank" rel="noopener noreferrer"
+        title="ProTracker, Scream Tracker 3 and FastTracker 2 replay by Martin Cameron, BSD-3-Clause">
+        IBXM tracker replay
+      </a>
+      <a class="footer-credit" href="https://github.com/IBM/plex" target="_blank" rel="noopener noreferrer"
+        title="The built-in shader font, SIL Open Font License">
+        IBM Plex Mono
+      </a>
+    </div>
+
     <div class="footer-original">
       <p class="footer-original-label">
         <span class="footer-original-tag">Psst, not Enki!</span>
@@ -106,6 +118,34 @@ const base = import.meta.env.BASE_URL;
 
   .footer-copy a:hover {
     color: var(--accent-cyan);
+  }
+
+  .footer-credits {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .footer-credits-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .footer-credit {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-xl);
+    padding: 0.25rem 0.75rem;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .footer-credit:hover {
+    color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
   }
 
   .footer-original {

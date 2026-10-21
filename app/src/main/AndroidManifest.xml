@@ -172,6 +172,12 @@
 			android:documentLaunchMode="intoExisting"
 			android:exported="false"/>
 		<activity
+			android:name=".activity.ShowActivity"
+			android:label="@string/play_show"
+			android:theme="@style/PreviewTheme"
+			android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+			android:exported="false"/>
+		<activity
 			android:name=".activity.PreferencesActivity"
 			android:label="@string/preferences"
 			android:exported="true"/>

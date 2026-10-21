@@ -58,8 +58,9 @@ public class LiveDefinesPanel extends LinearLayout {
 	private static final float MAX_HEIGHT_FRACTION = 0.45f;
 	private static final String[] VECTOR_SUFFIXES = {".x", ".y", ".z", ".w"};
 	// How far up (dp) the finger moves before a drag goes to a quarter,
-	// then a sixteenth, of its usual change - see fineScale().
-	private static final int[] FINE_STEPS_DP = {48, 120};
+	// then a sixteenth, then a sixty-fourth of its usual change - see
+	// fineScale().
+	private static final int[] FINE_STEPS_DP = {48, 120, 200};
 	// The pop-up hue/saturation disc - see addColorRow().
 	private static final int WHEEL_SIZE_DP = 220;
 	// Slider ranges as the user left them, by rangeKeyPrefix + name -
@@ -74,6 +75,14 @@ public class LiveDefinesPanel extends LinearLayout {
 	private Listener listener;
 	@NonNull
 	private String rangeKeyPrefix = "";
+	@NonNull
+	private List<ShaderDefine> defines = List.of();
+	// Each live define's value, and components, as live mode started -
+	// see reset().
+	private record Start(@NonNull String value, @Nullable float[] components) {
+	}
+
+	private final Map<ShaderDefine, Start> startValues = new HashMap<>();
 
 	public LiveDefinesPanel(@NonNull Context context) {
 		this(context, null);
@@ -100,6 +109,7 @@ public class LiveDefinesPanel extends LinearLayout {
 				listener.onDone();
 			}
 		});
+		findViewById(R.id.live_defines_reset).setOnClickListener(v -> reset());
 		findViewById(R.id.live_defines_discard).setOnClickListener(v -> {
 			if (listener != null) {
 				listener.onDiscard();
@@ -137,7 +147,36 @@ public class LiveDefinesPanel extends LinearLayout {
 	// rangeKeyPrefix: what the slider ranges are remembered under,
 	// with each define's name - one per shader (see addSliderRow()).
 	public void setDefines(@NonNull List<ShaderDefine> defines, @NonNull String rangeKeyPrefix) {
+		this.defines = defines;
 		this.rangeKeyPrefix = rangeKeyPrefix;
+		startValues.clear();
+		for (ShaderDefine define : defines) {
+			startValues.put(define, new Start(define.value, define.vectorComponents != null
+					? define.vectorComponents.clone()
+					: null));
+		}
+		buildRows();
+	}
+
+	// Reset: every define back to its value when live mode started (see
+	// setDefines()), the shader with them; slider ranges are kept.
+	private void reset() {
+		for (ShaderDefine define : defines) {
+			Start start = startValues.get(define);
+			if (start == null) {
+				continue;
+			}
+			define.value = start.value();
+			if (start.components() != null && define.vectorComponents != null) {
+				System.arraycopy(start.components(), 0, define.vectorComponents, 0,
+						start.components().length);
+			}
+			changed(define);
+		}
+		buildRows();
+	}
+
+	private void buildRows() {
 		rows.removeAllViews();
 		for (ShaderDefine define : defines) {
 			switch (define.type) {
@@ -411,9 +450,12 @@ public class LiveDefinesPanel extends LinearLayout {
 		void onValue(float value);
 	}
 
-	// A label and a slider for one value. The slider starts on a range
-	// guessed from the value (see ShaderDefineParser.inferSliderRange())
-	// and can reach past it without typing:
+	// A label and a slider for one value. Only dragging changes it - a
+	// touch alone doesn't jump the value to the finger, which in a running
+	// simulation could wreck it - by as much as the drag moves across the
+	// slider's range. The slider starts on a range guessed from the value
+	// (see ShaderDefineParser.inferSliderRange()) and can reach past it
+	// without typing:
 	// - letting go with the thumb at either end extends the range past
 	//   that end by its width, so pushing again goes further;
 	// - moving the finger up away from the slider while dragging makes
@@ -488,10 +530,6 @@ public class LiveDefinesPanel extends LinearLayout {
 						v.getParent().requestDisallowInterceptTouchEvent(true);
 						lastX = event.getX();
 						downY = event.getY();
-						// A tap puts the thumb where it lands, as usual.
-						float at = (event.getX() - slider.getPaddingLeft()) / width;
-						set(liveRange[0] + (liveRange[1] - liveRange[0]) *
-								Math.max(0f, Math.min(1f, at)));
 					}
 					case MotionEvent.ACTION_MOVE -> {
 						float scale = fineScale(downY - event.getY());
@@ -550,13 +588,16 @@ public class LiveDefinesPanel extends LinearLayout {
 	}
 
 	// How much a sideways drag moves the value, by how far the finger
-	// has moved up away from where it started: full, then a quarter,
-	// then a sixteenth.
+	// has moved up away from where it started: full, then a quarter, a
+	// sixteenth, a sixty-fourth.
 	private float fineScale(float upPx) {
-		if (upPx < dp(FINE_STEPS_DP[0])) {
-			return 1f;
+		float scale = 1f;
+		for (int steps : FINE_STEPS_DP) {
+			if (upPx >= dp(steps)) {
+				scale *= 0.25f;
+			}
 		}
-		return upPx < dp(FINE_STEPS_DP[1]) ? 0.25f : 0.0625f;
+		return scale;
 	}
 
 	@NonNull

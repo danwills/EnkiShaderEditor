@@ -8,13 +8,14 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.fragment.AbstractSamplerPropertiesFragment;
 
-final class ShaderSourcePreparer {
+public final class ShaderSourcePreparer {
 	private static final String SAMPLER_2D = "2D";
 	private static final String SAMPLER_CUBE = "Cube";
 	private static final String SAMPLER_EXTERNAL_OES = "ExternalOES";
@@ -45,6 +46,13 @@ final class ShaderSourcePreparer {
 			"\\bvoid[ \t\n]+mainImage[ \t\n]*\\(");
 	private static final Pattern PATTERN_MAIN = Pattern.compile(
 			"\\bvoid[ \t\n]+main[ \t\n]*\\(");
+	// A Sound pass - see SoundOutput: `vec2 mainSound(int samp, float
+	// time)`, as ShaderToy has it, or its older `vec2 mainSound(float
+	// time)`.
+	private static final Pattern PATTERN_MAIN_SOUND = Pattern.compile(
+			"\\bvec2[ \t\n]+mainSound[ \t\n]*\\(");
+	private static final Pattern PATTERN_MAIN_SOUND_INT = Pattern.compile(
+			"\\bvec2[ \t\n]+mainSound[ \t\n]*\\([ \t\n]*(in[ \t\n]+)?int\\b");
 	private static final Pattern PATTERN_EXTENSION = Pattern.compile(
 			"^[ \t]*#extension[^\n]*\n",
 			Pattern.MULTILINE);
@@ -77,6 +85,8 @@ final class ShaderSourcePreparer {
 					"uniform ENKI_HIGHP vec4 " + ShaderRenderer.UNIFORM_ST_MOUSE + ";"},
 			{ShaderRenderer.UNIFORM_ST_DATE,
 					"uniform ENKI_HIGHP vec4 " + ShaderRenderer.UNIFORM_ST_DATE + ";"},
+			{ShaderRenderer.UNIFORM_ST_SAMPLE_RATE,
+					"uniform ENKI_HIGHP float " + ShaderRenderer.UNIFORM_ST_SAMPLE_RATE + ";"},
 			{ShaderRenderer.UNIFORM_ST_CHANNEL_RESOLUTION,
 					"uniform ENKI_HIGHP vec3 " + ShaderRenderer.UNIFORM_ST_CHANNEL_RESOLUTION +
 							"[" + ChannelParameters.MAX_CHANNELS + "];"},
@@ -125,7 +135,9 @@ final class ShaderSourcePreparer {
 			}
 			// Built in - bound by the renderer, see SourceText.
 			if (ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name) ||
-					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name)) {
+					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name) ||
+					ShaderRenderer.UNIFORM_MODULE_INFO.equals(name) ||
+					ShaderRenderer.UNIFORM_MODULE_SCOPE.equals(name)) {
 				continue;
 			}
 			// Bound by the renderer to an offscreen buffer, not looked up
@@ -187,7 +199,7 @@ final class ShaderSourcePreparer {
 		String source = input.getSource();
 		boolean wrap = PATTERN_MAIN_IMAGE.matcher(source).find() &&
 				!PATTERN_MAIN.matcher(source).find();
-		if (wrap && !source.trim().startsWith("#version")) {
+		if ((wrap || isSoundSource(source)) && !source.trim().startsWith("#version")) {
 			input = addPreprocessorDirective(input, SHADER_TOY_VERSION);
 		}
 
@@ -207,6 +219,30 @@ final class ShaderSourcePreparer {
 			input = insertAfterExtensions(input, SHADER_TOY_PRECISION + declarations);
 		}
 
+		boolean sound = isSoundSource(source);
+		if (sound) {
+			String adapted = input.getSource();
+			String call = PATTERN_MAIN_SOUND_INT.matcher(source).find()
+					? "mainSound(s, float(s) / " + SoundOutput.SAMPLE_RATE + ".0)"
+					: "mainSound(float(s) / " + SoundOutput.SAMPLE_RATE + ".0)";
+			// Each texel is one stereo sample, in reading order from
+			// enkiSoundOffset; each channel's -1..1 is 16 bits, as two
+			// bytes - see SoundOutput.
+			String main = String.format(Locale.US, """
+					uniform int enkiSoundOffset;
+					out highp vec4 enkiFragColor;
+					void main() {
+						int s = enkiSoundOffset + int(gl_FragCoord.y) * %d + int(gl_FragCoord.x);
+						vec2 v = clamp(%s, -1.0, 1.0);
+						vec2 u = floor((v * 0.5 + 0.5) * 65535.0 + 0.5);
+						vec2 hi = floor(u / 256.0);
+						enkiFragColor = vec4(u.x - hi.x * 256.0, hi.x, u.y - hi.y * 256.0, hi.y) / 255.0;
+					}
+					""", SoundOutput.BLOCK_WIDTH, call);
+			return new PreparedShaderInput(
+					adapted + (adapted.endsWith("\n") ? "" : "\n") + main,
+					input.getLineMapping());
+		}
 		if (wrap) {
 			String adapted = input.getSource();
 			String main = PATTERN_GLES3_VERSION.matcher(adapted).find()
@@ -228,6 +264,14 @@ final class ShaderSourcePreparer {
 					input.getLineMapping());
 		}
 		return input;
+	}
+
+	// Whether `source` is a Sound pass: it has a mainSound() and no
+	// main() or mainImage() of its own.
+	public static boolean isSoundSource(@Nullable String source) {
+		return source != null && PATTERN_MAIN_SOUND.matcher(source).find() &&
+				!PATTERN_MAIN.matcher(source).find() &&
+				!PATTERN_MAIN_IMAGE.matcher(source).find();
 	}
 
 	private static boolean usesUndeclared(@NonNull String source, @NonNull String name) {
@@ -268,7 +312,9 @@ final class ShaderSourcePreparer {
 			String name = matcher.group(2);
 			if (name == null || ChannelParameters.getChannelIndex(name) >= 0 ||
 					ShaderRenderer.UNIFORM_SOURCE_TEXT.equals(name) ||
-					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name)) {
+					ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR.equals(name) ||
+					ShaderRenderer.UNIFORM_MODULE_INFO.equals(name) ||
+					ShaderRenderer.UNIFORM_MODULE_SCOPE.equals(name)) {
 				continue;
 			}
 			if (ShaderRenderer.UNIFORM_BACKBUFFER.equals(name)) {

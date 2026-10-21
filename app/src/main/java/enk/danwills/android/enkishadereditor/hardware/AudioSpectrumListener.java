@@ -219,6 +219,22 @@ public class AudioSpectrumListener {
 		for (int i = 0; i < count; ++i) {
 			samples[i] = (short) (((waveform[i] & 0xFF) - 128) << 8);
 		}
+		push(samples, count);
+	}
+
+	// Samples handed in by the app itself (its own Sound pass or tracker
+	// module - see BuiltinAudioUniforms), with nothing recorded, so no
+	// RECORD_AUDIO needed. Feed them with push().
+	public void registerPushed() {
+		running = true;
+	}
+
+	// `count` mono samples, oldest first, into the same sliding window
+	// (or interval) every other source feeds.
+	public void push(@NonNull short[] samples, int count) {
+		if (count <= 0) {
+			return;
+		}
 		updateHealthSignal(samples, count);
 		if (fullInterval) {
 			appendIntervalSamples(samples, count);

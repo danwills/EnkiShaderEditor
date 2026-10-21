@@ -197,6 +197,25 @@ read it through a channel instead, with `uniform sampler2D iChannel1; ///tex:fon
 **Font** for the channel in the editor's channel row). The glyphs are rendered from IBM Plex Mono
 (SIL Open Font License).
 
+## Can a shader keep text out of its code?
+
+Yes - give it a *shader text*. Open **Offscreen Buffers → Texts… → Add Text** and name it (a
+GLSL identifier, e.g. `scroller`); it gets its own tab beside the passes, as plain text. Any pass
+reads it by declaring a sampler of the same name:
+
+```glsl
+uniform sampler2D scroller;
+uniform vec2 scrollerSize;    // columns, lines
+uniform float scrollerLength; // number of characters
+```
+
+It's laid out exactly like `sourceText` (above): one texel per character, row n is line n, R the
+character code, G*256+B its index in the whole text, A 255 for a character and 0 past the end of
+a line - so draw it with the `font` atlas the same way. Edit the text while the shader runs and it
+updates on the next frame, without recompiling or restarting. Texts go with the shader into
+copies, backups, shader packs and shared or copied text (as `//// Text <name>` sections). The
+**Demo Writer** sample scrolls one round a twisting bar.
+
 ## Can a shader edit its own source?
 
 Yes - see the **Notepad** sample. A shader with an offscreen buffer can keep an editable copy of
@@ -248,6 +267,92 @@ still work as usual.
 Without a hardware keyboard, **More Options → Type into Shader** brings up the phone's keyboard
 for the running shader: what you type arrives in `typedChar`, and each key taps the matching key
 in `keyboard`. Tap the "Typing into the shader" chip, or close the keyboard, to stop.
+
+## Can a shader make sound?
+
+Yes - like ShaderToy's Sound tab. Add an offscreen buffer (**Offscreen Buffers**) and give it a
+`mainSound()` instead of a `mainImage()`:
+
+```glsl
+vec2 mainSound(int samp, float time) {
+	return vec2(sin(6.2831853 * 440.0 * time) * 0.2); // left, right: -1..1
+}
+```
+
+Its tab then reads **Snd**, and it plays while the shader runs (and pauses with it), at 44100
+samples a second (`iSampleRate`). `samp` counts samples from the start, and `time` is
+`samp / iSampleRate`, so the sound lines up with `iTime`. ShaderToy's older
+`vec2 mainSound(float time)` works too.
+
+Unlike ShaderToy, the sound is made as it plays, a little ahead (about a tenth of a second), so
+it can react to anything the shader can see: read your other buffers through `iChannel0`-`3`, or
+use `iMouse` and touches directly. A Sound pass draws nothing, and a shader can have one.
+
+Pasting a ShaderToy shader with a `//// Sound` section puts it in the first free buffer.
+
+To make a sound start exactly when something happens - a tap, say - a buffer can read
+`uniform int soundSample;` (or `uniform float soundTime;`, the same in seconds): the next sample
+the Sound pass will make. Stamp the event with it, and play from there in `mainSound()`. The
+**Soundboard** sample does this, and bends pitch smoothly by keeping each note's oscillator time
+running across frames, so the phase never jumps.
+
+## Can a shader play a tracker module?
+
+Yes - MOD, S3M and XM files. **More Options → Import Tracker Module…** adds one to your library
+under its file's name, and offers to make it the current shader's soundtrack, which is just a line
+
+```glsl
+///mod:name
+```
+
+anywhere in the source. It plays while the shader runs, pauses and restarts with it, and loops.
+The **Module Viewer** sample shows what a shader can see of it:
+
+```glsl
+uniform sampler2D moduleInfo;  // where the song is, each channel's note, and the pattern
+uniform sampler2D moduleScope; // each channel's waveform, and its spectrum
+uniform float moduleTime;      // seconds into the song
+uniform float moduleRow;       // the pattern row playing, with how far through it as the fraction
+```
+
+`moduleInfo` is 64x72 bytes: row 0 the song position (texel 0: order, orders, row, rows in the
+pattern; texel 1: speed, tempo, channels, pattern), row 1 each channel's (note, instrument,
+volume, panning), and rows 8-71 the pattern rows from 24 before the playing one to 39 after
+(texel `x` is channel `x`'s note, instrument, volume column and effect, texel `32 + x` its effect
+parameter). `moduleScope` is 512x64: rows 0-31 each channel's last 512 samples, rows 32-63 a
+64-band spectrum of each. It all matches what you hear, not what's been made ahead of it. Shaders
+set as the live wallpaper stay silent.
+
+Tracker playback is [IBXM](https://github.com/martincameron/micromod) by Martin Cameron.
+
+## Can a shader pack play as a show?
+
+Yes. Tick **Present as a show** in Build Shader Pack and the pack plays its shaders full screen,
+one after another in a loop, for as many seconds each as you set. Its soundtrack can be a tracker
+module from your library, the Sound pass of one of the pack's shaders (played under all of them),
+or each shader's own sound. Installed, the pack's group in the sidebar's tree view shows a play
+icon - tap it to play the show (or use **Play Show** in Get Shader Pack). Tap for the next shader,
+back to leave.
+
+For more control, the Timeline field takes JSON: a list of scenes, each a shader (by name) for so
+many seconds, optionally with #define values keyed over time, eased from one key to the next:
+
+```json
+{"scenes": [
+  {"shader": "Name", "seconds": 15, "keys": [
+    {"at": 0, "defines": {"ZOOM": 1.0}},
+    {"at": 15, "defines": {"ZOOM": 4.0}}]}
+]}
+```
+
+## Can a shader keep what it made?
+
+Yes: **More Options → Save Buffer as Texture…** saves an offscreen buffer's latest frame as a
+texture, byte for byte, under a name you choose - by default, the first `sampler2D` your shader
+declares that isn't saved yet, which is usually the one it's waiting for. Declare that sampler
+and the shader can read it back next time it starts (restart it to load a new save). Store data
+in it as bytes (`k / 255.0`) and keep alpha at 1 where it matters; values outside 0-1 are
+clamped. The **Tracker** sample keeps its song this way.
 
 ## Can I paste ShaderToy code directly?
 

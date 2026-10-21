@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.adapter;
 
+import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
@@ -32,6 +33,7 @@ import java.util.Set;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
+import enk.danwills.android.enkishadereditor.project.ShaderProjectPaths;
 
 /**
  * Backs the scrollable list in the "Adjust Defines" tool (see
@@ -315,7 +317,7 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			itemView.setOnClickListener(null);
 			itemView.setClickable(false);
 			nameView.setTextColor(defaultNameColors);
-			nameView.setText(define.name);
+			nameView.setText(nameWithPass(define, nameView.getContext()));
 			boolValue.setVisibility(View.GONE);
 			sliderRow.setVisibility(View.GONE);
 			otherValueText.setVisibility(View.GONE);
@@ -616,5 +618,19 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		public void afterTextChanged(Editable s) {
 			onText.onText(s.toString());
 		}
+	}
+
+	// A define from another pass than the open one (see
+	// ShaderDefine.passPath) is named with that pass's tab: "F · A".
+	@NonNull
+	private static CharSequence nameWithPass(@NonNull ShaderDefine define,
+			@NonNull Context context) {
+		if (define.passPath == null) {
+			return define.name;
+		}
+		int buffer = ShaderProjectPaths.getBufferIndex(define.passPath);
+		return define.name + " · " + (buffer >= 0
+				? String.valueOf(ShaderProjectPaths.getBufferLetter(buffer))
+				: context.getString(R.string.pass_tab_image));
 	}
 }

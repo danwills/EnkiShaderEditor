@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 // One offscreen buffer pass (Buffer A-D) of a multipass shader: its
 // program, and a ping-pong pair of render targets at the live render
@@ -16,9 +17,14 @@ import java.util.List;
 // pass reading a buffer that runs after it) sees the previous frame,
 // and one reading an earlier buffer sees this frame's, as on ShaderToy.
 // Targets are RGBA16F where the GPU can render into that, so a buffer
-// can hold real values (negative, > 1) rather than just colours.
+// can hold real values (negative, > 1) rather than just colours - or,
+// for a buffer whose source has a `///float32` line, RGBA32F where the
+// GPU can render into and filter that (a simulation that half floats'
+// 11 bits would stall, e.g. reaction-diffusion), falling back to RGBA16F.
 final class BufferPass {
 	private static final String TAG = "BufferPass";
+	private static final Pattern FLOAT32 = Pattern.compile(
+			"^[ \\t]*///float32[ \\t]*$", Pattern.MULTILINE);
 
 	final int buffer;
 	@NonNull
@@ -34,12 +40,16 @@ final class BufferPass {
 	private SourceText sourceTextTexture;
 	@Nullable
 	private String textSource;
-	private boolean halfFloat;
+	// What the targets hold: RGBA8, else half or (float32) full floats.
+	private boolean floatTargets;
+	private boolean float32;
+	private final boolean wantsFloat32;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
 		this.buffer = buffer;
 		this.sourceText = sourceText;
 		this.prepared = prepared;
+		wantsFloat32 = FLOAT32.matcher(sourceText).find();
 	}
 
 	// What this pass's `sourceText` shows: its own source, or the pass
@@ -86,8 +96,9 @@ final class BufferPass {
 		return framebuffers[current];
 	}
 
-	boolean isHalfFloat() {
-		return halfFloat;
+	// Half or full floats, rather than bytes.
+	boolean isFloat() {
+		return floatTargets;
 	}
 
 	@Nullable
@@ -117,33 +128,42 @@ final class BufferPass {
 			other.textures[i] = null;
 		}
 		current = other.current;
-		halfFloat = other.halfFloat;
+		floatTargets = other.floatTargets;
+		float32 = other.float32;
 		other.current = 0;
 	}
 
+	// tryFloat32: the GPU can render into and filter RGBA32F - used only
+	// if this pass asks for it.
 	void ensureTargets(@NonNull GlDevice device, int width, int height, boolean tryHalfFloat,
-			@NonNull List<ShaderError> errors) {
+			boolean tryFloat32, @NonNull List<ShaderError> errors) {
 		if (hasTargets() || width <= 0 || height <= 0) {
 			return;
 		}
 		releaseTargets(device);
-		halfFloat = tryHalfFloat;
+		float32 = tryFloat32 && wantsFloat32;
+		floatTargets = tryHalfFloat || float32;
 		for (int i = 0; i < 2; ++i) {
 			GlTexture2D texture = device.createTexture2D();
 			GlFramebuffer framebuffer = device.createFramebuffer();
 			textures[i] = texture;
 			framebuffers[i] = framebuffer;
-			if (halfFloat) {
-				device.allocateTexture2DHalfFloat(texture, width, height);
+			if (floatTargets) {
+				if (float32) {
+					device.allocateTexture2DFloat(texture, width, height);
+				} else {
+					device.allocateTexture2DHalfFloat(texture, width, height);
+				}
 				device.applyTextureParameters(texture, new ChannelParameters());
 				device.attachColor(framebuffer, texture);
 				if (device.checkFramebufferStatus(framebuffer) !=
 						GLES20.GL_FRAMEBUFFER_COMPLETE) {
 					// Advertised but not actually renderable here - fall
-					// back to 8 bits for both targets.
-					halfFloat = false;
+					// back a step (full floats to half, half to 8 bits)
+					// for both targets.
 					releaseTargets(device);
-					ensureTargets(device, width, height, false, errors);
+					ensureTargets(device, width, height, float32 && tryHalfFloat, false,
+							errors);
 					return;
 				}
 			} else {
@@ -159,7 +179,7 @@ final class BufferPass {
 			}
 		}
 		Log.d(TAG, "Buffer " + (char) ('A' + buffer) + ": " + width + "x" + height +
-				(halfFloat ? " RGBA16F" : " RGBA8"));
+				(float32 ? " RGBA32F" : floatTargets ? " RGBA16F" : " RGBA8"));
 		clearTargets(device);
 		current = 0;
 	}

@@ -58,6 +58,13 @@ public class EditorFragment extends Fragment {
 	}
 
 	public static final int MAX_BUFFERS = 4;
+	// A shader's texts (see ShaderTextDao) are passes too, for their tabs:
+	// TEXT_PASS_BASE + their index, in the order setPassTabs() gives.
+	public static final int TEXT_PASS_BASE = 100;
+
+	public static boolean isTextPass(int pass) {
+		return pass >= TEXT_PASS_BASE;
+	}
 
 	// Static, like ShaderEditorApp.editHistory, so they outlive this
 	// fragment being recreated: which pass the editor shows, and each
@@ -81,6 +88,10 @@ public class EditorFragment extends Fragment {
 	private int pendingTopInsetPx = 0;
 	@NonNull
 	private boolean[] buffersPresent = new boolean[MAX_BUFFERS];
+	@NonNull
+	private boolean[] soundPasses = new boolean[0];
+	@NonNull
+	private List<String> textNames = List.of();
 	// Every pass's errors - the editor itself only marks the shown pass's.
 	@NonNull
 	private List<ShaderError> allErrors = Collections.emptyList();
@@ -299,8 +310,14 @@ public class EditorFragment extends Fragment {
 
 	// Which buffers the shader has (indexed like ShaderError's passes);
 	// with none, the tabs and channel row are hidden entirely.
-	public void setPassTabs(@NonNull boolean[] buffersPresent) {
+	// soundPasses: which of them are Sound passes, labelled as such.
+	// textNames: the shader's texts, each with its own tab after the
+	// buffers'.
+	public void setPassTabs(@NonNull boolean[] buffersPresent, @NonNull boolean[] soundPasses,
+			@NonNull List<String> textNames) {
 		this.buffersPresent = buffersPresent.clone();
+		this.soundPasses = soundPasses.clone();
+		this.textNames = List.copyOf(textNames);
 		buildPassTabs();
 	}
 
@@ -383,16 +400,27 @@ public class EditorFragment extends Fragment {
 		}
 		passTabs.removeAllViews();
 		boolean multipass = hasBufferPasses();
-		passTabs.setVisibility(multipass ? View.VISIBLE : View.GONE);
-		channelRow.setVisibility(multipass ? View.VISIBLE : View.GONE);
-		if (!multipass) {
+		boolean tabs = multipass || !textNames.isEmpty();
+		passTabs.setVisibility(tabs ? View.VISIBLE : View.GONE);
+		// The iChannel row is a GLSL pass's - none for a text.
+		channelRow.setVisibility(multipass && !isTextPass(activePass)
+				? View.VISIBLE
+				: View.GONE);
+		if (!tabs) {
 			return;
 		}
 		addPassTab(ShaderError.IMAGE_PASS, getString(R.string.pass_tab_image));
 		for (int buffer = 0; buffer < buffersPresent.length; ++buffer) {
 			if (buffersPresent[buffer]) {
-				addPassTab(buffer, String.valueOf((char) ('A' + buffer)));
+				addPassTab(buffer, buffer < soundPasses.length && soundPasses[buffer]
+						? getString(R.string.pass_tab_sound)
+						: String.valueOf((char) ('A' + buffer)));
 			}
+		}
+		for (int i = 0; i < textNames.size(); ++i) {
+			String name = textNames.get(i);
+			addPassTab(TEXT_PASS_BASE + i,
+					name.length() > 8 ? name.substring(0, 7) + "\u2026" : name);
 		}
 		refreshChannelRow();
 	}
@@ -428,14 +456,17 @@ public class EditorFragment extends Fragment {
 		tab.setPadding(size / 6, 0, size / 6, 0);
 		tab.setContentDescription(pass == ShaderError.IMAGE_PASS
 				? getString(R.string.pass_tab_image)
-				: getString(R.string.pass_tab_buffer, label));
+				: isTextPass(pass)
+						? getString(R.string.pass_tab_text, label)
+						: getString(R.string.pass_tab_buffer, label));
 		tab.setOnClickListener(v -> {
 			if (pass != activePass && passSelectedListener != null) {
 				passSelectedListener.onPassSelected(pass);
 			}
 		});
-		// Toggles the preview between this buffer and the Image pass.
-		tab.setOnLongClickListener(v -> {
+		// Toggles the preview between this buffer and the Image pass - a
+		// text has no picture to show.
+		tab.setOnLongClickListener(isTextPass(pass) ? null : v -> {
 			displayedPass = pass == getDisplayedPass() ? ShaderError.IMAGE_PASS : pass;
 			buildPassTabs();
 			if (passDisplayedListener != null) {

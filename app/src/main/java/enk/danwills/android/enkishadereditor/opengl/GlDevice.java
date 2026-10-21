@@ -215,6 +215,33 @@ final class GlDevice {
 		texture.setSize(width, height);
 	}
 
+	// RGBA32F storage for a buffer pass that asks for it (`///float32`) -
+	// only where supportsFloatTargets() says so.
+	void allocateTexture2DFloat(@NonNull GlTexture2D texture, int width, int height) {
+		bindTexture(0, texture);
+		GLES30.glTexImage2D(
+				GLES30.GL_TEXTURE_2D,
+				0,
+				GLES30.GL_RGBA32F,
+				width,
+				height,
+				0,
+				GLES30.GL_RGBA,
+				GLES20.GL_FLOAT,
+				null);
+		texture.setSize(width, height);
+	}
+
+	// Whether this (current, GLES3) context can render into RGBA32F
+	// textures and filter them - a buffer's channels may sample it
+	// linearly, which without OES_texture_float_linear reads as black.
+	boolean supportsFloatTargets() {
+		String extensions = GLES20.glGetString(GLES20.GL_EXTENSIONS);
+		return extensions != null &&
+				extensions.contains("GL_EXT_color_buffer_float") &&
+				extensions.contains("GL_OES_texture_float_linear");
+	}
+
 	// Whether this (current, GLES3) context can render into RGBA16F
 	// textures - core GLES 3.0 can sample them but not render to them
 	// without one of these extensions.

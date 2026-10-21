@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.util.Log;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -18,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Objects;
 
 import enk.danwills.android.enkishadereditor.R;
@@ -27,6 +29,7 @@ import enk.danwills.android.enkishadereditor.activity.PreviewActivity;
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
+import enk.danwills.android.enkishadereditor.opengl.ModuleDirective;
 import enk.danwills.android.enkishadereditor.project.MultipassSource;
 import enk.danwills.android.enkishadereditor.project.LegacyShaderProjectSource;
 import enk.danwills.android.enkishadereditor.project.LooseShaderFileProjectSource;
@@ -103,6 +106,7 @@ public class ShaderManager {
 										R.drawable.thumbnail_new_shader),
 								result.getData().getFloatExtra(LoadSampleActivity.QUALITY, 1f));
 						splitSampleBuffers(newId);
+						importBundledModules(newId);
 						selectShader(newId);
 					}
 				});
@@ -182,7 +186,8 @@ public class ShaderManager {
 			return;
 		}
 		ShaderProjectSession session = new LegacyShaderProjectSource(shader,
-				dataSource.buffer.getBufferSources(selectedShaderId)).openSession();
+				dataSource.buffer.getBufferSources(selectedShaderId),
+				dataSource.text.getTexts(selectedShaderId)).openSession();
 		String activePath = savedInstanceState.getString(ACTIVE_FILE_PATH);
 		if (activePath != null && session.getProject().hasFile(activePath)) {
 			session = session.withActiveFile(activePath);
@@ -190,6 +195,37 @@ public class ShaderManager {
 		currentProjectSession = session;
 		quality = session.getQuality();
 		shaderListManager.setSelectedShaderId(selectedShaderId);
+	}
+
+	// Modules that ship with the app, for the samples that play them -
+	// added to the library the first time a sample needs one.
+	private static final Map<String, Integer> BUNDLED_MODULES =
+			Map.of("enki_demo", R.raw.enki_demo_mod);
+
+	private void importBundledModules(long id) {
+		var shader = dataSource.shader.getShader(id);
+		if (shader == null) {
+			return;
+		}
+		String[] buffers = dataSource.buffer.getBufferSources(id);
+		String[] sources = new String[buffers.length + 1];
+		sources[0] = shader.fragmentShader();
+		System.arraycopy(buffers, 0, sources, 1, buffers.length);
+		String name = ModuleDirective.find(sources);
+		Integer resource = name != null ? BUNDLED_MODULES.get(name) : null;
+		if (resource == null || dataSource.module.getModuleData(name) != null) {
+			return;
+		}
+		try (var in = activity.getResources().openRawResource(resource)) {
+			var bytes = new ByteArrayOutputStream();
+			byte[] chunk = new byte[16384];
+			for (int n; (n = in.read(chunk)) > 0; ) {
+				bytes.write(chunk, 0, n);
+			}
+			dataSource.module.insertModule(name, bytes.toByteArray());
+		} catch (IOException e) {
+			Log.w("ShaderManager", "Can't import " + name, e);
+		}
 	}
 
 	// A sample with offscreen buffers is stored as one multipass text
@@ -205,6 +241,7 @@ public class ShaderManager {
 		}
 		dataSource.shader.updateShader(id, parsed.imageSource(), null, shader.quality());
 		dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+		dataSource.text.setTexts(id, parsed.texts());
 	}
 
 	@NonNull
@@ -260,6 +297,15 @@ public class ShaderManager {
 		return currentProjectSession;
 	}
 
+	// Adds/removes/renames texts, as setBufferSources() does buffers - the
+	// caller first moves off a text tab that's about to go.
+	@NonNull
+	public ShaderProjectSession setTexts(@NonNull Map<String, String> texts) {
+		currentProjectSession = getEditedProjectSession().withTexts(texts);
+		setModified(true);
+		return currentProjectSession;
+	}
+
 	public void selectShader(long id) {
 		if (isModified()) {
 			saveShader();
@@ -278,7 +324,7 @@ public class ShaderManager {
 		}
 
 		ShaderProjectSession projectSession = new LegacyShaderProjectSource(shader,
-				dataSource.buffer.getBufferSources(id)).openSession();
+				dataSource.buffer.getBufferSources(id), dataSource.text.getTexts(id)).openSession();
 		ShaderEditorApp.preferences.setLastOpenedShader(id);
 		applyProjectSession(id,
 				projectSession,
@@ -319,6 +365,7 @@ public class ShaderManager {
 		if (ownsBuffers) {
 			dataSource.buffer.setBufferSources(selectedShaderId,
 					edited.getProject().getBufferSources());
+			dataSource.text.setTexts(selectedShaderId, edited.getProject().getTexts());
 		}
 
 		ShaderProjectSession saved = loadSavedProjectSession(selectedShaderId, src);
@@ -477,6 +524,7 @@ public class ShaderManager {
 				shader.quality());
 		if (newId > 0) {
 			dataSource.buffer.copyBuffers(shaderId, newId);
+			dataSource.text.copyTexts(shaderId, newId);
 		}
 		return newId;
 	}
@@ -511,7 +559,8 @@ public class ShaderManager {
 		var shader = dataSource.shader.getShader(shaderId);
 		return shader != null
 				? new LegacyShaderProjectSource(shader,
-						dataSource.buffer.getBufferSources(shaderId)).openSession()
+						dataSource.buffer.getBufferSources(shaderId),
+						dataSource.text.getTexts(shaderId)).openSession()
 				: createScratchProjectSession(fallbackSource, quality);
 	}
 

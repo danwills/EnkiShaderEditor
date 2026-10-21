@@ -19,6 +19,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -113,6 +114,9 @@ public class ShaderViewManager {
 	private String appliedSource;
 	@Nullable
 	private String[] appliedBufferSources;
+	// The texts last handed to the renderer - see setProjectSessionIfChanged().
+	@NonNull
+	private Map<String, String> appliedTexts = Map.of();
 	private boolean needsRealResume = false;
 	private boolean backgroundCaptureActive = false;
 	// Set by destroy() below - checked by setMediaProjection() to avoid
@@ -448,8 +452,16 @@ public class ShaderViewManager {
 	// running - so an "edit" that changes nothing (switching the editor
 	// to another pass's tab, say) doesn't recompile and restart the shader,
 	// wiping its buffers.
+	// A text edited while the shader runs (see ShaderTextDao) just has its
+	// texture made again - nothing recompiles or restarts.
 	public void setProjectSessionIfChanged(@NonNull ShaderProjectSession projectSession) {
 		if (!paused && isRunning(projectSession)) {
+			Map<String, String> texts = projectSession.getProject().getTexts();
+			if (!texts.equals(appliedTexts)) {
+				appliedTexts = texts;
+				shaderView.getRenderer().setShaderTexts(texts, true);
+				shaderView.requestRender();
+			}
 			return;
 		}
 		setProjectSession(projectSession);
@@ -479,6 +491,8 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedTexts = projectSession.getProject().getTexts();
+		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		// Before setQuality() below - setQuality()/applyQuality() is a
 		// no-op when the new shader happens to share its predecessor's
 		// quality value, which would otherwise leave fpsAtCurrentQuality
@@ -506,6 +520,8 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedTexts = projectSession.getProject().getTexts();
+		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		if (paused) {
 			shaderView.getRenderer().requestRedoLastStep();
 		}
@@ -518,6 +534,12 @@ public class ShaderViewManager {
 		if (paused) {
 			shaderView.requestRender();
 		}
+	}
+
+	// See ShaderView.readBufferPixelsAndWait() - not on the UI thread.
+	@Nullable
+	public ShaderRenderer.BufferPixels readBufferPixelsAndWait(int buffer) {
+		return shaderView.readBufferPixelsAndWait(buffer);
 	}
 
 	// See ShaderView.readBufferTextAndWait() - not on the UI thread.

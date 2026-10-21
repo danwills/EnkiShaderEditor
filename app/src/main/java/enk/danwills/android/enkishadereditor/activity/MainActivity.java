@@ -47,6 +47,8 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -85,8 +87,13 @@ import org.jetbrains.annotations.Contract;
 
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.io.InputStream;
+import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashSet;
@@ -101,8 +108,11 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import enk.danwills.android.enkishadereditor.fragment.AbstractSamplerPropertiesFragment;
+import enk.danwills.android.enkishadereditor.graphics.BitmapEditor;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.activity.managers.ExtraKeysManager;
 import enk.danwills.android.enkishadereditor.activity.managers.MainMenuManager;
@@ -118,6 +128,7 @@ import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
+import enk.danwills.android.enkishadereditor.database.dao.ShaderTextDao;
 import enk.danwills.android.enkishadereditor.fragment.EditorFragment;
 import enk.danwills.android.enkishadereditor.hardware.LocalMusicPlayer;
 import enk.danwills.android.enkishadereditor.io.GifEncoder;
@@ -130,10 +141,12 @@ import enk.danwills.android.enkishadereditor.io.VideoFormat;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.KeyboardInput;
 import enk.danwills.android.enkishadereditor.opengl.LiveDefines;
+import enk.danwills.android.enkishadereditor.opengl.ModuleDirective;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
 import enk.danwills.android.enkishadereditor.opengl.ChannelDeclarations;
 import enk.danwills.android.enkishadereditor.opengl.ChannelParameters;
 import enk.danwills.android.enkishadereditor.opengl.ShaderError;
+import enk.danwills.android.enkishadereditor.opengl.ShaderSourcePreparer;
 import enk.danwills.android.enkishadereditor.opengl.TextDirective;
 import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackDelivery;
 import enk.danwills.android.enkishadereditor.pack.UnavailableShaderPackStore;
@@ -160,6 +173,7 @@ import enk.danwills.android.enkishadereditor.widget.ColorWheelView;
 import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
+import enk.danwills.android.enkishadereditor.widget.UpdatePackDialog;
 
 public class MainActivity extends AppCompatActivity {
 	private static final String CODE_VISIBLE = "code_visible";
@@ -232,6 +246,10 @@ public class MainActivity extends AppCompatActivity {
 	private NavigationManager navigationManager;
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
+	// Recreated (rotated, say) and onRestoreInstanceState() hasn't run
+	// yet: the editor's restored text arrives first, before the shader's
+	// session is rebuilt, so it mustn't be run as it is - see there.
+	private boolean restoringState = false;
 	// Browser-style shader navigation history: every shader selectShader()
 	// actually switches *to* (not away from) gets appended here, capped at
 	// SHADER_HISTORY_MAX entries (oldest dropped first), with
@@ -348,7 +366,8 @@ public class MainActivity extends AppCompatActivity {
 				dataSource,
 				createShaderViewListener());
 		audioPreferenceListener = (preferences, key) -> {
-			if (Preferences.USE_SYSTEM_AUDIO.equals(key)) {
+			if (Preferences.USE_SYSTEM_AUDIO.equals(key) ||
+					Preferences.USE_OWN_SOUND_AUDIO.equals(key)) {
 				shaderViewManager.refreshAudioCaptureSource();
 			}
 		};
@@ -515,6 +534,7 @@ public class MainActivity extends AppCompatActivity {
 
 		// The usual shader loads as normal, with any text opened with or
 		// shared to the app offered on top as Paste as New Shader.
+		restoringState = state != null;
 		if (state == null) {
 			isInitialLoad = true;
 			// Posted, so it runs once start-up has finished - the dialog
@@ -535,7 +555,12 @@ public class MainActivity extends AppCompatActivity {
 		floatingRunButton.setOnClickListener(v -> runShaderText());
 		editorFragment.setOnEditPausedListener(text -> {
 			updateRunShaderTextButton();
-			if (ShaderEditorApp.preferences.doesRunOnChange()) {
+			// Typing (or removing) a mainSound() turns a buffer's tab
+			// into a Sound tab, or back.
+			if (soundTabsChanged()) {
+				refreshPassTabs();
+			}
+			if (ShaderEditorApp.preferences.doesRunOnChange() && !restoringState) {
 				if (editorFragment.hasErrors()) {
 					editorFragment.clearError();
 					editorFragment.highlightErrors();
@@ -649,6 +674,121 @@ public class MainActivity extends AppCompatActivity {
 		shaderKeyInput.clearFocus();
 		shaderKeyInput.setTyping(false);
 		shaderViewManager.getKeyboardInput().releaseAll();
+	}
+
+	// Samplers the app fills itself, never a saved texture - see
+	// suggestTextureName().
+	private static final Set<String> BUILT_IN_SAMPLERS = Set.of(
+			ShaderRenderer.UNIFORM_BACKBUFFER, ShaderRenderer.UNIFORM_SOURCE_TEXT,
+			ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR, ShaderRenderer.UNIFORM_FONT,
+			ShaderRenderer.UNIFORM_KEYBOARD, ShaderRenderer.UNIFORM_AUDIO_SPECTRUM,
+			ShaderRenderer.UNIFORM_CAMERA_BACK, ShaderRenderer.UNIFORM_CAMERA_FRONT);
+	private static final Pattern SAMPLER_DECLARATION = Pattern.compile(
+			"\\buniform\\s+sampler2D\\s+(\\w+)\\s*;");
+
+	// Save Buffer as Texture: an offscreen buffer's latest frame becomes
+	// a saved texture, byte for byte - so a shader can keep what it made
+	// (a sequencer's song) and load it again by declaring a sampler of
+	// that name. The name suggested is the first sampler a pass declares
+	// that's neither built in nor saved yet - the one it's waiting for.
+	private void showSaveBufferAsTextureDialog() {
+		ShaderProjectSession session = shaderManager.getEditedProjectSession(
+				editorFragment.getText());
+		String[] buffers = session.getProject().getBufferSources();
+		List<Integer> choices = new ArrayList<>();
+		for (int i = 0; i < buffers.length; ++i) {
+			if (buffers[i] != null && !ShaderSourcePreparer.isSoundSource(buffers[i])) {
+				choices.add(i);
+			}
+		}
+		if (choices.isEmpty()) {
+			Toast.makeText(this, R.string.no_buffer_to_save, Toast.LENGTH_LONG).show();
+			return;
+		}
+		int pad = dpToPx(20);
+		var layout = new LinearLayout(this);
+		layout.setOrientation(LinearLayout.VERTICAL);
+		layout.setPadding(pad, pad / 2, pad, 0);
+		var group = new RadioGroup(this);
+		for (int buffer : choices) {
+			var button = new RadioButton(this);
+			button.setId(View.generateViewId());
+			button.setTag(buffer);
+			button.setText(getString(R.string.channel_buffer,
+					String.valueOf(ShaderProjectPaths.getBufferLetter(buffer))));
+			group.addView(button);
+		}
+		((RadioButton) group.getChildAt(0)).setChecked(true);
+		layout.addView(group);
+		var name = new EditText(this);
+		name.setHint(R.string.texture_name_hint);
+		name.setSingleLine(true);
+		name.setText(suggestTextureName(session, choices.get(0)));
+		layout.addView(name);
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.save_buffer_as_texture)
+				.setView(layout)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(R.string.save_texture, (d, w) -> {
+					View checked = group.findViewById(group.getCheckedRadioButtonId());
+					int buffer = checked != null ? (int) checked.getTag() : choices.get(0);
+					saveBufferAsTexture(buffer, name.getText().toString().trim());
+				})
+				.show();
+	}
+
+	@NonNull
+	private String suggestTextureName(@NonNull ShaderProjectSession session, int buffer) {
+		List<String> sources = new ArrayList<>();
+		sources.add(session.getEntryPointSource());
+		for (String source : session.getProject().getBufferSources()) {
+			if (source != null) {
+				sources.add(source);
+			}
+		}
+		for (String source : sources) {
+			Matcher matcher = SAMPLER_DECLARATION.matcher(source);
+			while (matcher.find()) {
+				String name = matcher.group(1);
+				if (name != null && !BUILT_IN_SAMPLERS.contains(name) &&
+						ChannelParameters.getChannelIndex(name) < 0 &&
+						dataSource.texture.getTextureId(name) < 0) {
+					return name;
+				}
+			}
+		}
+		return "buffer" + ShaderProjectPaths.getBufferLetter(buffer);
+	}
+
+	private void saveBufferAsTexture(int buffer, @NonNull String name) {
+		if (!name.matches(AbstractSamplerPropertiesFragment.TEXTURE_NAME_PATTERN) ||
+				BUILT_IN_SAMPLERS.contains(name) || ChannelParameters.getChannelIndex(name) >= 0) {
+			Toast.makeText(this, R.string.invalid_texture_name, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		new Thread(() -> {
+			var pixels = shaderViewManager.readBufferPixelsAndWait(buffer);
+			if (pixels == null) {
+				runOnUiThread(() -> Toast.makeText(this, R.string.buffer_unreadable,
+						Toast.LENGTH_LONG).show());
+				return;
+			}
+			// Bottom row first, as GL reads it: flipped, so the texture
+			// loads back the same way up (see BitmapEditor.createRgbaBuffer()).
+			Bitmap bitmap = BitmapEditor.createBitmapFromRgbaBuffer(pixels.rgba(),
+					pixels.width(), pixels.height(), true);
+			byte[] png = BitmapEditor.encodeAsPng(bitmap);
+			long old = dataSource.texture.getTextureId(name);
+			if (old >= 0) {
+				dataSource.texture.removeTexture(old);
+			}
+			long id = dataSource.texture.insertExactTexture(name, png, bitmap);
+			bitmap.recycle();
+			runOnUiThread(() -> Toast.makeText(this, id < 0
+					? getString(R.string.invalid_texture_name)
+					: getString(old >= 0 ? R.string.buffer_texture_replaced : R.string.buffer_texture_saved,
+							name), Toast.LENGTH_LONG).show());
+		}, "SaveBufferAsTexture").start();
 	}
 
 	// Run Typed Text, for a self-editing shader (see TextDirective):
@@ -1134,9 +1274,12 @@ public class MainActivity extends AppCompatActivity {
 		shaderManager.restoreState(state);
 		// Buffer paths map to their buffer, anything else (the entry file)
 		// to -1, i.e. ShaderError.IMAGE_PASS.
-		editorFragment.restoreActivePass(
-				ShaderProjectPaths.getBufferIndex(shaderManager.getActiveFilePath()));
+		editorFragment.restoreActivePass(passForPath(shaderManager.getActiveFilePath()));
 		refreshPassTabs();
+		// Now the whole shader - its buffers, texts and quality, not just
+		// the editor's text - can run again.
+		restoringState = false;
+		shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
 		if (!state.getBoolean(CODE_VISIBLE, true)) {
 			uiManager.toggleCodeVisibility();
 		}
@@ -1285,7 +1428,24 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onBuildShaderPack(@NonNull List<Long> shaderIds, @NonNull String title) {
-				ShaderPackBuilderDialog.show(MainActivity.this, shaderIds, title);
+				ShaderPackBuilderDialog.show(MainActivity.this, shaderIds, title,
+						packBuilderHost);
+			}
+
+			@Override
+			public void onPlayShow(@NonNull String packId) {
+				ShowActivity.start(MainActivity.this, packId);
+			}
+
+			@Override
+			public void onEditPack(@NonNull String packId) {
+				ShaderPackBuilderDialog.edit(MainActivity.this, packId,
+						packBuilderHost);
+			}
+
+			@Override
+			public void onUpdatePack(@NonNull String packId) {
+				showUpdatePackDialog(packId);
 			}
 
 			@Override
@@ -1546,7 +1706,27 @@ public class MainActivity extends AppCompatActivity {
 				if (shaderManager.isModified()) {
 					shaderManager.saveShader();
 				}
-				duplicateShader(shaderManager.getSelectedShaderId());
+				long id = shaderManager.getSelectedShaderId();
+				String name = null;
+				for (var shader : shaderListManager.getAllShaders()) {
+					if (shader.id() == id) {
+						name = shader.name();
+						// The copy isn't in the pack: drop "<Pack Title>: ".
+						int separator = name != null && shader.isFromPack()
+								? name.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR)
+								: -1;
+						if (separator >= 0) {
+							name = name.substring(separator +
+									DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
+						}
+						break;
+					}
+				}
+				if (name != null && !name.trim().isEmpty()) {
+					showSaveAsNewShaderDialog(id, name.trim());
+				} else {
+					duplicateShader(id);
+				}
 			}
 
 			@Override
@@ -1648,7 +1828,8 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onBuildShaderPack() {
-				ShaderPackBuilderDialog.show(MainActivity.this, List.of(), null);
+				ShaderPackBuilderDialog.show(MainActivity.this,
+						shaderManager.getSelectedShaderId(), packBuilderHost);
 			}
 
 			@Override
@@ -1659,6 +1840,18 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void onBatchShaders() {
 				BatchShaderDialog.show(MainActivity.this, batchShaderHost);
+			}
+
+			@Override
+			public void onSaveBufferAsTexture() {
+				showSaveBufferAsTextureDialog();
+			}
+
+			@Override
+			public void onImportModule() {
+				// Any type: modules come as all sorts (audio/x-mod,
+				// application/octet-stream...).
+				importModuleLauncher.launch(new String[]{"*/*"});
 			}
 
 			@Override
@@ -1676,6 +1869,39 @@ public class MainActivity extends AppCompatActivity {
 			shaderManager.selectShader(newId);
 			shaderListManager.loadShadersAsync();
 		}
+	}
+
+	// Save as New Shader for a named shader: the copy's name is that name
+	// plus a postfix, as the sidebar's name-group dialog does (an empty
+	// postfix leaves the copy unnamed, as for an unnamed shader).
+	private void showSaveAsNewShaderDialog(long id, @NonNull String name) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
+		TextView prefixLabel = view.findViewById(R.id.prefix_label);
+		EditText postfixView = view.findViewById(R.id.postfix);
+		prefixLabel.setText(getString(R.string.name_group_prefix_label, name));
+
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.duplicate_shader)
+				.setView(view)
+				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
+					String postfix = postfixView.getText().toString().trim();
+					if (postfix.isEmpty()) {
+						duplicateShader(id);
+						return;
+					}
+					shaderListManager.checkNamePrefixAndThen(postfix, fixedPostfix -> {
+						long newId = shaderManager.duplicateShader(id);
+						if (newId > 0) {
+							shaderManager.selectShader(newId);
+							shaderListManager.loadShadersAsync();
+							checkConflictAndRename(newId, name + fixedPostfix);
+						}
+					});
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.setOnDismissListener(d -> SoftKeyboard.hide(this, postfixView))
+				.show();
+		postfixView.requestFocus();
 	}
 
 	private void updateWallpaper() {
@@ -1744,6 +1970,7 @@ public class MainActivity extends AppCompatActivity {
 					var parsed = MultipassSource.parse(pastedSource);
 					if (parsed != null) {
 						shaderManager.setBufferSources(parsed.bufferSources());
+						shaderManager.setTexts(parsed.texts());
 					}
 					editorFragment.setText(parsed != null ? parsed.imageSource() : pastedSource);
 					refreshPassTabs();
@@ -1791,6 +2018,160 @@ public class MainActivity extends AppCompatActivity {
 		}
 	};
 
+	// Import Tracker Module: the file's checked (IBXM has to be able to
+	// play it), kept in the library under its own name (made unique), and
+	// offered to the shader as its soundtrack - see ModuleDirective.
+	private static final int MAX_MODULE_BYTES = 32 * 1024 * 1024;
+
+	// Set while a module's being picked for someone (the pack builder's
+	// soundtrack), who's handed its name in place of the usual dialog.
+	@Nullable
+	private Consumer<String> modulePicked;
+
+	private final ActivityResultLauncher<String[]> importModuleLauncher =
+			registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+				if (uri != null) {
+					new Thread(() -> importModule(uri), "ImportModule").start();
+				} else {
+					deliverPickedModule(null);
+				}
+			});
+
+	private final ShaderPackBuilderDialog.Host packBuilderHost =
+			new ShaderPackBuilderDialog.Host() {
+				@Override
+				public void pickModule(@NonNull Consumer<String> onImported) {
+					MainActivity.this.pickModule(onImported);
+				}
+
+				@Override
+				public void packInstalled(@NonNull String packId, @NonNull Set<Long> replaced) {
+					afterPackReplaced(packId, replaced);
+				}
+			};
+
+	// See ShaderPackBuilderDialog.Host.
+	private void pickModule(@NonNull Consumer<String> onImported) {
+		modulePicked = onImported;
+		importModuleLauncher.launch(new String[]{"*/*"});
+	}
+
+	// UI thread. True if someone was waiting for it.
+	private boolean deliverPickedModule(@Nullable String name) {
+		var waiting = modulePicked;
+		modulePicked = null;
+		if (waiting == null) {
+			return false;
+		}
+		waiting.accept(name);
+		return true;
+	}
+
+	private void importModule(@NonNull Uri uri) {
+		byte[] data;
+		try (InputStream in = getContentResolver().openInputStream(uri)) {
+			if (in == null) {
+				throw new IOException("Can't open " + uri);
+			}
+			var bytes = new ByteArrayOutputStream();
+			byte[] chunk = new byte[65536];
+			for (int n; (n = in.read(chunk)) > 0; ) {
+				bytes.write(chunk, 0, n);
+				if (bytes.size() > MAX_MODULE_BYTES) {
+					throw new IOException("Too big");
+				}
+			}
+			data = bytes.toByteArray();
+			new ibxm.Module(data);
+		} catch (Exception e) {
+			runOnUiThread(() -> {
+				Toast.makeText(this, R.string.not_a_module, Toast.LENGTH_LONG).show();
+				deliverPickedModule(null);
+			});
+			return;
+		}
+		String base = moduleNameFrom(displayName(uri));
+		String name = base;
+		for (int i = 2; dataSource.module.insertModule(name, data) < 0; ++i) {
+			name = base + "_" + i;
+		}
+		String imported = name;
+		runOnUiThread(() -> {
+			if (!deliverPickedModule(imported)) {
+				showModuleImported(imported);
+			}
+		});
+	}
+
+	private void showModuleImported(@NonNull String imported) {
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.module_imported_title)
+				.setMessage(getString(R.string.module_imported, imported,
+						ModuleDirective.line(imported)))
+				.setNegativeButton(R.string.dismiss, null)
+				.setPositiveButton(R.string.module_use_here, (d, w) -> useModule(imported))
+				.show();
+	}
+
+	@NonNull
+	private String displayName(@NonNull Uri uri) {
+		try (var cursor = getContentResolver().query(uri,
+				new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+			if (cursor != null && cursor.moveToFirst() && cursor.getString(0) != null) {
+				return cursor.getString(0);
+			}
+		} catch (RuntimeException e) {
+			// Fall back to the uri's own last part.
+		}
+		String last = uri.getLastPathSegment();
+		return last != null ? last : "module";
+	}
+
+	// A file name as a name a `///mod:` line can use: letters, digits and
+	// _, not starting with a digit, no extension.
+	@NonNull
+	static String moduleNameFrom(@NonNull String fileName) {
+		String name = fileName;
+		int slash = name.lastIndexOf('/');
+		if (slash >= 0) {
+			name = name.substring(slash + 1);
+		}
+		int dot = name.lastIndexOf('.');
+		if (dot > 0) {
+			name = name.substring(0, dot);
+		}
+		name = name.replaceAll("[^A-Za-z0-9_]+", "_").replaceAll("^_+|_+$", "");
+		if (name.isEmpty()) {
+			name = "module";
+		}
+		if (Character.isDigit(name.charAt(0))) {
+			name = "mod_" + name;
+		}
+		return name.length() > 40 ? name.substring(0, 40) : name;
+	}
+
+	// Makes `name` the shader's soundtrack: a `///mod:` line at the top of
+	// the Image pass, in place of any it had.
+	private void useModule(@NonNull String name) {
+		String line = ModuleDirective.line(name);
+		ShaderProjectSession session = shaderManager.getEditedProjectSession(
+				editorFragment.getText());
+		String entry = session.getProject().getEntryFilePath();
+		var file = session.getProject().getFile(entry);
+		if (file == null) {
+			return;
+		}
+		String source = file.source().replaceAll("(?m)^[ \\t]*///mod:[A-Za-z0-9_]*[ \\t]*\\n?", "");
+		String updated = line + "\n" + source;
+		if (entry.equals(session.getActiveFilePath())) {
+			editorFragment.replaceAll(updated);
+		} else {
+			shaderManager.setFileSource(entry, updated);
+		}
+		shaderManager.setModified(true);
+		runShader();
+	}
+
 	private final ActivityResultLauncher<String[]> renameListLauncher =
 			registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
 				if (uri != null) {
@@ -1818,6 +2199,77 @@ public class MainActivity extends AppCompatActivity {
 
 	private void installShaderPack(@NonNull Uri uri) {
 		installShaderPack(() -> ShaderPackInstaller.install(this, uri));
+	}
+
+	// Update Version - see UpdatePackDialog. The pack whose version is
+	// being chosen from a file, while the picker's up.
+	@Nullable
+	private String updatingPackId;
+
+	private final ActivityResultLauncher<String[]> updatePackLauncher =
+			registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+				String packId = updatingPackId;
+				updatingPackId = null;
+				if (uri != null && packId != null) {
+					replaceShaderPack(packId, uri);
+				}
+			});
+
+	private void showUpdatePackDialog(@NonNull String packId) {
+		new Thread(() -> {
+			var pack = dataSource.pack.getPack(packId);
+			if (pack == null) {
+				return;
+			}
+			var versions = ShaderPackInstaller.findVersions(this, packId);
+			runOnUiThread(() -> {
+				if (isFinishing() || isDestroyed()) {
+					return;
+				}
+				UpdatePackDialog.show(this, pack, versions, new UpdatePackDialog.Host() {
+					@Override
+					public void update(@NonNull ShaderPackInstaller.Found version) {
+						replaceShaderPack(packId, version.uri());
+					}
+
+					@Override
+					public void chooseFile() {
+						updatingPackId = packId;
+						updatePackLauncher.launch(new String[]{"*/*"});
+					}
+				});
+			});
+		}).start();
+	}
+
+	private void replaceShaderPack(@NonNull String packId, @NonNull Uri uri) {
+		Toast.makeText(this, R.string.installing_shader_pack, Toast.LENGTH_SHORT).show();
+		new Thread(() -> {
+			var oldIds = new HashSet<>(dataSource.pack.getShaderIds(packId));
+			var result = ShaderPackInstaller.replace(this, packId, uri);
+			runOnUiThread(() -> {
+				Toast.makeText(this, result.message(), Toast.LENGTH_LONG).show();
+				if (result.success()) {
+					afterPackReplaced(packId, oldIds);
+				} else {
+					shaderListManager.loadShadersAsync();
+				}
+			});
+		}).start();
+	}
+
+	// A new version of packId is in, in place of `replaced`: if the open
+	// shader went with the old version, open the new version's first.
+	private void afterPackReplaced(@NonNull String packId, @NonNull Set<Long> replaced) {
+		long selected = shaderManager.getSelectedShaderId();
+		if (replaced.contains(selected)) {
+			shaderManager.deleteShader(selected);
+			List<Long> newIds = dataSource.pack.getShaderIds(packId);
+			shaderManager.selectShader(!newIds.isEmpty()
+					? newIds.get(0)
+					: dataSource.shader.getFirstShaderId());
+		}
+		shaderListManager.loadShadersAsync();
 	}
 
 	// Not java.util.function's Supplier, which needs API 24.
@@ -1874,34 +2326,48 @@ public class MainActivity extends AppCompatActivity {
 
 		boolean wasPaused = shaderViewManager.isPaused();
 		setShaderPaused(true);
-		new MaterialAlertDialogBuilder(this)
+		// Its buttons are its own, at the top - see dialog_paste_shader.
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.paste_shader_title)
 				.setView(view)
-				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
-					int selectedIndex = qualityGroup.indexOfChild(
-							qualityGroup.findViewById(qualityGroup.getCheckedRadioButtonId()));
-					float quality = Float.parseFloat(qualityValues[Math.max(0, selectedIndex)]);
-					// Blank stays unnamed (same fallback-to-last-modified
-					// behavior as any other unnamed shader - see
-					// DataRecords.ShaderInfo.getTitle()), rather than
-					// saving an empty-string name.
-					String name = nameView.getText().toString().trim();
-					var parsed = MultipassSource.parse(shaderSource);
-					long newId = dataSource.shader.insertShader(
-							parsed != null ? parsed.imageSource() : shaderSource,
-							name.isEmpty() ? null : name, null, quality);
-					if (parsed != null && newId > 0) {
-						dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
-					}
-					// Don't let the start-up load (if it's still pending -
-					// see isInitialLoad) switch away from it afterwards.
-					isInitialLoad = false;
-					shaderManager.selectShader(newId);
-					shaderManager.saveShader(true);
+				.setOnDismissListener(d -> {
+					SoftKeyboard.hide(this, nameView);
+					setShaderPaused(wasPaused);
 				})
-				.setNegativeButton(android.R.string.cancel, null)
-				.setOnDismissListener(d -> setShaderPaused(wasPaused))
 				.show();
+		view.findViewById(R.id.paste_shader_cancel).setOnClickListener(v -> dialog.dismiss());
+		// Pick an existing shader or group as the name's start, then the
+		// rest of it - as Add Shader to Name Group does - into the name.
+		view.findViewById(R.id.paste_shader_add_as_child).setOnClickListener(v ->
+				pickParentName(0, parentName -> askNamePostfix(parentName,
+						nameView.getText().toString().trim(), postfix -> {
+							nameView.setText(parentName + postfix);
+							nameView.setSelection(nameView.length());
+						})));
+		view.findViewById(R.id.paste_shader_ok).setOnClickListener(v -> {
+			dialog.dismiss();
+			int selectedIndex = qualityGroup.indexOfChild(
+					qualityGroup.findViewById(qualityGroup.getCheckedRadioButtonId()));
+			float quality = Float.parseFloat(qualityValues[Math.max(0, selectedIndex)]);
+			// Blank stays unnamed (same fallback-to-last-modified
+			// behavior as any other unnamed shader - see
+			// DataRecords.ShaderInfo.getTitle()), rather than
+			// saving an empty-string name.
+			String name = nameView.getText().toString().trim();
+			var parsed = MultipassSource.parse(shaderSource);
+			long newId = dataSource.shader.insertShader(
+					parsed != null ? parsed.imageSource() : shaderSource,
+					name.isEmpty() ? null : name, null, quality);
+			if (parsed != null && newId > 0) {
+				dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
+				dataSource.text.setTexts(newId, parsed.texts());
+			}
+			// Don't let the start-up load (if it's still pending -
+			// see isInitialLoad) switch away from it afterwards.
+			isInitialLoad = false;
+			shaderManager.selectShader(newId);
+			shaderManager.saveShader(true);
+		});
 	}
 
 	private void requestAudioCapture() {
@@ -2167,7 +2633,7 @@ public class MainActivity extends AppCompatActivity {
 	private String getWholeShaderSource() {
 		var session = shaderManager.getEditedProjectSession();
 		return MultipassSource.join(session.getEntryPointSource(),
-				session.getProject().getBufferSources());
+				session.getProject().getBufferSources(), session.getProject().getTexts());
 	}
 
 	// Offscreen buffers (ShaderToy-style multipass) - see EditorFragment's
@@ -2207,23 +2673,67 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	// Which buffer tabs are shown as Sound passes - see refreshPassTabs().
+	@NonNull
+	private boolean[] shownSoundTabs = new boolean[0];
+
+	private boolean soundTabsChanged() {
+		String[] buffers = shaderManager.getEditedProjectSession(editorFragment.getText())
+				.getProject().getBufferSources();
+		boolean[] sound = new boolean[buffers.length];
+		for (int i = 0; i < buffers.length; ++i) {
+			sound[i] = ShaderSourcePreparer.isSoundSource(buffers[i]);
+		}
+		return !Arrays.equals(sound, shownSoundTabs);
+	}
+
 	private void refreshPassTabs() {
 		updateRunShaderTextButton();
 		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
 		boolean[] present = new boolean[buffers.length];
+		boolean[] sound = new boolean[buffers.length];
 		for (int i = 0; i < buffers.length; ++i) {
 			present[i] = buffers[i] != null;
+			sound[i] = ShaderSourcePreparer.isSoundSource(buffers[i]);
 		}
-		editorFragment.setPassTabs(present);
+		editorFragment.setPassTabs(present, sound, getTextNames());
+		shownSoundTabs = sound;
 		// Back to the Image pass if the shown buffer has gone, or another
 		// shader was loaded - see EditorFragment.getDisplayedPass().
 		shaderViewManager.setDisplayedBuffer(editorFragment.getDisplayedPass());
 	}
 
+	// The shader's texts, in tab order - see EditorFragment.TEXT_PASS_BASE.
+	@NonNull
+	private List<String> getTextNames() {
+		return new ArrayList<>(shaderManager.getEditedProjectSession().getProject()
+				.getTexts().keySet());
+	}
+
+	// A file's pass: its buffer, its text's tab, or the Image pass.
+	private int passForPath(@NonNull String path) {
+		String text = ShaderProjectPaths.getTextName(path);
+		if (text != null) {
+			int index = getTextNames().indexOf(text);
+			return index >= 0 ? EditorFragment.TEXT_PASS_BASE + index : ShaderError.IMAGE_PASS;
+		}
+		return ShaderProjectPaths.getBufferIndex(path);
+	}
+
 	private void switchToPass(int pass) {
-		String path = pass == ShaderError.IMAGE_PASS
-				? shaderManager.getEntryFilePath()
-				: ShaderProjectPaths.getBufferPath(pass);
+		String path;
+		if (pass == ShaderError.IMAGE_PASS) {
+			path = shaderManager.getEntryFilePath();
+		} else if (EditorFragment.isTextPass(pass)) {
+			List<String> names = getTextNames();
+			int index = pass - EditorFragment.TEXT_PASS_BASE;
+			if (index >= names.size()) {
+				return;
+			}
+			path = ShaderProjectPaths.getTextPath(names.get(index));
+		} else {
+			path = ShaderProjectPaths.getBufferPath(pass);
+		}
 		editorFragment.switchToPass(pass, shaderManager.setActiveFile(path));
 		clearFindMatchRing();
 	}
@@ -2236,6 +2746,9 @@ public class MainActivity extends AppCompatActivity {
 			if (buffers[i] != null) {
 				passes.add(i);
 			}
+		}
+		for (int i = 0; i < getTextNames().size(); ++i) {
+			passes.add(EditorFragment.TEXT_PASS_BASE + i);
 		}
 		if (passes.size() < 2) {
 			return;
@@ -2269,8 +2782,124 @@ public class MainActivity extends AppCompatActivity {
 					dialog.dismiss();
 					setBufferCount(which, current);
 				})
+				.setNeutralButton(R.string.shader_texts_button, (dialog, which) ->
+						showShaderTextsDialog())
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
+	}
+
+	// The shader's named texts (see ShaderTextDao): tap one to rename or
+	// delete it, or add another. A pass reads one with
+	// `uniform sampler2D <name>;`.
+	private void showShaderTextsDialog() {
+		List<String> names = getTextNames();
+		var builder = new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.shader_texts)
+				.setPositiveButton(R.string.shader_text_add, (dialog, which) ->
+						askTextName(null))
+				.setNegativeButton(android.R.string.cancel, null);
+		if (names.isEmpty()) {
+			builder.setMessage(R.string.shader_texts_none);
+		} else {
+			builder.setItems(names.toArray(new String[0]), (dialog, which) -> {
+				String name = names.get(which);
+				new MaterialAlertDialogBuilder(this)
+						.setTitle(name)
+						.setItems(new String[]{getString(R.string.shader_text_open),
+								getString(R.string.shader_text_rename),
+								getString(R.string.shader_text_delete)}, (d, action) -> {
+							if (action == 0) {
+								switchToPass(EditorFragment.TEXT_PASS_BASE + which);
+							} else if (action == 1) {
+								askTextName(name);
+							} else {
+								confirmDeleteText(name);
+							}
+						})
+						.show();
+			});
+		}
+		builder.show();
+	}
+
+	// A name for a new text (renaming null), or a new name for `renaming`.
+	private void askTextName(@Nullable String renaming) {
+		var input = new EditText(this);
+		input.setSingleLine(true);
+		input.setHint(R.string.shader_text_name_hint);
+		if (renaming != null) {
+			input.setText(renaming);
+			input.setSelection(renaming.length());
+		}
+		int pad = (int) (20 * getResources().getDisplayMetrics().density);
+		var frame = new FrameLayout(this);
+		frame.setPadding(pad, pad / 2, pad, 0);
+		frame.addView(input);
+		AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+				.setTitle(renaming == null ? R.string.shader_text_add : R.string.shader_text_rename)
+				.setView(frame)
+				.setPositiveButton(android.R.string.ok, null)
+				.setNegativeButton(android.R.string.cancel, null)
+				.setOnDismissListener(d -> SoftKeyboard.hide(this, input))
+				.show();
+		dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+			String name = input.getText().toString().trim();
+			Map<String, String> texts = shaderManager.getEditedProjectSession(
+					editorFragment.getText()).getProject().getTexts();
+			if (!ShaderTextDao.isValidName(name)) {
+				input.setError(getString(R.string.shader_text_bad_name));
+				return;
+			}
+			if (!name.equals(renaming) && texts.containsKey(name)) {
+				input.setError(getString(R.string.shader_text_name_taken, name));
+				return;
+			}
+			dialog.dismiss();
+			if (renaming == null) {
+				texts.put(name, getString(R.string.shader_text_template, name));
+				applyTexts(texts, name);
+			} else if (!name.equals(renaming)) {
+				// Same place in the order, new name.
+				var renamed = new LinkedHashMap<String, String>();
+				for (var entry : texts.entrySet()) {
+					renamed.put(entry.getKey().equals(renaming) ? name : entry.getKey(),
+							entry.getValue());
+				}
+				applyTexts(renamed, name);
+			}
+		});
+		input.requestFocus();
+	}
+
+	private void confirmDeleteText(@NonNull String name) {
+		new MaterialAlertDialogBuilder(this)
+				.setMessage(getString(R.string.shader_text_delete_message, name))
+				.setPositiveButton(R.string.shader_text_delete, (dialog, which) -> {
+					Map<String, String> texts = shaderManager.getEditedProjectSession(
+							editorFragment.getText()).getProject().getTexts();
+					texts.remove(name);
+					applyTexts(texts, null);
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	// show: a text to open once they're in, or null to stay put.
+	private void applyTexts(@NonNull Map<String, String> texts, @Nullable String show) {
+		if (EditorFragment.isTextPass(editorFragment.getActivePass())) {
+			// Off the text tab first, so its text is committed where it
+			// belongs before the tabs are renumbered.
+			switchToPass(ShaderError.IMAGE_PASS);
+		}
+		shaderManager.setTexts(texts);
+		refreshPassTabs();
+		shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+		if (show != null) {
+			int index = new ArrayList<>(texts.keySet()).indexOf(show);
+			if (index >= 0) {
+				switchToPass(EditorFragment.TEXT_PASS_BASE + index);
+			}
+		}
 	}
 
 	private void setBufferCount(int count, @NonNull String[] current) {
@@ -2459,6 +3088,21 @@ public class MainActivity extends AppCompatActivity {
 	private void showAdjustDefinesDialog() {
 		String source = editorFragment.getText();
 		List<ShaderDefine> originalOrder = ShaderDefineParser.parseUsedDefines(source);
+		// Then the other passes' that the open one hasn't got - a define
+		// shared by several passes (a converted Ready pattern's
+		// parameters, say) is one entry, applied to them all.
+		Set<String> listed = new HashSet<>();
+		for (ShaderDefine define : originalOrder) {
+			listed.add(define.name);
+		}
+		for (var entry : otherPassSources(shaderManager.getEditedProjectSession(source)).entrySet()) {
+			for (ShaderDefine define : ShaderDefineParser.parseUsedDefines(entry.getValue())) {
+				if (listed.add(define.name)) {
+					define.passPath = entry.getKey();
+					originalOrder.add(define);
+				}
+			}
+		}
 		if (originalOrder.isEmpty()) {
 			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
 			return;
@@ -2700,8 +3344,14 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		List<ShaderDefine> failed = new ArrayList<>();
+		Collection<String> others = otherPassSources(
+				shaderManager.getEditedProjectSession(source)).values();
 		for (ShaderDefine define : live) {
-			if (ShaderDefineParser.isUsedInConditional(source, define)) {
+			boolean conditional = ShaderDefineParser.isUsedInConditional(source, define);
+			for (String other : others) {
+				conditional |= ShaderDefineParser.isUsedInConditional(other, define);
+			}
+			if (conditional) {
 				define.liveError = getString(R.string.adjust_defines_live_conditional);
 				failed.add(define);
 			}
@@ -2716,12 +3366,10 @@ public class MainActivity extends AppCompatActivity {
 		positive.setText(R.string.adjust_defines_live_checking);
 		// Everything the check needs, built here on the UI thread - the
 		// defines are the dialog's, and only it changes them.
-		ShaderProjectSession liveSession = shaderManager.getEditedProjectSession(
-				ShaderDefineParser.toLiveSource(source, workingOrder, live));
+		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
 		Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
 		for (ShaderDefine define : live) {
-			singles.put(define, shaderManager.getEditedProjectSession(
-					ShaderDefineParser.toLiveSource(source, workingOrder, List.of(define))));
+			singles.put(define, withDefines(source, originalOrder, workingOrder, List.of(define)));
 		}
 		new Thread(() -> {
 			List<ShaderError> errors = shaderViewManager.testCompileAndWait(liveSession);
@@ -2929,8 +3577,14 @@ public class MainActivity extends AppCompatActivity {
 	private void applyAdjustedDefines(@NonNull String originalSource,
 			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
 			boolean andSave) {
-		String newSource = ShaderDefineParser.reconstruct(originalSource, originalOrder, workingOrder);
-		editorFragment.replaceAll(newSource);
+		ShaderProjectSession edited = withDefines(originalSource, originalOrder, workingOrder, null);
+		Map<String, String> before = otherPassSources(shaderManager.getEditedProjectSession());
+		editorFragment.replaceAll(edited.getActiveFile().source());
+		for (var entry : otherPassSources(edited).entrySet()) {
+			if (!entry.getValue().equals(before.get(entry.getKey()))) {
+				shaderManager.setFileSource(entry.getKey(), entry.getValue());
+			}
+		}
 		if (andSave) {
 			shaderManager.saveShader();
 		}
@@ -2942,6 +3596,73 @@ public class MainActivity extends AppCompatActivity {
 		Toast.makeText(this,
 				andSave ? R.string.adjust_defines_applied_and_saved : R.string.adjust_defines_applied,
 				Toast.LENGTH_SHORT).show();
+	}
+
+	// Every GLSL pass but the open one, by path - the Image pass and the
+	// buffers, not texts.
+	@NonNull
+	private static Map<String, String> otherPassSources(@NonNull ShaderProjectSession session) {
+		Map<String, String> sources = new LinkedHashMap<>();
+		String entry = session.getProject().getEntryFilePath();
+		for (var file : session.getProject().getFiles()) {
+			String path = file.path();
+			if (!path.equals(session.getActiveFilePath()) &&
+					(path.equals(entry) || ShaderProjectPaths.getBufferIndex(path) >= 0)) {
+				sources.put(path, file.source());
+			}
+		}
+		return sources;
+	}
+
+	// The shader as Adjust Defines leaves it: the open pass rebuilt from
+	// its own defines in the dialog's order (or, for live mode - `live`
+	// not null - each at its line, the live ones as uniforms), and in
+	// every other pass each define named like one in the dialog that was
+	// changed (or is live) set to the dialog's value. Reordering only
+	// ever applies to the open pass.
+	@NonNull
+	private ShaderProjectSession withDefines(@NonNull String source,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			@Nullable Collection<ShaderDefine> live) {
+		List<ShaderDefine> ownOriginal = new ArrayList<>();
+		for (ShaderDefine define : originalOrder) {
+			if (define.passPath == null) {
+				ownOriginal.add(define);
+			}
+		}
+		List<ShaderDefine> ownWorking = new ArrayList<>();
+		Map<String, ShaderDefine> byName = new HashMap<>();
+		for (ShaderDefine define : workingOrder) {
+			if (define.passPath == null) {
+				ownWorking.add(define);
+			}
+			byName.put(define.name, define);
+		}
+		String own = live != null
+				? ShaderDefineParser.toLiveSource(source, ownWorking, live)
+				: ShaderDefineParser.reconstruct(source, ownOriginal, ownWorking);
+		ShaderProjectSession session = shaderManager.getEditedProjectSession(own);
+		for (var entry : otherPassSources(session).entrySet()) {
+			String other = entry.getValue();
+			String[] lines = other.split("\n", -1);
+			boolean changed = false;
+			for (ShaderDefine theirs : ShaderDefineParser.parseUsedDefines(other)) {
+				ShaderDefine ours = byName.get(theirs.name);
+				if (ours == null || theirs.lineIndex >= lines.length) {
+					continue;
+				}
+				boolean isLive = live != null && live.contains(ours) && ours.canBeLive();
+				if (isLive || ours.isValueChanged() || ours.isCommentChanged()) {
+					lines[theirs.lineIndex] = theirs.indent +
+							(isLive ? ours.toLiveLine() : ours.toLine()).substring(ours.indent.length());
+					changed = true;
+				}
+			}
+			if (changed) {
+				session = session.withFileSource(entry.getKey(), String.join("\n", lines));
+			}
+		}
+		return session;
 	}
 
 	// R/G/B(/A) sliders, a live swatch, and a hex field, all kept in
@@ -5568,6 +6289,14 @@ public class MainActivity extends AppCompatActivity {
 	// the current shader under. Unnamed (timestamp-titled) shaders are
 	// excluded since they have nothing meaningful to group under.
 	private void showPickParentShaderDialog(long targetId, boolean confirmIfAlreadyNamed) {
+		pickParentName(targetId, parentName ->
+				showNameGroupPostfixDialog(targetId, parentName, confirmIfAlreadyNamed));
+	}
+
+	// The picker itself: hands back the chosen name prefix. targetId is
+	// the shader it's for, for Sort by similarity - 0 for one not saved
+	// yet (Paste's Add as Child), which hides that option.
+	private void pickParentName(long targetId, @NonNull Consumer<String> onPicked) {
 		List<DataRecords.ShaderInfo> namedShaders = new ArrayList<>();
 		for (var shader : shaderListManager.getAllShaders()) {
 			if (shader.name() != null && !shader.name().isEmpty()) {
@@ -5582,6 +6311,9 @@ public class MainActivity extends AppCompatActivity {
 		ShaderTreeAdapter pickerAdapter = new ShaderTreeAdapter(this);
 		pickerAdapter.setData(namedShaders);
 		parentListView.setAdapter(pickerAdapter);
+		if (targetId < 1) {
+			sortBySimilarityBox.setVisibility(View.GONE);
+		}
 
 		// Ranks branches by the best code/name similarity match they
 		// contain against the shader being reparented, so the most
@@ -5639,16 +6371,26 @@ public class MainActivity extends AppCompatActivity {
 			// name prefix this node stands for.
 			String parentName = pickerAdapter.getRow(position).path().replace("/", "");
 			dialog.dismiss();
-			showNameGroupPostfixDialog(targetId, parentName, confirmIfAlreadyNamed);
+			onPicked.accept(parentName);
 		});
 	}
 
 	private void showNameGroupPostfixDialog(
 			long targetId, @NonNull String parentName, boolean confirmIfAlreadyNamed) {
+		askNamePostfix(parentName, "", postfix -> applyNameGroupRename(
+				targetId, parentName, postfix, confirmIfAlreadyNamed));
+	}
+
+	// Asks for the rest of a name starting with parentName, checked by
+	// checkNamePrefixAndThen(); a blank one is dropped.
+	private void askNamePostfix(@NonNull String parentName, @NonNull String initialPostfix,
+			@NonNull Consumer<String> onPostfix) {
 		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
 		TextView prefixLabel = view.findViewById(R.id.prefix_label);
 		EditText postfixView = view.findViewById(R.id.postfix);
 		prefixLabel.setText(getString(R.string.name_group_prefix_label, parentName));
+		postfixView.setText(initialPostfix);
+		postfixView.selectAll();
 
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.add_shader_to_name_group)
@@ -5656,9 +6398,7 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String postfix = postfixView.getText().toString().trim();
 					if (!postfix.isEmpty()) {
-						shaderListManager.checkNamePrefixAndThen(postfix, fixedPostfix ->
-								applyNameGroupRename(
-										targetId, parentName, fixedPostfix, confirmIfAlreadyNamed));
+						shaderListManager.checkNamePrefixAndThen(postfix, onPostfix);
 					}
 				})
 				.setNegativeButton(android.R.string.cancel, null)

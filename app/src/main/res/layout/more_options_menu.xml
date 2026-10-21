@@ -76,6 +76,22 @@
 			app:icon="@drawable/ic_pack" />
 
 		<Button
+			android:id="@+id/import_module"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/import_module"
+			app:icon="@drawable/ic_play_arrow" />
+
+		<Button
+			android:id="@+id/save_buffer_as_texture"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/save_buffer_as_texture"
+			app:icon="@drawable/ic_texture_add" />
+
+		<Button
 			android:id="@+id/batch_shaders"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

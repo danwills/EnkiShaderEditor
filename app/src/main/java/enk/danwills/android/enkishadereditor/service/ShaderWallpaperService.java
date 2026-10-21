@@ -155,6 +155,9 @@ public class ShaderWallpaperService extends WallpaperService {
 				saveRuntime();
 				runtimeShaderId = ShaderEditorApp.preferences.getWallpaperShader();
 				hasRuntimeShader = true;
+				// A wallpaper is seen, not heard.
+				view.getRenderer().setSoundEnabled(false);
+				view.getRenderer().setShaderTexts(projectSession.getProject().getTexts(), false);
 				view.getRenderer().setFragmentShader(
 						projectSession.getEntryPointSource(),
 						projectSession.getProject().getBufferSources(),
@@ -192,7 +195,8 @@ public class ShaderWallpaperService extends WallpaperService {
 			}
 
 			return new LegacyShaderProjectSource(shader,
-					dataSource.buffer.getBufferSources(shader.id())).openSession();
+					dataSource.buffer.getBufferSources(shader.id()),
+					dataSource.text.getTexts(shader.id())).openSession();
 		}
 
 		private class ShaderWallpaperView extends ShaderView {

@@ -77,6 +77,10 @@ public final class DatabaseContract {
 		// later, a store.
 		String SOURCE = "source";
 		String SOURCE_FILE = "file";
+		// A presentation pack's show, as PackShow's JSON (how long each
+		// shader is shown, the soundtrack, an optional timeline), or null
+		// for an ordinary pack.
+		String SHOW = "show";
 	}
 
 	/**
@@ -96,6 +100,8 @@ public final class DatabaseContract {
 		// older packs apart.
 		String FORMAT = "format";
 		int CURRENT_FORMAT = 1;
+		// See PackColumns.SHOW - not in packs written before it.
+		String SHOW = "show";
 	}
 
 	/**
@@ -137,6 +143,29 @@ public final class DatabaseContract {
 	/**
 	 * Defines the contents of the 'textures' table.
 	 */
+	/**
+	 * Defines the contents of the 'shader_texts' table: named blocks of
+	 * text a shader reads as a texture (`uniform sampler2D <name>;`) -
+	 * see ShaderTextDao and opengl/ShaderTexts.
+	 */
+	public interface TextColumns extends BaseColumns {
+		String TABLE_NAME = "shader_texts";
+		String SHADER_ID = "shader_id";
+		String NAME = "name";
+		String TEXT = "text";
+	}
+
+	/**
+	 * Defines the contents of the 'modules' table: tracker modules (MOD,
+	 * S3M, XM) a shader can play - see ModuleDao.
+	 */
+	public interface ModuleColumns extends BaseColumns {
+		String TABLE_NAME = "modules";
+		String NAME = "name";
+		String DATA = "data";
+		String CREATED = "created";
+	}
+
 	public interface TextureColumns extends BaseColumns {
 		String TABLE_NAME = "textures";
 		String NAME = "name";

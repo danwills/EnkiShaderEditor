@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import enk.danwills.android.enkishadereditor.R;
+import enk.danwills.android.enkishadereditor.activity.ShowActivity;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
@@ -127,7 +128,8 @@ public final class GetShaderPackDialog {
 						});
 					});
 			addPack(list, entry.title(), entry.author(), entry.shaderNames().size(),
-					entry.description(), entry.thumbnails(), statusText, get);
+					entry.description(), entry.thumbnails(), statusText, get,
+					playShow(activity, pack, dialog));
 		}
 
 		// Packs installed from files (or no longer on offer).
@@ -139,7 +141,7 @@ public final class GetShaderPackDialog {
 				addPack(list, pack.title(), pack.author(), count != null ? count : 0,
 						pack.description(), thumbs != null ? thumbs : List.of(),
 						activity.getString(R.string.pack_status_installed, pack.version()),
-						null);
+						null, playShow(activity, pack, dialog));
 			}
 		}
 		if (catalog.isEmpty() && installed.isEmpty()) {
@@ -182,7 +184,8 @@ public final class GetShaderPackDialog {
 	// a Get button.
 	private static void addPack(@NonNull LinearLayout list, @NonNull String title,
 			@Nullable String author, int shaderCount, @Nullable String blurb,
-			@NonNull List<byte[]> thumbnails, @NonNull String status, @Nullable Runnable get) {
+			@NonNull List<byte[]> thumbnails, @NonNull String status, @Nullable Runnable get,
+			@Nullable Runnable play) {
 		var context = list.getContext();
 		var card = new LinearLayout(context);
 		card.setOrientation(LinearLayout.VERTICAL);
@@ -250,7 +253,32 @@ public final class GetShaderPackDialog {
 			lp.topMargin = dp(context, 8);
 			card.addView(button, lp);
 		}
+		if (play != null) {
+			var button = new MaterialButton(context);
+			button.setText(R.string.play_show);
+			button.setIconResource(R.drawable.ic_play_arrow);
+			button.setOnClickListener(v -> play.run());
+			var lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT);
+			lp.topMargin = dp(context, 8);
+			card.addView(button, lp);
+		}
 		list.addView(card);
+	}
+
+	// An installed presentation pack's Play Show - see ShowActivity.
+	@Nullable
+	private static Runnable playShow(@NonNull Activity activity,
+			@Nullable DataRecords.ShaderPack pack, @NonNull AlertDialog[] dialog) {
+		if (pack == null || !pack.isShow()) {
+			return null;
+		}
+		return () -> {
+			if (dialog[0] != null) {
+				dialog[0].dismiss();
+			}
+			ShowActivity.start(activity, pack.packId());
+		};
 	}
 
 	// A dialog rather than a toast - these explain why something didn't
