@@ -189,3 +189,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   **"Could deployment be automatic?"** The workflow already asks to deploy on such pushes; likely
   the fork safeguard (GitHub won't run push workflows on a fork until enabled in the Actions tab).
   Asked Dan to check for that banner; meanwhile CLAUDE.md says to dispatch by hand after a push.
+- **"I enabled workflows in the Actions tab."** To be confirmed by the next docs push to master;
+  the manual fallback stays in CLAUDE.md until then.
