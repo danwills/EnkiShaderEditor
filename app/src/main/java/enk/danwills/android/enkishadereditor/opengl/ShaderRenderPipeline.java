@@ -490,6 +490,11 @@ final class ShaderRenderPipeline {
 		primitiveStamp = stamp;
 	}
 
+	// See PrimitivePresenter.setXform().
+	void setPrimitiveXform(float x, float y, float zoom, float angle) {
+		primitivePresenter.setXform(x, y, zoom, angle);
+	}
+
 	// Gaussian's first step: `source` blurred at its own size, across then
 	// up, into textures[1] - by `useDevice`, into the targets given (made,
 	// at the source's size, when missing or the wrong size).

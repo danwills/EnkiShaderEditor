@@ -768,6 +768,10 @@
 	<string name="upscale_points">累積點（最後一個緩衝區）</string>
 	<string name="upscale_splats">2D 高斯潑濺（最後一個緩衝區）</string>
 	<string name="upscale_exposure">曝光</string>
+	<string name="upscale_adjust_xform">調整潑濺變換…</string>
+	<string name="splats_xform_adjusting">潑濺變換：拖曳、捏合、旋轉</string>
+	<string name="splats_xform_reset">重設</string>
+	<string name="splats_xform_done">完成</string>
 	<string name="upscale_bokeh">花式失焦（散景）</string>
 	<string name="upscale_crt">CRT 映像管</string>
 	<string name="upscale_edges">畫面邊緣之外</string>

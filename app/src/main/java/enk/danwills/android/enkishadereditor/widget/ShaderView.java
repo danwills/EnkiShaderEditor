@@ -39,6 +39,9 @@ public class ShaderView extends GLSurfaceView {
 		init(context, GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 	}
 
+	@Nullable
+	private OnTouchListener touchInterceptor;
+
 	public ShaderView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init(context, GLSurfaceView.RENDERMODE_CONTINUOUSLY);
@@ -74,10 +77,20 @@ public class ShaderView extends GLSurfaceView {
 		renderer.setContinuousRendering(renderMode == RENDERMODE_CONTINUOUSLY);
 	}
 
+	// Touches go here instead of to the shader while set - see
+	// SplatsXformAdjuster.
+	public void setTouchInterceptor(@Nullable OnTouchListener interceptor) {
+		touchInterceptor = interceptor;
+	}
+
 	// Click handling is implemented in renderer.
 	@SuppressLint("ClickableViewAccessibility")
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
+		if (touchInterceptor != null) {
+			touchInterceptor.onTouch(this, event);
+			return true;
+		}
 		renderer.touchAt(event);
 		return true;
 	}

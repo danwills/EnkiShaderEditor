@@ -1155,6 +1155,11 @@ public class ShaderViewManager {
 		shaderView.requestRender();
 	}
 
+	@NonNull
+	public ShaderView getShaderView() {
+		return shaderView;
+	}
+
 	// What's on screen now: a shader's own `///upscale:` line's, or the
 	// session's - see ShaderRenderer.getUpscale().
 	@NonNull

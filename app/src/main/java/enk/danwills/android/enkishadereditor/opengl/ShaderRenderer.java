@@ -231,6 +231,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See requestRedisplay().
 	// See setUpscale().
 	private volatile boolean upscaleChosen;
+	// See setSplatsXform(): x, y, zoom, angle.
+	private final float[] splatsXform = {0f, 0f, 1f, 0f};
 	@NonNull
 	private volatile Upscaling.Upscale upscale = Upscaling.Upscale.DEFAULT;
 	// See setCaptureUpscaled().
@@ -416,6 +418,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		} else {
 			builtinUniforms.setRuntimeNanos(0);
 			upscaleChosen = false;
+			setSplatsXform(0f, 0f, 1f, 0f);
 		}
 		setQuality(quality);
 		this.shaderId = shaderId;
@@ -613,8 +616,31 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		redisplayRequested = true;
 	}
 
+	// The splats xform: Upscaling's points and splats drawn offset (x, y,
+	// in frame heights), zoomed and turned about the frame's centre,
+	// without touching the shader - see PrimitivePresenter.setXform(). Back
+	// to none when another shader opens.
+	public void setSplatsXform(float x, float y, float zoom, float angle) {
+		synchronized (splatsXform) {
+			splatsXform[0] = x;
+			splatsXform[1] = y;
+			splatsXform[2] = zoom;
+			splatsXform[3] = angle;
+		}
+		redisplayRequested = true;
+	}
+
+	@NonNull
+	public float[] getSplatsXform() {
+		synchronized (splatsXform) {
+			return splatsXform.clone();
+		}
+	}
+
 	// For Upscaling's points and splats: the last drawn offscreen buffer.
 	private void setPrimitiveSource(@NonNull Upscaling.Upscale upscale) {
+		float[] xform = getSplatsXform();
+		renderPipeline.setPrimitiveXform(xform[0], xform[1], xform[2], xform[3]);
 		var passes = programManager.getBufferPasses();
 		BufferPass last = upscale.filter().isPrimitives() && !passes.isEmpty()
 				? passes.get(passes.size() - 1)

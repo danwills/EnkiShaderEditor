@@ -177,6 +177,8 @@ import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 import enk.danwills.android.enkishadereditor.widget.UpdatePackDialog;
 import enk.danwills.android.enkishadereditor.widget.UpscaleDialog;
+import enk.danwills.android.enkishadereditor.widget.ShaderView;
+import enk.danwills.android.enkishadereditor.widget.SplatsXformAdjuster;
 
 public class MainActivity extends AppCompatActivity {
 	// See reloadReplacedShader().
@@ -2196,6 +2198,24 @@ public class MainActivity extends AppCompatActivity {
 			@Override
 			public void apply(@NonNull Upscaling.Upscale upscale) {
 				shaderViewManager.setUpscale(upscale);
+			}
+
+			@Override
+			public void adjustXform(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.setUpscale(upscale);
+				ShaderView view = shaderViewManager.getShaderView();
+				new SplatsXformAdjuster(MainActivity.this, view, new SplatsXformAdjuster.Host() {
+					@Override
+					public void setTouchInterceptor(@Nullable View.OnTouchListener interceptor) {
+						view.setTouchInterceptor(interceptor);
+					}
+
+					@Override
+					public void setXform(float x, float y, float zoom, float angle) {
+						view.getRenderer().setSplatsXform(x, y, zoom, angle);
+						view.requestRender();
+					}
+				}, view.getRenderer().getSplatsXform()).start();
 			}
 		}, false);
 	}

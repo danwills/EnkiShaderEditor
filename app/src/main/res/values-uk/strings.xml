@@ -835,6 +835,10 @@
 	<string name="upscale_points">Накопичення точок (останній буфер)</string>
 	<string name="upscale_splats">2D-гауссові сплати (останній буфер)</string>
 	<string name="upscale_exposure">Експозиція</string>
+	<string name="upscale_adjust_xform">Налаштувати трансформацію сплатів…</string>
+	<string name="splats_xform_adjusting">Трансформація сплатів: тягніть, зводьте, обертайте</string>
+	<string name="splats_xform_reset">Скинути</string>
+	<string name="splats_xform_done">Готово</string>
 	<string name="upscale_bokeh">Вигадливий розфокус (боке)</string>
 	<string name="upscale_crt">ЕПТ</string>
 	<string name="upscale_edges">За краями кадру</string>

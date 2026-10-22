@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.widget;
 import android.app.Activity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
@@ -31,6 +32,11 @@ public final class UpscaleDialog {
 		void preview(@NonNull Upscale upscale);
 
 		void apply(@NonNull Upscale upscale);
+
+		// Points and splats: apply `upscale`, then adjust the splats xform
+		// (see SplatsXformAdjuster). Not offered for Settings' default.
+		default void adjustXform(@NonNull Upscale upscale) {
+		}
 	}
 
 	private static final int[] FILTER_NAMES = {
@@ -58,6 +64,7 @@ public final class UpscaleDialog {
 	private final Activity activity;
 	private final Host host;
 	private final Upscale original;
+	private Button xformButton;
 	private final boolean forDefault;
 	private Filter filter;
 	private Edge edge;
@@ -148,6 +155,10 @@ public final class UpscaleDialog {
 		column.addView(amountSlider, new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+		xformButton = new Button(activity, null, android.R.attr.borderlessButtonStyle);
+		xformButton.setText(R.string.upscale_adjust_xform);
+		column.addView(xformButton);
+
 		var hint = label(forDefault ? R.string.upscale_default_hint : R.string.upscale_hint);
 		hint.setAlpha(0.7f);
 		column.addView(hint);
@@ -163,6 +174,10 @@ public final class UpscaleDialog {
 				.setOnCancelListener(d -> host.preview(original))
 				.create();
 		dialog.show();
+		xformButton.setOnClickListener(v -> {
+			dialog.dismiss();
+			host.adjustXform(current());
+		});
 		// Undimmed, to see each choice on the shader behind.
 		if (dialog.getWindow() != null) {
 			dialog.getWindow().setDimAmount(0f);
@@ -184,6 +199,8 @@ public final class UpscaleDialog {
 		boolean reaches = filter != Filter.DEFAULT && filter != Filter.NEAREST &&
 				!filter.isPrimitives();
 		edgeSection.setVisibility(reaches ? View.VISIBLE : View.GONE);
+		// Not for Settings' default: it's the open shader's.
+		xformButton.setVisibility(filter.isPrimitives() && !forDefault ? View.VISIBLE : View.GONE);
 		boolean hasAmount = filter.hasAmount();
 		amountLabel.setVisibility(hasAmount ? View.VISIBLE : View.GONE);
 		amountSlider.setVisibility(hasAmount ? View.VISIBLE : View.GONE);
