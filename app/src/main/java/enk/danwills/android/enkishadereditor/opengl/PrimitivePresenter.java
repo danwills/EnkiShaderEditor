@@ -25,8 +25,10 @@ import java.nio.ByteOrder;
 // doesn't matter.
 //
 // Texel (0, 0) can instead be a control texel, marked by a negative z, and
-// then isn't drawn (in splat mode, neither is splat 0): x 1 keeps adding
-// frame after frame (0: each frame starts afresh, as without one), y
+// then isn't drawn (in splat mode, neither is splat 0): x is how much of
+// the sum each frame keeps - 1 keeps adding frame after frame, 0 starts
+// each afresh (as without one), and between, older frames fade out (0.8:
+// about the last five count), for primitives that move; y
 // scales the exposure (0: 1), w tone-maps (1: 1 - e^-v; 2: log density, the
 // average colour brightened by how much landed, as flames are shown; 0:
 // clamps), and z
@@ -200,7 +202,16 @@ final class PrimitivePresenter {
 			void main() {
 				ivec2 p = ivec2(gl_FragCoord.xy);
 				vec4 a = texelFetch(added, p, 0);
-				fragColor = keep > 0.5 ? texelFetch(sum, p, 0) + a : a;
+				fragColor = keep > 0.0 ? texelFetch(sum, p, 0) * keep + a : a;
+			}
+			""";
+	private static final String FADE_FRAGMENT = """
+			#version 300 es
+			precision mediump float;
+			out vec4 fragColor;
+
+			void main() {
+				fragColor = vec4(0.0);
 			}
 			""";
 	private static final String PRESENT_FRAGMENT = """
@@ -235,10 +246,12 @@ final class PrimitivePresenter {
 	private GlProgram splatProgram;
 	private GlProgram addProgram;
 	private GlProgram presentProgram;
+	private GlProgram fadeProgram;
 	private ProgramBindings pointBindings;
 	private ProgramBindings splatBindings;
 	private ProgramBindings addBindings;
 	private ProgramBindings presentBindings;
+	private ProgramBindings fadeBindings;
 	private boolean broken;
 
 	// This frame's primitives (half floats, blended), and the running sum
@@ -261,7 +274,9 @@ final class PrimitivePresenter {
 	private int lastSourceHeight;
 	private long lastStamp = -1;
 	private Upscaling.Filter lastFilter;
-	private int keptFrames;
+	// How many frames' worth the sum holds (old ones counting less as they
+	// fade - see the control texel's x), to average by.
+	private float keptFrames;
 	private final float[] control = new float[4];
 	// See setXform().
 	private final float[] xform = {0f, 0f, 1f, 0f};
@@ -302,9 +317,10 @@ final class PrimitivePresenter {
 		if (stamp != lastStamp || xformChanged) {
 			lastStamp = stamp;
 			readControl(device, sourceFramebuffer);
-			boolean keep = hasControl && control[0] > 0.5f && keptFrames > 0 && !xformChanged;
+			float keep = !hasControl || keptFrames <= 0 || xformChanged ? 0f
+					: Math.max(0f, Math.min(1f, control[0]));
 			xformChanged = false;
-			keptFrames = keep ? keptFrames + 1 : 1;
+			keptFrames = keptFrames * keep + 1;
 			addPrimitives(device, quad, source, splats, keep, frameWidth, frameHeight);
 		}
 
@@ -337,13 +353,22 @@ final class PrimitivePresenter {
 
 	// Into addedTexture, then summed into the other sum texture.
 	private void addPrimitives(@NonNull GlDevice device, @NonNull Mesh quad,
-			@NonNull GlTexture2D source, boolean splats, boolean keep, int drawWidth,
+			@NonNull GlTexture2D source, boolean splats, float keep, int drawWidth,
 			int drawHeight) {
 		device.bindFramebuffer(direct ? sumFramebuffers[sumCurrent] : addedFramebuffer);
 		device.setViewport(0, 0, drawWidth, drawHeight);
-		if (!direct || !keep) {
+		if (!direct || keep <= 0f) {
 			device.setClearColor(0f, 0f, 0f, 0f);
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
+		} else if (keep < 1f) {
+			// Fading in place: the sum times keep, by a full-frame quad
+			// that reads nothing and adds nothing of its own.
+			device.applyBindings(fadeBindings);
+			GLES20.glEnable(GLES20.GL_BLEND);
+			GLES20.glBlendColor(0f, 0f, 0f, keep);
+			GLES20.glBlendFunc(GLES20.GL_ZERO, GLES20.GL_CONSTANT_ALPHA);
+			device.draw(quad, fadeProgram);
+			GLES20.glDisable(GLES20.GL_BLEND);
 		}
 		ProgramBindings bindings = splats ? splatBindings : pointBindings;
 		bindings.clear();
@@ -381,7 +406,7 @@ final class PrimitivePresenter {
 		addBindings.clear();
 		addBindings.setTexture("sum", sumTextures[sumCurrent]);
 		addBindings.setTexture("added", addedTexture);
-		addBindings.setFloat("keep", keep ? 1f : 0f);
+		addBindings.setFloat("keep", keep);
 		device.applyBindings(addBindings);
 		device.draw(quad, addProgram);
 		sumCurrent = next;
@@ -415,8 +440,9 @@ final class PrimitivePresenter {
 		splatProgram = build(device, SPLAT_VERTEX, SPLAT_FRAGMENT);
 		addProgram = build(device, QUAD_VERTEX, ADD_FRAGMENT);
 		presentProgram = build(device, QUAD_VERTEX, PRESENT_FRAGMENT);
+		fadeProgram = build(device, QUAD_VERTEX, FADE_FRAGMENT);
 		if (pointProgram == null || splatProgram == null || addProgram == null ||
-				presentProgram == null) {
+				presentProgram == null || fadeProgram == null) {
 			release(device);
 			broken = true;
 			return false;
@@ -425,6 +451,7 @@ final class PrimitivePresenter {
 		splatBindings = new ProgramBindings(splatProgram);
 		addBindings = new ProgramBindings(addProgram);
 		presentBindings = new ProgramBindings(presentProgram);
+		fadeBindings = new ProgramBindings(fadeProgram);
 		return true;
 	}
 
@@ -533,10 +560,12 @@ final class PrimitivePresenter {
 		device.deleteProgram(splatProgram);
 		device.deleteProgram(addProgram);
 		device.deleteProgram(presentProgram);
+		device.deleteProgram(fadeProgram);
 		pointProgram = null;
 		splatProgram = null;
 		addProgram = null;
 		presentProgram = null;
+		fadeProgram = null;
 		lastSourceWidth = 0;
 	}
 
@@ -553,6 +582,7 @@ final class PrimitivePresenter {
 		splatProgram = null;
 		addProgram = null;
 		presentProgram = null;
+		fadeProgram = null;
 		lastSourceWidth = 0;
 		width = 0;
 		height = 0;
