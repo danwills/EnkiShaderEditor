@@ -188,12 +188,17 @@ final class PrimitivePresenter {
 	private final GlTexture2D[] sumTextures = new GlTexture2D[2];
 	private final GlFramebuffer[] sumFramebuffers = new GlFramebuffer[2];
 	private int sumCurrent;
+	// Full floats that can be blended into (EXT_float_blend): primitives go
+	// straight into the sum, skipping a full-screen read and write of it a
+	// frame - most of the cost at screen size.
+	private boolean direct;
 	private int width;
 	private int height;
 
 	// What was last added - to add each frame once, and start over on a
 	// change.
-	private GlTexture2D lastSource;
+	private int lastSourceWidth;
+	private int lastSourceHeight;
 	private long lastStamp = -1;
 	private Upscaling.Filter lastFilter;
 	private int keptFrames;
@@ -214,8 +219,12 @@ final class PrimitivePresenter {
 			return false;
 		}
 		boolean splats = upscale.filter() == Upscaling.Filter.SPLATS;
-		if (source != lastSource || upscale.filter() != lastFilter) {
-			lastSource = source;
+		// A buffer ping-pongs between two textures, so it's told apart by
+		// its size and step count: a new shader's starts again from 0.
+		if (source.getWidth() != lastSourceWidth || source.getHeight() != lastSourceHeight ||
+				stamp < lastStamp || upscale.filter() != lastFilter) {
+			lastSourceWidth = source.getWidth();
+			lastSourceHeight = source.getHeight();
 			lastFilter = upscale.filter();
 			lastStamp = -1;
 			keptFrames = 0;
@@ -247,10 +256,12 @@ final class PrimitivePresenter {
 	private void addPrimitives(@NonNull GlDevice device, @NonNull Mesh quad,
 			@NonNull GlTexture2D source, boolean splats, boolean keep, int drawWidth,
 			int drawHeight) {
-		device.bindFramebuffer(addedFramebuffer);
+		device.bindFramebuffer(direct ? sumFramebuffers[sumCurrent] : addedFramebuffer);
 		device.setViewport(0, 0, drawWidth, drawHeight);
-		device.setClearColor(0f, 0f, 0f, 0f);
-		device.clear(GLES20.GL_COLOR_BUFFER_BIT);
+		if (!direct || !keep) {
+			device.setClearColor(0f, 0f, 0f, 0f);
+			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
+		}
 		ProgramBindings bindings = splats ? splatBindings : pointBindings;
 		bindings.clear();
 		bindings.setTexture("points", source);
@@ -273,6 +284,9 @@ final class PrimitivePresenter {
 			GLES30.glDrawArrays(GLES20.GL_POINTS, hasControl ? 1 : 0, hasControl ? texels - 1 : texels);
 		}
 		GLES20.glDisable(GLES20.GL_BLEND);
+		if (direct) {
+			return;
+		}
 
 		int next = 1 - sumCurrent;
 		device.bindFramebuffer(sumFramebuffers[next]);
@@ -338,7 +352,7 @@ final class PrimitivePresenter {
 	}
 
 	private boolean ensureTargets(@NonNull GlDevice device, int drawWidth, int drawHeight) {
-		if (addedTexture != null && width == drawWidth && height == drawHeight) {
+		if (sumTextures[0] != null && width == drawWidth && height == drawHeight) {
 			return true;
 		}
 		releaseTargets(device);
@@ -347,18 +361,29 @@ final class PrimitivePresenter {
 			return false;
 		}
 		boolean full = device.supportsFloatTargets();
-		addedTexture = floatTexture(device, drawWidth, drawHeight, false);
-		addedFramebuffer = framebufferFor(device, addedTexture);
-		for (int i = 0; i < 2; ++i) {
+		String extensions = GLES20.glGetString(GLES20.GL_EXTENSIONS);
+		direct = full && extensions != null && extensions.contains("GL_EXT_float_blend");
+		Log.d(TAG, "targets " + drawWidth + "x" + drawHeight + (direct ? ", blending into full floats"
+				: full ? ", summing full floats" : ", half floats"));
+		sumCurrent = 0;
+		if (!direct) {
+			addedTexture = floatTexture(device, drawWidth, drawHeight, false);
+			addedFramebuffer = framebufferFor(device, addedTexture);
+		}
+		for (int i = 0; i < (direct ? 1 : 2); ++i) {
 			sumTextures[i] = floatTexture(device, drawWidth, drawHeight, full);
 			sumFramebuffers[i] = framebufferFor(device, sumTextures[i]);
 		}
-		if (addedFramebuffer == null || sumFramebuffers[0] == null || sumFramebuffers[1] == null) {
+		if ((!direct && (addedFramebuffer == null || sumFramebuffers[1] == null)) ||
+				sumFramebuffers[0] == null) {
 			releaseTargets(device);
 			broken = true;
 			return false;
 		}
 		for (var framebuffer : sumFramebuffers) {
+			if (framebuffer == null) {
+				continue;
+			}
 			device.bindFramebuffer(framebuffer);
 			device.setClearColor(0f, 0f, 0f, 0f);
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
@@ -422,7 +447,7 @@ final class PrimitivePresenter {
 		splatProgram = null;
 		addProgram = null;
 		presentProgram = null;
-		lastSource = null;
+		lastSourceWidth = 0;
 	}
 
 	// Forgets GL objects without deleting them - for a context that's
@@ -438,7 +463,7 @@ final class PrimitivePresenter {
 		splatProgram = null;
 		addProgram = null;
 		presentProgram = null;
-		lastSource = null;
+		lastSourceWidth = 0;
 		width = 0;
 		height = 0;
 		broken = false;
