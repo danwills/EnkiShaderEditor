@@ -43,6 +43,7 @@ final class BufferPass {
 	// What the targets hold: RGBA8, else half or (float32) full floats.
 	private boolean floatTargets;
 	private boolean float32;
+	private long swaps;
 	private final boolean wantsFloat32;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
@@ -116,6 +117,12 @@ final class BufferPass {
 
 	void swap() {
 		current = 1 - current;
+		++swaps;
+	}
+
+	// How many steps it's completed - see PrimitivePresenter.
+	long getSwaps() {
+		return swaps;
 	}
 
 	// Takes over `other`'s render targets (and what's in them), leaving

@@ -804,6 +804,9 @@
 	<string name="upscale_sinc">Sinc (Lanczos)</string>
 	<string name="upscale_defocus">Defocus</string>
 	<string name="upscale_gaussian">Gaussian (soft)</string>
+	<string name="upscale_points">Accumulate Points (last buffer)</string>
+	<string name="upscale_splats">2D Gaussian Splats (last buffer)</string>
+	<string name="upscale_exposure">Exposure</string>
 	<string name="upscale_bokeh">Fancy defocus (bokeh)</string>
 	<string name="upscale_crt">CRT</string>
 	<string name="upscale_edges">Past the frame\'s edges</string>

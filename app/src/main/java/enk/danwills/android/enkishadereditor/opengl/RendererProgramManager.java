@@ -801,6 +801,10 @@ final class RendererProgramManager {
 		if (upscale.filter() == Upscaling.Filter.DEFAULT || surfaceProgram == null) {
 			return null;
 		}
+		if (upscale.filter().isPrimitives()) {
+			// PrimitivePresenter's; where it can't, the frame as linear.
+			upscale = new Upscaling.Upscale(Upscaling.Filter.LINEAR, upscale.edge(), 0f);
+		}
 		int key = (upscale.filter().ordinal() * Upscaling.Edge.values().length +
 				upscale.edge().ordinal()) * 16 + upscale.reach();
 		if (key == upscaleKey) {

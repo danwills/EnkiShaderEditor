@@ -37,6 +37,12 @@ final class ShaderRenderPipeline {
 	// Gaussian's blur (see preBlur()): its program, and its two targets on
 	// the live context, the frame's size.
 	@Nullable
+	private final PrimitivePresenter primitivePresenter = new PrimitivePresenter();
+	// The last offscreen buffer, for Upscaling's points and splats - see
+	// setPrimitiveSource().
+	private GlTexture2D primitiveSource;
+	private GlFramebuffer primitiveSourceFramebuffer;
+	private long primitiveStamp;
 	private GlProgram blurProgram;
 	@Nullable
 	private ProgramBindings blurBindings;
@@ -91,6 +97,9 @@ final class ShaderRenderPipeline {
 	}
 
 	void discardContextResources() {
+		primitivePresenter.forget();
+		primitiveSource = null;
+		primitiveSourceFramebuffer = null;
 		thumbnailFramebuffer = null;
 		thumbnailTexture = null;
 		standInFrame = null;
@@ -471,6 +480,16 @@ final class ShaderRenderPipeline {
 		this.blurBindings = blurBindings;
 	}
 
+	// The shader's last offscreen buffer (its current texture and the
+	// framebuffer holding it, and how many steps it's completed), which
+	// Upscaling's points and splats draw from - null for none.
+	void setPrimitiveSource(@Nullable GlTexture2D texture, @Nullable GlFramebuffer framebuffer,
+			long stamp) {
+		primitiveSource = texture;
+		primitiveSourceFramebuffer = framebuffer;
+		primitiveStamp = stamp;
+	}
+
 	// Gaussian's first step: `source` blurred at its own size, across then
 	// up, into textures[1] - by `useDevice`, into the targets given (made,
 	// at the source's size, when missing or the wrong size).
@@ -660,6 +679,12 @@ final class ShaderRenderPipeline {
 			return;
 		}
 		// Only on screen: a thumbnail is of the frame itself.
+		if (targetFramebuffer == null && upscale.filter().isPrimitives() &&
+				primitiveSource != null && primitiveSourceFramebuffer != null &&
+				primitivePresenter.draw(device, fullScreenQuadMesh, sourceTexture, primitiveSource,
+						primitiveSourceFramebuffer, primitiveStamp, upscale, drawWidth, drawHeight)) {
+			return;
+		}
 		if (targetFramebuffer == null && upscaleProgram != null && upscaleBindings != null) {
 			surfaceProgram = upscaleProgram;
 			surfaceBindings = upscaleBindings;

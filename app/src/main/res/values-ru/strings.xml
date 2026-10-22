@@ -828,6 +828,9 @@
 	<string name="upscale_sinc">Sinc (Ланцош)</string>
 	<string name="upscale_defocus">Расфокус</string>
 	<string name="upscale_gaussian">Гауссово (мягкое)</string>
+	<string name="upscale_points">Накопление точек (последний буфер)</string>
+	<string name="upscale_splats">2D-гауссовы сплаты (последний буфер)</string>
+	<string name="upscale_exposure">Экспозиция</string>
 	<string name="upscale_bokeh">Причудливый расфокус (боке)</string>
 	<string name="upscale_crt">ЭЛТ</string>
 	<string name="upscale_edges">За краями кадра</string>

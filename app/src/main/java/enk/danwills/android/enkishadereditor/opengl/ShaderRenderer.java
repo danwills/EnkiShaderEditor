@@ -613,6 +613,20 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	// How the frame's scaled up to the screen (see Upscaling) - the
 	// view's, kept across shaders; shown at once, even paused.
+	// For Upscaling's points and splats: the last drawn offscreen buffer.
+	private void setPrimitiveSource(@NonNull Upscaling.Upscale upscale) {
+		var passes = programManager.getBufferPasses();
+		BufferPass last = upscale.filter().isPrimitives() && !passes.isEmpty()
+				? passes.get(passes.size() - 1)
+				: null;
+		if (last == null || !last.hasTargets()) {
+			renderPipeline.setPrimitiveSource(null, null, 0);
+			return;
+		}
+		renderPipeline.setPrimitiveSource(last.getCurrentTexture(), last.getCurrentFramebuffer(),
+				last.getSwaps());
+	}
+
 	public void setUpscale(@NonNull Upscaling.Upscale upscale) {
 		this.upscale = upscale;
 		redisplayRequested = true;
@@ -997,6 +1011,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				upscaleBindings != null ? programManager.getUpscaleProgram() : null,
 				upscaleBindings, blurBindings != null ? programManager.getBlurProgram() : null,
 				blurBindings);
+		setPrimitiveSource(upscale);
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);

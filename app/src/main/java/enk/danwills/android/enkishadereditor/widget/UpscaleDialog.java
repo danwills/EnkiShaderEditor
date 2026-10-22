@@ -45,6 +45,8 @@ public final class UpscaleDialog {
 			R.string.upscale_crt,
 			R.string.upscale_bokeh,
 			R.string.upscale_gaussian,
+			R.string.upscale_points,
+			R.string.upscale_splats,
 	};
 	private static final int[] EDGE_NAMES = {
 			R.string.upscale_edge_clamp,
@@ -179,7 +181,8 @@ public final class UpscaleDialog {
 	// The edge choice only for filters that read past the edges; the
 	// amount only for filters that have one.
 	private void updateExtras() {
-		boolean reaches = filter != Filter.DEFAULT && filter != Filter.NEAREST;
+		boolean reaches = filter != Filter.DEFAULT && filter != Filter.NEAREST &&
+				!filter.isPrimitives();
 		edgeSection.setVisibility(reaches ? View.VISIBLE : View.GONE);
 		boolean hasAmount = filter.hasAmount();
 		amountLabel.setVisibility(hasAmount ? View.VISIBLE : View.GONE);
@@ -187,6 +190,7 @@ public final class UpscaleDialog {
 		if (hasAmount) {
 			amountLabel.setText(filter == Filter.SINC ? R.string.upscale_lobes
 					: filter.isRadius() ? R.string.upscale_radius
+					: filter.isPrimitives() ? R.string.upscale_exposure
 					: R.string.upscale_strength);
 			amountSlider.setValueFrom(filter.minAmount());
 			amountSlider.setValueTo(filter.maxAmount());

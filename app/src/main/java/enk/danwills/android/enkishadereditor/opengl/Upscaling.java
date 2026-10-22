@@ -44,7 +44,12 @@ public final class Upscaling {
 		// Soft whatever the radius: the frame blurred at its own size by
 		// a Gaussian (amount: its sigma, in texels - see the pipeline's
 		// preBlur()), then scaled up smoothly (B-spline).
-		GAUSSIAN("gaussian", 1.5f);
+		GAUSSIAN("gaussian", 1.5f),
+		// Not a scaling at all: points or 2D Gaussian splats that the
+		// shader's last offscreen buffer lists, added up over the frame -
+		// see PrimitivePresenter. Amount is the exposure.
+		POINTS("points", 1f),
+		SPLATS("splats", 1f);
 
 		@Nullable
 		public final String name;
@@ -57,7 +62,12 @@ public final class Upscaling {
 
 		public boolean hasAmount() {
 			return this == SINC || this == DEFOCUS || this == CRT || this == BOKEH ||
-					this == GAUSSIAN;
+					this == GAUSSIAN || isPrimitives();
+		}
+
+		// Draws the last buffer's points or splats - see PrimitivePresenter.
+		public boolean isPrimitives() {
+			return this == POINTS || this == SPLATS;
 		}
 
 		// A radius in texels.
@@ -66,15 +76,16 @@ public final class Upscaling {
 		}
 
 		public float minAmount() {
-			return this == SINC ? 2f : isRadius() ? 0.5f : 0f;
+			return this == SINC ? 2f : isRadius() || isPrimitives() ? 0.25f : 0f;
 		}
 
 		public float maxAmount() {
-			return this == SINC ? 6f : this == GAUSSIAN ? 8f : isRadius() ? 3.5f : 1f;
+			return this == SINC ? 6f : this == GAUSSIAN || isPrimitives() ? 8f
+					: isRadius() ? 3.5f : 1f;
 		}
 
 		public float amountStep() {
-			return this == SINC ? 1f : isRadius() ? 0.25f : 0.05f;
+			return this == SINC ? 1f : isRadius() || isPrimitives() ? 0.25f : 0.05f;
 		}
 
 		@Nullable
