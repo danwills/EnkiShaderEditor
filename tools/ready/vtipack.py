@@ -222,12 +222,10 @@ def build(src, out, part, steps, match=None):
 			info = build_one(src, out, x, steps)
 			print("%d/%d %s: %s (%d bytes) - %s" % (k + 1, len(todo), x["path"], info["kind"], info["bytes"],
 					info["why"]), flush=True)
-		except MemoryError as e:
-			# Passing (the machine's short of memory): left for the next build.
-			print("%d/%d %s: failed - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
 		except Exception as e:  # noqa: BLE001 - one bad file mustn't stop the rest
-			_exclude(out, x["md5"], {"path": x["path"]}, "%s: %s" % (type(e).__name__, str(e)[:200]))
-			print("%d/%d %s: excluded - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
+			# Maybe passing (the machine short of memory, say): left for the
+			# next build, which tries it again.
+			print("%d/%d %s: failed - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
 
 
 def expand(out, path, dest):
