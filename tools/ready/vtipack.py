@@ -13,8 +13,8 @@ The source folder is only read. Everything goes in the output folder:
 
   vtipack.py index SRC OUT     find families, duplicates and headers
   vtipack.py build SRC OUT     choose and store a seed for every state
-                               (the GPU trial; resumable, --part i/n to
-                               split it between processes)
+                               (the GPU trial; resumable, and several
+                               builds can run at once on one list)
   vtipack.py expand OUT PATH DEST.vti
                                a .vti like the file at PATH, its state
                                grown from the stored seed
@@ -211,6 +211,25 @@ def build_one(src, out, x, steps):
 	return _exclude(out, x["md5"], info, "neither a seed nor a quantised copy passes")
 
 
+def _claim(path):
+	# Takes a file for this process, so several builds can share one list;
+	# a claim left by a process that's gone is taken over.
+	try:
+		fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+	except FileExistsError:
+		try:
+			pid = open(path).read()
+			if pid:
+				os.kill(int(pid), 0)
+			return False  # held (or being written)
+		except ProcessLookupError:
+			os.remove(path)
+			return _claim(path)
+	os.write(fd, str(os.getpid()).encode())
+	os.close(fd)
+	return True
+
+
 def build(src, out, part, steps, match=None):
 	idx = json.load(open(os.path.join(out, "index.json")))
 	os.makedirs(os.path.join(out, "states"), exist_ok=True)
@@ -218,6 +237,9 @@ def build(src, out, part, steps, match=None):
 	todo = [x for j, (_, x) in enumerate(_files(idx)) if j % n == i
 			and (not match or re.search(match, x["path"])) and not os.path.exists(os.path.join(out, "states", x["md5"] + ".json"))]
 	for k, x in enumerate(todo):
+		claim = os.path.join(out, "states", x["md5"] + ".claim")
+		if os.path.exists(os.path.join(out, "states", x["md5"] + ".json")) or not _claim(claim):
+			continue  # done, or another build is on it
 		try:
 			info = build_one(src, out, x, steps)
 			print("%d/%d %s: %s (%d bytes) - %s" % (k + 1, len(todo), x["path"], info["kind"], info["bytes"],
@@ -226,6 +248,8 @@ def build(src, out, part, steps, match=None):
 			# Maybe passing (the machine short of memory, say): left for the
 			# next build, which tries it again.
 			print("%d/%d %s: failed - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
+		finally:
+			os.remove(claim)
 
 
 def expand(out, path, dest):
