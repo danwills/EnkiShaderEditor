@@ -386,8 +386,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
 	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
 	if (p == ivec2(0)) {
+		// Zoomed in, the same particles spread over zoom^2 the pixels: as
+		// bright, however close.
 		bool still = float(iFrame) - s4.y > 2.0;
-		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE, -1.0, 2.0);
+		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE * view.z * view.z, -1.0, 2.0);
 		return;
 	}
 	int index = p.y * size.x + p.x;

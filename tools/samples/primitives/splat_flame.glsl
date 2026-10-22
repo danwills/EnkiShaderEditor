@@ -1,8 +1,8 @@
 // Splat Flame: a living fractal flame, drawn by Upscaling's 2D Gaussian
 // Splats (picked by the ///upscale line). Double-tap for a new one - the
-// old one morphs into it - and drag one finger to nudge its transforms
+// old one morphs into it - drag one finger to nudge its transforms
 // (across turns them, up and down moves them; it stays until dragged
-// back). A new flame that collapses into a few dots or lines is skipped.
+// back), and two to pan, pinch-zoom and turn the view. A new flame that collapses into a few dots or lines is skipped.
 //
 // Buffer B holds the particles: every frame each takes a few steps of the
 // chaos game - a random one of the flame's transforms, an affine map bent
@@ -40,7 +40,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 // spread out the particles are - see coverage(), smoothed; 1 once this
 // flame's been judged; flames skipped in a row; how far this touch has
 // moved); 3 (the drag's nudge to the transforms, x and y; last frame's
-// touch, in frame heights).
+// touch, in frame heights); 4 the view (pan x and y in frame heights,
+// zoom, turn); 5 (last frame's second touch, the angle between the two,
+// the most fingers this touch); 6 last frame's view; 7 (last frame's nudge,
+// the frame the view last moved).
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -57,6 +60,8 @@ uniform int pointerCount;
 #define JUDGE_AFTER 1.5 // seconds after a morph to judge the new flame
 #define MIN_COVERAGE 24.0 // of 144 cells: fewer, and it's dots or lines - skip it
 #define MAX_SKIPS 6 // then keep whatever comes
+#define MIN_ZOOM 0.2
+#define MAX_ZOOM 40.0
 
 // How spread out the particles are: 96 of them, binned in a 12 x 12 grid
 // over two standard deviations each way of their middle - how many cells
@@ -93,7 +98,7 @@ float coverage() {
 
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 p = ivec2(fragCoord);
-	if (p.y != 0 || p.x > 3) {
+	if (p.y != 0 || p.x > 7) {
 		fragColor = vec4(0.0);
 		return;
 	}
@@ -101,6 +106,11 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
 	vec4 s2 = texelFetch(iChannel0, ivec2(2, 0), 0);
 	vec4 s3 = texelFetch(iChannel0, ivec2(3, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 s5 = texelFetch(iChannel0, ivec2(5, 0), 0);
+	vec4 s7 = texelFetch(iChannel0, ivec2(7, 0), 0);
+	vec4 lastView = view;
+	vec2 lastNudge = s3.xy;
 	if (s1.w != 2.0) {
 		// A different flame each run.
 		float seed = 1.0 + floor(fract(iDate.w * 0.6180339) * 99991.0);
@@ -108,12 +118,37 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		s1 = vec4(0.0, iTime, seed, 2.0);
 		s2 = vec4(0.0);
 		s3 = vec4(0.0);
+		view = vec4(0.0, 0.0, 1.0, 0.0);
+		lastView = view;
+		lastNudge = vec2(0.0);
+		s5 = vec4(0.0);
+		s7 = vec4(0.0, 0.0, -100.0, 0.0);
 	}
 	float count = float(pointerCount);
 	vec2 touch = pointers[0].xy / iResolution.y;
+	vec2 touch1 = pointers[1].xy / iResolution.y;
+	float angle = atan(touch1.y - touch.y, touch1.x - touch.x);
+	s5.w = count > 0.0 && s0.y == 0.0 ? count : max(s5.w, count);
 	if (count > 0.0 && s0.y == 0.0) {
 		s1.x = iTime; // a touch begins
 		s2.w = 0.0;
+	} else if (count == 2.0 && s0.y == 2.0) {
+		// Two fingers: the view - what was between them stays between them.
+		vec2 centre = 0.5 * iResolution.xy / iResolution.y;
+		vec2 mid0 = 0.5 * (s3.zw + s5.xy) - centre;
+		vec2 mid1 = 0.5 * (touch + touch1) - centre;
+		float len0 = max(length(s5.xy - s3.zw), 1e-3);
+		float len1 = max(length(touch1 - touch), 1e-3);
+		float turn = angle - s5.z;
+		turn -= 6.2831853 * floor(turn / 6.2831853 + 0.5);
+		float c = cos(-view.w), sn = sin(-view.w);
+		vec2 w = mat2(c, sn, -sn, c) * (mid0 - view.xy) / view.z;
+		view.z = clamp(view.z * len1 / len0, MIN_ZOOM, MAX_ZOOM);
+		view.w += turn;
+		c = cos(view.w);
+		sn = sin(view.w);
+		view.xy = mid1 - mat2(c, sn, -sn, c) * w * view.z;
+		s2.w += 1.0; // never a tap
 	} else if (count == 1.0 && s0.y == 1.0) {
 		// One finger drags the nudge.
 		vec2 moved = touch - s3.zw;
@@ -121,7 +156,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		s2.w += length(moved);
 	} else if (count == 0.0 && s0.y > 0.0) {
 		// A touch ends: a tap if it was quick and stayed put.
-		if (iTime - s1.x < TAP_TIME && s2.w < TAP_SLOP) {
+		if (iTime - s1.x < TAP_TIME && s2.w < TAP_SLOP && s5.w <= 1.0) {
 			s0.z = iTime - s0.w < TAP_GAP ? s0.z + 1.0 : 1.0;
 			s0.w = iTime;
 			if (s0.z >= float(TAPS)) {
@@ -136,7 +171,13 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		}
 	}
 	s3.zw = touch;
+	s5.xy = touch1;
+	s5.z = angle;
 	s0.y = count;
+	s7.xy = lastNudge;
+	if (any(notEqual(view, lastView))) {
+		s7.z = float(iFrame);
+	}
 	// Is the new flame worth looking at? Judged once it's settled; dots or
 	// lines morph on to the next.
 	s2.x = mix(s2.x, coverage(), 0.1);
@@ -151,7 +192,8 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 			s2.z = 0.0;
 		}
 	}
-	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : s3;
+	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : p.x == 3 ? s3 :
+			p.x == 4 ? view : p.x == 5 ? s5 : p.x == 6 ? lastView : s7;
 }
 
 //// Buffer B
@@ -271,6 +313,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	float to = s0.x;
 	float from = s1.z;
 	nudge = texelFetch(iChannel0, ivec2(3, 0), 0).xy;
+	vec2 lastNudge = texelFetch(iChannel0, ivec2(7, 0), 0).xy;
 	float f = smoothstep(0.0, 1.0, (iTime - s1.y) / MORPH);
 	float dt = clamp(iTimeDelta, 1.0 / 120.0, 0.1);
 	// The particle's own random numbers, the same in both its texels.
@@ -302,9 +345,13 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		float omega = rnd() < 0.5 ? 0.0 : 3.14159265;
 		vec2 next = apply(from, to, f, t, iTime, part.xy, omega);
 		if (step == STEPS - 1) {
-			// The same step in the last frame's flame: how fast it moves.
+			// The same step in the last frame's flame - its time, morph and
+			// nudge: how fast it moves, dragged or not.
 			float fBefore = smoothstep(0.0, 1.0, (iTime - dt - s1.y) / MORPH);
+			vec2 nudgeNow = nudge;
+			nudge = lastNudge;
 			moved = next - apply(from, to, fBefore, t, iTime - dt, part.xy, omega);
+			nudge = nudgeNow;
 		}
 		part.xy = next;
 		int b = 100 + 20 * t;
@@ -329,6 +376,7 @@ uniform sampler2D iChannel1; ///buf:B;
 #define EXPOSURE 5.0
 #define KEEP 0.85 // of the sum each frame (1: all, for a still flame)
 #define BLUR 0.5 // how much a splat stretches along its motion, per frame moved
+#define MAX_MOTION 0.3 // the longest a splat stretches, in frame heights
 #define MORPH 2.5 // as Buffer B's
 
 float param(float seed, int i) {
@@ -389,14 +437,27 @@ vec3 mixLch(vec3 a, vec3 b, float f) {
 	return vec3(mix(a.x, b.x, f), c * cos(h), c * sin(h));
 }
 
+// The view (Buffer A's texel 4 - pan in frame heights, zoom, turn): a
+// plane point's place on the frame, 0 to 1.
+vec2 toFrame(vec2 z, vec4 view) {
+	vec2 aspect = vec2(iResolution.y / iResolution.x, 1.0);
+	float c = cos(view.w), s = sin(view.w);
+	return 0.5 + (mat2(c, s, -s, c) * z * VIEW * view.z + view.xy) * aspect;
+}
+
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 size = ivec2(iResolution.xy);
 	ivec2 p = ivec2(fragCoord);
 	vec4 s0 = texelFetch(iChannel0, ivec2(0, 0), 0);
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
 	float f = smoothstep(0.0, 1.0, (iTime - s1.y) / MORPH);
+	vec4 view = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 lastView = texelFetch(iChannel0, ivec2(6, 0), 0);
 	if (p == ivec2(0)) {
-		fragColor = vec4(KEEP, EXPOSURE, -1.0, 2.0);
+		// Zoomed in, the same particles spread over zoom^2 the pixels: as
+		// bright, however close. While the view moves, a shorter memory.
+		bool viewMoving = float(iFrame) - texelFetch(iChannel0, ivec2(7, 0), 0).z < 3.0;
+		fragColor = vec4(viewMoving ? 0.5 : KEEP, EXPOSURE * view.z * view.z, -1.0, 2.0);
 		return;
 	}
 	int index = p.y * size.x + p.x;
@@ -408,15 +469,17 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	int home = 2 * splat;
 	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
 	vec2 moved = texelFetch(iChannel1, ivec2((home + 1) % size.x, (home + 1) / size.x), 0).xy;
-	vec2 aspect = vec2(iResolution.y / iResolution.x, 1.0);
+	vec2 uv = toFrame(part.xy, view);
 	float sigma = SPLAT_PX / iResolution.y; // frame heights
-	// Motion in frame heights, and the splat stretched along it.
-	vec2 motion = moved * VIEW;
+	// Its motion on screen since the last frame (in frame heights) - the
+	// flame's, the nudge's and the view's - and the splat stretched along it.
+	vec2 motion = (uv - toFrame(part.xy - moved, lastView)) * vec2(iResolution.x / iResolution.y, 1.0);
+	motion *= min(1.0, MAX_MOTION / max(length(motion), 1e-9));
 	float along = length(motion);
 	float major = sqrt(sigma * sigma + (BLUR * along) * (BLUR * along));
 	vec2 axis = along > 1e-7 ? motion / along : vec2(1.0, 0.0);
 	if (index % 2 == 0) {
-		fragColor = vec4(0.5 + part.xy * VIEW * aspect, axis * major);
+		fragColor = vec4(uv, axis * major);
 	} else {
 		vec3 lab = mixLch(paletteLab(s1.z, part.z), paletteLab(s0.x, part.z), f);
 		// Stretched, it keeps its light: spread over more, each bit dimmer.
