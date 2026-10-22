@@ -19,6 +19,6 @@
 		android:layout_height="wrap_content"
 		android:textColor="@drawable/drawer_item_selector"
 		android:textSize="14sp"
-		android:lines="1"
-		android:ellipsize="end"/>
+		android:maxLines="1"
+		android:ellipsize="start"/>
 </LinearLayout>
