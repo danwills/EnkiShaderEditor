@@ -375,3 +375,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - Installed that build silently (Dan in another app).
 - **"I tried the fancy bokeh (AMAZING) and it worked great in a capture!"** - Include Upscaling confirmed on the phone with Fancy defocus.
 - **"Can we get everything pushed?"** Everything was already committed and pushed on UltraRestArea; only the untracked `vti/` folder (Dan's VTIs and their converted shaders) is outside git.
+- **"Commit the VTIs to tools/ready/examples."** Copied the three (both grayscott history-wave ones and Dan's orbits rule) there, checked they still convert and compile, and noted them in AGENTS.md; `vti/` left as Dan's working folder.
