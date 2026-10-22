@@ -33,7 +33,11 @@ import java.nio.ByteOrder;
 // average colour brightened by how much landed, as flames are shown; 0:
 // clamps), and z
 // is -1 less the points' radius - a Gaussian's sigma, in frame pixels
-// (-1: single pixels). For a size per point, use splats. Kept
+// (-1: single pixels; for a size per point, use splats). For splats, z is
+// -1 less a reference sigma instead: if over 0, every splat's colour and
+// count are scaled by ref^2 / (its two sigmas, in frame pixels), so a splat
+// keeps a ref-sized round one's light however big it's drawn - size it to
+// suit, and it fades as it grows. Kept
 // frames are averaged, so the picture keeps its brightness as it builds.
 // The Upscaling's amount is a further exposure.
 //
@@ -119,6 +123,7 @@ final class PrimitivePresenter {
 			uniform highp sampler2D points;
 			uniform vec2 drawSize;
 			uniform float skipFirst;
+			uniform float splatRef;
 			// The splats xform: (offset, in frame heights; zoom; turn) about
 			// the frame's centre - see setXform().
 			uniform vec4 xform;
@@ -132,6 +137,7 @@ final class PrimitivePresenter {
 
 			out vec3 colour;
 			out vec2 local;
+			flat out float weight;
 
 			void main() {
 				ivec2 size = textureSize(points, 0);
@@ -149,6 +155,7 @@ final class PrimitivePresenter {
 					gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 					colour = vec3(0.0);
 					local = vec2(0.0);
+					weight = 0.0;
 					return;
 				}
 				// Turned and scaled with the xform; at least half a pixel each
@@ -164,6 +171,11 @@ final class PrimitivePresenter {
 						0.0, 1.0);
 				colour = b.rgb;
 				local = c;
+				// Light kept whatever the size: weighted to a splatRef-pixel
+				// round one's (frame pixels), when the control texel asks.
+				float su = length(u) * drawSize.y;
+				float sv = length(v) * drawSize.y;
+				weight = splatRef > 0.0 ? splatRef * splatRef / max(su * sv, 1e-6) : 1.0;
 			}
 			""";
 	private static final String SPLAT_FRAGMENT = """
@@ -171,6 +183,7 @@ final class PrimitivePresenter {
 			precision highp float;
 			in vec3 colour;
 			in vec2 local;
+			flat in float weight;
 			out vec4 fragColor;
 
 			void main() {
@@ -179,7 +192,7 @@ final class PrimitivePresenter {
 					discard;
 				}
 				// Alpha adds up how much landed here, for the log tone map.
-				float g = exp(-0.5 * r2);
+				float g = exp(-0.5 * r2) * weight;
 				fragColor = vec4(colour, 1.0) * g;
 			}
 			""";
@@ -377,6 +390,7 @@ final class PrimitivePresenter {
 		bindings.setFloat4("xform", xform);
 		if (splats) {
 			bindings.setFloat("skipFirst", hasControl ? 1f : 0f);
+			bindings.setFloat("splatRef", hasControl ? Math.max(0f, -control[2] - 1f) : 0f);
 		} else {
 			bindings.setFloat("pointSigma", hasControl ? Math.max(0f, -control[2] - 1f) : 0f);
 			bindings.setFloat("firstPoint", hasControl ? 1f : 0f);
