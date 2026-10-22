@@ -23,9 +23,14 @@ follows):
   not the file's; positions in the initial pattern are relative, so they
   scale with it.
 
+Formulas may use Ready's index variables (x, y, X, Y, index_x...) and
+OpenCL's get_global_id()/get_global_size(), as floats for ratios like
+x / (float)X.
+
 Not converted (reported, and the file skipped): kernel rules, inbuilt
 rules other than Gray-Scott, meshes, 1D and 3D patterns, more than 8
-chemicals. A pattern that starts from the state stored in the file
+chemicals, and formulas written for Ready 0.6's 4-cell blocks (a.y,
+a_w.w...) or reading a_in[] themselves. A pattern that starts from the state stored in the file
 (apply_when_loading false) starts from its initial pattern generator, or
 zeros, instead - also reported.
 
@@ -289,8 +294,26 @@ def formula_locals(formula):
 	return {n for n in names if TOKEN.fullmatch(n)}
 
 
+# Ready's own index variables (ints there; floats here, as formulas use
+# them for ratios like x / (float)X).
+INDEX_VARS = {"x": "float(p.x)", "y": "float(p.y)", "z": "0.0", "index_x": "float(p.x)",
+		"index_y": "float(p.y)", "index_z": "0.0", "X": "float(grid.x)", "Y": "float(grid.y)",
+		"Z": "1.0"}
+
+
 def translate_formula(formula, renamed):
-	code = formula
+	# Ready 0.6 ran formulas on blocks of 4 cells along x (a.y the next cell,
+	# a_w.w the last of the block to the west); per-cell code can't follow that.
+	if re.search(r"\b[a-h](?:_[nsew]{1,2})?\.[xyzw]\b", formula):
+		raise Unsupported("Ready 0.6's 4-cell blocks (a.y, a_w.w, ...)")
+	if re.search(r"\b[a-h]_in\s*\[", formula):
+		raise Unsupported("reading a_in[] directly")
+	# Writing the output itself, which Ready overwrites after the formula.
+	code = re.sub(r"\b[a-h]_out\s*\[\s*index_here\s*\]\s*=[^;]*;", "", formula)
+	# Ready accepts a last statement without its semicolon.
+	last = re.sub(r"//[^\n]*|/\*.*?\*/", "", code, flags=re.S).rstrip()
+	if last and last[-1] not in ";}":
+		code = code.rstrip() + ";"
 	# Casts: "(float4)(x)" -> "float(x)", "(float4)x" -> "float(x)".
 	code = re.sub(r"\(\s*(?:float|double)4?\s*\)\s*\(", "float(", code)
 	code = re.sub(r"\(\s*(?:float|double)4?\s*\)\s*([A-Za-z_]\w*|[0-9][\w.]*)",
@@ -306,7 +329,14 @@ def translate_formula(formula, renamed):
 	code = re.sub(r"\bpow\s*\(", "rdPow(", code)
 	for name, value in OPENCL_CONSTANTS.items():
 		code = re.sub(r"\b%s\b" % name, value, code)
-	return rename_reserved(code, renamed)
+	code = rename_reserved(code, renamed)
+	# OpenCL's work-item index and count: the cell and the grid (after the
+	# renaming, so a formula's own `p` doesn't take these).
+	code = re.sub(r"\bget_global_id\s*\(\s*([012])(?:\.0)?\s*\)",
+			lambda m: ("float(p.x)", "float(p.y)", "0.0")[int(m.group(1))], code)
+	code = re.sub(r"\bget_global_size\s*\(\s*([012])(?:\.0)?\s*\)",
+			lambda m: ("float(grid.x)", "float(grid.y)", "1.0")[int(m.group(1))], code)
+	return code
 
 # endregion
 
@@ -1845,6 +1875,12 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	for c in chems:
 		out.append("\tfloat delta_%s = 0.0;" % c)
 	out.append("")
+	declared = formula_locals(p.formula) | {n for n, _ in p.params} | set(chems)
+	bare = re.sub(r"//[^\n]*|/\*.*?\*/", "", formula, flags=re.S)
+	index_vars = [t for t in INDEX_VARS if t not in declared and
+			re.search(r"(?<![\w.])%s\b" % t, bare)]
+	for t in index_vars:
+		out.append("\tfloat %s = %s;" % (t, INDEX_VARS[t]))
 	out.append("\t// The formula:")
 	for line in formula.splitlines():
 		out.append("\t" + line.strip() if line.strip() else "")
