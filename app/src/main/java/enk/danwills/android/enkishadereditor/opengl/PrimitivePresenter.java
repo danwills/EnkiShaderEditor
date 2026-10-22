@@ -27,7 +27,9 @@ import java.nio.ByteOrder;
 // Texel (0, 0) can instead be a control texel, marked by a negative z, and
 // then isn't drawn (in splat mode, neither is splat 0): x 1 keeps adding
 // frame after frame (0: each frame starts afresh, as without one), y
-// scales the exposure (0: 1), w 1 tone-maps (1 - e^-v; 0: clamps). Kept
+// scales the exposure (0: 1), w 1 tone-maps (1 - e^-v; 0: clamps), and z
+// is -1 less the points' radius - a Gaussian's sigma, in frame pixels
+// (-1: single pixels). For a size per point, use splats. Kept
 // frames are averaged, so the picture keeps its brightness as it builds.
 // The Upscaling's amount is a further exposure.
 //
@@ -40,6 +42,8 @@ final class PrimitivePresenter {
 			#version 300 es
 			precision highp float;
 			uniform highp sampler2D points;
+			uniform float pointSigma;
+			uniform float firstPoint;
 			out vec3 colour;
 
 			vec3 unpackColour(float packed) {
@@ -54,9 +58,10 @@ final class PrimitivePresenter {
 
 			void main() {
 				ivec2 size = textureSize(points, 0);
-				int i = gl_VertexID;
+				int i = gl_VertexID + int(firstPoint);
 				vec4 p = texelFetch(points, ivec2(i % size.x, i / size.x), 0);
-				gl_PointSize = 1.0;
+				// Out to 3 sigma, or a single pixel.
+				gl_PointSize = pointSigma > 0.0 ? 2.0 * ceil(3.0 * pointSigma) + 1.0 : 1.0;
 				if (!(p.z > 0.0) || any(isnan(p.xy))) {
 					gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 					colour = vec3(0.0);
@@ -70,11 +75,20 @@ final class PrimitivePresenter {
 	private static final String POINT_FRAGMENT = """
 			#version 300 es
 			precision highp float;
+			uniform float pointSigma;
 			in vec3 colour;
 			out vec4 fragColor;
 
 			void main() {
-				fragColor = vec4(colour, 1.0);
+				if (pointSigma <= 0.0) {
+					fragColor = vec4(colour, 1.0);
+					return;
+				}
+				// A Gaussian dot whose pixels add up to the point's colour.
+				float size = 2.0 * ceil(3.0 * pointSigma) + 1.0;
+				vec2 d = (gl_PointCoord - 0.5) * size;
+				float s2 = pointSigma * pointSigma;
+				fragColor = vec4(colour * exp(-0.5 * dot(d, d) / s2) / (6.2831853 * s2), 1.0);
 			}
 			""";
 	private static final String SPLAT_VERTEX = """
@@ -165,7 +179,7 @@ final class PrimitivePresenter {
 
 			void main() {
 				vec2 uv = gl_FragCoord.xy / drawSize;
-				vec3 v = texelFetch(sum, ivec2(gl_FragCoord.xy), 0).rgb * scale;
+				vec3 v = texture(sum, uv).rgb * scale;
 				vec3 added = toneMap > 0.5 ? 1.0 - exp(-max(v, 0.0)) : v;
 				fragColor = vec4(clamp(texture(frame, uv).rgb + added, 0.0, 1.0), 1.0);
 			}
@@ -215,7 +229,12 @@ final class PrimitivePresenter {
 	boolean draw(@NonNull GlDevice device, @NonNull Mesh quad, @NonNull GlTexture2D frame,
 			@NonNull GlTexture2D source, @NonNull GlFramebuffer sourceFramebuffer, long stamp,
 			@NonNull Upscaling.Upscale upscale, int drawWidth, int drawHeight) {
-		if (!ensurePrograms(device) || !ensureTargets(device, drawWidth, drawHeight)) {
+		// Added up at the frame's size (the quality), then scaled up
+		// smoothly: far fewer pixels to fill than the screen's, and each
+		// point covers a frame pixel.
+		int frameWidth = frame.getWidth();
+		int frameHeight = frame.getHeight();
+		if (!ensurePrograms(device) || !ensureTargets(device, frameWidth, frameHeight)) {
 			return false;
 		}
 		boolean splats = upscale.filter() == Upscaling.Filter.SPLATS;
@@ -235,7 +254,7 @@ final class PrimitivePresenter {
 			readControl(device, sourceFramebuffer);
 			boolean keep = hasControl && control[0] > 0.5f && keptFrames > 0;
 			keptFrames = keep ? keptFrames + 1 : 1;
-			addPrimitives(device, quad, source, splats, keep, drawWidth, drawHeight);
+			addPrimitives(device, quad, source, splats, keep, frameWidth, frameHeight);
 		}
 
 		float exposure = hasControl && control[1] > 0f ? control[1] : 1f;
@@ -268,6 +287,9 @@ final class PrimitivePresenter {
 		if (splats) {
 			bindings.setFloat2("drawSize", new float[]{drawWidth, drawHeight});
 			bindings.setFloat("skipFirst", hasControl ? 1f : 0f);
+		} else {
+			bindings.setFloat("pointSigma", hasControl ? Math.max(0f, -control[2] - 1f) : 0f);
+			bindings.setFloat("firstPoint", hasControl ? 1f : 0f);
 		}
 		device.applyBindings(bindings);
 		// Attribute-less: positions come from the texture. Arrays left
@@ -281,7 +303,8 @@ final class PrimitivePresenter {
 		if (splats) {
 			GLES30.glDrawArrays(GLES20.GL_TRIANGLES, 0, texels / 2 * 6);
 		} else {
-			GLES30.glDrawArrays(GLES20.GL_POINTS, hasControl ? 1 : 0, hasControl ? texels - 1 : texels);
+			// The control texel is skipped by firstPoint.
+			GLES30.glDrawArrays(GLES20.GL_POINTS, 0, hasControl ? texels - 1 : texels);
 		}
 		GLES20.glDisable(GLES20.GL_BLEND);
 		if (direct) {
@@ -403,8 +426,10 @@ final class PrimitivePresenter {
 		} else {
 			device.allocateTexture2DHalfFloat(texture, w, h);
 		}
+		// Linear, for the smooth scale-up (float linear filtering comes with
+		// supportsFloatTargets(); half floats filter in core GLES 3).
 		device.applyTextureParameters(texture, new TextureParameters(
-				GLES20.GL_NEAREST, GLES20.GL_NEAREST,
+				GLES20.GL_LINEAR, GLES20.GL_LINEAR,
 				GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
 		return texture;
 	}
