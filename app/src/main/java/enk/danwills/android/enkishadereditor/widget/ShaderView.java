@@ -44,10 +44,13 @@ public class ShaderView extends GLSurfaceView {
 		init(context, GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 	}
 
+	// Not used for swapping shaders (setFragmentShader() below calls
+	// super.onPause() itself), so the clock carries on through it.
 	@Override
 	public void onPause() {
 		super.onPause();
 		renderer.unregisterListeners();
+		renderer.holdClockThroughPause();
 	}
 
 	// unregisterListeners() above clears the renderer's per-program

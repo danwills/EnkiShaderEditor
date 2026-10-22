@@ -528,6 +528,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// be restored for free by the context recreation that always followed.
 	// With the context preserved there's no onSurfaceCreated() to do that,
 	// so the next frame re-runs just the configure step - no recompile.
+	// Called from ShaderView.onPause(), once the GL thread has paused -
+	// see BuiltinUniforms.holdClockThroughPause().
+	public void holdClockThroughPause() {
+		builtinUniforms.holdClockThroughPause();
+	}
+
 	public void onViewResumed() {
 		pendingReconfigure = true;
 		pendingFirstFrameNotify = true;
