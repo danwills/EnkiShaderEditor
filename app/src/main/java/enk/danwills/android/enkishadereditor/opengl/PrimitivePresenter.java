@@ -27,7 +27,9 @@ import java.nio.ByteOrder;
 // Texel (0, 0) can instead be a control texel, marked by a negative z, and
 // then isn't drawn (in splat mode, neither is splat 0): x 1 keeps adding
 // frame after frame (0: each frame starts afresh, as without one), y
-// scales the exposure (0: 1), w 1 tone-maps (1 - e^-v; 0: clamps), and z
+// scales the exposure (0: 1), w tone-maps (1: 1 - e^-v; 2: log density, the
+// average colour brightened by how much landed, as flames are shown; 0:
+// clamps), and z
 // is -1 less the points' radius - a Gaussian's sigma, in frame pixels
 // (-1: single pixels). For a size per point, use splats. Kept
 // frames are averaged, so the picture keeps its brightness as it builds.
@@ -42,9 +44,22 @@ final class PrimitivePresenter {
 			#version 300 es
 			precision highp float;
 			uniform highp sampler2D points;
+			uniform vec2 drawSize;
 			uniform float pointSigma;
 			uniform float firstPoint;
-			out vec3 colour;
+			// The splats xform: (offset, in frame heights; zoom; turn) about
+			// the frame's centre - see setXform().
+			uniform vec4 xform;
+
+			vec2 xformed(vec2 uv, float aspect) {
+				vec2 q = (uv - 0.5) * vec2(aspect, 1.0);
+				float c = cos(xform.w), s = sin(xform.w);
+				q = mat2(c, s, -s, c) * q * xform.z + xform.xy;
+				return q / vec2(aspect, 1.0) + 0.5;
+			}
+
+			out vec4 colour; // rgb, and its weight (intensity)
+			flat out float sigma;
 
 			vec3 unpackColour(float packed) {
 				if (packed <= 0.0) {
@@ -60,35 +75,40 @@ final class PrimitivePresenter {
 				ivec2 size = textureSize(points, 0);
 				int i = gl_VertexID + int(firstPoint);
 				vec4 p = texelFetch(points, ivec2(i % size.x, i / size.x), 0);
+				// Grown with the xform's zoom; a single pixel when under half one.
+				sigma = (pointSigma > 0.0 ? pointSigma : 0.4) * xform.z;
+				if (sigma < 0.5) {
+					sigma = 0.0;
+				}
 				// Out to 3 sigma, or a single pixel.
-				gl_PointSize = pointSigma > 0.0 ? 2.0 * ceil(3.0 * pointSigma) + 1.0 : 1.0;
+				gl_PointSize = sigma > 0.0 ? 2.0 * ceil(3.0 * sigma) + 1.0 : 1.0;
 				if (!(p.z > 0.0) || any(isnan(p.xy))) {
 					gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-					colour = vec3(0.0);
+					colour = vec4(0.0);
 					return;
 				}
 				// Packed as 0xRRGGBB - blue in the low byte.
-				colour = unpackColour(p.w).bgr * p.z;
-				gl_Position = vec4(p.xy * 2.0 - 1.0, 0.0, 1.0);
+				colour = vec4(unpackColour(p.w).bgr, 1.0) * p.z;
+				gl_Position = vec4(xformed(p.xy, drawSize.x / drawSize.y) * 2.0 - 1.0, 0.0, 1.0);
 			}
 			""";
 	private static final String POINT_FRAGMENT = """
 			#version 300 es
 			precision highp float;
-			uniform float pointSigma;
-			in vec3 colour;
+			in vec4 colour;
+			flat in float sigma;
 			out vec4 fragColor;
 
 			void main() {
-				if (pointSigma <= 0.0) {
-					fragColor = vec4(colour, 1.0);
+				if (sigma <= 0.0) {
+					fragColor = colour;
 					return;
 				}
 				// A Gaussian dot whose pixels add up to the point's colour.
-				float size = 2.0 * ceil(3.0 * pointSigma) + 1.0;
+				float size = 2.0 * ceil(3.0 * sigma) + 1.0;
 				vec2 d = (gl_PointCoord - 0.5) * size;
-				float s2 = pointSigma * pointSigma;
-				fragColor = vec4(colour * exp(-0.5 * dot(d, d) / s2) / (6.2831853 * s2), 1.0);
+				float s2 = sigma * sigma;
+				fragColor = colour * exp(-0.5 * dot(d, d) / s2) / (6.2831853 * s2);
 			}
 			""";
 	private static final String SPLAT_VERTEX = """
@@ -97,6 +117,17 @@ final class PrimitivePresenter {
 			uniform highp sampler2D points;
 			uniform vec2 drawSize;
 			uniform float skipFirst;
+			// The splats xform: (offset, in frame heights; zoom; turn) about
+			// the frame's centre - see setXform().
+			uniform vec4 xform;
+
+			vec2 xformed(vec2 uv, float aspect) {
+				vec2 q = (uv - 0.5) * vec2(aspect, 1.0);
+				float c = cos(xform.w), s = sin(xform.w);
+				q = mat2(c, s, -s, c) * q * xform.z + xform.xy;
+				return q / vec2(aspect, 1.0) + 0.5;
+			}
+
 			out vec3 colour;
 			out vec2 local;
 
@@ -118,14 +149,17 @@ final class PrimitivePresenter {
 					local = vec2(0.0);
 					return;
 				}
-				// At least half a pixel each way, so small ones don't vanish
-				// between pixels.
+				// Turned and scaled with the xform; at least half a pixel each
+				// way, so small ones don't vanish between pixels.
+				float cs = cos(xform.w), sn = sin(xform.w);
+				vec2 axis = mat2(cs, sn, -sn, cs) * a.zw / major;
 				float minPx = 0.5 / drawSize.y;
-				vec2 u = a.zw / major * max(major, minPx);
-				vec2 v = vec2(-u.y, u.x) / length(u) * max(b.w, minPx);
+				vec2 u = axis * max(major * xform.z, minPx);
+				vec2 v = vec2(-axis.y, axis.x) * max(b.w * xform.z, minPx);
 				vec2 offset = c.x * u + c.y * v; // frame heights
-				vec2 clip = a.xy * 2.0 - 1.0 + offset * 2.0 * vec2(drawSize.y / drawSize.x, 1.0);
-				gl_Position = vec4(clip, 0.0, 1.0);
+				vec2 centre = xformed(a.xy, drawSize.x / drawSize.y);
+				gl_Position = vec4(centre * 2.0 - 1.0 + offset * 2.0 * vec2(drawSize.y / drawSize.x, 1.0),
+						0.0, 1.0);
 				colour = b.rgb;
 				local = c;
 			}
@@ -142,7 +176,9 @@ final class PrimitivePresenter {
 				if (r2 > 9.0) {
 					discard;
 				}
-				fragColor = vec4(colour * exp(-0.5 * r2), 1.0);
+				// Alpha adds up how much landed here, for the log tone map.
+				float g = exp(-0.5 * r2);
+				fragColor = vec4(colour, 1.0) * g;
 			}
 			""";
 	private static final String QUAD_VERTEX = """
@@ -179,8 +215,18 @@ final class PrimitivePresenter {
 
 			void main() {
 				vec2 uv = gl_FragCoord.xy / drawSize;
-				vec3 v = texture(sum, uv).rgb * scale;
-				vec3 added = toneMap > 0.5 ? 1.0 - exp(-max(v, 0.0)) : v;
+				vec4 total = texture(sum, uv);
+				vec3 added;
+				if (toneMap > 1.5) {
+					// Log density, as flame renderers do: the average colour
+					// here, brightened by how much landed - compressed, so
+					// sparse wisps and dense cores both show.
+					vec3 average = total.rgb / max(total.a, 1e-6);
+					added = average * (1.0 - pow(1.0 + max(total.a * scale, 0.0), -0.4));
+				} else {
+					vec3 v = total.rgb * scale;
+					added = toneMap > 0.5 ? 1.0 - exp(-max(v, 0.0)) : v;
+				}
 				fragColor = vec4(clamp(texture(frame, uv).rgb + added, 0.0, 1.0), 1.0);
 			}
 			""";
@@ -217,6 +263,9 @@ final class PrimitivePresenter {
 	private Upscaling.Filter lastFilter;
 	private int keptFrames;
 	private final float[] control = new float[4];
+	// See setXform().
+	private final float[] xform = {0f, 0f, 1f, 0f};
+	private boolean xformChanged;
 	private final ByteBuffer pixel = ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder());
 	private boolean hasControl;
 
@@ -249,10 +298,12 @@ final class PrimitivePresenter {
 			keptFrames = 0;
 		}
 		device.disableScissor();
-		if (stamp != lastStamp) {
+		// A new xform redraws the latest step at once, even paused.
+		if (stamp != lastStamp || xformChanged) {
 			lastStamp = stamp;
 			readControl(device, sourceFramebuffer);
-			boolean keep = hasControl && control[0] > 0.5f && keptFrames > 0;
+			boolean keep = hasControl && control[0] > 0.5f && keptFrames > 0 && !xformChanged;
+			xformChanged = false;
 			keptFrames = keep ? keptFrames + 1 : 1;
 			addPrimitives(device, quad, source, splats, keep, frameWidth, frameHeight);
 		}
@@ -265,10 +316,23 @@ final class PrimitivePresenter {
 		presentBindings.setTexture("frame", frame);
 		presentBindings.setFloat2("drawSize", new float[]{drawWidth, drawHeight});
 		presentBindings.setFloat("scale", exposure * upscale.amount() / keptFrames);
-		presentBindings.setFloat("toneMap", hasControl && control[3] > 0.5f ? 1f : 0f);
+		presentBindings.setFloat("toneMap", hasControl ? control[3] : 0f);
 		device.applyBindings(presentBindings);
 		device.draw(quad, presentProgram);
 		return true;
+	}
+
+	// The splats xform: primitives drawn offset (x, y, in frame heights),
+	// zoomed and turned about the frame's centre, without touching the
+	// shader - a change starts the sum again. Points grow with the zoom.
+	void setXform(float x, float y, float zoom, float angle) {
+		if (x != xform[0] || y != xform[1] || zoom != xform[2] || angle != xform[3]) {
+			xform[0] = x;
+			xform[1] = y;
+			xform[2] = zoom;
+			xform[3] = angle;
+			xformChanged = true;
+		}
 	}
 
 	// Into addedTexture, then summed into the other sum texture.
@@ -284,8 +348,9 @@ final class PrimitivePresenter {
 		ProgramBindings bindings = splats ? splatBindings : pointBindings;
 		bindings.clear();
 		bindings.setTexture("points", source);
+		bindings.setFloat2("drawSize", new float[]{drawWidth, drawHeight});
+		bindings.setFloat4("xform", xform);
 		if (splats) {
-			bindings.setFloat2("drawSize", new float[]{drawWidth, drawHeight});
 			bindings.setFloat("skipFirst", hasControl ? 1f : 0f);
 		} else {
 			bindings.setFloat("pointSigma", hasControl ? Math.max(0f, -control[2] - 1f) : 0f);
