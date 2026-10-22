@@ -471,6 +471,11 @@ def point3(node):
 	return tuple(float(node.get(axis)) for axis in "xyz")
 
 
+def points(node):
+	# Ready reads <point3D> and <point3d> alike.
+	return [point3(n) for n in node if n.tag.lower() == "point3d"]
+
+
 def fill_code(fill, p, target, salt):
 	tag = fill.tag
 	if tag == "constant":
@@ -487,7 +492,7 @@ def fill_code(fill, p, target, salt):
 		return fill.get("chemical")
 	if tag == "parameter":
 		return safe_name(fill.get("name").strip())
-	pts = [point3(n) for n in fill.findall("point3D")]
+	pts = points(fill)
 	if tag == "linear_gradient":
 		(x1, y1, _), (x2, y2, _) = pts
 		return ("rdLinear(rel, vec2(%s, %s), vec2(%s, %s), %s, %s)" % (
@@ -515,7 +520,7 @@ def shape_code(shape, p):
 	tag = shape.tag
 	if tag == "everywhere":
 		return "true"
-	pts = [point3(n) for n in shape.findall("point3D")]
+	pts = points(shape)
 	if tag == "rectangle":
 		(x1, y1, _), (x2, y2, _) = pts
 		return "rdInRect(rel, vec2(%s, %s), vec2(%s, %s))" % (
