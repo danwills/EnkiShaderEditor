@@ -198,8 +198,9 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 
 //// Buffer B
 // The particles, two texels each (in reading order, over the first half
-// of the buffer): 2i (x, y, colour index, a 2 once started - a new buffer
-// clears to 1) and 2i+1 (how far its point moved since the last frame,
+// of the buffer): 2i (x, y, colour index, 2 + its age in steps - a new
+// buffer clears to 1; a new one isn't drawn until it's had WARM steps to
+// reach the attractor) and 2i+1 (how far its point moved since the last frame,
 // x and y, in plane units). Both texels play the same chaos game, from
 // the particle's own random numbers.
 ///float32
@@ -320,7 +321,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	state = pcg(uint(particle) * 9781u + pcg(uint(iFrame)));
 	int home = 2 * particle;
 	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
-	if (part.w != 2.0 || rnd() < RESEED || any(isnan(part)) || dot(part.xy, part.xy) > 1e4) {
+	if (part.w < 2.0 || rnd() < RESEED || any(isnan(part)) || dot(part.xy, part.xy) > 1e4) {
 		part = vec4(rnd() * 2.0 - 1.0, rnd() * 2.0 - 1.0, rnd(), 2.0);
 	}
 	vec2 moved = vec2(0.0);
@@ -357,6 +358,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		int b = 100 + 20 * t;
 		part.z = 0.5 * (part.z + mix(param(from, b + 8), param(to, b + 8), f));
 	}
+	part.w = min(part.w + float(STEPS), 2.0 + 1000.0);
 	fragColor = index % 2 == 0 ? part : vec4(moved, 0.0, 0.0);
 }
 
@@ -365,7 +367,8 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 // texels 2i (centre, major axis - along its motion, stretched by it) and
 // 2i+1 (colour, minor axis). Texel (0, 0) is the control texel instead
 // (splat 0 isn't drawn): how much of the sum each frame keeps, the
-// exposure, log density.
+// exposure, the size the presenter keeps every splat's light to, log
+// density.
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -377,6 +380,7 @@ uniform sampler2D iChannel1; ///buf:B;
 #define KEEP 0.85 // of the sum each frame (1: all, for a still flame)
 #define BLUR 0.5 // how much a splat stretches along its motion, per frame moved
 #define MAX_MOTION 0.3 // the longest a splat stretches, in frame heights
+#define WARM 16.0 // steps before a new particle is drawn
 #define MORPH 2.5 // as Buffer B's
 
 float param(float seed, int i) {
@@ -457,7 +461,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		// Zoomed in, the same particles spread over zoom^2 the pixels: as
 		// bright, however close. While the view moves, a shorter memory.
 		bool viewMoving = float(iFrame) - texelFetch(iChannel0, ivec2(7, 0), 0).z < 3.0;
-		fragColor = vec4(viewMoving ? 0.5 : KEEP, EXPOSURE * view.z * view.z, -1.0, 2.0);
+		fragColor = vec4(viewMoving ? 0.5 : KEEP, EXPOSURE * view.z * view.z, -1.0 - SPLAT_PX, 2.0);
 		return;
 	}
 	int index = p.y * size.x + p.x;
@@ -478,12 +482,15 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	float along = length(motion);
 	float major = sqrt(sigma * sigma + (BLUR * along) * (BLUR * along));
 	vec2 axis = along > 1e-7 ? motion / along : vec2(1.0, 0.0);
-	if (index % 2 == 0) {
+	if (part.w < 2.0 + WARM) {
+		// Still finding its way to the attractor: not drawn.
+		fragColor = vec4(0.0);
+	} else if (index % 2 == 0) {
 		fragColor = vec4(uv, axis * major);
 	} else {
+		// Stretched, the presenter keeps its light - colour and count
+		// alike, so log density stays as bright while it moves.
 		vec3 lab = mixLch(paletteLab(s1.z, part.z), paletteLab(s0.x, part.z), f);
-		// Stretched, it keeps its light: spread over more, each bit dimmer.
-		vec3 colour = linearToSrgb(oklabToLinear(lab)) * (sigma / major);
-		fragColor = vec4(max(colour, vec3(1e-4)), sigma);
+		fragColor = vec4(max(linearToSrgb(oklabToLinear(lab)), vec3(1e-4)), sigma);
 	}
 }

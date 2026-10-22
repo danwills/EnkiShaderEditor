@@ -244,10 +244,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	// The attractor's size, from a few particles: smoothed, so the
 	// picture doesn't jump.
 	ivec2 size = textureSize(iChannel1, 0);
-	int particles = size.x * size.y / 2;
+	int particles = size.x * size.y / 4;
 	float far = 0.0;
 	for (int i = 0; i < 64; ++i) {
-		int k = (i * 7919 + iFrame * 131) % particles;
+		int k = 2 * ((i * 7919 + iFrame * 131) % particles);
 		vec2 z = texelFetch(iChannel1, ivec2(k % size.x, k / size.x), 0).xy;
 		float r = length(z);
 		if (r < 50.0) {
@@ -265,9 +265,14 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 }
 
 //// Buffer B
-// The particles: z (xy), how far the last step jumped (z), and a 2 once
-// started (a new buffer clears to 1). Only the first half of the texels
-// are particles - one per splat.
+// The particles, two texels each (in reading order, over the first half
+// of the buffer): 2i (z, how far its last step jumped, 2 + its age in
+// steps - a new buffer clears to 1) and 2i+1 (its last step, as a
+// vector). A new particle isn't drawn until it's had WARM steps to reach
+// the attractor. Zoomed in, most particles would land off screen and draw
+// nothing: one that has goes on as a copy of one that hasn't, nudged a
+// little - the chaos soon sets them apart - so nearly every particle
+// draws, at any zoom.
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -275,6 +280,10 @@ uniform sampler2D iChannel1; ///buf:B;
 
 #define STEPS 6 // steps of the map a frame
 #define RESEED 0.002 // the share of particles started afresh each frame
+#define WARM 24.0 // steps before a new particle is drawn
+#define FIT 0.42 // as Buffer C's
+#define MARGIN 0.05 // how far off the frame still counts as on it
+#define NUDGE 1e-4 // a copy's nudge, as a share of the attractor's size
 
 uint state;
 
@@ -293,22 +302,51 @@ vec2 cmul(vec2 a, vec2 b) {
 	return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
 }
 
+// Where the plane's z lands on the frame (0 to 1): fitted to the
+// attractor's size (Buffer A), then through the view.
+vec2 toFrame(vec2 z, float radius, vec4 view) {
+	float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
+	float c = cos(view.w), sn = sin(view.w);
+	vec2 q = mat2(c, sn, -sn, c) * z * (fit / max(radius, 0.05)) * view.z + view.xy;
+	return 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
+}
+
+bool onFrame(vec2 uv) {
+	return all(greaterThan(uv, vec2(-MARGIN))) && all(lessThan(uv, vec2(1.0 + MARGIN)));
+}
+
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 size = ivec2(iResolution.xy);
 	ivec2 p = ivec2(fragCoord);
 	int index = p.y * size.x + p.x;
-	if (index >= size.x * size.y / 2) {
+	int particle = index / 2;
+	int count = size.x * size.y / 4;
+	if (particle >= count) {
 		fragColor = vec4(0.0);
 		return;
 	}
 	vec4 s0 = texelFetch(iChannel0, ivec2(0, 0), 0);
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
 	float lambda = s0.x, alpha = s0.y, beta = s0.z, gamma = s0.w, omega = s1.x;
 	int n = int(s1.y + 0.5);
-	state = pcg(uint(index) * 9781u + pcg(uint(iFrame)));
-	vec4 part = texelFetch(iChannel1, p, 0);
-	if (part.w != 2.0 || rnd() < RESEED || any(isnan(part.xy)) || dot(part.xy, part.xy) > 400.0) {
+	float radius = s1.z;
+	// The particle's own random numbers, the same in both its texels.
+	state = pcg(uint(particle) * 9781u + pcg(uint(iFrame)));
+	int home = 2 * particle;
+	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
+	if (part.w < 2.0 || rnd() < RESEED || any(isnan(part.xy)) || dot(part.xy, part.xy) > 400.0) {
 		part = vec4((vec2(rnd(), rnd()) - 0.5) * 0.6, 0.0, 2.0);
+	} else if (!onFrame(toFrame(part.xy, radius, view))) {
+		// Off screen: go on as a nudged copy of one that's on it.
+		for (int tries = 0; tries < 3; ++tries) {
+			int j = 2 * int(rnd() * float(count));
+			vec4 other = texelFetch(iChannel1, ivec2(j % size.x, j / size.x), 0);
+			if (other.w >= 2.0 + WARM && onFrame(toFrame(other.xy, radius, view))) {
+				part.xy = other.xy + (vec2(rnd(), rnd()) - 0.5) * NUDGE * radius;
+				break;
+			}
+		}
 	}
 	vec2 z = part.xy;
 	vec2 last = z;
@@ -326,15 +364,18 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		last = z;
 		z = cmul(vec2(a, omega), z) + gamma * conjN1;
 	}
-	fragColor = vec4(z, length(z - last), 2.0);
+	fragColor = index % 2 == 0
+			? vec4(z, length(z - last), min(part.w + float(STEPS), 2.0 + 1000.0))
+			: vec4(z - last, 0.0, 0.0);
 }
 
 //// Buffer C
 // The splats for Upscaling's 2D Gaussian Splats: particle i is splat i, in
-// texels 2i (centre, major axis) and 2i+1 (colour, minor axis). Texel
-// (0, 0) is the control texel instead (splat 0 isn't drawn): how much of
-// the sum to keep (all while still, a fading few frames while being
-// dragged), the exposure, log density.
+// texels 2i (centre, major axis - along its last step, if STRETCH) and
+// 2i+1 (colour, minor axis). Texel (0, 0) is the control texel instead
+// (splat 0 isn't drawn): how much of the sum to keep (all while still, a
+// fading few frames while being dragged), the exposure, the size the
+// presenter keeps every splat's light to, log density.
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -342,8 +383,11 @@ uniform sampler2D iChannel1; ///buf:B;
 
 #define FIT 0.42 // the attractor's radius, as a share of the frame's shorter side
 #define SPLAT_PX 0.6 // each splat's sigma, in frame pixels
-#define EXPOSURE 1.5
+#define EXPOSURE 3.0
 #define HUE 70.0 // the palette's hue, in degrees (OKLCH)
+#define WARM 24.0 // as Buffer B's
+#define STRETCH 0.0 // a splat stretched along its step, as a share of it (0: round)
+#define MAX_STRETCH 0.02 // in frame heights
 
 vec3 oklabToLinear(vec3 c) {
 	float l = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
@@ -379,6 +423,15 @@ vec3 palette(float t, float hue) {
 	return linearToSrgb(oklabToLinear(lab));
 }
 
+// Where the plane's z lands on the frame (0 to 1): fitted to the
+// attractor's size (Buffer A), then through the view.
+vec2 toFrame(vec2 z, float radius, vec4 view) {
+	float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
+	float c = cos(view.w), sn = sin(view.w);
+	vec2 q = mat2(c, sn, -sn, c) * z * (fit / max(radius, 0.05)) * view.z + view.xy;
+	return 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
+}
+
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 size = ivec2(iResolution.xy);
 	ivec2 p = ivec2(fragCoord);
@@ -386,28 +439,35 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
 	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
 	if (p == ivec2(0)) {
-		// Zoomed in, the same particles spread over zoom^2 the pixels: as
-		// bright, however close.
+		// Buffer B keeps its particles on screen, so no brighter zoomed in.
 		bool still = float(iFrame) - s4.y > 2.0;
-		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE * view.z * view.z, -1.0, 2.0);
+		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE, -1.0 - SPLAT_PX, 2.0);
 		return;
 	}
 	int index = p.y * size.x + p.x;
 	int splat = index / 2;
-	if (splat >= size.x * size.y / 2) {
+	if (splat >= size.x * size.y / 4) {
 		fragColor = vec4(0.0);
 		return;
 	}
-	vec4 part = texelFetch(iChannel1, ivec2(splat % size.x, splat / size.x), 0);
+	int home = 2 * splat;
+	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
+	vec2 step = texelFetch(iChannel1, ivec2((home + 1) % size.x, (home + 1) / size.x), 0).xy;
 	float radius = max(s1.z, 0.05);
 	float sigma = SPLAT_PX / iResolution.y; // frame heights
+	if (part.w < 2.0 + WARM) {
+		// Still finding its way to the attractor: not drawn.
+		fragColor = vec4(0.0);
+		return;
+	}
+	vec2 uv = toFrame(part.xy, radius, view);
 	if (index % 2 == 0) {
-		float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
-		// Fitted, then through the view (frame heights from the centre).
-		float c = cos(view.w), sn = sin(view.w);
-		vec2 q = mat2(c, sn, -sn, c) * part.xy * (fit / radius) * view.z + view.xy;
-		vec2 uv = 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
-		fragColor = vec4(uv, sigma, 0.0);
+		// Its step on screen, in frame heights, for the stretch.
+		vec2 d = (uv - toFrame(part.xy - step, radius, view)) * vec2(iResolution.x / iResolution.y, 1.0);
+		float along = min(length(d) * STRETCH, MAX_STRETCH);
+		float major = sqrt(sigma * sigma + along * along);
+		vec2 axis = length(d) > 1e-9 ? normalize(d) : vec2(1.0, 0.0);
+		fragColor = vec4(uv, axis * major);
 	} else {
 		float t = pow(clamp(part.z / (1.6 * radius), 0.0, 1.0), 0.7);
 		fragColor = vec4(max(palette(t, HUE + 47.0 * s4.x), vec3(1e-4)), sigma);
