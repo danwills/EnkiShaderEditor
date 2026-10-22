@@ -33,6 +33,7 @@
 			android:name=".activity.TakeOverActivity"
 			android:exported="true"
 			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
 			android:taskAffinity=".takeover"
 			android:theme="@style/DebugImportTheme"
 			tools:ignore="ExportedActivity"/>
