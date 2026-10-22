@@ -18,6 +18,10 @@
 	<string name="paste_over_shader">Вставити поверх поточного шейдера</string>
 	<string name="select_quality">Якість рендеру</string>
 	<string name="paste_shader_title">Вставити шейдер</string>
+	<string name="paste_shader_name_exists_title">«%1$s» уже існує</string>
+	<string name="paste_shader_name_exists_message">Замінити шейдер із цією назвою чи дати цьому шейдеру іншу назву?</string>
+	<string name="paste_shader_replace">Замінити</string>
+	<string name="paste_shader_rename">Перейменувати</string>
 	<string name="paste_add_as_child">Як дочірній…</string>
 	<string name="paste_shader_name_hint">Назва шейдера (необов’язково)</string>
 	<string name="clipboard_empty">Буфер обміну порожній</string>

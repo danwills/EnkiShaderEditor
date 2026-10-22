@@ -1778,7 +1778,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onShareShader() {
-				navigationManager.shareShader(getWholeShaderSource());
+				navigationManager.shareShader(getNamedShaderSource());
 			}
 
 			@Override
@@ -1973,7 +1973,8 @@ public class MainActivity extends AppCompatActivity {
 			Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		showQualityPickerDialog(text.toString());
+		var named = MultipassSource.takeName(text.toString());
+		showQualityPickerDialog(named.text(), named.name());
 	}
 
 	private void pasteOverCurrentShader() {
@@ -1986,7 +1987,8 @@ public class MainActivity extends AppCompatActivity {
 			Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		String pastedSource = text.toString();
+		// Pasted over, the shader keeps its own name.
+		String pastedSource = MultipassSource.takeName(text.toString()).text();
 		boolean wasPaused = shaderViewManager.isPaused();
 		setShaderPaused(true);
 		new MaterialAlertDialogBuilder(this)
@@ -2393,7 +2395,6 @@ public class MainActivity extends AppCompatActivity {
 							nameView.setSelection(nameView.length());
 						})));
 		view.findViewById(R.id.paste_shader_ok).setOnClickListener(v -> {
-			dialog.dismiss();
 			int selectedIndex = qualityGroup.indexOfChild(
 					qualityGroup.findViewById(qualityGroup.getCheckedRadioButtonId()));
 			float quality = Float.parseFloat(qualityValues[Math.max(0, selectedIndex)]);
@@ -2402,20 +2403,72 @@ public class MainActivity extends AppCompatActivity {
 			// DataRecords.ShaderInfo.getTitle()), rather than
 			// saving an empty-string name.
 			String name = nameView.getText().toString().trim();
-			var parsed = MultipassSource.parse(shaderSource);
-			long newId = dataSource.shader.insertShader(
-					parsed != null ? parsed.imageSource() : shaderSource,
-					name.isEmpty() ? null : name, null, quality);
-			if (parsed != null && newId > 0) {
-				dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
-				dataSource.text.setTexts(newId, parsed.texts());
+			long existingId = name.isEmpty() ? 0 : findShaderIdByName(name);
+			if (existingId < 1) {
+				dialog.dismiss();
+				addPastedShader(shaderSource, name.isEmpty() ? null : name, quality, 0);
+				return;
 			}
-			// Don't let the start-up load (if it's still pending -
-			// see isInitialLoad) switch away from it afterwards.
-			isInitialLoad = false;
-			shaderManager.selectShader(newId);
-			shaderManager.saveShader(true);
+			// That name's taken: replace that shader, or back to the name.
+			new MaterialAlertDialogBuilder(this)
+					.setTitle(getString(R.string.paste_shader_name_exists_title, name))
+					.setMessage(R.string.paste_shader_name_exists_message)
+					.setPositiveButton(R.string.paste_shader_replace, (d, w) -> {
+						dialog.dismiss();
+						addPastedShader(shaderSource, name, quality, existingId);
+					})
+					.setNegativeButton(R.string.paste_shader_rename, (d, w) -> {
+						nameView.requestFocus();
+						nameView.selectAll();
+						SoftKeyboard.show(this, nameView);
+					})
+					.setNeutralButton(android.R.string.cancel, null)
+					.show();
 		});
+	}
+
+	// The id of the shader called exactly `name`, or 0 for none.
+	private long findShaderIdByName(@NonNull String name) {
+		for (DataRecords.ShaderInfo shader : dataSource.shader.getShaders(false)) {
+			if (name.equals(shader.name())) {
+				return shader.id();
+			}
+		}
+		return 0;
+	}
+
+	// Adds a pasted or opened shader (multipass text - see
+	// MultipassSource), or puts it in place of shader replaceId (its
+	// buffers and texts too), then opens it.
+	private void addPastedShader(@NonNull String shaderSource, @Nullable String name,
+			float quality, long replaceId) {
+		var parsed = MultipassSource.parse(shaderSource);
+		String source = parsed != null ? parsed.imageSource() : shaderSource;
+		long id = replaceId;
+		if (replaceId > 0) {
+			// The open shader's own unsaved edits mustn't be saved over it.
+			if (replaceId == shaderManager.getSelectedShaderId()) {
+				shaderManager.setModified(false);
+			}
+			dataSource.shader.updateShader(replaceId, source, null, quality);
+			dataSource.buffer.setBufferSources(replaceId,
+					parsed != null ? parsed.bufferSources() : new String[0]);
+			dataSource.text.setTexts(replaceId, parsed != null ? parsed.texts() : Map.of());
+		} else {
+			id = dataSource.shader.insertShader(source, name, null, quality);
+			if (parsed != null && id > 0) {
+				dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+				dataSource.text.setTexts(id, parsed.texts());
+			}
+		}
+		// Don't let the start-up load (if it's still pending -
+		// see isInitialLoad) switch away from it afterwards.
+		isInitialLoad = false;
+		shaderManager.selectShader(id);
+		shaderManager.saveShader(true);
+		if (replaceId > 0) {
+			shaderListManager.loadShadersAsync();
+		}
 	}
 
 	private void requestAudioCapture() {
@@ -2670,7 +2723,17 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		clipboard.setPrimaryClip(ClipData.newPlainText(
-				getString(R.string.app_name), getWholeShaderSource()));
+				getString(R.string.app_name), getNamedShaderSource()));
+	}
+
+	// getWholeShaderSource() with the shader's name in front (see
+	// MultipassSource.withName()), so pasting or opening it elsewhere
+	// brings the name along.
+	@NonNull
+	private String getNamedShaderSource() {
+		var shader = dataSource.shader.getShader(shaderManager.getSelectedShaderId());
+		return MultipassSource.withName(getWholeShaderSource(),
+				shader != null ? shader.name() : null);
 	}
 
 	// Every pass of the shader as one piece of text, whichever pass's tab

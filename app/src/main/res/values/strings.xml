@@ -18,6 +18,10 @@
 	<string name="paste_over_shader">Paste over Current Shader</string>
 	<string name="select_quality">Render Quality</string>
 	<string name="paste_shader_title">Paste Shader</string>
+	<string name="paste_shader_name_exists_title">“%1$s” already exists</string>
+	<string name="paste_shader_name_exists_message">Replace the shader with that name, or give this one a different name?</string>
+	<string name="paste_shader_replace">Replace</string>
+	<string name="paste_shader_rename">Rename</string>
 	<string name="paste_add_as_child">Add as Child…</string>
 	<string name="paste_shader_name_hint">Shader Name (Optional)</string>
 	<string name="clipboard_empty">Clipboard is empty</string>

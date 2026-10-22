@@ -412,9 +412,11 @@ public class ShaderManager {
 				: intent.getData();
 		if (uri == null) {
 			CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-			return text != null && !text.toString().isBlank()
-					? new SharedText(text.toString(), null)
-					: null;
+			if (text == null || text.toString().isBlank()) {
+				return null;
+			}
+			var named = MultipassSource.takeName(text.toString());
+			return new SharedText(named.text(), named.name());
 		}
 
 		try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
@@ -431,7 +433,10 @@ public class ShaderManager {
 			if (text.isBlank()) {
 				return null;
 			}
-			return new SharedText(text, getNameWithoutExtension(uri));
+			// A name line (see MultipassSource.withName()) beats the file's.
+			var named = MultipassSource.takeName(text);
+			return new SharedText(named.text(),
+					named.name() != null ? named.name() : getNameWithoutExtension(uri));
 		} catch (IOException | SecurityException e) {
 			Toast.makeText(activity, R.string.unsuitable_text,
 					Toast.LENGTH_SHORT).show();

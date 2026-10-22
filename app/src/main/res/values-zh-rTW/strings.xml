@@ -17,6 +17,10 @@
 	<string name="paste_over_shader">貼上覆蓋目前著色器</string>
 	<string name="select_quality">渲染品質</string>
 	<string name="paste_shader_title">貼上著色器</string>
+	<string name="paste_shader_name_exists_title">「%1$s」已存在</string>
+	<string name="paste_shader_name_exists_message">取代同名的著色器，還是給這個著色器換個名稱？</string>
+	<string name="paste_shader_replace">取代</string>
+	<string name="paste_shader_rename">重新命名</string>
 	<string name="paste_add_as_child">作為子項…</string>
 	<string name="paste_shader_name_hint">著色器名稱（可選）</string>
 	<string name="clipboard_empty">剪貼簿為空</string>

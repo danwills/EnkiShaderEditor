@@ -21,7 +21,14 @@ import java.util.regex.Pattern;
 // one. A shader with neither is just its source, exactly as before.
 // ShaderToy's `//// Sound` section is read too, into a free buffer slot -
 // its mainSound() makes it a Sound pass (see SoundOutput).
+//
+// Copied and shared text starts with a `//// Name <name>` line, so pasting
+// or opening it brings the shader's name along - see withName() and
+// takeName(). Elsewhere it's just a comment.
 public final class MultipassSource {
+	private static final String NAME_MARKER_PREFIX = "//// Name ";
+	private static final Pattern PATTERN_NAME = Pattern.compile(
+			"\\A[ \\t]*//// Name[ \\t]+([^\\r\\n]*?)[ \\t]*(?:\\r?\\n|\\z)");
 	private static final String MARKER_PREFIX = "//// Buffer ";
 	private static final String TEXT_MARKER_PREFIX = "//// Text ";
 	private static final int TEXT_SECTION = -3;
@@ -39,7 +46,32 @@ public final class MultipassSource {
 			@NonNull Map<String, String> texts) {
 	}
 
+	// text: what's left once the name line is taken off; name: null when
+	// there was none.
+	public record Named(@NonNull String text, @Nullable String name) {
+	}
+
 	private MultipassSource() {
+	}
+
+	// `text` with a `//// Name` line in front, or unchanged for no name.
+	@NonNull
+	public static String withName(@NonNull String text, @Nullable String name) {
+		if (name == null || name.isBlank()) {
+			return text;
+		}
+		return NAME_MARKER_PREFIX + name.replaceAll("[\\r\\n]+", " ").trim() + "\n" + text;
+	}
+
+	// Takes a leading `//// Name` line (see withName()) off `text`.
+	@NonNull
+	public static Named takeName(@NonNull String text) {
+		Matcher matcher = PATTERN_NAME.matcher(text);
+		if (!matcher.find()) {
+			return new Named(text, null);
+		}
+		String name = matcher.group(1);
+		return new Named(text.substring(matcher.end()), name.isEmpty() ? null : name);
 	}
 
 	@NonNull
