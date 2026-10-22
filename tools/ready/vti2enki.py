@@ -278,6 +278,17 @@ def rename_reserved(code, names):
 	return TOKEN.sub(lambda m: m.group(0) + "_" if m.group(0) in names else m.group(0), code)
 
 
+def formula_locals(formula):
+	# Variables the formula declares itself ("float p = ...", "float x, y;"):
+	# one called like mainImage()'s locals (`p`) is renamed too.
+	names = set()
+	for m in re.finditer(r"\b(?:float|double|int|bool)4?\s+([^;=(]+?)\s*(?:=|;)", formula):
+		names.add(m.group(1).strip())
+	for m in re.finditer(r"\b(?:float|double|int|bool)4?\s+[A-Za-z_]\w*(?:\s*=[^,;]*)?((?:\s*,\s*[A-Za-z_]\w*(?:\s*=[^,;]*)?)+)\s*;", formula):
+		names |= set(re.findall(r",\s*([A-Za-z_]\w*)", m.group(1)))
+	return {n for n in names if TOKEN.fullmatch(n)}
+
+
 def translate_formula(formula, renamed):
 	code = formula
 	# Casts: "(float4)(x)" -> "float(x)", "(float4)x" -> "float(x)".
@@ -1677,7 +1688,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	used_stencils, cells, gms, tokens = inputs_needed(p, chems, stencils)
 	src_stage = (stage - 1) % stages
 	src_buffers = [BUFFERS[src_stage * groups + g] for g in range(groups)]
-	renamed = {n for n, _ in p.params if n in GLSL_RESERVED}
+	renamed = {n for n, _ in p.params if n in GLSL_RESERVED} | (formula_locals(p.formula) & GLSL_RESERVED)
 	formula = translate_formula(p.formula, renamed)
 	ftokens = set(TOKEN.findall(formula))
 	out = []
