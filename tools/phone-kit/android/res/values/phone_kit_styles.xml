@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- See-through, so TakeOverActivity's dialog shows over whatever was on
+	     screen. Parent: your app's Material theme (MaterialAlertDialogBuilder
+	     needs a Theme.MaterialComponents / Material3 one). -->
+	<style name="PhoneKitDialogTheme" parent="Theme.Material3.DayNight.NoActionBar">
+		<item name="android:windowIsTranslucent">true</item>
+		<item name="android:windowBackground">@android:color/transparent</item>
+		<item name="android:windowAnimationStyle">@null</item>
+		<item name="android:backgroundDimEnabled">false</item>
+	</style>
+</resources>
