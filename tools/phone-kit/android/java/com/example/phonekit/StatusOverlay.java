@@ -30,9 +30,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 // Debug builds only: TestStatusReceiver's panel of Claude's status lines,
-// near the top of the screen (just under the status bar) over every app. Lines are added as they come rather
-// than queued: the newest at the bottom, MAX_LINES at most, each fading
-// out after a while, the panel going when they all have. Touches go
+// near the top of the screen (just under the status bar) over every app.
+// From a run's first line to its last, a pill at its top says Claude is
+// using the phone, so something always shows. Lines are added as they come
+// rather than queued: the newest at the bottom, MAX_LINES at most, each
+// fading out after a while, the panel going once they and the pill have. Touches go
 // straight through it (and it's at the opacity Android lets them through
 // another app's overlay at). Each line starts with its kind's icon, and
 // is coloured: `code` in cyan, numbers in yellow, words that sound good
@@ -66,6 +68,9 @@ final class StatusOverlay {
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	@Nullable
 	private LinearLayout panel;
+	// "Claude is using your phone", from a run's first line to its last.
+	@Nullable
+	private TextView badge;
 
 	private StatusOverlay(@NonNull Context context) {
 		this.context = context;
@@ -82,8 +87,20 @@ final class StatusOverlay {
 
 	void add(@NonNull String text, @Nullable String kind, boolean done) {
 		LinearLayout lines = panel();
-		while (lines.getChildCount() >= MAX_LINES) {
-			lines.removeViewAt(0);
+		// While a run's going, a pill at the top says so, whatever's faded.
+		if (!done && badge == null) {
+			badge = new TextView(context);
+			badge.setText("🤖 Claude is using your phone");
+			badge.setTextColor(Color.rgb(255, 200, 120));
+			badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+			badge.setPadding(0, 0, 0, dp(2));
+			lines.addView(badge, 0);
+		} else if (done && badge != null) {
+			lines.removeView(badge);
+			badge = null;
+		}
+		while (lines.getChildCount() - (badge != null ? 1 : 0) >= MAX_LINES) {
+			lines.removeViewAt(badge != null ? 1 : 0);
 		}
 		var line = new TextView(context);
 		line.setTextColor(Color.rgb(235, 235, 240));
@@ -101,6 +118,8 @@ final class StatusOverlay {
 			windows.removeView(panel);
 			panel = null;
 		}
+		// Back with the next line, if the run's still going.
+		badge = null;
 	}
 
 	private void fade(@NonNull TextView line) {
@@ -109,7 +128,7 @@ final class StatusOverlay {
 				return;
 			}
 			panel.removeView(line);
-			if (panel.getChildCount() == 0) {
+			if (badge == null && panel.getChildCount() == 0) {
 				clear();
 			}
 		});
