@@ -7,9 +7,10 @@
 // and the splats add up with log density, coloured by how far each point
 // jumped. Drag to explore:
 //   one finger      lambda (across) and alpha (up and down)
-//   two fingers     beta (across) and gamma (up and down); twist for omega
-//   three fingers   swipe up or down to change the symmetry n (2-12)
-//   double tap      the next classic icon
+//   two fingers     the view: pan, pinch to zoom, twist to turn
+//   three fingers   beta (across) and gamma (up and down); twist for omega
+//   four fingers    swipe up or down to change the symmetry n (2-12)
+//   double tap      the next classic icon (and the view back to whole)
 // The numbers show while you touch, and a little after.
 ///upscale:splats
 
@@ -109,10 +110,12 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 //// Buffer A
 // The parameters and the gestures that change them, in the bottom row:
 // 0 (lambda, alpha, beta, gamma); 1 (omega, n, the attractor's size, a 2
-// once set); 2 last frame's first two touches; 3 (last frame's finger
-// count, taps so far, when the last tap ended, when this touch began);
-// 4 (the preset, the frame the parameters last changed, the three-finger
-// swipe so far, when the numbers were last asked for).
+// once set); 2 last frame's first two touches (for three or four fingers,
+// x and y are their middle); 3 (last frame's finger count, taps so far,
+// when the last tap ended, when this touch began); 4 (the preset, the
+// frame the picture last changed, the four-finger swipe so far, when the
+// numbers were last asked for); 5 the view (pan x and y in frame heights,
+// zoom, turn); 6 (last frame's angle between the first two touches).
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
@@ -121,7 +124,9 @@ uniform vec3 pointers[10];
 uniform int pointerCount;
 
 #define SPEED 2.5 // parameter change per screen height dragged
-#define N_STEP 0.08 // screen heights of three-finger swipe per step of n
+#define N_STEP 0.08 // screen heights of four-finger swipe per step of n
+#define MIN_ZOOM 0.3
+#define MAX_ZOOM 40.0
 #define TAP_TIME 0.3
 #define TAP_GAP 0.4
 #define PRESETS 10
@@ -142,7 +147,7 @@ void preset(int i, out vec4 a, out vec2 b) {
 
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 p = ivec2(fragCoord);
-	if (p.y != 0 || p.x > 4) {
+	if (p.y != 0 || p.x > 6) {
 		fragColor = vec4(0.0);
 		return;
 	}
@@ -152,7 +157,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	vec4 s2 = texelFetch(iChannel0, ivec2(2, 0), 0);
 	vec4 s3 = texelFetch(iChannel0, ivec2(3, 0), 0);
 	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
+	vec4 s6 = texelFetch(iChannel0, ivec2(6, 0), 0);
 	if (s1.w != 2.0) {
+		view = vec4(0.0, 0.0, 1.0, 0.0);
 		vec2 b;
 		preset(0, s0, b);
 		s1 = vec4(b, 1.5, 2.0);
@@ -162,10 +170,14 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	}
 	vec4 before0 = s0;
 	vec2 before1 = s1.xy;
+	vec4 viewBefore = view;
 	int count = pointerCount;
 	vec2 now0 = pointers[0].xy / res.y;
 	vec2 now1 = pointers[1].xy / res.y;
 	vec2 now2 = pointers[2].xy / res.y;
+	vec2 now3 = pointers[3].xy / res.y;
+	vec2 centre = 0.5 * res / res.y;
+	float angleNow = atan(now1.y - now0.y, now1.x - now0.x);
 	if (count > 0) {
 		s4.w = iTime;
 	}
@@ -173,16 +185,28 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		if (count == 1) {
 			s0.xy += (now0 - s2.xy) * SPEED;
 		} else if (count == 2) {
-			vec2 mid0 = 0.5 * (s2.xy + s2.zw);
-			vec2 mid1 = 0.5 * (now0 + now1);
-			s0.zw += (mid1 - mid0) * SPEED;
-			vec2 d0 = s2.zw - s2.xy;
-			vec2 d1 = now1 - now0;
-			float turn = atan(d1.y, d1.x) - atan(d0.y, d0.x);
+			// The view: what was between the fingers stays between them.
+			vec2 mid0 = 0.5 * (s2.xy + s2.zw) - centre;
+			vec2 mid1 = 0.5 * (now0 + now1) - centre;
+			float len0 = max(length(s2.zw - s2.xy), 1e-3);
+			float len1 = max(length(now1 - now0), 1e-3);
+			float turn = angleNow - s6.x;
+			turn -= 6.2831853 * floor(turn / 6.2831853 + 0.5);
+			float c = cos(-view.w), sn = sin(-view.w);
+			vec2 w = mat2(c, sn, -sn, c) * (mid0 - view.xy) / view.z;
+			view.z = clamp(view.z * len1 / len0, MIN_ZOOM, MAX_ZOOM);
+			view.w += turn;
+			c = cos(view.w);
+			sn = sin(view.w);
+			view.xy = mid1 - mat2(c, sn, -sn, c) * w * view.z;
+		} else if (count == 3) {
+			vec2 mid = (now0 + now1 + now2) / 3.0;
+			s0.zw += (mid - s2.xy) * SPEED;
+			float turn = angleNow - s6.x;
 			turn -= 6.2831853 * floor(turn / 6.2831853 + 0.5);
 			s1.x += turn * 0.25;
-		} else if (count == 3) {
-			float mid = (now0.y + now1.y + now2.y) / 3.0;
+		} else if (count == 4) {
+			float mid = (now0.y + now1.y + now2.y + now3.y) / 4.0;
 			s4.z += mid - s2.x;
 			if (abs(s4.z) > N_STEP) {
 				s1.y = clamp(s1.y + sign(s4.z), 2.0, 12.0);
@@ -205,6 +229,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 				vec2 b;
 				preset(int(s4.x), s0, b);
 				s1.xy = b;
+				view = vec4(0.0, 0.0, 1.0, 0.0);
 				s3.y = 0.0;
 				s4.w = iTime;
 			}
@@ -212,7 +237,8 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 			s3.y = 0.0;
 		}
 	}
-	if (any(notEqual(s0, before0)) || any(notEqual(s1.xy, before1))) {
+	if (any(notEqual(s0, before0)) || any(notEqual(s1.xy, before1)) ||
+			any(notEqual(view, viewBefore))) {
 		s4.y = float(iFrame);
 	}
 	// The attractor's size, from a few particles: smoothed, so the
@@ -229,9 +255,13 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		}
 	}
 	s1.z = far > 0.0 ? mix(s1.z, far, 0.1) : s1.z;
-	s2 = vec4(count == 3 ? vec2((now0.y + now1.y + now2.y) / 3.0, 0.0) : now0, now1);
+	s2 = count == 4 ? vec4((now0.y + now1.y + now2.y + now3.y) / 4.0, 0.0, now1)
+			: count == 3 ? vec4((now0 + now1 + now2) / 3.0, now1)
+			: vec4(now0, now1);
 	s3.x = float(count);
-	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : p.x == 3 ? s3 : s4;
+	s6.x = angleNow;
+	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : p.x == 3 ? s3 :
+			p.x == 4 ? s4 : p.x == 5 ? view : s6;
 }
 
 //// Buffer B
@@ -354,6 +384,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 p = ivec2(fragCoord);
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
 	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
 	if (p == ivec2(0)) {
 		bool still = float(iFrame) - s4.y > 2.0;
 		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE, -1.0, 2.0);
@@ -370,7 +401,10 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	float sigma = SPLAT_PX / iResolution.y; // frame heights
 	if (index % 2 == 0) {
 		float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
-		vec2 uv = 0.5 + part.xy * (fit / radius) * vec2(iResolution.y / iResolution.x, 1.0);
+		// Fitted, then through the view (frame heights from the centre).
+		float c = cos(view.w), sn = sin(view.w);
+		vec2 q = mat2(c, sn, -sn, c) * part.xy * (fit / radius) * view.z + view.xy;
+		vec2 uv = 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
 		fragColor = vec4(uv, sigma, 0.0);
 	} else {
 		float t = pow(clamp(part.z / (1.6 * radius), 0.0, 1.0), 0.7);

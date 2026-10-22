@@ -1,6 +1,8 @@
 // Splat Flame: a living fractal flame, drawn by Upscaling's 2D Gaussian
 // Splats (picked by the ///upscale line). Double-tap for a new one - the
-// old one morphs into it.
+// old one morphs into it - and drag one finger to nudge its transforms
+// (across turns them, up and down moves them; it stays until dragged
+// back). A new flame that collapses into a few dots or lines is skipped.
 //
 // Buffer B holds the particles: every frame each takes a few steps of the
 // chaos game - a random one of the flame's transforms, an affine map bent
@@ -16,7 +18,7 @@
 //
 // A new flame is blended in over MORPH seconds: every number of the flame
 // slides from the old one's to the new one's, each transform's variations
-// cross-fade, and so do the palettes. Upscaling... > Adjust Splats Xform...
+// cross-fade, and the palettes turn into each other in OKLCH. Upscaling... > Adjust Splats Xform...
 // pans, zooms and turns it all.
 //
 // The colours come from an OKLCH palette (perceptual lightness, chroma,
@@ -31,39 +33,95 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 }
 
 //// Buffer A
-// The flame's seeds and the taps that change them, in the bottom-left
-// texels: 0 (seed, last frame's finger count, taps so far, when the last
-// tap ended); 1 (when this touch began, when the seed last changed, the
-// seed before, a 2 once it's set).
+// The flame's seeds, the touches that change it, and a check that it's
+// worth looking at, in the bottom-left texels: 0 (seed, last frame's finger
+// count, taps so far, when the last tap ended); 1 (when this touch began,
+// when the seed last changed, the seed before, a 2 once it's set); 2 (how
+// spread out the particles are - see coverage(), smoothed; 1 once this
+// flame's been judged; flames skipped in a row; how far this touch has
+// moved); 3 (the drag's nudge to the transforms, x and y; last frame's
+// touch, in frame heights).
 ///float32
 
 uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D iChannel1; ///buf:B;
+uniform vec3 pointers[10];
 uniform int pointerCount;
 
 #define TAPS 2 // taps for a new flame
 #define TAP_TIME 0.3 // the longest a tap is held, in seconds
 #define TAP_GAP 0.4 // the longest between taps
+#define TAP_SLOP 0.02 // the most a tap moves, in frame heights
+#define DRAG_SPEED 1.5 // nudge per frame height dragged
+#define MORPH 2.5 // as Buffer B's
+#define JUDGE_AFTER 1.5 // seconds after a morph to judge the new flame
+#define MIN_COVERAGE 24.0 // of 144 cells: fewer, and it's dots or lines - skip it
+#define MAX_SKIPS 6 // then keep whatever comes
+
+// How spread out the particles are: 96 of them, binned in a 12 x 12 grid
+// over two standard deviations each way of their middle - how many cells
+// they reach. A few dots or a line reach few; a flame, many.
+float coverage() {
+	ivec2 size = textureSize(iChannel1, 0);
+	int count = max(size.x * size.y / 4, 1);
+	vec2 sum = vec2(0.0);
+	vec2 sum2 = vec2(0.0);
+	vec2 pts[96];
+	for (int i = 0; i < 96; ++i) {
+		int k = 2 * ((i * 7919 + iFrame * 104729) % count);
+		pts[i] = texelFetch(iChannel1, ivec2(k % size.x, k / size.x), 0).xy;
+		pts[i] = clamp(pts[i], vec2(-100.0), vec2(100.0));
+		sum += pts[i];
+		sum2 += pts[i] * pts[i];
+	}
+	vec2 mean = sum / 96.0;
+	vec2 sd = sqrt(max(sum2 / 96.0 - mean * mean, vec2(1e-8)));
+	uint cells[5] = uint[](0u, 0u, 0u, 0u, 0u);
+	for (int i = 0; i < 96; ++i) {
+		vec2 q = (pts[i] - mean) / (4.0 * sd) + 0.5;
+		if (all(greaterThanEqual(q, vec2(0.0))) && all(lessThan(q, vec2(1.0)))) {
+			int c = int(q.y * 12.0) * 12 + int(q.x * 12.0);
+			cells[c >> 5] |= 1u << uint(c & 31);
+		}
+	}
+	float reached = 0.0;
+	for (int c = 0; c < 144; ++c) {
+		reached += float((cells[c >> 5] >> uint(c & 31)) & 1u);
+	}
+	return reached;
+}
 
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 p = ivec2(fragCoord);
-	if (p.y != 0 || p.x > 1) {
+	if (p.y != 0 || p.x > 3) {
 		fragColor = vec4(0.0);
 		return;
 	}
 	vec4 s0 = texelFetch(iChannel0, ivec2(0, 0), 0);
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	vec4 s2 = texelFetch(iChannel0, ivec2(2, 0), 0);
+	vec4 s3 = texelFetch(iChannel0, ivec2(3, 0), 0);
 	if (s1.w != 2.0) {
 		// A different flame each run.
 		float seed = 1.0 + floor(fract(iDate.w * 0.6180339) * 99991.0);
 		s0 = vec4(seed, 0.0, 0.0, -10.0);
-		s1 = vec4(0.0, -100.0, seed, 2.0);
+		s1 = vec4(0.0, iTime, seed, 2.0);
+		s2 = vec4(0.0);
+		s3 = vec4(0.0);
 	}
 	float count = float(pointerCount);
+	vec2 touch = pointers[0].xy / iResolution.y;
 	if (count > 0.0 && s0.y == 0.0) {
 		s1.x = iTime; // a touch begins
+		s2.w = 0.0;
+	} else if (count == 1.0 && s0.y == 1.0) {
+		// One finger drags the nudge.
+		vec2 moved = touch - s3.zw;
+		s3.xy += moved * DRAG_SPEED;
+		s2.w += length(moved);
 	} else if (count == 0.0 && s0.y > 0.0) {
-		// A touch ends: a tap if it was quick.
-		if (iTime - s1.x < TAP_TIME) {
+		// A touch ends: a tap if it was quick and stayed put.
+		if (iTime - s1.x < TAP_TIME && s2.w < TAP_SLOP) {
 			s0.z = iTime - s0.w < TAP_GAP ? s0.z + 1.0 : 1.0;
 			s0.w = iTime;
 			if (s0.z >= float(TAPS)) {
@@ -71,13 +129,29 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 				s0.x = mod(s0.x * 7919.0 + 104729.0, 999983.0);
 				s0.z = 0.0;
 				s1.y = iTime;
+				s2.yz = vec2(0.0);
 			}
 		} else {
 			s0.z = 0.0;
 		}
 	}
+	s3.zw = touch;
 	s0.y = count;
-	fragColor = p.x == 0 ? s0 : s1;
+	// Is the new flame worth looking at? Judged once it's settled; dots or
+	// lines morph on to the next.
+	s2.x = mix(s2.x, coverage(), 0.1);
+	if (s2.y == 0.0 && iTime - s1.y > MORPH + JUDGE_AFTER) {
+		if (s2.x < MIN_COVERAGE && s2.z < float(MAX_SKIPS)) {
+			s1.z = s0.x;
+			s0.x = mod(s0.x * 7919.0 + 104729.0, 999983.0);
+			s1.y = iTime;
+			s2.z += 1.0;
+		} else {
+			s2.y = 1.0;
+			s2.z = 0.0;
+		}
+	}
+	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : s3;
 }
 
 //// Buffer B
@@ -137,9 +211,12 @@ float weight(float seed, int t) {
 	return t < used ? 0.2 + param(seed, 10 + t) : 0.0;
 }
 
+// The drag's nudge (Buffer A): turns and moves every transform its own way.
+vec2 nudge;
+
 // The affine part of transform t, at time `time`: turned, scaled (not too
 // contracting, or the particles fall into a few tight cycles), sheared a
-// little, moved - and each wandering slowly.
+// little, moved - each wandering slowly, and nudged by the drag.
 void affine(float seed, int t, float time, out float angle, out float scale, out float shear,
 		out vec2 move) {
 	int b = 100 + 20 * t;
@@ -150,6 +227,8 @@ void affine(float seed, int t, float time, out float angle, out float scale, out
 	shear = (param(seed, b + 2) - 0.5) * 0.6;
 	move = vec2(param(seed, b + 3), param(seed, b + 4)) * 2.0 - 1.0 +
 			ANIMATE * 0.15 * vec2(sin(time * 0.13 * rate + phase), cos(time * 0.11 * rate - phase));
+	angle += nudge.x * (param(seed, b + 11) * 2.0 - 1.0) * 1.5;
+	move += nudge.y * (vec2(param(seed, b + 12), param(seed, b + 13)) * 2.0 - 1.0);
 }
 
 // One step of transform t, blending flame `from` into `to` by `f`, at
@@ -191,6 +270,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
 	float to = s0.x;
 	float from = s1.z;
+	nudge = texelFetch(iChannel0, ivec2(3, 0), 0).xy;
 	float f = smoothstep(0.0, 1.0, (iTime - s1.y) / MORPH);
 	float dt = clamp(iTimeDelta, 1.0 / 120.0, 0.1);
 	// The particle's own random numbers, the same in both its texels.
@@ -295,6 +375,20 @@ vec3 paletteLab(float seed, float t) {
 	return t < 1.0 ? mix(s0, s1, t) : t < 2.0 ? mix(s1, s2, t - 1.0) : mix(s2, s3, t - 2.0);
 }
 
+// Two OKLab colours blended through OKLCH: lightness and chroma slide,
+// the hue turns the short way round - so a palette morphing into another
+// keeps its colour, rather than passing through grey as a straight line
+// across OKLab would.
+vec3 mixLch(vec3 a, vec3 b, float f) {
+	float ca = length(a.yz), cb = length(b.yz);
+	float ha = atan(a.z, a.y), hb = atan(b.z, b.y);
+	float dh = hb - ha;
+	dh -= 6.2831853 * floor(dh / 6.2831853 + 0.5);
+	float h = ha + dh * f;
+	float c = mix(ca, cb, f);
+	return vec3(mix(a.x, b.x, f), c * cos(h), c * sin(h));
+}
+
 void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	ivec2 size = ivec2(iResolution.xy);
 	ivec2 p = ivec2(fragCoord);
@@ -324,7 +418,7 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	if (index % 2 == 0) {
 		fragColor = vec4(0.5 + part.xy * VIEW * aspect, axis * major);
 	} else {
-		vec3 lab = mix(paletteLab(s1.z, part.z), paletteLab(s0.x, part.z), f);
+		vec3 lab = mixLch(paletteLab(s1.z, part.z), paletteLab(s0.x, part.z), f);
 		// Stretched, it keeps its light: spread over more, each bit dimmer.
 		vec3 colour = linearToSrgb(oklabToLinear(lab)) * (sigma / major);
 		fragColor = vec4(max(colour, vec3(1e-4)), sigma);
