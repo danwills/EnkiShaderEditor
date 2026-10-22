@@ -149,6 +149,7 @@ public final class TileSafetyProbe {
 				GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
 		GlFramebuffer framebuffer = device.createFramebuffer();
 		device.attachColor(framebuffer, texture);
+		GlTexture2D blank = bindBlankTextures(device);
 		Log.d(TAG, "renderSampleTiles: renderSize=" + renderSize +
 				" samples=" + sampleOffsets.length / 2);
 		try {
@@ -213,7 +214,32 @@ public final class TileSafetyProbe {
 		} finally {
 			device.deleteFramebuffer(framebuffer);
 			device.deleteTexture(texture);
+			device.deleteTexture(blank);
 		}
+	}
+
+	// Binds a transparent black 1x1 texture to every texture unit, so the
+	// shader's samplers (backbuffer, saved textures - none are bound here)
+	// don't read the tile itself: setting up the tile's texture leaves it
+	// bound to unit 0, where every unbound sampler points. A shader that
+	// copies its backbuffer through (state kept in a row of it) would then
+	// write back the sentinel colour and look like a draw that never
+	// finished.
+	@NonNull
+	private static GlTexture2D bindBlankTextures(@NonNull GlDevice device) {
+		GlTexture2D blank = device.createTexture2D();
+		device.allocateTexture2D(blank, 1, 1);
+		GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, 1, 1,
+				GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, ByteBuffer.allocateDirect(4));
+		device.applyTextureParameters(blank, new TextureParameters(
+				GLES20.GL_NEAREST, GLES20.GL_NEAREST,
+				GLES20.GL_CLAMP_TO_EDGE, GLES20.GL_CLAMP_TO_EDGE));
+		int[] units = new int[1];
+		GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_IMAGE_UNITS, units, 0);
+		for (int unit = 0; unit < Math.min(units[0], MAX_TEXTURES); ++unit) {
+			device.bindTexture(unit, blank);
+		}
+		return blank;
 	}
 
 	// Reads back the whole tile (still bound) and counts pixels holding
