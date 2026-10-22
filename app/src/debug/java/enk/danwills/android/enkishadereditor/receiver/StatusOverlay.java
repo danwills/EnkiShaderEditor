@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 // Debug builds only: TestStatusReceiver's panel of Claude's status lines,
-// low on the screen over every app. Lines are added as they come rather
+// near the top of the screen (just under the status bar) over every app. Lines are added as they come rather
 // than queued: the newest at the bottom, MAX_LINES at most, each fading
 // out after a while, the panel going when they all have. Touches go
 // straight through it (and it's at the opacity Android lets them through
@@ -136,9 +136,9 @@ final class StatusOverlay {
 						WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
 						WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
 				PixelFormat.TRANSLUCENT);
-		params.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+		params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
 		params.horizontalMargin = 0.03f;
-		params.y = dp(64);
+		params.y = dp(36);
 		params.alpha = OPACITY;
 		params.setTitle("Claude status");
 		lines.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);

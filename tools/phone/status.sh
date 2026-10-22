@@ -18,6 +18,11 @@
 #                     wait build install load think good bad warn happy sad
 #                     party, or any emoji. `code`, numbers and good/bad words
 #                     are coloured too.
+#   status.sh ask "Test the new splats mode?" [SECONDS]
+#                     a dialog on the phone asking whether Claude can use it
+#                     (TakeOverActivity, over whatever's showing); waits for
+#                     the answer (default 180 s): exit 0 for Go ahead, 1 for
+#                     Not now, 2 for no answer
 #   status.sh check   exit 1 if the notification was swiped away
 #   status.sh hide    clear the panel for a moment (a clean screenshot)
 #   status.sh done "Back to Materialistic" [sad]
@@ -72,6 +77,24 @@ post)
 	fi
 	say "--es text $(quote "${2:-Testing...}") --es kind $(quote "${3:-step}")"
 	;;
+ask)
+	id="ask$(date +%s)"
+	adb shell "am start -n $PKG/enk.danwills.android.enkishadereditor.activity.TakeOverActivity --es id $id --es text $(quote "${2:-}")" >/dev/null 2>&1
+	waited=0
+	while [ "$waited" -lt "${3:-180}" ]; do
+		answer=$(adb shell "run-as $PKG cat files/takeover-$id 2>/dev/null" | tr -d '\r')
+		if [ -n "$answer" ]; then
+			adb shell "run-as $PKG rm -f files/takeover-$id"
+			echo "$answer"
+			[ "$answer" = yes ]
+			exit
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	echo "no answer"
+	exit 2
+	;;
 check)
 	[ -n "$(key "$(tag)")" ]
 	;;
@@ -94,7 +117,7 @@ done)
 	say "--es text $(quote "${2:-Finished testing} - the phone's all yours!") --es kind $kind --ez done true"
 	;;
 *)
-	echo "usage: $0 post TEXT [KIND] | check | hide | done [TEXT] [sad]" >&2
+	echo "usage: $0 post TEXT [KIND] | ask TEXT [SECONDS] | check | hide | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac

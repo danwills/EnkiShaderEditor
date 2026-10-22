@@ -26,5 +26,15 @@
 			android:exported="false"
 			android:excludeFromRecents="true"
 			android:theme="@style/DebugImportTheme"/>
+		<!-- Claude asking before it drives the phone (status.sh ask) -
+		     started by adb, so exported; a task of its own, so answering
+		     leaves whatever was showing. -->
+		<activity
+			android:name=".activity.TakeOverActivity"
+			android:exported="true"
+			android:excludeFromRecents="true"
+			android:taskAffinity=".takeover"
+			android:theme="@style/DebugImportTheme"
+			tools:ignore="ExportedActivity"/>
 	</application>
 </manifest>
