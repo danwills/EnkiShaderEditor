@@ -84,10 +84,11 @@ def _encode(a):
 	return (base64.b64encode(hdr) + base64.b64encode(b"".join(comp))).decode()
 
 
-def write(path, head, arrays):
+def write(path, head, arrays, size=None):
 	"""Writes a .vti: `head` (from header()) and the chemicals in `arrays`
-	({name: (h, w) array}, in order), inline as Ready writes them."""
-	h, w = next(iter(arrays.values())).shape
+	({name: (h, w) array}, in order), inline as Ready writes them. `size`
+	(h, w) is needed only when there are none."""
+	h, w = size or next(iter(arrays.values())).shape
 	ext = "0 %d 0 %d 0 0" % (w - 1, h - 1)
 	out = ["",
 			'  <ImageData WholeExtent="%s" Origin="0 0 0" Spacing="1 1 1">' % ext,

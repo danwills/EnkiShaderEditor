@@ -163,8 +163,11 @@ def build_one(src, out, x, steps):
 	# The chemicals (a file can hold other arrays too).
 	names = sorted(k for k, a in arrays.items() if a is not None and re.fullmatch("[a-h]", k))
 	names = names or sorted(k for k, a in arrays.items() if a is not None)
-	full = np.nan_to_num(np.stack([arrays[k] for k in names]).astype("f4"))
 	info["grid"] = [w, h]
+	if not names:
+		info["why"] = "it has no saved state"
+		return _store(out, x["md5"], "none", {"names": [], "means": np.zeros(0)}, info)
+	full = np.nan_to_num(np.stack([arrays[k] for k in names]).astype("f4"))
 	if x["apply"]:
 		info["why"] = "its initial pattern is applied when it loads"
 		return _store(out, x["md5"], "none", {"names": names, "means": np.zeros(len(names))}, info)
@@ -269,7 +272,7 @@ def expand(out, path, dest):
 		state = np.zeros((len(rec["names"]), h, w), "f4")
 	else:
 		state = vtiseed.grow(kind, rec, w, h)
-	vtistate.write(dest, head, dict(zip(rec["names"], state)))
+	vtistate.write(dest, head, dict(zip(rec["names"], state)), (h, w))
 	print("%s -> %s (%s)" % (path, dest, kind))
 
 
