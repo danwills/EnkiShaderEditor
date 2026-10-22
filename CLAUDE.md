@@ -54,8 +54,9 @@ Two independent projects:
 
 When driving Dan's phone over adb (only when he's said it's free):
 - Ask on the phone first: `tools/phone/status.sh ask 'what for, how long'` shows a dialog over
-  whatever's on screen (debug build's TakeOverActivity) and waits for Go ahead (exit 0), Not now
-  (1) or no answer (2, after 180 s). Only carry on with a 0; otherwise say so and wait.
+  whatever's on screen (debug build's TakeOverActivity). Unanswered for 90 s it counts down 30 s
+  and goes ahead (Dan's wish: never stuck waiting on a click). Exit 0 means go ahead; 1 is Not
+  now - say so and wait.
 - Note what's on screen first (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
 - Keep Dan posted, in detail - he wants to hear about every step, as it happens:
   `tools/phone/status.sh post 'what I'"'"'m doing' [KIND]` puts a line in the debug build's status
