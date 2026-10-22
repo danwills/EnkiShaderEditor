@@ -20,5 +20,5 @@
 		android:textColor="@drawable/drawer_item_selector"
 		android:textSize="14sp"
 		android:maxLines="1"
-		android:ellipsize="start"/>
+		android:ellipsize="middle"/>
 </LinearLayout>
