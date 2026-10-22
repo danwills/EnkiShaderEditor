@@ -4620,8 +4620,11 @@ public class MainActivity extends AppCompatActivity {
 	// "render sequence" options block (initial state from the
 	// PREF_CUSTOM_RES_SEQUENCE_* prefs, visibility toggles, the live
 	// duration estimate, the quality seekbar's label).
+	// onVideoChoiceChanged runs when either box deciding whether a
+	// video gets made is toggled.
 	@NonNull
-	private SequenceOptionsViews wireSequenceOptions(@NonNull View view) {
+	private SequenceOptionsViews wireSequenceOptions(@NonNull View view,
+			@NonNull Runnable onVideoChoiceChanged) {
 		SharedPreferences prefs = dialogPrefs();
 		CheckBox sequenceBox = view.findViewById(R.id.render_sequence);
 		View sequenceOptions = view.findViewById(R.id.sequence_options);
@@ -4656,10 +4659,14 @@ public class MainActivity extends AppCompatActivity {
 		cleanupImagesBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_CLEANUP_IMAGES, true));
 		videoScaleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_VIDEO_SCALE, 1)));
 
-		sequenceBox.setOnCheckedChangeListener((button, checked) ->
-				sequenceOptions.setVisibility(checked ? View.VISIBLE : View.GONE));
-		createVideoBox.setOnCheckedChangeListener((button, checked) ->
-				videoOptionsView.setVisibility(checked ? View.VISIBLE : View.GONE));
+		sequenceBox.setOnCheckedChangeListener((button, checked) -> {
+			sequenceOptions.setVisibility(checked ? View.VISIBLE : View.GONE);
+			onVideoChoiceChanged.run();
+		});
+		createVideoBox.setOnCheckedChangeListener((button, checked) -> {
+			videoOptionsView.setVisibility(checked ? View.VISIBLE : View.GONE);
+			onVideoChoiceChanged.run();
+		});
 		qualitySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 			@Override
 			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -4765,7 +4772,12 @@ public class MainActivity extends AppCompatActivity {
 		CheckBox restartShaderBox = view.findViewById(R.id.restart_shader);
 		restartShaderBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_RESTART_SHADER, false));
 		explainOnLongPress(restartShaderBox, R.string.higher_res_restart_shader);
-		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
+		// Set once updateMatchAppResEnablement exists, below.
+		Runnable[] videoChoiceChanged = {() -> {
+		}};
+		SequenceOptionsViews sequenceViews = wireSequenceOptions(view,
+				() -> videoChoiceChanged[0].run());
+		View videoScaleLabel = view.findViewById(R.id.sequence_video_scale_label);
 		explainOnLongPress(view.findViewById(R.id.sequence_video_scale_label),
 				R.string.higher_res_sequence_video_scale);
 
@@ -4786,9 +4798,16 @@ public class MainActivity extends AppCompatActivity {
 			heightView.setEnabled(!matching);
 			oversampleView.setEnabled(!matching);
 			bucketSizeSpinner.setEnabled(!matching);
-			sequenceViews.videoScaleView.setEnabled(!matching);
+			// Video Scale only matters when a video gets made. Its label
+			// is dimmed rather than disabled, so a long press still
+			// explains it.
+			boolean makingVideo = sequenceViews.sequenceBox.isChecked() &&
+					sequenceViews.createVideoBox.isChecked();
+			sequenceViews.videoScaleView.setEnabled(!matching && makingVideo);
+			videoScaleLabel.setAlpha(makingVideo ? 1f : 0.38f);
 			includeUpscalingBox.setEnabled(matching);
 		};
+		videoChoiceChanged[0] = updateMatchAppResEnablement;
 		// Mirrors the shader's own current live resolution exactly
 		// (reading the renderer's actual surface size directly, not
 		// re-deriving it from DisplayMetrics * quality - see
