@@ -21,7 +21,7 @@
 #   status.sh ask "Test the new splats mode?" [SECONDS]
 #                     a dialog on the phone asking whether Claude can use it
 #                     (TakeOverActivity, over whatever's showing). After
-#                     SECONDS (default 10) unanswered it counts down 5 s, with
+#                     SECONDS (default 15) unanswered it counts down 15 s, with
 #                     a warning icon, and goes ahead (as Dan wants: never
 #                     stuck on a click).
 #                     Exit 0 to go ahead (prints yes), 1 for Not now
@@ -83,12 +83,12 @@ post)
 	;;
 ask)
 	id="ask$(date +%s)"
-	wait="${3:-10}"
-	adb shell "am start -n $PKG/$CLS.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 5" >/dev/null 2>&1
+	wait="${3:-15}"
+	adb shell "am start -n $PKG/$CLS.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15" >/dev/null 2>&1
 	waited=0
-	# The dialog answers itself after wait + 5 s; a little longer, in case
+	# The dialog answers itself after wait + 15 s; a little longer, in case
 	# it never showed (the screen off, say) - and then go ahead anyway.
-	while [ "$waited" -lt $((wait + 15)) ]; do
+	while [ "$waited" -lt $((wait + 25)) ]; do
 		answer=$(adb shell "run-as $PKG cat files/takeover-$id 2>/dev/null" | tr -d '\r')
 		if [ -n "$answer" ]; then
 			adb shell "run-as $PKG rm -f files/takeover-$id"

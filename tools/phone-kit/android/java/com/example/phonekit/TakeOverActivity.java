@@ -64,8 +64,8 @@ public class TakeOverActivity extends AppCompatActivity {
 		}
 		String message = text != null && !text.isEmpty() ? text
 				: "Claude would like to drive the phone for a test.";
-		int wait = getIntent().getIntExtra("wait", 10);
-		int countdown = getIntent().getIntExtra("countdown", 5);
+		int wait = getIntent().getIntExtra("wait", 15);
+		int countdown = getIntent().getIntExtra("countdown", 15);
 		dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle("🤖 Can Claude use your phone?")
 				.setMessage(message)

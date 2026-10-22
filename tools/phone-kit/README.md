@@ -6,7 +6,7 @@ owner might be holding it. It covers four things:
 
 1. **Ask first.** A dialog on the phone, over whatever's showing:
    "Can Claude use your phone?", with Go ahead and Not now.
-   - If nobody answers, it counts down ("Claude will go ahead in 5 s",
+   - If nobody answers, it counts down ("Claude will go ahead in 15 s",
      with a yellow warning icon) and carries on. The owner's wish: never
      stuck waiting on a click.
    - If the dialog is pushed away (another app opened over it), a
@@ -32,8 +32,8 @@ owner might be holding it. It covers four things:
   `PHONE_KIT_CLASSES` if you moved the Java package.
   - `status.sh ask "what for, how long" [SECONDS]` shows the prompt.
     It exits 0 to go ahead (by answer or timeout) and 1 for Not now.
-    `SECONDS` (default 10) is how long the question waits before the
-    5 s countdown.
+    `SECONDS` (default 15) is how long the question waits before the
+    15 s countdown.
   - `status.sh post 'text' [KIND]` adds a line to the panel, and the run
     notification the first time.
   - `status.sh check` fails if the run notification was swiped away.
@@ -79,7 +79,7 @@ android.permission.POST_NOTIFICATIONS`.
 
 When driving the phone over adb:
 - Ask on the phone first: `status.sh ask 'what for, how long'` shows a
-  dialog over whatever's on screen; unanswered for 10 s it counts down 5 s
+  dialog over whatever's on screen; unanswered for 15 s it counts down 15 s
   and goes ahead. Exit 0 means go ahead; 1 is Not now - say so and wait.
 - Note what's on screen first
   (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
