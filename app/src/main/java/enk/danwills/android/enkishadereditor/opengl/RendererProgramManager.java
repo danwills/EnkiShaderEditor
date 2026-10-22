@@ -455,6 +455,11 @@ final class RendererProgramManager {
 			"^[ \\t]*///steps:([0-9]{1,3})[ \\t]*$", Pattern.MULTILINE);
 	private static final int MAX_STEPS = 64;
 	private int steps = 1;
+	// See getShaderUpscale().
+	private static final Pattern UPSCALE = Pattern.compile(
+			"^[ \\t]*///upscale:([a-z]+(?:,[a-z]+)?(?:,[0-9.]+)?)[ \\t]*$", Pattern.MULTILINE);
+	@Nullable
+	private volatile Upscaling.Upscale shaderUpscale;
 	// The backbuffer parameters before the last prepareShaderSource(),
 	// as text - see backBufferParametersUnchanged().
 	@Nullable
@@ -673,6 +678,29 @@ final class RendererProgramManager {
 	// buffers then moves N steps a frame, for one Image pass.
 	int getSteps() {
 		return steps;
+	}
+
+	// The upscaling a shader asks for - a `///upscale:filter[,edge[,amount]]`
+	// line in any pass, as Settings keeps one (Upscaling.Upscale.spec()),
+	// e.g. `///upscale:points` or `///upscale:sinc,mirror,4` - or null.
+	@Nullable
+	Upscaling.Upscale getShaderUpscale() {
+		return shaderUpscale;
+	}
+
+	@Nullable
+	private static Upscaling.Upscale findUpscale(@NonNull String[] sources) {
+		for (String source : sources) {
+			if (source == null) {
+				continue;
+			}
+			Matcher matcher = UPSCALE.matcher(source);
+			if (matcher.find()) {
+				var upscale = Upscaling.Upscale.parse(matcher.group(1));
+				return upscale.filter() == Upscaling.Filter.DEFAULT ? null : upscale;
+			}
+		}
+		return null;
 	}
 
 
@@ -1084,6 +1112,7 @@ final class RendererProgramManager {
 		}
 		moduleName = ModuleDirective.find(all);
 		steps = findSteps(all);
+		shaderUpscale = findUpscale(all);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
 	}
 

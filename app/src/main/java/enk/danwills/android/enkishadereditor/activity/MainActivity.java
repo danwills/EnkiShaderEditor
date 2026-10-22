@@ -2187,7 +2187,7 @@ public class MainActivity extends AppCompatActivity {
 	// session - the view's, not the shader's, so nothing's recompiled.
 	// Settings picks the one each session starts with.
 	private void showUpscaleDialog() {
-		UpscaleDialog.show(this, shaderViewManager.getUpscale(), new UpscaleDialog.Host() {
+		UpscaleDialog.show(this, shaderViewManager.getShownUpscale(), new UpscaleDialog.Host() {
 			@Override
 			public void preview(@NonNull Upscaling.Upscale upscale) {
 				shaderViewManager.previewUpscale(upscale);

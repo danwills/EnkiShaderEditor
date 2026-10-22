@@ -230,6 +230,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile boolean blankFrameRequested;
 	// See requestRedisplay().
 	// See setUpscale().
+	private volatile boolean upscaleChosen;
 	@NonNull
 	private volatile Upscaling.Upscale upscale = Upscaling.Upscale.DEFAULT;
 	// See setCaptureUpscaled().
@@ -414,6 +415,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			builtinUniforms.keepClockThroughNextSurface();
 		} else {
 			builtinUniforms.setRuntimeNanos(0);
+			upscaleChosen = false;
 		}
 		setQuality(quality);
 		this.shaderId = shaderId;
@@ -611,8 +613,6 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		redisplayRequested = true;
 	}
 
-	// How the frame's scaled up to the screen (see Upscaling) - the
-	// view's, kept across shaders; shown at once, even paused.
 	// For Upscaling's points and splats: the last drawn offscreen buffer.
 	private void setPrimitiveSource(@NonNull Upscaling.Upscale upscale) {
 		var passes = programManager.getBufferPasses();
@@ -627,14 +627,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				last.getSwaps());
 	}
 
+	// How the frame's scaled up to the screen (see Upscaling) - the
+	// view's, kept across shaders; shown at once, even paused. Chosen
+	// while a shader with an `///upscale:` line is open, it wins over that
+	// line until another shader opens.
 	public void setUpscale(@NonNull Upscaling.Upscale upscale) {
 		this.upscale = upscale;
+		upscaleChosen = true;
 		redisplayRequested = true;
 	}
 
+	// What's shown: the shader's own `///upscale:` line's (see
+	// RendererProgramManager.getShaderUpscale()), unless one's been chosen
+	// since it opened, else the view's.
 	@NonNull
 	public Upscaling.Upscale getUpscale() {
-		return upscale;
+		Upscaling.Upscale own = programManager.getShaderUpscale();
+		return own != null && !upscaleChosen ? own : upscale;
 	}
 
 	public void resumeClock() {
