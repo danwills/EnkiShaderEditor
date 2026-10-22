@@ -26,9 +26,11 @@ tiny). Otherwise build converts the rule with vti2enki, runs it on the
 GPU from the saved state (the most typical 512^2 window of a bigger one)
 and from each seed, cheapest first, and keeps the first that passes
 rdheadless.Trial's test; failing every seed, the state is kept 8-bit,
-then 16-bit, if that passes, else exactly. A rule whose chemicals run
-away even from the saved state (so the test means little) is kept
-16-bit, and one vti2enki can't convert, exactly.
+then 16-bit, if that passes. Anything else is left out of the pack
+(its reason noted): a state no seed or copy restarts, one over 1024^2
+cells that no seed restarts, a rule whose chemicals run away even from
+the saved state (so the test means little), and one vti2enki can't
+convert or whose shader doesn't compile.
 """
 import argparse
 import hashlib
@@ -39,6 +41,7 @@ import re
 import sys
 import time
 import xml.etree.ElementTree as ET
+import zlib
 
 import numpy as np
 
@@ -47,6 +50,7 @@ import vtiseed  # noqa: E402
 import vtistate  # noqa: E402
 
 CROP = 512
+LARGE = 1024 * 1024  # cells: a state this big is left out unless a seed restarts it
 
 
 def scan(src):
@@ -131,6 +135,13 @@ def _files(idx):
 			yield f, x
 
 
+def _exclude(out, md5, info, why):
+	# Left out of the pack: nothing stored but the reason.
+	info.update(kind="excluded", bytes=0, why=why)
+	json.dump(info, open(os.path.join(out, "states", md5 + ".json"), "w"))
+	return info
+
+
 def _store(out, md5, kind, rec, info):
 	data = vtiseed.encode(kind, rec)
 	with open(os.path.join(out, "states", md5 + ".seed"), "wb") as fh:
@@ -145,7 +156,10 @@ def build_one(src, out, x, steps):
 	import vti2enki
 	t = time.time()
 	info = {"path": x["path"]}
-	head, w, h, arrays = vtistate.read(os.path.join(src, x["path"]))
+	try:
+		head, w, h, arrays = vtistate.read(os.path.join(src, x["path"]))
+	except (ValueError, KeyError, AttributeError, zlib.error) as e:
+		return _exclude(out, x["md5"], info, "its state can't be read (%s)" % e)
 	# The chemicals (a file can hold other arrays too).
 	names = sorted(k for k, a in arrays.items() if a is not None and re.fullmatch("[a-h]", k))
 	names = names or sorted(k for k, a in arrays.items() if a is not None)
@@ -160,19 +174,16 @@ def build_one(src, out, x, steps):
 	try:
 		glsl, _ = vti2enki.convert(os.path.join(src, x["path"]))
 	except (vti2enki.Unsupported, ET.ParseError, KeyError, ValueError, AttributeError) as e:
-		info["why"] = "vti2enki can't convert it (%s), so it can't be tried" % e
-		return _store(out, x["md5"], "exact", dict(vtiseed.copies(names, full))["exact"], info)
+		return _exclude(out, x["md5"], info, "vti2enki can't convert it (%s)" % e)
 	crop = rdheadless.best_window(full, CROP)
 	try:
 		trial = rdheadless.Trial(glsl, crop, steps)
 	except RuntimeError as e:
-		info["why"] = "its shader doesn't compile (%s)" % str(e).strip().splitlines()[0][:200]
-		return _store(out, x["md5"], "exact", dict(vtiseed.copies(names, full))["exact"], info)
+		return _exclude(out, x["md5"], info, "its shader doesn't compile (%s)" % str(e).strip().splitlines()[0][:200])
 	info["trial"] = {"grid": [crop.shape[2], crop.shape[1]], "steps": int(trial.fb[-1]), "tried": {}}
 	tried = info["trial"]["tried"]
 	if trial.unbounded():
-		info["why"] = "a chemical runs away even from the saved state"
-		return _store(out, x["md5"], "q16", dict(vtiseed.copies(names, full))["q16"], info)
+		return _exclude(out, x["md5"], info, "a chemical runs away even from the saved state")
 	full_means = full.reshape(len(names), -1).astype("f8").mean(1)
 	ch, cw = crop.shape[1:]
 
@@ -186,6 +197,9 @@ def build_one(src, out, x, steps):
 			info["why"] = "the cheapest seed that passes"
 			info["secs"] = round(time.time() - t, 1)
 			return _store(out, x["md5"], kind, dict(rec, means=full_means), info)
+	info["secs"] = round(time.time() - t, 1)
+	if w * h > LARGE:
+		return _exclude(out, x["md5"], info, "no seed passes, and the state is too big to keep (%dx%d)" % (w, h))
 	crop_copies = dict(vtiseed.copies(names, crop))
 	full_copies = dict(vtiseed.copies(names, full))
 	for kind in ("q8", "q16"):
@@ -193,9 +207,8 @@ def build_one(src, out, x, steps):
 			info["why"] = "no seed passes; the %d-bit state does" % (8 if kind == "q8" else 16)
 			info["secs"] = round(time.time() - t, 1)
 			return _store(out, x["md5"], kind, full_copies[kind], info)
-	info["why"] = "neither a seed nor a quantised copy passes"
 	info["secs"] = round(time.time() - t, 1)
-	return _store(out, x["md5"], "exact", full_copies["exact"], info)
+	return _exclude(out, x["md5"], info, "neither a seed nor a quantised copy passes")
 
 
 def build(src, out, part, steps, match=None):
@@ -209,8 +222,12 @@ def build(src, out, part, steps, match=None):
 			info = build_one(src, out, x, steps)
 			print("%d/%d %s: %s (%d bytes) - %s" % (k + 1, len(todo), x["path"], info["kind"], info["bytes"],
 					info["why"]), flush=True)
-		except Exception as e:  # noqa: BLE001 - one bad file mustn't stop the rest
+		except MemoryError as e:
+			# Passing (the machine's short of memory): left for the next build.
 			print("%d/%d %s: failed - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
+		except Exception as e:  # noqa: BLE001 - one bad file mustn't stop the rest
+			_exclude(out, x["md5"], {"path": x["path"]}, "%s: %s" % (type(e).__name__, str(e)[:200]))
+			print("%d/%d %s: excluded - %s: %s" % (k + 1, len(todo), x["path"], type(e).__name__, e), flush=True)
 
 
 def expand(out, path, dest):
@@ -219,10 +236,13 @@ def expand(out, path, dest):
 	x = next((x for _, x in _files(idx) if x["path"] == path), None)
 	if x is None:
 		sys.exit("%s isn't in the index" % path)
+	info = json.load(open(os.path.join(out, "states", x["md5"] + ".json")))
+	if info["kind"] == "excluded":
+		sys.exit("%s was left out: %s" % (path, info["why"]))
 	with lzma.open(os.path.join(out, "headers.json.xz"), "rt") as fh:
 		head = json.load(fh)[x["md5"]].encode()
 	kind, rec = vtiseed.decode(open(os.path.join(out, "states", x["md5"] + ".seed"), "rb").read())
-	w, h = json.load(open(os.path.join(out, "states", x["md5"] + ".json")))["grid"]
+	w, h = info["grid"]
 	if kind == "none":
 		state = np.zeros((len(rec["names"]), h, w), "f4")
 	else:
@@ -251,7 +271,9 @@ def report(out):
 	for kind, (n, o, b) in sorted(kinds.items(), key=lambda kv: -kv[1][0]):
 		print("  %-15s %5d files  %8.1f MB -> %7.2f MB" % (kind, n, o / 1e6, b / 1e6))
 	hdr = os.path.getsize(os.path.join(out, "headers.json.xz"))
-	print("states %.2f GB -> %.1f MB, plus %.1f MB of headers" % (old / 1e9, new / 1e6, hdr / 1e6))
+	n, o, _ = kinds.get("excluded", [0, 0, 0])
+	print("kept %d files: %.2f GB -> %.1f MB, plus %.1f MB of headers; left out %d (%.2f GB)" % (
+			done - n, (old - o) / 1e9, new / 1e6, hdr / 1e6, n, o / 1e9))
 
 
 def main():
