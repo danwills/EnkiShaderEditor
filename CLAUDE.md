@@ -58,7 +58,10 @@ When driving Dan's phone over adb (only when he's said it's free):
   and goes ahead (Dan's wish: never stuck waiting on a click). Exit 0 means go ahead; 1 is Not
   now - say so and wait.
 - Note what's on screen first (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
-- Keep Dan posted, in detail - he wants to hear about every step, as it happens:
+- Keep Dan posted, in detail - he wants to hear about every step, as it happens, with a line
+  before every action or batch so the panel is never empty while you're driving. The panel lives
+  in Enki debug's process: after a force-stop, install or restart, run `status.sh again`
+  straight away (add_shader.sh does when it stops the app):
   `tools/phone/status.sh post 'what I'"'"'m doing' [KIND]` puts a line in the debug build's status
   overlay (TestStatusReceiver/StatusOverlay: the last few lines over whatever's on screen, each
   fading, so nothing queues), and the first post of a run also posts the notification. KIND is

@@ -36,6 +36,9 @@ owner might be holding it. It covers four things:
     15 s countdown.
   - `status.sh post 'text' [KIND]` adds a line to the panel, and the run
     notification the first time.
+  - `status.sh again` re-posts the last line. The panel lives in the app's
+    process, so a force-stop or install takes it away; call this straight
+    after one.
   - `status.sh check` fails if the run notification was swiped away.
   - `status.sh hide` clears the panel for a clean screenshot.
   - `status.sh done 'summary' [sad]` writes the last line and leaves the
@@ -83,11 +86,14 @@ When driving the phone over adb:
   and goes ahead. Exit 0 means go ahead; 1 is Not now - say so and wait.
 - Note what's on screen first
   (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
-- Narrate every step with `status.sh post 'what I'"'"'m doing' KIND`
+- Narrate every step - a line before each action or batch, so the panel
+  is never empty while you're driving - with `status.sh post 'what I'"'"'m doing' KIND`
   (step, look, tap, type, wait, build, install, load, think, good, bad,
   warn, happy, sad, party): good/bad for what worked or didn't. Quote with
   single quotes, or the shell runs the backticks.
 - `status.sh hide` before a screenshot that needs the screen clear.
+- After anything that stops the app (force-stop, install, a restart),
+  run `status.sh again` straight away: the panel went with the process.
 - Run `status.sh check` between steps: if it fails, the owner swiped the
   notification away to interrupt - finish the step in hand (don't leave a
   dialog half-done), note where you got to, and stop.

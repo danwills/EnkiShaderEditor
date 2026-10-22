@@ -25,6 +25,8 @@
 #                     a warning icon, and goes ahead (as Dan wants: never
 #                     stuck on a click).
 #                     Exit 0 to go ahead (prints yes), 1 for Not now
+#   status.sh again   the last line again - after anything that stopped the
+#                     app (force-stop, install), which takes the panel with it
 #   status.sh check   exit 1 if the notification was swiped away
 #   status.sh hide    clear the panel for a moment (a clean screenshot)
 #   status.sh done "Back to Materialistic" [sad]
@@ -37,8 +39,10 @@
 PKG="${PHONE_KIT_APP:?set PHONE_KIT_APP to your debug applicationId}"
 CLS="${PHONE_KIT_CLASSES:-com.example.phonekit}"
 # This run's notification tag, and the last finished run's (left up).
-STATE="${TMPDIR:-/tmp}/enki-phone-status-tag"
-FINISHED="${TMPDIR:-/tmp}/enki-phone-status-finished"
+STATE="${TMPDIR:-/tmp}/phone-kit-status-tag"
+FINISHED="${TMPDIR:-/tmp}/phone-kit-status-finished"
+# The last line posted, for `again`.
+LAST="${TMPDIR:-/tmp}/phone-kit-status-last"
 
 tag() {
 	if [ ! -s "$STATE" ]; then
@@ -80,6 +84,14 @@ post)
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
 	say "--es text $(quote "${2:-Testing...}") --es kind $(quote "${3:-step}")"
+	printf '%s\n%s\n' "${2:-Testing...}" "${3:-step}" > "$LAST"
+	;;
+again)
+	# Only mid-run: the panel's back, with the pill and the last line.
+	if [ -s "$STATE" ] && [ -s "$LAST" ]; then
+		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
+		say "--es text $(quote "$(sed -n 1p "$LAST")") --es kind $(quote "$(sed -n 2p "$LAST")")"
+	fi
 	;;
 ask)
 	id="ask$(date +%s)"
@@ -124,7 +136,7 @@ done)
 	say "--es text $(quote "${2:-Finished testing} - the phone's all yours!") --es kind $kind --ez done true"
 	;;
 *)
-	echo "usage: $0 post TEXT [KIND] | ask TEXT [SECONDS] | check | hide | done [TEXT] [sad]" >&2
+	echo "usage: $0 post TEXT [KIND] | again | ask TEXT [SECONDS] | check | hide | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac

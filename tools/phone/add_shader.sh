@@ -27,6 +27,8 @@ if adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q
 else
 	on_screen=
 	adb shell am force-stop "$PKG"
+	# That took the status panel with it: put it back.
+	"$(dirname "$0")/status.sh" again
 fi
 adb push "$file" /data/local/tmp/enki-import.glsl >/dev/null
 # A file of its own each time: several sent while Enki's on screen wait in
