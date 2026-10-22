@@ -553,6 +553,8 @@
 	<string name="sample_soundboard_rationale">可演奏的打擊墊：鼓和五種調好音的樂器（A 小調五聲音階）。按住並上下拖動可彎音。</string>
 	<string name="sample_tracker_name">音軌編輯器</string>
 	<string name="sample_tracker_rationale">演示場景風格的音序器：輕觸新增音符，按住編輯，輕觸兩次刪除。使用音效板的樂器演奏。</string>
+	<string name="sample_life_viewer_name">生命遊戲檢視器</string>
+	<string name="sample_life_viewer_rationale">在離屏緩衝區中執行康威生命遊戲，並透過可移動的檢視顯示：拖曳捲動，雙指縮放，三指重新隨機播種。</string>
 	<string name="sample_module_viewer_name">模組檢視器</string>
 	<string name="sample_module_viewer_rationale">播放音軌模組（MOD、S3M、XM），並像老式音軌器那樣顯示：示波器、頻譜和捲動的樂譜。</string>
 	<string name="sample_demo_writer_name">演示捲動字幕</string>

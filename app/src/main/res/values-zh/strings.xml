@@ -553,6 +553,8 @@
 	<string name="sample_soundboard_rationale">可演奏的打击垫：鼓和五种调好音的乐器（A 小调五声音阶）。按住并上下拖动可弯音。</string>
 	<string name="sample_tracker_name">音轨编辑器</string>
 	<string name="sample_tracker_rationale">演示场景风格的音序器：点按添加音符，按住编辑，点按两次删除。使用音效板的乐器演奏。</string>
+	<string name="sample_life_viewer_name">生命游戏查看器</string>
+	<string name="sample_life_viewer_rationale">在离屏缓冲区中运行康威生命游戏，并通过可移动的视图显示：拖动滚动，双指缩放，三指重新随机播种。</string>
 	<string name="sample_module_viewer_name">模块查看器</string>
 	<string name="sample_module_viewer_rationale">播放音轨模块（MOD、S3M、XM），并像老式音轨器那样显示：示波器、频谱和滚动的乐谱。</string>
 	<string name="sample_demo_writer_name">演示滚动字幕</string>

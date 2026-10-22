@@ -576,6 +576,8 @@
 	<string name="sample_soundboard_rationale">Pads to play: drums and five tuned instruments in A minor pentatonic. Hold and drag up or down to bend.</string>
 	<string name="sample_tracker_name">Tracker</string>
 	<string name="sample_tracker_rationale">A demoscene-style sequencer: tap to add notes, hold to edit, tap twice to delete. Plays on the Soundboard\'s instruments.</string>
+	<string name="sample_life_viewer_name">Life Viewer</string>
+	<string name="sample_life_viewer_rationale">Conway\'s Game of Life in an offscreen buffer, drawn through a view you can move: drag to scroll, pinch to zoom, three fingers for a new soup.</string>
 	<string name="sample_module_viewer_name">Module Viewer</string>
 	<string name="sample_module_viewer_rationale">Plays a tracker module (MOD, S3M, XM) and shows it like the old trackers: scopes, spectra and the pattern scrolling by.</string>
 	<string name="sample_demo_writer_name">Demo Writer</string>
