@@ -1730,8 +1730,11 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.append("///float32")
 	for g, b in enumerate(src_buffers):
 		out.append("uniform sampler2D iChannel%d; ///buf:%s;" % (g, b))
-	if is_first_stage and p.overlays:
+	if is_first_stage and (p.overlays or p.start):
 		out.append("uniform float startRandom;")
+	if is_first_stage and p.start:
+		for name in p.start["textures"]:
+			out.append("uniform sampler2D %s;" % name)
 	paint = [(c, v) for c, v in p.paint if c in chems[group * 4:group * 4 + 4]]
 	erase = [(c, v) for c, v in p.erase if c in chems[group * 4:group * 4 + 4]]
 	# Every pass - two fingers erase in every step.
@@ -1763,6 +1766,8 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.extend(overlay_code(p, chems))
 		out.append("}")
 		out.append("")
+	if is_first_stage and p.start:
+		out.extend(start_code(p, chems))
 	out.extend(cell_code(p))
 	out.extend(wide_blur_code(used_stencils, groups))
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
@@ -1837,10 +1842,12 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	result = "vec4(%s)" % ", ".join(mine + ["0.0"] * (4 - len(mine)))
 	if is_first_stage:
 		out.append("\tif (starting) {")
-		out.append("\t\t// The initial pattern.")
+		out.append("\t\t// The %s." % ("start state" if p.start else "initial pattern"))
 		for c in chems:
 			out.append("\t\tfloat %s = 0.0;" % c)
-		if p.overlays:
+		if p.start:
+			out.append("\t\trdStart(p, %s);" % ", ".join(chems))
+		elif p.overlays:
 			out.append("\t\trdInitial(p, grid, 0, %s);" % ", ".join(chems))
 		out.append("\t\tfragColor = %s;" % result)
 		out.append("\t\treturn;")
@@ -1997,6 +2004,47 @@ bool rdBad(float v) {
 float rdSane(float v, float before) {
 	return rdBad(v) ? (rdBad(before) ? 0.0 : before) : v;
 }"""
+
+
+def start_code(p, chems):
+	"""rdStart(): the start state, from p.start's textures (see convert())."""
+	st = p.start
+	w, h = st["size"]
+	out = ["// The start state: %s." % st["what"],
+			"// A %dx%d tile, 8-bit (16-bit where two channels make one value)" % (w, h),
+			"// over each chemical's range, laid over the grid - each copy but the",
+			"// first flipped%s at random, new ones each Restart, so a grid" % (
+					" and turned" if w == h else ""),
+			"// bigger than the tile doesn't repeat it.",
+			"ivec2 rdStartCell(ivec2 p) {",
+			"\tivec2 s = ivec2(%d, %d);" % (w, h),
+			"\tivec2 t = p / s;",
+			"\tivec2 q = p - t * s;",
+			"\tif (t == ivec2(0)) return q;",
+			"\tuint k = uint(t.x) * 1664525u + uint(t.y) * 22695477u + uint(startRandom * 65535.0);",
+			"\tk ^= k >> 13; k *= 0x5bd1e995u; k ^= k >> 15;",
+			"\tif ((k & 1u) != 0u) q.x = s.x - 1 - q.x;",
+			"\tif ((k & 2u) != 0u) q.y = s.y - 1 - q.y;"]
+	if w == h:
+		out.append("\tif ((k & 4u) != 0u) q = q.yx;")
+	out += ["\treturn q;", "}", "",
+			"void rdStart(ivec2 p, %s) {" % ", ".join("out float " + c for c in chems)]
+	if st["textures"]:
+		out.append("\tivec2 q = rdStartCell(p);")
+	for k, name in enumerate(st["textures"]):
+		out.append("\tvec4 t%d = round(texelFetch(%s, q, 0) * 255.0);" % (k, name))
+	for c, place, (lo, hi) in zip(chems, st["layout"], st["range"]):
+		if place is None:
+			out.append("\t%s = %s;" % (c, glsl_float(lo)))
+			continue
+		tex, ch, size = place
+		if size == 1:
+			code = "t%d.%s / 255.0" % (tex, CHANNELS[ch])
+		else:
+			code = "(t%d.%s * 256.0 + t%d.%s) / 65535.0" % (tex, CHANNELS[ch], tex, CHANNELS[ch + 1])
+		out.append("\t%s = %s + %s * %s;" % (c, glsl_float(lo), code, glsl_float(hi - lo)))
+	out += ["}", ""]
+	return out
 
 
 def cell_code(p):
@@ -2157,8 +2205,20 @@ def parse_paint(spec):
 
 
 def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec="a=1,b=0",
-		start_masks=False, steps=4):
+		start_masks=False, steps=4, start=None, title=None):
+	"""`start` makes it start from textures instead of the initial pattern:
+	{"what": a few words on what they hold, "textures": their uniform names,
+	"size": (w, h), "layout": per chemical (texture, first channel, 1 or 2
+	channels) or None for a constant, "range": per chemical (lo, hi), the
+	constant's value as lo} - see vtipack.py's shader command. `title`
+	replaces the file's name in the header."""
 	p = read_vti(path)
+	p.start = start
+	if start:
+		p.notes = [n for n in p.notes if "saved in the file" not in n and "over the saved state" not in n
+				and not n.startswith("No initial pattern")]
+		p.notes.insert(0, "Starts from %s, as Ready starts from the state saved in the file." %
+				start["what"])
 	p.start_masks = start_masks
 	# Colour map slots: the file's own, then the app's `colormaps` rows.
 	p.maps = 1 + len(colormap_names())
@@ -2244,7 +2304,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	p.brush_paint = brush_paint
 	p.brush_erase = brush_erase
 
-	title = os.path.splitext(os.path.basename(path))[0]
+	title = title or os.path.splitext(os.path.basename(path))[0]
 	image = []
 	image.append("// %s - converted from Ready (GollyGang/ready) by tools/ready/vti2enki.py." %
 			title)
