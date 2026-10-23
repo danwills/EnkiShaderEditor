@@ -40,6 +40,11 @@ import java.util.regex.Pattern;
 // in green and bad in red - and ends, dimmed, with how long its step's
 // likely to take, if Claude said (`?` when it can't tell) - and, once
 // the next line comes, how long it actually took (amendLast()).
+// Beside the pill, in a small window of their own (the one part that
+// takes touches): Pause/Continue and Stop, which Claude reads back
+// between steps (files/claude-control: "paused" or "stopped"), and - only
+// while Claude's asking whether something looks right (askRating()) -
+// thumbs up and down (files/claude-rate-<id>: "up" or "down").
 @RequiresApi(Build.VERSION_CODES.O)
 final class StatusOverlay {
 	private static final int MAX_LINES = 8;
@@ -68,6 +73,15 @@ final class StatusOverlay {
 	// "Claude is using your phone", from a run's first line to its last.
 	@Nullable
 	private TextView badge;
+	// The buttons' window - see the class comment.
+	@Nullable
+	private LinearLayout controls;
+	@Nullable
+	private TextView pauseButton;
+	@Nullable
+	private LinearLayout thumbs;
+	private boolean paused;
+	private static final String CONTROL = "claude-control";
 
 	private StatusOverlay(@NonNull Context context) {
 		this.context = context;
@@ -85,6 +99,14 @@ final class StatusOverlay {
 	// Debug-only tooling, in English like the rest of it.
 	@SuppressLint("SetTextI18n")
 	void add(@NonNull String text, @Nullable String kind, @Nullable String eta) {
+		add(text, kind, eta, true);
+	}
+
+	// own: one of Claude's (status.sh's), which amendLast() times - not
+	// one the buttons add themselves.
+	@SuppressLint("SetTextI18n")
+	private void add(@NonNull String text, @Nullable String kind, @Nullable String eta,
+			boolean own) {
 		LinearLayout lines = panel();
 		lines.setVisibility(View.VISIBLE);
 		if (badge == null) {
@@ -93,29 +115,37 @@ final class StatusOverlay {
 			badge.setTextColor(Color.rgb(255, 200, 120));
 			badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
 			badge.setPadding(0, 0, 0, dp(2));
+			// As tall as the buttons beside it, so they don't cover a line.
+			badge.setMinHeight(dp(42));
+			badge.setGravity(Gravity.CENTER_VERTICAL);
 			lines.addView(badge, 0);
 		}
 		while (lines.getChildCount() - (badge != null ? 1 : 0) >= MAX_LINES) {
 			lines.removeViewAt(badge != null ? 1 : 0);
 		}
+		controls();
 		var line = new TextView(context);
 		line.setTextColor(Color.rgb(235, 235, 240));
 		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
 		line.setLineSpacing(0, 1.1f);
 		line.setPadding(0, dp(3), 0, dp(3));
 		line.setText(styled(text, kind, eta, null));
-		line.setTag(new String[]{text, kind, eta});
+		if (own) {
+			line.setTag(new String[]{text, kind, eta});
+		}
 		lines.addView(line);
 	}
 
-	// The newest line, with how long its step actually took.
+	// Claude's newest line, with how long its step actually took.
 	void amendLast(@NonNull String took) {
-		if (panel == null || panel.getChildCount() == 0) {
+		if (panel == null) {
 			return;
 		}
-		var last = panel.getChildAt(panel.getChildCount() - 1);
-		if (last instanceof TextView line && line.getTag() instanceof String[] parts) {
-			line.setText(styled(parts[0], parts[1], parts[2], took));
+		for (int i = panel.getChildCount() - 1; i >= 0; --i) {
+			if (panel.getChildAt(i) instanceof TextView line && line.getTag() instanceof String[] parts) {
+				line.setText(styled(parts[0], parts[1], parts[2], took));
+				return;
+			}
 		}
 	}
 
@@ -125,6 +155,115 @@ final class StatusOverlay {
 		if (panel != null) {
 			panel.setVisibility(View.GONE);
 		}
+		if (controls != null) {
+			controls.setVisibility(View.GONE);
+		}
+	}
+
+	// Claude asking whether what it's looking at is right: thumbs up and
+	// down until one's tapped (or clearRating()).
+	void askRating(@NonNull String id) {
+		LinearLayout bar = controls();
+		if (thumbs != null) {
+			bar.removeView(thumbs);
+		}
+		thumbs = new LinearLayout(context);
+		thumbs.addView(button("👍", v -> rate(id, "up")));
+		thumbs.addView(button("👎", v -> rate(id, "down")));
+		bar.addView(thumbs, 0);
+	}
+
+	void clearRating() {
+		if (controls != null && thumbs != null) {
+			controls.removeView(thumbs);
+		}
+		thumbs = null;
+	}
+
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
+	private void rate(@NonNull String id, @NonNull String answer) {
+		write("claude-rate-" + id, answer);
+		clearRating();
+		add(answer.equals("up") ? "Thumbs up - thanks!" : "Thumbs down - Claude will look again",
+				answer.equals("up") ? "👍" : "👎", null, false);
+	}
+
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
+	private void togglePause() {
+		paused = !paused;
+		write(CONTROL, paused ? "paused" : "running");
+		if (pauseButton != null) {
+			pauseButton.setText(paused ? "▶" : "⏸");
+		}
+		add(paused ? "Pause asked - Claude will wait after this step (▶ to carry on)"
+				: "Carrying on", paused ? "⏸" : "▶", null, false);
+	}
+
+	private void stop() {
+		paused = false;
+		write(CONTROL, "stopped");
+		add("Stop asked - Claude will finish this step, put things back and stop", "⏹", null, false);
+	}
+
+	private void write(@NonNull String name, @NonNull String content) {
+		try (var out = new java.io.FileOutputStream(new java.io.File(context.getFilesDir(), name))) {
+			out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		} catch (java.io.IOException e) {
+			android.util.Log.w("StatusOverlay", "Couldn't write " + name, e);
+		}
+	}
+
+	@NonNull
+	private TextView button(@NonNull String label, @NonNull View.OnClickListener onClick) {
+		var button = new TextView(context);
+		button.setText(label);
+		button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+		button.setGravity(Gravity.CENTER);
+		button.setMinWidth(dp(44));
+		button.setMinHeight(dp(40));
+		button.setPadding(dp(6), dp(2), dp(6), dp(2));
+		var background = new GradientDrawable();
+		background.setColor(Color.argb(230, 40, 44, 60));
+		background.setCornerRadius(dp(12));
+		background.setStroke(dp(1), Color.rgb(217, 119, 87));
+		button.setBackground(background);
+		var params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT);
+		params.setMarginStart(dp(6));
+		button.setLayoutParams(params);
+		button.setOnClickListener(onClick);
+		return button;
+	}
+
+	// The buttons' window, at the panel's top right, made with a run's
+	// first line.
+	@NonNull
+	private LinearLayout controls() {
+		if (controls != null) {
+			controls.setVisibility(View.VISIBLE);
+			return controls;
+		}
+		var bar = new LinearLayout(context);
+		bar.setOrientation(LinearLayout.HORIZONTAL);
+		pauseButton = button(paused ? "▶" : "⏸", v -> togglePause());
+		bar.addView(pauseButton);
+		bar.addView(button("⏹", v -> stop()));
+		var params = new WindowManager.LayoutParams(
+				WindowManager.LayoutParams.WRAP_CONTENT,
+				WindowManager.LayoutParams.WRAP_CONTENT,
+				WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+				WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+						WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+				PixelFormat.TRANSLUCENT);
+		params.gravity = Gravity.TOP | Gravity.END;
+		params.x = dp(18);
+		params.y = dp(36) + dp(4);
+		params.setTitle("Claude controls");
+		windows.addView(bar, params);
+		controls = bar;
+		return bar;
 	}
 
 	// The run's over: gone at once, lines and all.
@@ -133,7 +272,14 @@ final class StatusOverlay {
 			windows.removeView(panel);
 			panel = null;
 		}
+		if (controls != null) {
+			windows.removeView(controls);
+			controls = null;
+		}
 		badge = null;
+		pauseButton = null;
+		thumbs = null;
+		paused = false;
 	}
 
 	@NonNull

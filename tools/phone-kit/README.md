@@ -23,7 +23,11 @@ owner might be holding it. It covers four things:
 3. **Let the owner interrupt.** A notification, "Claude is using your
    phone", is posted for the run. Swiping it away is the stop signal:
    `status.sh check` fails, and Claude finishes the step in hand and
-   stops.
+   stops. The panel has buttons too, in a small corner window of their
+   own (the only part that takes touches): ⏸/▶ pauses Claude after the
+   step in hand until Continue (`check` waits), ⏹ stops it like the
+   swipe, and 👍/👎 appear while Claude asks whether something looks
+   right (`status.sh rate`).
 4. **Hand back.** At the end Claude puts the phone back as it found it,
    the panel goes at once, and a "Claude is all finished" notification is
    left up with the summary and the log's last 8 lines, so it's clear
@@ -47,7 +51,10 @@ owner might be holding it. It covers four things:
   - `status.sh again` replays the run's last lines. The panel lives in
     the app's process, so a force-stop or install takes it away; call this
     straight after one.
-  - `status.sh check` fails if the run notification was swiped away.
+  - `status.sh check` fails if the run notification was swiped away or
+    ⏹ tapped; while ⏸ is on it waits, saying so, until ▶.
+  - `status.sh rate 'Does it look right?' [SECONDS]` shows 👍/👎 until
+    one's tapped (or SECONDS, default 30) and prints up, down or none.
   - `status.sh shot file.png [why]` says it's hiding, hides the panel,
     takes a screenshot and comes back saying it's looking at it.
   - `status.sh hide` says so and takes the panel out of sight; the next

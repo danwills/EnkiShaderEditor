@@ -34,7 +34,13 @@
 #   status.sh again   the run's last lines again - after anything that
 #                     stopped the app (force-stop, install), which takes the
 #                     panel with it
-#   status.sh check   exit 1 if the notification was swiped away
+#   status.sh check   exit 1 if the notification was swiped away, or the
+#                     panel's Stop tapped; while its Pause is on, waits
+#                     (saying so) until Continue
+#   status.sh rate "Does the preview look right?" [SECONDS]
+#                     the line, with thumbs up/down beside the panel until
+#                     one's tapped or SECONDS (default 30) pass; prints up,
+#                     down or none
 #   status.sh hide    the panel out of sight (a clean screenshot), saying so
 #                     first; the next post brings it back, lines and all
 #   status.sh shot FILE [WHY]
@@ -146,6 +152,7 @@ post)
 	if [ ! -s "$STATE" ]; then
 		[ -s "$FINISHED" ] && remove "$(cat "$FINISHED")" && rm -f "$FINISHED"
 		: > "$LOG"
+		adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
@@ -203,7 +210,44 @@ ask)
 	exit 0
 	;;
 check)
-	[ -n "$(key "$(tag)")" ]
+	[ -n "$(key "$(tag)")" ] || exit 1
+	# The panel's buttons: Stop, or Pause until Continue.
+	said=
+	while :; do
+		control=$(adb shell "run-as $PKG cat files/claude-control 2>/dev/null" | tr -d '\r')
+		case "$control" in
+		stopped) exit 1 ;;
+		paused)
+			if [ -z "$said" ]; then
+				line "Paused - waiting for ▶" "⏸" "?"
+				said=1
+			fi
+			[ -n "$(key "$(tag)")" ] || exit 1
+			sleep 2
+			;;
+		*) exit 0 ;;
+		esac
+	done
+	;;
+rate)
+	id="rate$(date +%s)"
+	wait="${3:-30}"
+	say "--es rate $id"
+	line "${2:-Does this look right?}" "🤔" "~${wait} s"
+	waited=0
+	answer=none
+	while [ "$waited" -lt "$wait" ]; do
+		got=$(adb shell "run-as $PKG cat files/claude-rate-$id 2>/dev/null" | tr -d '\r')
+		if [ -n "$got" ]; then
+			answer="$got"
+			adb shell "run-as $PKG rm -f files/claude-rate-$id"
+			break
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	[ "$answer" = none ] && say "--ez rate_clear true"
+	echo "$answer"
 	;;
 hide)
 	line "Hiding the panel for a moment - taking a screenshot" "📸"
@@ -242,11 +286,12 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
 	echo "$t" > "$FINISHED"
 	rm -f "$STATE" "$LOG" "$LAST"
+	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 	# And the panel gone at once.
 	say "--ez done true"
 	;;
 *)
-	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2
+	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | rate TEXT [SECONDS] | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac
