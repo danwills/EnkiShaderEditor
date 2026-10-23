@@ -76,6 +76,7 @@ When driving Dan's phone over adb (only when he's said it's free):
   Paste dialog: it replaces a shader of that name in place, or adds one. With Enki debug in the
   background that needs no UI; with it on screen, the phone asks Replace/Ignore over whatever's
   showing (Replace is at (1082,1764)), and replacing the open shader reloads it.
+- A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
   stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`
