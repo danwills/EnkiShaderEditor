@@ -475,3 +475,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 ## 2026-10-24
 
 - **"Rotates (without rotating the sim/shader) like a champion now!"** Dan confirmed rotation keeps fullscreen and carries the VTI simulation and its settings through. Nothing changed.
+- **"Log buttons would be cool - all your suggestions; the looks right/wrong ones as small thumbs up/down. Don't worry about the old videos. I need clarification about the cancel dialog question."** Added a small touchable window beside the panel's pill: ⏸/▶ (status.sh check waits while paused), ⏹ (check fails, like the swipe), and 👍/👎 while `status.sh rate` asks. Phone: Dan tapped Pause himself and thumbs-up to my question (rate printed "up"); my Stop made check exit 1 and I wrapped up. Fixed durations landing on the buttons' own lines. Kit, skill, CLAUDE.md updated. Explained the cancel dialog question.
