@@ -31,16 +31,22 @@ import java.nio.charset.StandardCharsets;
 // see-through activity over whatever's showing, in a task of its own, so
 // answering leaves things as they were. Unanswered for `wait` seconds, it
 // says Claude will go ahead in `countdown` seconds, and then does (Dan's
-// choice: never stuck waiting on a click). A tap outside doesn't close it;
+// choice: never stuck waiting on a click). Hang on a sec holds it off for
+// HOLD_SECONDS more (each tap another lot), before the countdown starts
+// again - for when it's nearly OK but Dan needs a moment to get ready.
+// A tap outside doesn't close it;
 // left unanswered (another app opened over it, say), it posts a
-// notification with the same two answers, which also brings it back. The
+// notification with the same answers, which also brings it back. The
 // answer - yes or no, Back being no - goes to files/takeover-<id> in the
-// app's storage, which status.sh reads with run-as.
+// app's storage, which status.sh reads with run-as; a hold writes
+// "hold:<seconds>" there first, so status.sh waits longer.
 public class TakeOverActivity extends AppCompatActivity {
 	private static final String TAG = "TakeOver";
 	private static final String CHANNEL = "claude_takeover";
 	private static final int NOTIFICATION = 7301;
 	private static final String ANSWER = "answer";
+	private static final String HOLD = "hold";
+	private static final int HOLD_SECONDS = 60;
 	private boolean answered;
 	@Nullable
 	private String id;
@@ -48,6 +54,11 @@ public class TakeOverActivity extends AppCompatActivity {
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	@Nullable
 	private AlertDialog dialog;
+	@Nullable
+	private String message;
+	private int countdown;
+	// Seconds of hold left, while held - see hold().
+	private int held;
 
 	@Override
 	protected void onCreate(Bundle state) {
@@ -63,15 +74,16 @@ public class TakeOverActivity extends AppCompatActivity {
 			finish();
 			return;
 		}
-		String message = text != null && !text.isEmpty() ? text
+		message = text != null && !text.isEmpty() ? text
 				: "Claude would like to drive the phone for a test.";
 		int wait = getIntent().getIntExtra("wait", 15);
-		int countdown = getIntent().getIntExtra("countdown", 15);
+		countdown = getIntent().getIntExtra("countdown", 15);
 		dialog = new MaterialAlertDialogBuilder(this)
 				.setTitle("🤖 Can Claude use your phone?")
 				.setMessage(message)
 				.setPositiveButton("Go ahead", (d, w) -> answer(id, "yes"))
 				.setNegativeButton("Not now", (d, w) -> answer(id, "no"))
+				.setNeutralButton("Hang on a sec", null)
 				.setOnCancelListener(d -> answer(id, "no"))
 				.setOnDismissListener(d -> {
 					if (answered) {
@@ -81,7 +93,41 @@ public class TakeOverActivity extends AppCompatActivity {
 				.create();
 		dialog.setCanceledOnTouchOutside(false);
 		dialog.show();
-		handler.postDelayed(() -> count(id, message, countdown), wait * 1000L);
+		// Set after show() so it doesn't close the dialog.
+		dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> hold());
+		String shown = message;
+		handler.postDelayed(() -> count(id, shown, countdown), wait * 1000L);
+	}
+
+	// Hang on a sec: HOLD_SECONDS more before the countdown, however far
+	// it had got - another lot each tap - and status.sh told to wait.
+	private void hold() {
+		if (answered || dialog == null || id == null || message == null) {
+			return;
+		}
+		held += HOLD_SECONDS;
+		write(id, HOLD + ":" + (held + countdown));
+		handler.removeCallbacksAndMessages(null);
+		if (warned) {
+			warned = false;
+			dialog.setIcon(null);
+		}
+		holding();
+	}
+
+	private void holding() {
+		if (answered || dialog == null || id == null || message == null) {
+			return;
+		}
+		if (held <= 0) {
+			count(id, message, countdown);
+			return;
+		}
+		dialog.setTitle("🤖 Waiting for you - " + held + " s");
+		dialog.setMessage(message + "\n\nTake your time: Go ahead when you're ready" +
+				" (Hang on a sec for longer).");
+		--held;
+		handler.postDelayed(this::holding, 1000);
 	}
 
 	// No answer yet: Claude goes ahead in `left` seconds unless told not to.
@@ -114,7 +160,9 @@ public class TakeOverActivity extends AppCompatActivity {
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
 		String answer = intent.getStringExtra(ANSWER);
-		if (id != null && answer != null) {
+		if (HOLD.equals(answer)) {
+			hold();
+		} else if (id != null && answer != null) {
 			answer(id, answer);
 		}
 	}
@@ -146,6 +194,7 @@ public class TakeOverActivity extends AppCompatActivity {
 				.setContentText("It'll go ahead soon unless you say not now.")
 				.setContentIntent(reply(null, 0))
 				.addAction(0, "Not now", reply("no", 1))
+				.addAction(0, "Hang on", reply(HOLD, 3))
 				.addAction(0, "Go ahead", reply("yes", 2))
 				.setAutoCancel(true)
 				.build();
@@ -174,16 +223,21 @@ public class TakeOverActivity extends AppCompatActivity {
 		answered = true;
 		handler.removeCallbacksAndMessages(null);
 		getSystemService(NotificationManager.class).cancel(NOTIFICATION);
+		write(id, answer);
+		if (dialog != null && dialog.isShowing()) {
+			dialog.dismiss();
+		}
+		finish();
+	}
+
+	// What status.sh reads back: an answer, or a hold.
+	private void write(@NonNull String id, @NonNull String answer) {
 		File file = new File(getFilesDir(), "takeover-" + id);
 		try (var out = new FileOutputStream(file)) {
 			out.write(answer.getBytes(StandardCharsets.UTF_8));
 		} catch (IOException e) {
 			Log.w(TAG, "Couldn't write the answer", e);
 		}
-		if (dialog != null && dialog.isShowing()) {
-			dialog.dismiss();
-		}
-		finish();
 	}
 
 	@Override

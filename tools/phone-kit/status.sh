@@ -26,7 +26,8 @@
 #                     (TakeOverActivity, over whatever's showing). After
 #                     SECONDS (default 15) unanswered it counts down 15 s, with
 #                     a warning icon, and goes ahead (as Dan wants: never
-#                     stuck on a click).
+#                     stuck on a click). Hang on a sec holds it a minute
+#                     more each tap, and this waits that long too.
 #                     Exit 0 to go ahead (prints yes), 1 for Not now
 #   status.sh again   the run's last lines again - after anything that
 #                     stopped the app (force-stop, install), which takes the
@@ -138,10 +139,25 @@ ask)
 	wait="${3:-15}"
 	adb shell "am start -n $PKG/$CLS.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15" >/dev/null 2>&1
 	waited=0
+	held=
+	limit=$((wait + 25))
 	# The dialog answers itself after wait + 15 s; a little longer, in case
 	# it never showed (the screen off, say) - and then go ahead anyway.
-	while [ "$waited" -lt $((wait + 25)) ]; do
+	# Hang on a sec writes hold:SECONDS, how long it now holds and counts
+	# down for: wait that long from now (and a little).
+	while [ "$waited" -lt "$limit" ]; do
 		answer=$(adb shell "run-as $PKG cat files/takeover-$id 2>/dev/null" | tr -d '\r')
+		case "$answer" in
+		hold:*)
+			# Left there (the answer replaces it) - each new hold once.
+			if [ "$answer" != "$held" ]; then
+				held="$answer"
+				limit=$((waited + ${answer#hold:} + 10))
+				echo "hang on: waiting up to ${answer#hold:} s more" >&2
+			fi
+			answer=
+			;;
+		esac
 		if [ -n "$answer" ]; then
 			adb shell "run-as $PKG rm -f files/takeover-$id"
 			echo "$answer"

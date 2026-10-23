@@ -5,7 +5,9 @@ A small kit, taken from Enki Shader Editor's own tooling, for when Claude
 owner might be holding it. It covers four things:
 
 1. **Ask first.** A dialog on the phone, over whatever's showing:
-   "Can Claude use your phone?", with Go ahead and Not now.
+   "Can Claude use your phone?", with Go ahead, Not now and Hang on a
+   sec (a minute more each tap before it counts down - for when it's
+   nearly OK but the owner needs a moment).
    - If nobody answers, it counts down ("Claude will go ahead in 15 s",
      with a yellow warning icon) and carries on. The owner's wish: never
      stuck waiting on a click.
