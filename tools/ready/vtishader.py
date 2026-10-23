@@ -6,8 +6,9 @@ A start state goes in exact-pixel PNG textures (one 8-bit channel a
 chemical, or two for a 16-bit copy; four channels a texture), each
 chemical over its own range, which the shader's first step reads and
 tiles over the grid (see vti2enki.start_code()). A seed is grown to a
-tile of SEED_TILE cells; a copy of the whole state keeps its size. A
-chemical that's one value is a constant, with no channel.
+tile of SEED_TILE cells, which wraps seamlessly, so its copies are
+turned by any angle; a copy of the whole state keeps its size, and only
+quarter turns. A chemical that's one value is a constant, with no channel.
 """
 import datetime
 import io
@@ -112,7 +113,7 @@ def start_textures(kind, rec, w, h, prefix):
 		textures[name] = _png(rgba)
 	layout = [None if v is None else (v[0], v[1], v[2]) for v in layout]
 	return {"what": WHAT[kind], "textures": names, "size": (tw, th), "layout": layout,
-			"range": ranges}, textures
+			"range": ranges, "turn": not copy}, textures
 
 
 def thumbnail(p, state):

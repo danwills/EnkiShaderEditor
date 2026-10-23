@@ -2077,23 +2077,63 @@ def start_code(p, chems):
 	w, h = st["size"]
 	out = ["// The start state: %s." % st["what"],
 			"// A %dx%d tile, 8-bit (16-bit where two channels make one value)" % (w, h),
-			"// over each chemical's range, laid over the grid - each copy but the",
-			"// first flipped%s at random, new ones each Restart, so a grid" % (
-					" and turned" if w == h else ""),
-			"// bigger than the tile doesn't repeat it.",
-			"ivec2 rdStartCell(ivec2 p) {",
-			"\tivec2 s = ivec2(%d, %d);" % (w, h),
-			"\tivec2 t = p / s;",
-			"\tivec2 q = p - t * s;",
-			"\tif (t == ivec2(0)) return q;",
-			"\tuint k = uint(t.x) * 1664525u + uint(t.y) * 22695477u + uint(startRandom * 65535.0);",
-			"\tk ^= k >> 13; k *= 0x5bd1e995u; k ^= k >> 15;",
-			"\tif ((k & 1u) != 0u) q.x = s.x - 1 - q.x;",
-			"\tif ((k & 2u) != 0u) q.y = s.y - 1 - q.y;"]
-	if w == h:
-		out.append("\tif ((k & 4u) != 0u) q = q.yx;")
-	out += ["\treturn q;", "}", "",
-			"void rdStart(ivec2 p, %s) {" % ", ".join("out float " + c for c in chems)]
+			"// over each chemical's range, laid over the grid - new copies each"]
+	hash_code = [
+			"\tk ^= k >> 13; k *= 0x5bd1e995u; k ^= k >> 15;"]
+	if st.get("turn"):
+		# A seed's tile wraps seamlessly, so a copy turned any way can
+		# read past its edge.
+		out += ["// Restart, so a grid bigger than the tile doesn't repeat it. Each",
+				"// copy is a cell around a point jittered off a grid of tiles, turned",
+				"// by any angle (and flipped) at random, at a random offset, so",
+				"// neither the copies nor their seams line up.",
+				"uint rdStartHash(ivec2 t) {",
+				"\tuint k = uint(t.x) * 1664525u + uint(t.y) * 22695477u + uint(startRandom * 65535.0);"]
+		out += hash_code
+		out += ["\treturn k;", "}", "",
+				"ivec2 rdStartCell(ivec2 p) {",
+				"\tvec2 s = vec2(%d.0, %d.0);" % (w, h),
+				"\tvec2 x = vec2(p) + 0.5;",
+				"\tvec2 c = floor(x / s);",
+				"\tfloat best = 1e30;",
+				"\tvec2 q = vec2(0.0);",
+				"\tfor (int j = -1; j <= 1; j++) {",
+				"\t\tfor (int i = -1; i <= 1; i++) {",
+				"\t\t\tivec2 n = ivec2(c) + ivec2(i, j);",
+				"\t\t\tuint k = rdStartHash(n);",
+				"\t\t\tvec2 jitter = vec2(float(k & 255u), float((k >> 8) & 255u)) / 255.0 - 0.5;",
+				"\t\t\tvec2 d = x - (vec2(n) + 0.5 + jitter * 0.8) * s;",
+				"\t\t\tfloat e = dot(d, d);",
+				"\t\t\tif (e < best) {",
+				"\t\t\t\tbest = e;",
+				"\t\t\t\tfloat a = float((k >> 16) & 1023u) * (6.2831853 / 1024.0);",
+				"\t\t\t\tif (((k >> 26) & 1u) != 0u) d.x = -d.x;",
+				"\t\t\t\tuint o = rdStartHash(n + ivec2(7919, 104729));",
+				"\t\t\t\tq = vec2(float(o & 65535u), float(o >> 16)) / 65536.0 * s",
+				"\t\t\t\t\t\t+ mat2(cos(a), sin(a), -sin(a), cos(a)) * d;",
+				"\t\t\t}",
+				"\t\t}",
+				"\t}",
+				"\treturn ivec2(mod(floor(q), s));",
+				"}", "",
+				"void rdStart(ivec2 p, %s) {" % ", ".join("out float " + c for c in chems)]
+	else:
+		out += ["// Restart, each copy but the first flipped%s at random, so a grid" % (
+						" and turned" if w == h else ""),
+				"// bigger than the tile doesn't repeat it.",
+				"ivec2 rdStartCell(ivec2 p) {",
+				"\tivec2 s = ivec2(%d, %d);" % (w, h),
+				"\tivec2 t = p / s;",
+				"\tivec2 q = p - t * s;",
+				"\tif (t == ivec2(0)) return q;",
+				"\tuint k = uint(t.x) * 1664525u + uint(t.y) * 22695477u + uint(startRandom * 65535.0);"]
+		out += hash_code
+		out += ["\tif ((k & 1u) != 0u) q.x = s.x - 1 - q.x;",
+				"\tif ((k & 2u) != 0u) q.y = s.y - 1 - q.y;"]
+		if w == h:
+			out.append("\tif ((k & 4u) != 0u) q = q.yx;")
+		out += ["\treturn q;", "}", "",
+				"void rdStart(ivec2 p, %s) {" % ", ".join("out float " + c for c in chems)]
 	if st["textures"]:
 		out.append("\tivec2 q = rdStartCell(p);")
 	for k, name in enumerate(st["textures"]):
