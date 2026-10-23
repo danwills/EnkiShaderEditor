@@ -536,6 +536,7 @@
 	<string name="live_defines_expand">Показати повзунки</string>
 	<string name="live_defines_discard">Скасувати</string>
 	<string name="live_defines_reset">Скинути</string>
+	<string name="live_defines_filter_hint">Фільтр</string>
 	<string name="live_defines_brightness">Яскравість</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Скасувати живі зміни?</string>

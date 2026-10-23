@@ -3,6 +3,9 @@ package enk.danwills.android.enkishadereditor.widget;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.util.TypedValue;
@@ -12,7 +15,9 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
+import android.view.ViewGroup;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
@@ -22,21 +27,28 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefine;
 import enk.danwills.android.enkishadereditor.opengl.ShaderDefineParser;
+import enk.danwills.android.enkishadereditor.view.SoftKeyboard;
 
 // Adjust Defines' live mode: a see-through panel along the bottom of
 // the fullscreen shader with a small outlined label and a slider (a
 // switch for a bool, a swatch for a color) per live define. Every
 // change is written straight into the ShaderDefine and reported to the
 // Listener, which sends it to the shader as a uniform - see
-// MainActivity.startLiveDefines().
+// MainActivity.startLiveDefines(). Defines whose names start alike
+// (D_a, D_b...) are grouped under a header that folds them away (see
+// buildTree()), and the filter box shows only those whose names match.
 public class LiveDefinesPanel extends LinearLayout {
 	public interface Listener {
 		void onValueChanged(@NonNull ShaderDefine define);
@@ -66,8 +78,22 @@ public class LiveDefinesPanel extends LinearLayout {
 	// Slider ranges as the user left them, by rangeKeyPrefix + name -
 	// see addSliderRow(). In-memory, for the app session.
 	private static final Map<String, float[]> ranges = new HashMap<>();
+	// Groups folded away, by rangeKeyPrefix + their prefix - also for the
+	// app session.
+	private static final Set<String> foldedGroups = new HashSet<>();
+	private static final int INDENT_DP = 12;
 
 	private final LinearLayout rows;
+	// Where add*Row() put their views: the box of the define being built.
+	private ViewGroup target;
+	private final EditText filterView;
+	@NonNull
+	private String filter = "";
+	// The tree buildRows() made: what applyFilter() shows and hides.
+	@NonNull
+	private Group tree = new Group("");
+	// Each define's views, under its label - see buildRows().
+	private final Map<ShaderDefine, View> boxes = new HashMap<>();
 	private final View scroll;
 	private final ImageButton collapseButton;
 	private final ImageButton pauseButton;
@@ -95,6 +121,27 @@ public class LiveDefinesPanel extends LinearLayout {
 		setClickable(true);
 		LayoutInflater.from(context).inflate(R.layout.live_defines_panel, this, true);
 		rows = findViewById(R.id.live_defines_rows);
+		target = rows;
+		filterView = findViewById(R.id.live_defines_filter);
+		filterView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence text, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable text) {
+				filter = text.toString().trim().toLowerCase(Locale.ROOT);
+				applyFilter();
+			}
+		});
+		filterView.setOnEditorActionListener((v, actionId, event) -> {
+			SoftKeyboard.hide(context, filterView);
+			return true;
+		});
 		scroll = findViewById(R.id.live_defines_scroll);
 		collapseButton = findViewById(R.id.live_defines_collapse);
 		pauseButton = findViewById(R.id.live_defines_pause);
@@ -149,6 +196,7 @@ public class LiveDefinesPanel extends LinearLayout {
 	public void setDefines(@NonNull List<ShaderDefine> defines, @NonNull String rangeKeyPrefix) {
 		this.defines = defines;
 		this.rangeKeyPrefix = rangeKeyPrefix;
+		filterView.setText("");
 		startValues.clear();
 		for (ShaderDefine define : defines) {
 			startValues.put(define, new Start(define.value, define.vectorComponents != null
@@ -178,7 +226,11 @@ public class LiveDefinesPanel extends LinearLayout {
 
 	private void buildRows() {
 		rows.removeAllViews();
+		boxes.clear();
 		for (ShaderDefine define : defines) {
+			LinearLayout box = new LinearLayout(getContext());
+			box.setOrientation(VERTICAL);
+			target = box;
 			switch (define.type) {
 				case FLOAT, INT -> addScalarRow(define);
 				case BOOL -> addBoolRow(define);
@@ -192,8 +244,151 @@ public class LiveDefinesPanel extends LinearLayout {
 				default -> {
 				}
 			}
+			boxes.put(define, box);
 		}
+		target = rows;
+		tree = buildTree(defines, 0, "");
+		addTree(tree, 0);
+		applyFilter();
 		setCollapsed(false);
+	}
+
+	// A group of defines whose names start with `prefix`, and the groups
+	// within it - or the whole tree, with prefix "".
+	private static final class Group {
+		@NonNull
+		final String prefix;
+		// ShaderDefines and Groups, in the defines' own order.
+		final List<Object> children = new ArrayList<>();
+		@Nullable
+		OutlinedTextView header;
+		// How many defines are in it, at any depth.
+		int count;
+
+		Group(@NonNull String prefix) {
+			this.prefix = prefix;
+		}
+	}
+
+	// Names split at underscores: those sharing the next part, two or
+	// more, make a group (ones that share more parts still make one
+	// group, D_a_to_c and D_a_to_b under "D_a_to_"), and the rest stand
+	// alone. `skip` is the parts the group already has in common.
+	@NonNull
+	private static Group buildTree(@NonNull List<ShaderDefine> defines, int skip,
+			@NonNull String prefix) {
+		Group group = new Group(prefix);
+		Map<String, List<ShaderDefine>> byPart = new LinkedHashMap<>();
+		for (ShaderDefine define : defines) {
+			String[] parts = define.name.split("_", -1);
+			// A name that ends here, or has only an empty part left (k_),
+			// stands alone.
+			String key = parts.length > skip + 1 ? parts[skip] : "\u0000" + define.name;
+			byPart.computeIfAbsent(key, k -> new ArrayList<>()).add(define);
+		}
+		for (var entry : byPart.entrySet()) {
+			List<ShaderDefine> members = entry.getValue();
+			if (members.size() < 2) {
+				group.children.add(members.get(0));
+				continue;
+			}
+			// As many more parts as they all share, with more after them.
+			int shared = skip + 1;
+			while (true) {
+				String next = null;
+				boolean all = true;
+				for (ShaderDefine define : members) {
+					String[] parts = define.name.split("_", -1);
+					if (parts.length <= shared + 1 || (next != null && !next.equals(parts[shared]))) {
+						all = false;
+						break;
+					}
+					next = parts[shared];
+				}
+				if (!all) {
+					break;
+				}
+				shared++;
+			}
+			String[] first = members.get(0).name.split("_", -1);
+			StringBuilder sub = new StringBuilder();
+			for (int i = 0; i < shared; i++) {
+				sub.append(first[i]).append('_');
+			}
+			group.children.add(buildTree(members, shared, sub.toString()));
+		}
+		return group;
+	}
+
+	// The tree's views into the panel, a header row per group (tap to
+	// fold it), indented by depth; returns the group's count.
+	private int addTree(@NonNull Group group, int depth) {
+		if (!group.prefix.isEmpty()) {
+			OutlinedTextView header = newLabel();
+			header.setTypeface(header.getTypeface(), Typeface.BOLD);
+			header.setPaddingRelative(dp(8 + INDENT_DP * (depth - 1)), dp(8), dp(8), dp(4));
+			header.setOnClickListener(v -> {
+				String key = rangeKeyPrefix + group.prefix;
+				if (!foldedGroups.remove(key)) {
+					foldedGroups.add(key);
+				}
+				applyFilter();
+			});
+			group.header = header;
+			rows.addView(header);
+		}
+		int count = 0;
+		for (Object child : group.children) {
+			if (child instanceof Group inner) {
+				count += addTree(inner, depth + 1);
+			} else if (child instanceof ShaderDefine define) {
+				View box = boxes.get(define);
+				if (box == null) {
+					continue;
+				}
+				box.setPaddingRelative(dp(INDENT_DP * depth), 0, 0, 0);
+				rows.addView(box);
+				count++;
+			}
+		}
+		group.count = count;
+		return count;
+	}
+
+	// Shows the defines the filter matches (all, with no filter) and the
+	// headers of the groups they're in, each with its count; a folded
+	// group shows only its header, unless filtering, which opens every
+	// group with a match.
+	private void applyFilter() {
+		applyFilter(tree, true);
+	}
+
+	// Returns how many of the group's defines match.
+	private int applyFilter(@NonNull Group group, boolean shown) {
+		boolean folded = filter.isEmpty() && foldedGroups.contains(rangeKeyPrefix + group.prefix);
+		boolean open = shown && !folded;
+		int matches = 0;
+		for (Object child : group.children) {
+			if (child instanceof Group inner) {
+				matches += applyFilter(inner, open);
+			} else if (child instanceof ShaderDefine define) {
+				boolean match = filter.isEmpty()
+						|| define.name.toLowerCase(Locale.ROOT).contains(filter);
+				View box = boxes.get(define);
+				if (box != null) {
+					box.setVisibility(open && match ? VISIBLE : GONE);
+				}
+				if (match) {
+					matches++;
+				}
+			}
+		}
+		if (group.header != null) {
+			group.header.setVisibility(shown && matches > 0 ? VISIBLE : GONE);
+			group.header.setText(String.format(Locale.US, "%s %s  (%d)",
+					folded ? "\u25b8" : "\u25be", group.prefix, filter.isEmpty() ? group.count : matches));
+		}
+		return matches;
 	}
 
 	private void addScalarRow(@NonNull ShaderDefine define) {
@@ -220,7 +415,7 @@ public class LiveDefinesPanel extends LinearLayout {
 		});
 		row.addView(label, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 		row.addView(box);
-		rows.addView(row);
+		target.addView(row);
 	}
 
 	private void addVectorRows(@NonNull ShaderDefine define) {
@@ -297,7 +492,7 @@ public class LiveDefinesPanel extends LinearLayout {
 		swatchParams.setMargins(dp(8), dp(4), dp(4), dp(4));
 		row.addView(label, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f));
 		row.addView(swatch, swatchParams);
-		rows.addView(row);
+		target.addView(row);
 
 		OnValue setBrightness = addSliderRow(
 				getContext().getString(R.string.live_defines_brightness),
@@ -608,7 +803,7 @@ public class LiveDefinesPanel extends LinearLayout {
 				placeThumb.run();
 			}
 		});
-		rows.addView(slider, new LayoutParams(LayoutParams.MATCH_PARENT, dp(32)));
+		target.addView(slider, new LayoutParams(LayoutParams.MATCH_PARENT, dp(32)));
 		return v -> {
 			current[0] = v;
 			liveRange[0] = Math.min(liveRange[0], v);
@@ -634,7 +829,7 @@ public class LiveDefinesPanel extends LinearLayout {
 	@NonNull
 	private OutlinedTextView addLabel() {
 		OutlinedTextView label = newLabel();
-		rows.addView(label);
+		target.addView(label);
 		return label;
 	}
 

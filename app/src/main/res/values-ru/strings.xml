@@ -536,6 +536,7 @@
 	<string name="live_defines_expand">Показать ползунки</string>
 	<string name="live_defines_discard">Отменить</string>
 	<string name="live_defines_reset">Сбросить</string>
+	<string name="live_defines_filter_hint">Фильтр</string>
 	<string name="live_defines_brightness">Яркость</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Отменить живые правки?</string>

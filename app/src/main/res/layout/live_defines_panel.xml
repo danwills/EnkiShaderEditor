@@ -23,10 +23,22 @@
 			android:layout_height="40dp"
 			android:contentDescription="@string/pause_shader"
 			android:src="@drawable/ic_pause"/>
-		<Space
+		<!-- Shows only the defines whose names contain it - see
+		     LiveDefinesPanel.applyFilter(). -->
+		<EditText
+			android:id="@+id/live_defines_filter"
 			android:layout_width="0dp"
-			android:layout_height="0dp"
-			android:layout_weight="1"/>
+			android:layout_height="40dp"
+			android:layout_weight="1"
+			android:layout_marginHorizontal="4dp"
+			android:hint="@string/live_defines_filter_hint"
+			android:imeOptions="actionSearch"
+			android:importantForAutofill="no"
+			android:inputType="text"
+			android:maxLines="1"
+			android:textColor="@android:color/white"
+			android:textColorHint="#99ffffff"
+			android:textSize="14sp"/>
 		<Button
 			android:id="@+id/live_defines_reset"
 			style="?attr/borderlessButtonStyle"
