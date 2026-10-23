@@ -188,6 +188,11 @@ public class MainActivity extends AppCompatActivity {
 	// (`am start ... --el open_shader <id>`).
 	public static final String EXTRA_OPEN_SHADER = "open_shader";
 	private static final String CODE_VISIBLE = "code_visible";
+	// Fullscreen and the hidden toolbar, kept through a rotation (which
+	// recreates the activity), with whether fullscreen unpaused it.
+	private static final String FULLSCREEN = "fullscreen";
+	private static final String PAUSED_BEFORE_FULLSCREEN = "paused_before_fullscreen";
+	private static final String TOOLBAR_HIDDEN = "toolbar_hidden";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
 	private static final String CRASH_RECOVERY_COMMENT = """
 			// Shader Editor disabled this shader because it caused a crash while loading.
@@ -1304,12 +1309,30 @@ public class MainActivity extends AppCompatActivity {
 		if (!state.getBoolean(CODE_VISIBLE, true)) {
 			uiManager.toggleCodeVisibility();
 		}
+		// After the views have settled from being made again - fullscreen
+		// hides the system bars, which needs the window attached.
+		boolean fullscreen = state.getBoolean(FULLSCREEN, false);
+		boolean pausedBefore = state.getBoolean(PAUSED_BEFORE_FULLSCREEN, false);
+		boolean toolbarHidden = state.getBoolean(TOOLBAR_HIDDEN, false);
+		getWindow().getDecorView().post(() -> {
+			if (fullscreen && !uiManager.isFullscreen()) {
+				setFullscreen(true);
+				// It was paused before going fullscreen in the old one:
+				// leaving fullscreen pauses it again, as there.
+				pausedBeforeFullscreen = pausedBefore;
+			} else if (toolbarHidden && !uiManager.isToolbarHidden()) {
+				setToolbarHidden(true);
+			}
+		});
 	}
 
 	@Override
 	protected void onSaveInstanceState(@NonNull Bundle state) {
 		shaderManager.saveState(state);
 		state.putBoolean(CODE_VISIBLE, editorFragment.isCodeVisible());
+		state.putBoolean(FULLSCREEN, uiManager.isFullscreen());
+		state.putBoolean(PAUSED_BEFORE_FULLSCREEN, pausedBeforeFullscreen);
+		state.putBoolean(TOOLBAR_HIDDEN, uiManager.isToolbarHidden());
 		super.onSaveInstanceState(state);
 	}
 
