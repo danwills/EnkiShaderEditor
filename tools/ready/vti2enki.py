@@ -640,6 +640,9 @@ const int S_MAP = 24;    // the colour map's frequency: how many times it runs o
 const int S_SNAP = 25;   // + a chemical: snapshots of its hue and weight; + CHEMICALS + a
                          // chemical: of its power and complement - each the newer (x, y)
                          // and older (z, w), for wandering's rewind
+const int S_RANGE = 41;  // + a chemical: the range its values have had lately (low, high),
+                         // and 1 once measured - what the views show it across, see
+                         // rdShowRange()
 // The brush's chemicals (-1 none): what dragging it sets.
 const ivec2 BRUSH_PAINT = ivec2(%(brush_paint)s);
 const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
@@ -659,6 +662,7 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define RANDOM_REWIND 0.25 // wandering stops this to twice this before letting go
 #define RANDOM_NUDGE 0.004 // how far wandering moves a look by chance, a step
 #define RANDOM_PULL 0.004  // and how far towards one that shows every chemical
+#define RANGE_EASE 0.01   // how far a chemical's range shrinks towards its values, a frame
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
@@ -798,6 +802,25 @@ vec4 rdState(int texel, ivec2 grid) {
 	return texelFetch(iChannel0, ivec2(texel, grid.y), 0);
 }
 
+// Chemical i's range as the views show it (composite colour, its tile):
+// the range its values have had lately (see rdNextRange()), so one that
+// goes below 0 - a wave - or never near 1 still shows its whole swing;
+// its mask range until that's been measured (or with too narrow a grid to
+// hold it). Painting keeps to the mask range.
+vec2 rdShowRange(int i, ivec2 grid) {
+	if (S_RANGE + i >= grid.x) {
+		return maskRange(i);
+	}
+	vec4 r = rdState(S_RANGE + i, grid);
+	if (r.z < 0.5) {
+		return maskRange(i);
+	}
+	// Not so narrow that a chemical that's all one value shows its
+	// rounding as a pattern.
+	float least = 1e-5 + 1e-3 * max(abs(r.x), abs(r.y));
+	return vec2(r.x, max(r.y, r.x + least));
+}
+
 // Whether the simulation has started: a mark in the state row, rather than
 // iFrame == 0 - the app's frame count goes back to 0 whenever its surface
 // is made again (the screen timing out, the app coming back), though the
@@ -884,6 +907,7 @@ def common_code(p, chems, params_block):
 	out.append("// Each pass's own: the state row, and chemical i at cell q.")
 	out.append("vec4 rdState(int texel, ivec2 grid);")
 	out.append("float rdChem(int i, ivec2 q);")
+	out.append("vec2 rdShowRange(int i, ivec2 grid);")
 	out.append("")
 	out.append(UI_UPDATE % dict(p.ui, view="1.0" if p.start_masks else "0.0"))
 	out.append("")
@@ -1130,11 +1154,11 @@ float rdHash(float seed, float k) {
 	return fract(sin(dot(vec2(seed, k), vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-// Chemical i's levels (0-1 across its mask range) over an 8x8 sample of
+// Chemical i's levels (0-1 across its range, rdShowRange()) over an 8x8 sample of
 // the grid, each sample jittered off the lattice so a regular pattern
 // can't fool it: their mean and standard deviation.
 vec2 rdLevelStats(int i, ivec2 grid) {
-	vec2 r = maskRange(i);
+	vec2 r = rdShowRange(i, grid);
 	float sum = 0.0;
 	float squares = 0.0;
 	for (int y = 0; y < 8; ++y) {
@@ -1148,6 +1172,29 @@ vec2 rdLevelStats(int i, ivec2 grid) {
 	}
 	float mean = sum / 64.0;
 	return vec2(mean, sqrt(max(squares / 64.0 - mean * mean, 0.0)));
+}
+
+// Chemical i's range texel next frame, from the same sample as
+// rdLevelStats(): out at once to take in a new low or high, and in
+// slowly (RANGE_EASE) towards the values it has now, so the look holds
+// steady as the pattern moves.
+vec4 rdNextRange(int texel, ivec2 grid) {
+	int i = texel - S_RANGE;
+	float lo = 1e30;
+	float hi = -1e30;
+	for (int y = 0; y < 8; ++y) {
+		for (int x = 0; x < 8; ++x) {
+			vec2 jitter = vec2(rdHash(float(x), float(y)), rdHash(float(y) + 7.0, float(x)));
+			float v = rdChem(i, ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid)));
+			lo = min(lo, v);
+			hi = max(hi, v);
+		}
+	}
+	vec4 r = rdState(texel, grid);
+	if (r.z < 0.5) {
+		return vec4(lo, hi, 1.0, 0.0);
+	}
+	return vec4(min(lo, mix(r.x, lo, RANGE_EASE)), max(hi, mix(r.y, hi, RANGE_EASE)), 1.0, 0.0);
 }
 
 // Spread round the hue circle by rank: 0, a half, a quarter, three
@@ -1322,9 +1369,9 @@ vec3 hsv2rgb(vec3 c) {
 	return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
 }
 
-// Chemical i at q, 0-1 across its mask range.
-float rdLevel(int i, ivec2 q) {
-	vec2 range = maskRange(i);
+// Chemical i at q, 0-1 across its range (rdShowRange()).
+float rdLevel(int i, ivec2 q, ivec2 grid) {
+	vec2 range = rdShowRange(i, grid);
 	return clamp((chemical(i, q) - range.x) / (range.y - range.x), 0.0, 1.0);
 }
 
@@ -1346,7 +1393,7 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 	for (int i = 0; i < CHEMICALS; ++i) {
 		vec4 c = rdState(S_COLOUR + i, grid);
 		vec4 power = rdState(S_POWER + i, grid);
-		float level = rdLevel(i, q);
+		float level = rdLevel(i, q, grid);
 		// Its complement first, if a two-finger tap asked - levels are 0-1,
 		// so it stays 0-1.
 		level = power.y > 0.5 ? 1.0 - level : level;
@@ -1362,7 +1409,7 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 vec3 rdContribution(int i, ivec2 q, ivec2 grid) {
 	vec4 c = rdState(S_COLOUR + i, grid);
 	vec4 power = rdState(S_POWER + i, grid);
-	float level = rdLevel(i, q);
+	float level = rdLevel(i, q, grid);
 	level = power.y > 0.5 ? 1.0 - level : level;
 	return hsv2rgb(c.xyz) * pow(level, power.x) *
 			clamp(abs(c.w) * float(CHEMICALS) / COMPOSITE_GAIN, 0.0, 1.0);
@@ -1387,7 +1434,7 @@ vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
 // or the colour view.
 vec3 rdCellColour(int k, ivec2 q, ivec2 grid, vec4 mode) {
 	if (k < CHEMICALS) {
-		return mode.x > 0.5 ? rdContribution(k, q, grid) : vec3(rdLevel(k, q));
+		return mode.x > 0.5 ? rdContribution(k, q, grid) : vec3(rdLevel(k, q, grid));
 	}
 	return rdColour(q, grid, mode);
 }
@@ -1898,6 +1945,9 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\t}")
 		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
 		out.append("\t\telse if (texel == S_MAP) fragColor = rdNextMap(grid, screen, uiMode);")
+		out.append("\t\telse if (texel >= S_RANGE && texel < S_RANGE + CHEMICALS) {")
+		out.append("\t\t\tfragColor = rdNextRange(texel, grid);")
+		out.append("\t\t}")
 		out.append("\t\telse if (texel >= S_SNAP && texel < S_SNAP + 2 * CHEMICALS) {")
 		out.append("\t\t\tfragColor = rdNextSnapshot(texel, grid);")
 		out.append("\t\t}")
