@@ -183,6 +183,9 @@ import enk.danwills.android.enkishadereditor.widget.SplatsXformAdjuster;
 public class MainActivity extends AppCompatActivity {
 	// See reloadReplacedShader().
 	public static final String EXTRA_RELOAD_SHADER = "reload_shader";
+	// Debug builds only: the shader to open, from the test tooling
+	// (`am start ... --el open_shader <id>`).
+	public static final String EXTRA_OPEN_SHADER = "open_shader";
 	private static final String CODE_VISIBLE = "code_visible";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
 	private static final String CRASH_RECOVERY_COMMENT = """
@@ -1396,7 +1399,18 @@ public class MainActivity extends AppCompatActivity {
 	// the open one, reload it, dropping the version in memory rather than
 	// saving it over the new one.
 	private boolean reloadReplacedShader(@Nullable Intent intent) {
-		if (!BuildConfig.DEBUG || intent == null || !intent.hasExtra(EXTRA_RELOAD_SHADER)) {
+		if (!BuildConfig.DEBUG || intent == null) {
+			return false;
+		}
+		if (intent.hasExtra(EXTRA_OPEN_SHADER)) {
+			long id = intent.getLongExtra(EXTRA_OPEN_SHADER, 0);
+			intent.removeExtra(EXTRA_OPEN_SHADER);
+			if (id > 0) {
+				selectShader(id);
+			}
+			return true;
+		}
+		if (!intent.hasExtra(EXTRA_RELOAD_SHADER)) {
 			return false;
 		}
 		long id = intent.getLongExtra(EXTRA_RELOAD_SHADER, 0);
