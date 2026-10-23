@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.util.AttributeSet;
 
@@ -20,6 +21,8 @@ public class LineNumberEditText extends AppCompatEditText {
 	private Paint lineNumberPaint;
 	private float bigChar;
 	private int paddingLeft;
+	// onDraw()'s clip, kept rather than made each draw.
+	private final Rect clip = new Rect();
 
 	public LineNumberEditText(Context context) {
 		this(context, null);
@@ -51,6 +54,9 @@ public class LineNumberEditText extends AppCompatEditText {
 			a.recycle();
 		}
 		init(lineColor);
+		// Shader code has no use for AppCompat's emoji compatibility,
+		// which only makes laying out a long shader's spans slower.
+		setEmojiCompatEnabled(false);
 	}
 
 	public void setShowLineNumbers(boolean showLineNumbers) {
@@ -85,31 +91,42 @@ public class LineNumberEditText extends AppCompatEditText {
 	@Override
 	protected void onDraw(Canvas canvas) {
 		if (!showLineNumbers) {
-			super.setPadding(
-					paddingLeft,
-					getPaddingTop(),
-					getPaddingRight(),
-					getPaddingBottom());
+			setLeftPadding(paddingLeft);
 			super.onDraw(canvas);
 			return;
 		}
 		int lineCount = getLineCount();
 		final int lineCountNumDigits = numDigits(lineCount);
 		int editTextPaddingLeft = (int) (bigChar * lineCountNumDigits + lineNumberPadding);
-		super.setPadding(
-				(int) (editTextPaddingLeft + lineNumberSpacing),
-				getPaddingTop(),
-				getPaddingRight(),
-				getPaddingBottom());
+		setLeftPadding((int) (editTextPaddingLeft + lineNumberSpacing));
 		super.onDraw(canvas);
-		for (int i = 0, lineNumber = 1; i < lineCount; ++i) {
+		// Only the lines that can be seen: the canvas is clipped to the
+		// part of the editor on screen (inside its scroll views).
+		var layout = getLayout();
+		int first = 0;
+		int last = lineCount - 1;
+		if (layout != null && canvas.getClipBounds(clip)) {
+			int top = getExtendedPaddingTop();
+			first = Math.max(0, layout.getLineForVertical(clip.top - top));
+			last = Math.min(lineCount - 1, layout.getLineForVertical(clip.bottom - top));
+		}
+		for (int i = first; i <= last; ++i) {
+			int lineNumber = i + 1;
 			int baseline = getLineBounds(i, null);
 			canvas.drawText(
 					Integer.toString(lineNumber),
 					bigChar * (lineCountNumDigits - numDigits(lineNumber)) + lineNumberPadding,
 					baseline,
 					lineNumberPaint);
-			++lineNumber;
+		}
+	}
+
+	// Only when it changes: TextView.setPadding() invalidates every time,
+	// so calling it from onDraw() redrew the editor every frame - for a
+	// long shader, well over 100 ms each, enough to hang the app.
+	private void setLeftPadding(int left) {
+		if (left != getPaddingLeft()) {
+			super.setPadding(left, getPaddingTop(), getPaddingRight(), getPaddingBottom());
 		}
 	}
 
