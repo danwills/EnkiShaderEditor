@@ -3774,6 +3774,13 @@ public class MainActivity extends AppCompatActivity {
 	// doesn't start another.
 	private boolean goingLive;
 
+	private void setGoingLive(boolean checking) {
+		goingLive = checking;
+		View button = findViewById(R.id.live_defines_nav);
+		button.setEnabled(!checking);
+		button.setAlpha(checking ? 0.4f : 1f);
+	}
+
 	// The toolbar's live button: straight into live mode with the
 	// defines last ticked for this shader (this app session - see
 	// liveDefineNames), or the setup list to tick some when there
@@ -3803,10 +3810,13 @@ public class MainActivity extends AppCompatActivity {
 			showAdjustDefinesDialog(true, null);
 			return;
 		}
-		goingLive = true;
+		// The check can take a while on a big shader: the button greys
+		// out until it's done.
+		setGoingLive(true);
+		Toast.makeText(this, R.string.adjust_defines_live_checking, Toast.LENGTH_SHORT).show();
 		boolean wasPaused = shaderViewManager.isPaused();
 		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
-			goingLive = false;
+			setGoingLive(false);
 			// Edited (or another shader opened) meanwhile: what was
 			// checked isn't what's open now.
 			if (isFinishing() || liveDefinesState != null
