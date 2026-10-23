@@ -2426,6 +2426,13 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 		image.append("\treturn texelFetch(iChannel0, q, 0)[i];")
 	image.append("}")
 	image.append("")
+	if p.common:
+		# Common's interface update calls it: unused here, but some
+		# drivers (the phone's) still want every declared function defined.
+		image.append("float rdChem(int i, ivec2 q) {")
+		image.append("\treturn chemical(i, q);")
+		image.append("}")
+		image.append("")
 	image.append(IMAGE_VIEWS % {"active": ai})
 	text = "\n".join(image) + "\n"
 	if p.common:
