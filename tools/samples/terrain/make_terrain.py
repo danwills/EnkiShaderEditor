@@ -9,8 +9,9 @@ camera kept in a spare texel of the state row, flown with the fingers.
 Fingers fly the camera:
   one finger     paint, on the ground where it touches (as the pattern's
                  own one finger paints)
-  two fingers    drag to slide over the ground, pinch to climb or dive,
-                 twist to turn
+  two fingers    drag up or down to tilt (as far as straight down), across
+                 to slide sideways; pinch to climb or dive, twist to turn
+                 (it drifts forward by itself)
   triple tap     over to the pattern's own interface (its colour view and
                  tiles, painting, the buttons) - and a triple tap there
                  back to the terrain
@@ -37,6 +38,7 @@ const int CAM_DOWN = 57;  // where this touch began (x, y), 1 once it's moved to
 #define CAM_SPEED 5.0      // cells a second it drifts forward
 #define CAM_HEIGHT 10.0    // cells above the ground to start
 #define CAM_PITCH 0.26     // radians down from level to start
+#define CAM_TILT 2.2       // radians of tilt per screen height two fingers drag
 #define LENS 0.18           // barrel curvature at the corners
 #define FOCAL 1.25          // the lens's focal length, of the screen's height
 
@@ -105,12 +107,13 @@ void camNext(ivec2 grid, vec2 screen, out vec4 pose, out vec4 look, out vec4 tou
 		vec2 mid1 = (p0 + p1) * 0.5;
 		float len0 = max(distance(touch.xy, touch.zw), 1.0);
 		float len1 = max(distance(p0, p1), 1.0);
-		// Slide what's under the fingers along with them, about as far
-		// as the ground moves on screen at this height.
-		vec2 d = (mid1 - mid0) / screen.y * pose.w * 1.6;
-		vec2 f = vec2(cos(pose.z), sin(pose.z));
-		vec2 r = vec2(f.y, -f.x);
-		pose.xy -= r * d.x + f * d.y;
+		// Up and down tilts (straight down at most); across slides the
+		// ground sideways with the fingers, about as far as it moves on
+		// screen at this height.
+		vec2 moved = mid1 - mid0;
+		look.x = clamp(look.x - moved.y / screen.y * CAM_TILT, 0.0, 1.5707963);
+		vec2 r = vec2(sin(pose.z), -cos(pose.z));
+		pose.xy -= r * (moved.x / screen.y * pose.w * 1.6);
 		pose.w = clamp(pose.w * len0 / len1, 2.0, 120.0);
 		vec2 a = touch.zw - touch.xy;
 		vec2 b = p1 - p0;
@@ -128,7 +131,8 @@ vec3 camRay(vec2 s, vec2 screen, vec4 pose, vec4 look) {
 	uv *= 1.0 + LENS * dot(uv, uv);
 	float pitch = look.x;
 	vec3 f = vec3(cos(pose.z) * cos(pitch), sin(pose.z) * cos(pitch), -sin(pitch));
-	vec3 r = normalize(cross(f, vec3(0.0, 0.0, 1.0)));
+	// Right from the heading, so it holds looking straight down too.
+	vec3 r = vec3(sin(pose.z), -cos(pose.z), 0.0);
 	vec3 u = cross(r, f);
 	return normalize(f * FOCAL + uv.x * r + uv.y * u);
 }
@@ -177,13 +181,12 @@ float cellHeight(ivec2 q, ivec2 grid) {
 			WAVE_HEIGHT * (level(t.w, rangeD) - 0.5) * 2.0;
 }
 
-// Smoothly between the cells (bicubic-ish: smoothstep weights, so
-// slopes don't kink at every cell edge).
+// Between the cells, straight lines (bilinear): cheap, for finding the
+// ground as the ray marches.
 float heightAt(vec2 p, ivec2 grid) {
 	vec2 c = p - 0.5;
 	vec2 i = floor(c);
 	vec2 f = c - i;
-	f = f * f * (3.0 - 2.0 * f);
 	ivec2 q = ivec2(i);
 	float h00 = cellHeight(q, grid);
 	float h10 = cellHeight(q + ivec2(1, 0), grid);
@@ -192,10 +195,38 @@ float heightAt(vec2 p, ivec2 grid) {
 	return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 
+// Cubic B-spline weights for the four cells around f (0-1).
+vec4 bspline(float f) {
+	float g = 1.0 - f;
+	return vec4(g * g * g, 3.0 * f * f * f - 6.0 * f * f + 4.0,
+			-3.0 * f * f * f + 3.0 * f * f + 3.0 * f + 1.0, f * f * f) / 6.0;
+}
+
+// Smooth through and through (a cubic B-spline over the 4x4 cells
+// around p): the surface where the ray lands, and how it's lit - no
+// facets or steps at the cells.
+float smoothHeightAt(vec2 p, ivec2 grid) {
+	vec2 c = p - 0.5;
+	vec2 i = floor(c);
+	vec2 f = c - i;
+	vec4 wx = bspline(f.x);
+	vec4 wy = bspline(f.y);
+	ivec2 q = ivec2(i) - 1;
+	float h = 0.0;
+	for (int y = 0; y < 4; ++y) {
+		float row = 0.0;
+		for (int x = 0; x < 4; ++x) {
+			row += wx[x] * cellHeight(q + ivec2(x, y), grid);
+		}
+		h += wy[y] * row;
+	}
+	return h;
+}
+
 vec3 normalAt(vec2 p, ivec2 grid) {
-	float e = 0.5;
-	float hx = heightAt(p + vec2(e, 0.0), grid) - heightAt(p - vec2(e, 0.0), grid);
-	float hy = heightAt(p + vec2(0.0, e), grid) - heightAt(p - vec2(0.0, e), grid);
+	float e = 0.35;
+	float hx = smoothHeightAt(p + vec2(e, 0.0), grid) - smoothHeightAt(p - vec2(e, 0.0), grid);
+	float hy = smoothHeightAt(p + vec2(0.0, e), grid) - smoothHeightAt(p - vec2(0.0, e), grid);
 	return normalize(vec3(-hx, -hy, 2.0 * e));
 }
 
@@ -214,7 +245,6 @@ vec4 cellsAt(vec2 p, ivec2 grid) {
 	vec2 c = p - 0.5;
 	vec2 i = floor(c);
 	vec2 f = c - i;
-	f = f * f * (3.0 - 2.0 * f);
 	ivec2 q = ivec2(i);
 	vec4 t00 = texelFetch(iChannel0, ivec2(mod(vec2(q), vec2(grid))), 0);
 	vec4 t10 = texelFetch(iChannel0, ivec2(mod(vec2(q + ivec2(1, 0)), vec2(grid))), 0);
@@ -276,10 +306,12 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 	}
 	vec3 col;
 	if (hit) {
-		for (int i = 0; i < 6; ++i) {
+		// Then onto the smooth surface: a few halvings against it.
+		last = max(0.0, last - 0.5);
+		for (int i = 0; i < 7; ++i) {
 			float mid = (last + t) * 0.5;
 			vec3 p = ro + rd * mid;
-			if (p.z < heightAt(p.xy, grid)) {
+			if (p.z < smoothHeightAt(p.xy, grid)) {
 				t = mid;
 			} else {
 				last = mid;
