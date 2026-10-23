@@ -6872,6 +6872,11 @@ public class MainActivity extends AppCompatActivity {
 				showNameGroupPostfixDialog(targetId, parentName, confirmIfAlreadyNamed));
 	}
 
+	// The picker's filter as last left, so using it again starts there -
+	// for the app session, like the other dialogs' remembered state.
+	@NonNull
+	private static String parentPickerFilter = "";
+
 	// The picker itself: hands back the chosen name prefix. targetId is
 	// the shader it's for, for Sort by similarity - 0 for one not saved
 	// yet (Paste's Add as Child), which hides that option.
@@ -6923,6 +6928,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onTextChanged(CharSequence s, int start, int before, int count) {
+				parentPickerFilter = s.toString();
 				String query = s.toString().trim().toLowerCase(Locale.ROOT);
 				if (query.isEmpty()) {
 					pickerAdapter.setData(namedShaders);
@@ -6942,6 +6948,9 @@ public class MainActivity extends AppCompatActivity {
 			public void afterTextChanged(Editable s) {
 			}
 		});
+		// Selected, so typing replaces it and Delete clears it.
+		filterView.setText(parentPickerFilter);
+		filterView.selectAll();
 
 		parentListView.setOnItemClickListener((parent, v, position, id) -> {
 			// The row's path is its tokens joined with "/"; since tokens
