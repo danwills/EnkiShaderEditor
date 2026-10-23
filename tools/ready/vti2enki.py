@@ -643,6 +643,9 @@ const int S_SNAP = 25;   // + a chemical: snapshots of its hue and weight; + CHE
 const int S_RANGE = 41;  // + a chemical: the range its values have had lately (low, high),
                          // and 1 once measured - what the views show it across, see
                          // rdShowRange()
+const int S_SEARCH = 49; // wandering's search: the stretch it's on (by SEARCH_STRETCH), its
+                         // direction, the look's score as it began, 1 going on or -1
+                         // going back - see rdNextSearch()
 // The brush's chemicals (-1 none): what dragging it sets.
 const ivec2 BRUSH_PAINT = ivec2(%(brush_paint)s);
 const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
@@ -660,8 +663,9 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
 #define BRUSH_RATE 1.0    // a chemical's whole range per screen width (or height) dragged
 #define RANDOM_REWIND 0.25 // wandering stops this to twice this before letting go
-#define RANDOM_NUDGE 0.004 // how far wandering moves a look by chance, a step
-#define RANDOM_PULL 0.004  // and how far towards one that shows every chemical
+#define RANDOM_NUDGE 0.0003 // how far wandering moves a look along its search, a step
+#define RANDOM_PULL 0.002  // and how far towards one that shows every chemical
+#define SEARCH_STRETCH 0.5 // seconds wandering keeps to one direction before judging it
 #define RANGE_EASE 0.01   // how far a chemical's range shrinks towards its values, a frame
 
 float rdUnit(vec2 screen) {
@@ -1198,6 +1202,83 @@ vec4 rdNextRange(int texel, ivec2 grid) {
 	return vec4(min(lo, mix(r.x, lo, RANGE_EASE)), max(hi, mix(r.y, hi, RANGE_EASE)), 1.0, 0.0);
 }
 
+// How good the composite look is now, from the same sample as
+// rdLevelStats(): its contrast (the spread of its brightness), how
+// colourful it is, and how much its colour varies - less for samples
+// crushed to black or blown to white. What wandering climbs.
+float rdLookScore(ivec2 grid) {
+	vec3 tint[CHEMICALS];
+	vec2 power[CHEMICALS];
+	vec2 range[CHEMICALS];
+	for (int i = 0; i < CHEMICALS; ++i) {
+		vec4 c = rdState(S_COLOUR + i, grid);
+		tint[i] = c.w * hsv2rgb(c.xyz);
+		power[i] = rdState(S_POWER + i, grid).xy;
+		range[i] = rdShowRange(i, grid);
+	}
+	float l = 0.0;
+	float ll = 0.0;
+	float chroma = 0.0;
+	vec3 hue = vec3(0.0);
+	vec3 hues = vec3(0.0);
+	float lost = 0.0;
+	for (int y = 0; y < 8; ++y) {
+		for (int x = 0; x < 8; ++x) {
+			vec2 jitter = vec2(rdHash(float(x), float(y)), rdHash(float(y) + 7.0, float(x)));
+			ivec2 q = ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid));
+			vec3 c = vec3(0.0);
+			for (int i = 0; i < CHEMICALS; ++i) {
+				float level = clamp((rdChem(i, q) - range[i].x) / (range[i].y - range[i].x), 0.0, 1.0);
+				level = power[i].y > 0.5 ? 1.0 - level : level;
+				c += tint[i] * pow(level, power[i].x);
+			}
+			c = clamp(c, 0.0, 1.0);
+			float lum = dot(c, vec3(0.299, 0.587, 0.114));
+			l += lum;
+			ll += lum * lum;
+			chroma += max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+			hue += c - lum;
+			hues += (c - lum) * (c - lum);
+			lost += lum < 0.03 || lum > 0.97 ? 1.0 : 0.0;
+		}
+	}
+	l /= 64.0;
+	hue /= 64.0;
+	float contrast = sqrt(max(ll / 64.0 - l * l, 0.0));
+	vec3 spread = max(hues / 64.0 - hue * hue, 0.0);
+	return contrast + 0.6 * chroma / 64.0 + 0.6 * sqrt(spread.r + spread.g + spread.b) -
+			0.3 * lost / 64.0;
+}
+
+// The search texel next frame (m is the next mode). While random's held
+// the look wanders a stretch at a time (SEARCH_STRETCH) along a direction
+// picked at random; at each stretch's end, if the look scores better
+// (rdLookScore()) it carries on that way, and if not it goes back the way
+// it came - and from there, a new direction. So it climbs, slowly,
+// towards looks with more contrast and more colour.
+vec4 rdNextSearch(ivec2 grid, vec4 m) {
+	vec4 s = rdState(S_SEARCH, grid);
+	float stretch = floor(iTime / SEARCH_STRETCH);
+	if (m.z < 5.5) {
+		return vec4(stretch, stretch, 0.0, 1.0);
+	}
+	if (stretch == s.x) {
+		return s;
+	}
+	float score = rdLookScore(grid);
+	if (s.w < 0.0) {
+		// Back where the last good direction left it: a new one.
+		return vec4(stretch, stretch, score, 1.0);
+	}
+	return vec4(stretch, s.y, score, score > s.z ? 1.0 : -1.0);
+}
+
+// The way the search goes this stretch for one of chemical chem's values
+// (j), -1 to 1.
+float rdSearchStep(vec4 search, float k) {
+	return (rdHash(search.y, k) - 0.5) * 2.0 * search.w;
+}
+
 // Spread round the hue circle by rank: 0, a half, a quarter, three
 // quarters, an eighth... - so the two most varied chemicals get opposite
 // (complementary) hues, and each next one the biggest gap left.
@@ -1265,13 +1346,15 @@ vec4 rdRandomLook(int texel, int chem, float seed, ivec2 grid) {
 }
 
 // Chemical chem's colour or power texel s, one step of wandering on: a
-// little way by chance (RANDOM_NUDGE), and a little way (RANDOM_PULL)
+// little way along the search's direction (RANDOM_NUDGE, see
+// rdNextSearch()), and a little way (RANDOM_PULL)
 // towards what would show it clearly - its hue the biggest gap from the
 // most varied chemical's (see rdHueSpread()), its weight and power as
 // rdRandomLook() picks them, its complement now and then.
 vec4 rdWanderStep(int texel, int chem, vec4 s, ivec2 grid) {
 	float n = float(iFrame);
 	float k = float(chem) * 8.0;
+	vec4 search = S_SEARCH < grid.x ? rdState(S_SEARCH, grid) : vec4(n, n, 0.0, 1.0);
 	int rank;
 	float share, mean;
 	rdGuide(chem, grid, rank, share, mean);
@@ -1291,17 +1374,19 @@ vec4 rdWanderStep(int texel, int chem, vec4 s, ivec2 grid) {
 		}
 		float want = fract(rdState(S_COLOUR + top, grid).x + rdHueSpread(rank));
 		float off = fract(want - s.x + 0.5) - 0.5;
-		s.x = fract(s.x + (rdHash(n, k) - 0.5) * RANDOM_NUDGE * 4.0 +
+		s.x = fract(s.x + rdSearchStep(search, k) * 0.5 * RANDOM_NUDGE * 4.0 +
 				(top == chem ? 0.0 : off * RANDOM_PULL * 4.0));
-		s.y = clamp(s.y + (rdHash(n, k + 1.0) - 0.5) * RANDOM_NUDGE + (0.9 - s.y) * RANDOM_PULL, 0.5, 1.0);
-		s.z = clamp(s.z + (rdHash(n, k + 2.0) - 0.5) * RANDOM_NUDGE + (0.95 - s.z) * RANDOM_PULL, 0.6, 1.0);
-		s.w += (rdHash(n, k + 3.0) - 0.5) * RANDOM_NUDGE * 2.0 +
+		s.y = clamp(s.y + rdSearchStep(search, k + 1.0) * 0.5 * RANDOM_NUDGE +
+				(0.9 - s.y) * RANDOM_PULL, 0.5, 1.0);
+		s.z = clamp(s.z + rdSearchStep(search, k + 2.0) * 0.5 * RANDOM_NUDGE +
+				(0.95 - s.z) * RANDOM_PULL, 0.6, 1.0);
+		s.w += rdSearchStep(search, k + 3.0) * 0.5 * RANDOM_NUDGE * 2.0 +
 				(rdGuidedWeight(share) - s.w) * RANDOM_PULL;
 		return s;
 	}
 	bool high = mean > 0.55;
 	float lp = log(max(s.x, 0.1));
-	lp += (rdHash(n, k + 4.0) - 0.5) * RANDOM_NUDGE * 4.0 +
+	lp += rdSearchStep(search, k + 4.0) * 0.5 * RANDOM_NUDGE * 4.0 +
 			(log(rdGuidedPower(high ? 1.0 - mean : mean)) - lp) * RANDOM_PULL;
 	s.x = clamp(exp(lp), 0.1, 10.0);
 	if ((s.y > 0.5) != high && rdHash(n, k + 5.0) < RANDOM_PULL) {
@@ -1353,8 +1438,9 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	return s;
 }"""
 
-# Colour conversions, for the colour maps and composite colour - in
-# Common, or else every pass, ahead of the colour map that needs them.
+# Colour conversions, for the colour maps, composite colour and the
+# random look's score - in Common, or else every pass, ahead of the
+# colour map that needs them.
 HSV_CODE = """\
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -1952,6 +2038,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\t}")
 		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
 		out.append("\t\telse if (texel == S_MAP) fragColor = rdNextMap(grid, screen, uiMode);")
+		out.append("\t\telse if (texel == S_SEARCH) fragColor = rdNextSearch(grid, uiMode);")
 		out.append("\t\telse if (texel >= S_RANGE && texel < S_RANGE + CHEMICALS) {")
 		out.append("\t\t\tfragColor = rdNextRange(texel, grid);")
 		out.append("\t\t}")
