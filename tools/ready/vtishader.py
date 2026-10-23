@@ -195,12 +195,17 @@ class Collection:
 		return glsl, textures, thumb
 
 
+COMMON = -1  # the Common section's row in shader_buffers - see the app's BufferDao
+
+
 def split_passes(text):
-	# The Image pass, then "//// Buffer A" ... - as vti2enki writes them.
-	parts = text.split("//// Buffer ")
+	"""The Image pass and {buffer: source}, Common at COMMON - from the
+	Image pass, then "//// Common" and "//// Buffer A"... as vti2enki
+	writes them."""
+	parts = re.split(r"^//// (Common|Buffer [A-D])\n", text, flags=re.M)
 	buffers = {}
-	for part in parts[1:]:
-		buffers[ord(part[0]) - ord("A")] = part[2:]
+	for name, source in zip(parts[1::2], parts[2::2]):
+		buffers[COMMON if name == "Common" else ord(name[-1]) - ord("A")] = source
 	return parts[0], buffers
 
 

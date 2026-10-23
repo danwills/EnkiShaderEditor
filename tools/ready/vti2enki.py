@@ -808,6 +808,89 @@ bool rdStarted(ivec2 grid) {
 	return rdState(S_FINGERS, grid).w > 1.5;
 }"""
 
+# UI_COMMON in two: what a Common section can hold, and the part that
+# reads the pass's own iChannel0 (which Common can't see), kept per pass.
+UI_STATE_AT = UI_COMMON.index("vec4 rdState(")
+UI_SHARED, UI_STATE = UI_COMMON[:UI_STATE_AT], UI_COMMON[UI_STATE_AT:]
+
+
+def formula_helpers(ftokens):
+	"""rdPow and the OpenCL functions the formula uses."""
+	out = []
+	if "rdPow" in ftokens or any(f in ftokens for f in ("pown", "rootn")):
+		out.append(RD_POW)
+		out.append("")
+	for name, code in OPENCL_FUNCTIONS.items():
+		if name in ftokens:
+			out.append(code)
+	if any(name in ftokens for name in OPENCL_FUNCTIONS):
+		out.append("")
+	return out
+
+
+POINTER_UNIFORMS = ["uniform vec3 pointers[10];", "uniform int pointerCount;"]
+
+
+def start_uniforms(p):
+	# What the first step's start (initial pattern or start state) reads.
+	out = []
+	if p.overlays or p.start:
+		out.append("uniform float startRandom;")
+	if p.start:
+		for name in p.start["textures"]:
+			out.append("uniform sampler2D %s;" % name)
+	return out
+
+
+def initial_code(p, chems):
+	"""The initial pattern's and start state's code, for the first step."""
+	out = []
+	if p.overlays:
+		out.append(INIT_HELPERS)
+		out.append("// The initial pattern at cell p: Ready's initial pattern generator,")
+		out.append("// its noise salted by seed (0 the first frame; painting takes a new")
+		out.append("// one each frame).")
+		out.append("void rdInitial(ivec2 p, ivec2 grid, int seed, %s) {" %
+				", ".join("out float " + c for c in chems))
+		out.append("\tvec2 rel = vec2(p) / vec2(grid);")
+		for c in chems:
+			out.append("\t%s = 0.0;" % c)
+		out.extend(overlay_code(p, chems))
+		out.append("}")
+		out.append("")
+	if p.start:
+		out.extend(start_code(p, chems))
+	return out
+
+
+def common_code(p, chems, params_block):
+	"""The Common section: what passes would otherwise repeat - the
+	parameters, the uniforms the steps share, the formula's helpers, the
+	grid's edges, the interface's shared code and its update (which reads
+	the state through each pass's own rdState() and rdChem()), the
+	initial pattern and the NaN guard."""
+	renamed = {n for n, _ in p.params if n in GLSL_RESERVED} | (formula_locals(p.formula) & GLSL_RESERVED)
+	ftokens = set(TOKEN.findall(translate_formula(p.formula, renamed)))
+	out = ["// Every pass starts with this (the app's Common section).", ""]
+	out.extend(POINTER_UNIFORMS)
+	out.extend(start_uniforms(p))
+	out.append("")
+	out.extend(params_block)
+	out.append("")
+	out.extend(formula_helpers(ftokens))
+	out.extend(initial_code(p, chems))
+	out.extend(cell_code(p))
+	out.append(UI_SHARED % p.ui)
+	out.append("// Each pass's own: the state row, and chemical i at cell q.")
+	out.append("vec4 rdState(int texel, ivec2 grid);")
+	out.append("float rdChem(int i, ivec2 q);")
+	out.append("")
+	out.append(UI_UPDATE % dict(p.ui, view="1.0" if p.start_masks else "0.0"))
+	out.append("")
+	out.extend(SANE_CODE.splitlines())
+	return "\n".join(out) + "\n"
+
+
 # The interface's state, worked out in each frame's first step (the same
 # way by every pass of it) - see UI_COMMON's S_* texels.
 UI_UPDATE = """\
@@ -1730,52 +1813,33 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.append("///float32")
 	for g, b in enumerate(src_buffers):
 		out.append("uniform sampler2D iChannel%d; ///buf:%s;" % (g, b))
-	if is_first_stage and (p.overlays or p.start):
-		out.append("uniform float startRandom;")
-	if is_first_stage and p.start:
-		for name in p.start["textures"]:
-			out.append("uniform sampler2D %s;" % name)
+	if not p.common:
+		out.extend(start_uniforms(p) if is_first_stage else [])
 	paint = [(c, v) for c, v in p.paint if c in chems[group * 4:group * 4 + 4]]
 	erase = [(c, v) for c, v in p.erase if c in chems[group * 4:group * 4 + 4]]
-	# Every pass - two fingers erase in every step.
-	out.append("uniform vec3 pointers[10];")
-	out.append("uniform int pointerCount;")
+	if not p.common:
+		out.extend(POINTER_UNIFORMS)
 	out.append("")
-	# Ready's parameters and the paint controls first - a parameter whose
-	# name the code below uses is renamed (see GLSL_RESERVED).
-	out.extend(params_block)
-	out.append("")
-	if "rdPow" in ftokens or any(f in ftokens for f in ("pown", "rootn")):
-		out.append(RD_POW)
+	if not p.common:
+		# Ready's parameters and the paint controls first - a parameter whose
+		# name the code below uses is renamed (see GLSL_RESERVED).
+		out.extend(params_block)
 		out.append("")
-	for name, code in OPENCL_FUNCTIONS.items():
-		if name in ftokens:
-			out.append(code)
-	if any(name in ftokens for name in OPENCL_FUNCTIONS):
-		out.append("")
-	if is_first_stage and p.overlays:
-		out.append(INIT_HELPERS)
-		out.append("// The initial pattern at cell p: Ready's initial pattern generator,")
-		out.append("// its noise salted by seed (0 the first frame; painting takes a new")
-		out.append("// one each frame).")
-		out.append("void rdInitial(ivec2 p, ivec2 grid, int seed, %s) {" %
-				", ".join("out float " + c for c in chems))
-		out.append("\tvec2 rel = vec2(p) / vec2(grid);")
-		for c in chems:
-			out.append("\t%s = 0.0;" % c)
-		out.extend(overlay_code(p, chems))
-		out.append("}")
-		out.append("")
-	if is_first_stage and p.start:
-		out.extend(start_code(p, chems))
-	out.extend(cell_code(p))
+		out.extend(formula_helpers(ftokens))
+	if is_first_stage and not p.common:
+		out.extend(initial_code(p, chems))
+	if not p.common:
+		out.extend(cell_code(p))
 	out.extend(wide_blur_code(used_stencils, groups))
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
-	out.append(UI_COMMON % ui)
+	out.append((UI_STATE if p.common else UI_COMMON) % ui)
 	out.append("")
-	out.extend(SANE_CODE.splitlines())
-	out.append("")
-	if is_first_stage:
+	if not p.common:
+		out.extend(SANE_CODE.splitlines())
+		out.append("")
+	# With Common, every pass has rdChem() - the interface's update there
+	# (UI_UPDATE) calls it - though only each frame's first step uses it.
+	if is_first_stage or p.common:
 		out.append("// Chemical i (0 = a) at cell q, as the last step left it.")
 		out.append("float rdChem(int i, ivec2 q) {")
 		if groups > 1:
@@ -1785,6 +1849,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 			out.append("\treturn texelFetch(iChannel0, q, 0)[i];")
 		out.append("}")
 		out.append("")
+	if is_first_stage and not p.common:
 		out.append(UI_UPDATE % ui)
 		out.append("")
 	out.append("void mainImage(out vec4 fragColor, vec2 fragCoord) {")
@@ -2205,15 +2270,18 @@ def parse_paint(spec):
 
 
 def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec="a=1,b=0",
-		start_masks=False, steps=4, start=None, title=None):
+		start_masks=False, steps=4, start=None, title=None, common=True):
 	"""`start` makes it start from textures instead of the initial pattern:
 	{"what": a few words on what they hold, "textures": their uniform names,
 	"size": (w, h), "layout": per chemical (texture, first channel, 1 or 2
 	channels) or None for a constant, "range": per chemical (lo, hi), the
 	constant's value as lo} - see vtipack.py's shader command. `title`
-	replaces the file's name in the header."""
+	replaces the file's name in the header. `common` puts what every pass
+	shares in a `//// Common` section, written once (the app's Common
+	section), rather than in each pass."""
 	p = read_vti(path)
 	p.start = start
+	p.common = common
 	if start:
 		p.notes = [n for n in p.notes if "saved in the file" not in n and "over the saved state" not in n
 				and not n.startswith("No initial pattern")]
@@ -2340,13 +2408,15 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	image.append("uniform sampler2D colormaps; // the app's built-in colour maps, one per row")
 	image.append("uniform int colormapCount;")
 	image.append("")
-	image.extend(display_block)
-	image.append("")
+	if not p.common:
+		image.extend(display_block)
+		image.append("")
 	image.append(colour_code)
 	image.append("")
-	image.append(UI_COMMON % p.ui)
+	image.append((UI_STATE if p.common else UI_COMMON) % p.ui)
 	image.append("")
-	image.extend(cell_code(p))
+	if not p.common:
+		image.extend(cell_code(p))
 	image.append("// Chemical i (0 = a) at cell q.")
 	image.append("float chemical(int i, ivec2 q) {")
 	if groups > 1:
@@ -2358,6 +2428,8 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	image.append("")
 	image.append(IMAGE_VIEWS % {"active": ai})
 	text = "\n".join(image) + "\n"
+	if p.common:
+		text += "//// Common\n" + common_code(p, chems, params_block)
 	for stage in range(stages):
 		for group in range(groups):
 			buffer = BUFFERS[stage * groups + group]
@@ -2382,13 +2454,17 @@ def main():
 			help='what two fingers paint, e.g. "a=1,b=0" (the default); "" for none')
 	parser.add_argument("--masks", action="store_true",
 			help="start in the every-chemical mask view (three fingers switch)")
+	parser.add_argument("--no-common", action="store_true",
+			help="repeat the shared code in every pass rather than one //// Common section "
+			"(for an app without Common)")
 	parser.add_argument("--steps", type=int, default=4,
 			help="times the buffers run per frame drawn (a ///steps line; default 4)")
 	args = parser.parse_args()
 	failed = 0
 	for path in args.vti:
 		try:
-			text, p = convert(path, args.colormap, args.paint, args.erase, args.masks, args.steps)
+			text, p = convert(path, args.colormap, args.paint, args.erase, args.masks, args.steps,
+					common=not args.no_common)
 		except (Unsupported, ET.ParseError, KeyError, ValueError, AttributeError) as e:
 			print("%s: skipped - %s" % (path, e), file=sys.stderr)
 			failed += 1

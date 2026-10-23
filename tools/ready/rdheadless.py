@@ -86,10 +86,11 @@ class Sim:
 		self.w, self.h = w, h
 		self.size = (w, h + 1)
 		self.passes = []
+		common = check_shader.common(glsl_text)
 		for name, src in check_shader.passes(glsl_text):
 			if name.startswith("Buffer"):
 				reads = re.findall(r"uniform sampler2D (iChannel\d); ///buf:([A-D]);", src)
-				self.passes.append((name[-1], compile_program(check_shader.wrap(src)), reads))
+				self.passes.append((name[-1], compile_program(check_shader.wrap(src, common)), reads))
 		self.names = [b for b, _, _ in self.passes]
 		self.stages = len(self.passes) // self.groups
 		self.last = self.names[-self.groups:]

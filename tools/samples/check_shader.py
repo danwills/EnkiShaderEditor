@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Compile-checks a sample shader's passes with glslangValidator, without
 a phone: splits a multipass file at its `//// Buffer X` / `//// Sound`
-markers (skipping `//// Text <name>` sections - shader texts, not GLSL)
+markers (skipping `//// Text <name>` sections - shader texts, not GLSL -
+and putting a `//// Common` section at the start of every pass)
 and wraps each pass roughly the way ShaderSourcePreparer does -
 GLSL ES 3.00, ShaderToy's implicit uniforms where used but undeclared,
 and a main() calling mainImage() or mainSound(). It can't catch what
@@ -26,7 +27,10 @@ IMPLICIT = [
 	("iSampleRate", "uniform highp float iSampleRate;"),
 	("iChannelResolution", "uniform highp vec3 iChannelResolution[4];"),
 ]
-MARKER = re.compile(r"^//// (Image|Sound|Buffer [A-D]|Text \w+)[ \t]*$", re.M)
+MARKER = re.compile(r"^//// (Image|Sound|Common|Buffer [A-D]|Text \w+)[ \t]*$", re.M)
+# What the app puts before a pass's copy of the Common section - see
+# ShaderSourcePreparer's COMMON_BEGIN.
+COMMON_BEGIN = "// enki:common\nprecision highp float;\nprecision highp int;\n"
 
 
 def declared(src, name):
@@ -37,15 +41,19 @@ def used(src, name):
 	return re.search(r"\b" + re.escape(name) + r"\b", src) is not None
 
 
-def wrap(src):
+def wrap(src, common=None):
+	# common: the shader's Common section, which the pass starts with.
+	uses = (common + "\n" + src) if common is not None else src
 	decls = ""
 	for name, decl in IMPLICIT:
-		if used(src, name) and not declared(src, name):
+		if used(uses, name) and not declared(uses, name):
 			decls += decl + "\n"
 	for c in range(4):
 		name = "iChannel%d" % c
-		if used(src, name) and not declared(src, name):
+		if used(uses, name) and not declared(uses, name):
 			decls += "uniform sampler2D %s;\n" % name
+	if common is not None:
+		decls += COMMON_BEGIN + common + ("" if common.endswith("\n") else "\n")
 	body = src
 	if re.search(r"\bvec2\s+mainSound\s*\(", src):
 		call = ("mainSound(s, float(s) / 44100.0)"
@@ -75,16 +83,27 @@ def passes(text):
 		name = m.group(1)
 		last = m.end() + 1
 	parts.append((name, text[last:]))
-	# A `//// Text <name>` section is a shader text, not GLSL.
-	return [(n, s) for n, s in parts if s.strip() and not n.startswith("Text ")]
+	# A `//// Text <name>` section is a shader text, not GLSL; Common goes
+	# into every pass (see common()).
+	return [(n, s) for n, s in parts if s.strip() and not n.startswith("Text ") and n != "Common"]
+
+
+def common(text):
+	"""The `//// Common` section, or None."""
+	m = re.search(r"^//// Common[ \t]*\n", text, re.M)
+	if not m:
+		return None
+	end = MARKER.search(text, m.end())
+	return text[m.end():end.start() if end else len(text)]
 
 
 def main():
 	ok = True
 	for path in sys.argv[1:]:
-		for name, src in passes(open(path).read()):
+		text = open(path).read()
+		for name, src in passes(text):
 			with tempfile.NamedTemporaryFile("w", suffix=".frag", delete=False) as f:
-				f.write(wrap(src))
+				f.write(wrap(src, common(text)))
 				tmp = f.name
 			r = subprocess.run(["glslangValidator", tmp], capture_output=True, text=True)
 			status = "ok" if r.returncode == 0 else "FAILED"
