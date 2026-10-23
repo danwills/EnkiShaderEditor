@@ -85,6 +85,8 @@ final class StatusOverlay {
 		return instance;
 	}
 
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
 	void add(@NonNull String text, @Nullable String kind, boolean done) {
 		LinearLayout lines = panel();
 		// While a run's going, a pill at the top says so, whatever's faded.

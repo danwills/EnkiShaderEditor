@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -134,7 +135,8 @@ public class TakeOverActivity extends AppCompatActivity {
 
 	private void notifyUnanswered() {
 		var manager = getSystemService(NotificationManager.class);
-		if (manager.getNotificationChannel(CHANNEL) == null) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+				manager.getNotificationChannel(CHANNEL) == null) {
 			manager.createNotificationChannel(new NotificationChannel(CHANNEL,
 					"Claude asking to use the phone", NotificationManager.IMPORTANCE_HIGH));
 		}
