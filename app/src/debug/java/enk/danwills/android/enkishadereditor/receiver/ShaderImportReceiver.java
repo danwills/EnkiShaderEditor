@@ -23,6 +23,7 @@ import enk.danwills.android.enkishadereditor.activity.ShaderImportActivity;
 import enk.danwills.android.enkishadereditor.database.DataRecords;
 import enk.danwills.android.enkishadereditor.database.DataSource;
 import enk.danwills.android.enkishadereditor.database.Database;
+import enk.danwills.android.enkishadereditor.io.ShaderPackInstaller;
 import enk.danwills.android.enkishadereditor.project.MultipassSource;
 
 // Debug builds only: puts a shader into the library from the test
@@ -36,6 +37,11 @@ import enk.danwills.android.enkishadereditor.project.MultipassSource;
 //
 // With the app on screen, the open shader could be saved over the import,
 // so it asks first instead - see ShaderImportActivity.
+//
+// A `pack` extra instead names a shader pack file in files/import/
+// (tools/phone/add_pack.sh), installed as Get Shader Pack -> Install from
+// File would; it adds shaders without touching the open one, so it needn't
+// ask.
 public class ShaderImportReceiver extends BroadcastReceiver {
 	private static final String TAG = "ShaderImport";
 
@@ -44,6 +50,16 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 
 	@Override
 	public void onReceive(Context context, Intent intent) {
+		String pack = intent.getStringExtra("pack");
+		if (pack != null) {
+			if (pack.isEmpty() || pack.contains("/")) {
+				Log.w(TAG, "Needs a bare `pack` file");
+				return;
+			}
+			PendingResult pending = goAsync();
+			installPackAsync(context.getApplicationContext(), pack, pending::finish);
+			return;
+		}
 		String name = intent.getStringExtra("name");
 		String file = intent.getStringExtra("file");
 		float quality = intent.getFloatExtra("quality", 0.25f);
@@ -82,6 +98,21 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 				done.onDone(finished);
 			});
 		}, "ShaderImport").start();
+	}
+
+	private static void installPackAsync(@NonNull Context app, @NonNull String file,
+			@NonNull Runnable done) {
+		new Thread(() -> {
+			File pack = importFile(app, file);
+			var result = ShaderPackInstaller.install(app, pack);
+			//noinspection ResultOfMethodCallIgnored
+			pack.delete();
+			Log.i(TAG, result.message());
+			new Handler(Looper.getMainLooper()).post(() -> {
+				Toast.makeText(app, result.message(), Toast.LENGTH_LONG).show();
+				done.run();
+			});
+		}, "PackImport").start();
 	}
 
 	@NonNull
