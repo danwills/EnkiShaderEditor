@@ -31,7 +31,8 @@ owner might be holding it. It covers four things:
   `PHONE_KIT_APP` set to your debug build's applicationId, plus
   `PHONE_KIT_CLASSES` if you moved the Java package.
   - `status.sh ask "what for, how long" [SECONDS]` shows the prompt.
-    It exits 0 to go ahead (by answer or timeout) and 1 for Not now.
+    It exits 0 to go ahead (by answer or timeout), 1 for Not now and 2
+    when no phone is connected.
     `SECONDS` (default 15) is how long the question waits before the
     15 s countdown.
   - `status.sh post 'text' [KIND]` adds a line to the panel, and the run
@@ -83,7 +84,8 @@ android.permission.POST_NOTIFICATIONS`.
 When driving the phone over adb:
 - Ask on the phone first: `status.sh ask 'what for, how long'` shows a
   dialog over whatever's on screen; unanswered for 15 s it counts down 15 s
-  and goes ahead. Exit 0 means go ahead; 1 is Not now - say so and wait.
+  and goes ahead. Exit 0 means go ahead; 1 is Not now - say so and wait;
+  2, no phone connected.
 - Note what's on screen first
   (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
 - Narrate every step - a line before each action or batch, so the panel

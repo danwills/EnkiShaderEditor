@@ -92,6 +92,10 @@ again)
 	fi
 	;;
 ask)
+	if [ "$(adb get-state 2>/dev/null)" != device ]; then
+		echo "no phone connected" >&2
+		exit 2
+	fi
 	id="ask$(date +%s)"
 	wait="${3:-15}"
 	adb shell "am start -n $PKG/enk.danwills.android.enkishadereditor.activity.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15" >/dev/null 2>&1
