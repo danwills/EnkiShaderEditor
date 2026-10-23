@@ -666,7 +666,8 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define RANDOM_NUDGE 0.0003 // how far wandering moves a look along its search, a step
 #define RANDOM_PULL 0.002  // and how far towards one that shows every chemical
 #define SEARCH_STRETCH 0.5 // seconds wandering keeps to one direction before judging it
-#define RANGE_EASE 0.01   // how far a chemical's range shrinks towards its values, a frame
+#define RANGE_GROW 0.003  // how far a chemical's range widens towards its values' a frame,
+#define RANGE_SHRINK 0.001 // and narrows - slowly both ways, so the look holds steady
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
@@ -1180,9 +1181,10 @@ vec2 rdLevelStats(int i, ivec2 grid) {
 }
 
 // Chemical i's range texel next frame, from the same sample as
-// rdLevelStats(): out at once to take in a new low or high, and in
-// slowly (RANGE_EASE) towards the values it has now, so the look holds
-// steady as the pattern moves.
+// rdLevelStats(): eased slowly towards the range of the values there now
+// - a little faster out (RANGE_GROW) than in (RANGE_SHRINK) - so a
+// passing spike doesn't make the whole view flash darker; values beyond
+// it meanwhile just clamp. Measured outright the first time.
 vec4 rdNextRange(int texel, ivec2 grid) {
 	int i = texel - S_RANGE;
 	float lo = 1e30;
@@ -1199,7 +1201,12 @@ vec4 rdNextRange(int texel, ivec2 grid) {
 	if (r.z < 0.5) {
 		return vec4(lo, hi, 1.0, 0.0);
 	}
-	return vec4(min(lo, mix(r.x, lo, RANGE_EASE)), max(hi, mix(r.y, hi, RANGE_EASE)), 1.0, 0.0);
+	if (!rdNewFrame(grid)) {
+		return r;
+	}
+	float easeLo = lo < r.x ? RANGE_GROW : RANGE_SHRINK;
+	float easeHi = hi > r.y ? RANGE_GROW : RANGE_SHRINK;
+	return vec4(mix(r.x, lo, easeLo), mix(r.y, hi, easeHi), 1.0, 0.0);
 }
 
 // How good the composite look is now, from the same sample as
