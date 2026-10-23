@@ -2,9 +2,14 @@ package enk.danwills.android.enkishadereditor.receiver;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.text.SpannableStringBuilder;
@@ -16,6 +21,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -77,7 +83,7 @@ final class StatusOverlay {
 	@Nullable
 	private LinearLayout controls;
 	@Nullable
-	private TextView pauseButton;
+	private ImageView pauseButton;
 	@Nullable
 	private LinearLayout thumbs;
 	private boolean paused;
@@ -195,7 +201,7 @@ final class StatusOverlay {
 		paused = !paused;
 		write(CONTROL, paused ? "paused" : "running");
 		if (pauseButton != null) {
-			pauseButton.setText(paused ? "▶" : "⏸");
+			pauseButton.setImageDrawable(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE));
 		}
 		add(paused ? "Pause asked - Claude will wait after this step (▶ to carry on)"
 				: "Carrying on", paused ? "⏸" : "▶", null, false);
@@ -215,6 +221,79 @@ final class StatusOverlay {
 		}
 	}
 
+	// Pause, play and stop, drawn plain white - the emoji were hard to
+	// make out at this size over a busy screen.
+	private static final class Glyph extends Drawable {
+		static final int PAUSE = 0;
+		static final int PLAY = 1;
+		static final int STOP = 2;
+		private final int kind;
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+		Glyph(int kind) {
+			this.kind = kind;
+			paint.setColor(Color.WHITE);
+		}
+
+		@Override
+		public void draw(@NonNull Canvas canvas) {
+			var b = getBounds();
+			float size = Math.min(b.width(), b.height());
+			float cx = b.exactCenterX();
+			float cy = b.exactCenterY();
+			float h = size * 0.5f;
+			switch (kind) {
+				case PAUSE -> {
+					float bar = h * 0.34f;
+					float gap = h * 0.3f;
+					canvas.drawRoundRect(cx - gap / 2 - bar, cy - h / 2, cx - gap / 2, cy + h / 2,
+							bar * 0.2f, bar * 0.2f, paint);
+					canvas.drawRoundRect(cx + gap / 2, cy - h / 2, cx + gap / 2 + bar, cy + h / 2,
+							bar * 0.2f, bar * 0.2f, paint);
+				}
+				case PLAY -> {
+					var path = new Path();
+					path.moveTo(cx - h * 0.38f, cy - h / 2);
+					path.lineTo(cx + h * 0.5f, cy);
+					path.lineTo(cx - h * 0.38f, cy + h / 2);
+					path.close();
+					canvas.drawPath(path, paint);
+				}
+				default -> {
+					float half = h * 0.42f;
+					canvas.drawRoundRect(cx - half, cy - half, cx + half, cy + half,
+							half * 0.2f, half * 0.2f, paint);
+				}
+			}
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			paint.setAlpha(alpha);
+		}
+
+		@Override
+		public void setColorFilter(@Nullable ColorFilter filter) {
+			paint.setColorFilter(filter);
+		}
+
+		@Override
+		@SuppressWarnings("deprecation")
+		public int getOpacity() {
+			return PixelFormat.TRANSLUCENT;
+		}
+	}
+
+	@NonNull
+	private ImageView iconButton(@NonNull Drawable icon, @NonNull View.OnClickListener onClick) {
+		var button = new ImageView(context);
+		button.setImageDrawable(icon);
+		button.setMinimumWidth(dp(44));
+		button.setMinimumHeight(dp(40));
+		style(button, onClick);
+		return button;
+	}
+
 	@NonNull
 	private TextView button(@NonNull String label, @NonNull View.OnClickListener onClick) {
 		var button = new TextView(context);
@@ -223,6 +302,11 @@ final class StatusOverlay {
 		button.setGravity(Gravity.CENTER);
 		button.setMinWidth(dp(44));
 		button.setMinHeight(dp(40));
+		style(button, onClick);
+		return button;
+	}
+
+	private void style(@NonNull View button, @NonNull View.OnClickListener onClick) {
 		button.setPadding(dp(6), dp(2), dp(6), dp(2));
 		var background = new GradientDrawable();
 		background.setColor(Color.argb(230, 40, 44, 60));
@@ -234,7 +318,6 @@ final class StatusOverlay {
 		params.setMarginStart(dp(6));
 		button.setLayoutParams(params);
 		button.setOnClickListener(onClick);
-		return button;
 	}
 
 	// The buttons' window, at the panel's top right, made with a run's
@@ -247,9 +330,9 @@ final class StatusOverlay {
 		}
 		var bar = new LinearLayout(context);
 		bar.setOrientation(LinearLayout.HORIZONTAL);
-		pauseButton = button(paused ? "▶" : "⏸", v -> togglePause());
+		pauseButton = iconButton(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE), v -> togglePause());
 		bar.addView(pauseButton);
-		bar.addView(button("⏹", v -> stop()));
+		bar.addView(iconButton(new Glyph(Glyph.STOP), v -> stop()));
 		var params = new WindowManager.LayoutParams(
 				WindowManager.LayoutParams.WRAP_CONTENT,
 				WindowManager.LayoutParams.WRAP_CONTENT,
