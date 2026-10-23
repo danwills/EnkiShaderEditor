@@ -455,8 +455,11 @@ final class RendererProgramManager {
 	private String moduleName;
 	// See getSteps().
 	private static final Pattern STEPS = Pattern.compile(
-			"^[ \\t]*///steps:([0-9]{1,3})[ \\t]*$", Pattern.MULTILINE);
-	private static final int MAX_STEPS = 64;
+			"^[ \\t]*///steps:([0-9]{1,6})[ \\t]*$", Pattern.MULTILINE);
+	// Plenty for a simulation stepping many times a frame; a slow frame
+	// is drawn in bands across refreshes (progressive rendering), so it
+	// doesn't stall the screen.
+	private static final int MAX_STEPS = 10000;
 	private int steps = 1;
 	// See getShaderUpscale().
 	private static final Pattern UPSCALE = Pattern.compile(
@@ -701,7 +704,7 @@ final class RendererProgramManager {
 	}
 
 	// How many times the buffer passes run for each frame drawn - a
-	// `///steps:N` line in any pass (1-64), else 1. A simulation in its
+	// `///steps:N` line in any pass (1-10000), else 1. A simulation in its
 	// buffers then moves N steps a frame, for one Image pass.
 	int getSteps() {
 		return steps;
