@@ -430,6 +430,9 @@ final class RendererProgramManager {
 
 	@Nullable
 	private String sourceText;
+	// See setFragmentShader().
+	@Nullable
+	private String commonSource;
 	// Indexed by buffer (0 = A), null where there's no such buffer pass.
 	@Nullable
 	private String[] bufferSourceTexts;
@@ -514,9 +517,32 @@ final class RendererProgramManager {
 	}
 
 	void setFragmentShader(@Nullable String source, @Nullable String[] bufferSources) {
+		setFragmentShader(source, bufferSources, null);
+	}
+
+	// commonSource: the shader's Common section, which every pass starts
+	// with (see ShaderSourcePreparer.prepare()), or null.
+	void setFragmentShader(@Nullable String source, @Nullable String[] bufferSources,
+			@Nullable String commonSource) {
 		sourceText = source;
 		bufferSourceTexts = bufferSources != null ? bufferSources.clone() : null;
+		this.commonSource = commonSource;
 		prepareShaderSource();
+	}
+
+	// What a pass's compiled binary is cached by: its source, and Common's
+	// too, so editing Common doesn't bring back a stale binary.
+	@Nullable
+	String getCacheText(@Nullable String passSource) {
+		return cacheText(passSource, commonSource);
+	}
+
+	// See getCacheText() - for compiling ahead (HeadlessShaderCompiler).
+	@Nullable
+	static String cacheText(@Nullable String passSource, @Nullable String commonSource) {
+		return passSource == null || commonSource == null
+				? passSource
+				: passSource + "\n//// Common\n" + commonSource;
 	}
 
 	boolean hasPreparedShader() {
@@ -609,7 +635,7 @@ final class RendererProgramManager {
 		if (fragmentShader == null) {
 			return null;
 		}
-		ProgramBinary cached = bufferBinaries.get(pass.buffer, pass.sourceText);
+		ProgramBinary cached = bufferBinaries.get(pass.buffer, getCacheText(pass.sourceText));
 		if (cached != null) {
 			var binaryResult = device.createProgramFromBinary(cached.format(), cached.bytes());
 			if (binaryResult.succeeded() && binaryResult.getProgram() != null) {
@@ -625,7 +651,7 @@ final class RendererProgramManager {
 				fragmentShader.getLineMapping());
 		if (!result.succeeded() || result.getProgram() == null) {
 			for (var error : result.getInfoLog()) {
-				errors.add(error.withPass(pass.buffer));
+				addError(errors, error.withPass(pass.buffer));
 			}
 			if (result.getInfoLog().isEmpty()) {
 				errors.add(ShaderError.createGeneral("Link failed").withPass(pass.buffer));
@@ -634,7 +660,8 @@ final class RendererProgramManager {
 		}
 		ProgramBinary fresh = device.getProgramBinary(result.getProgram());
 		if (fresh != null) {
-			freshBufferBinaries.add(new FreshBufferBinary(pass.buffer, pass.sourceText, fresh));
+			freshBufferBinaries.add(new FreshBufferBinary(pass.buffer,
+					getCacheText(pass.sourceText), fresh));
 		}
 		return result.getProgram();
 	}
@@ -989,17 +1016,19 @@ final class RendererProgramManager {
 	// nothing - so Adjust Defines' live mode can find out whether its
 	// converted source compiles before handing it over for real. GL
 	// thread only. Empty if every pass compiled.
+	// The Common section is the current shader's (see setFragmentShader()).
 	@NonNull
 	List<ShaderError> testCompile(@NonNull GlDevice device, @NonNull String source,
 			@Nullable String[] bufferSources) {
 		var errors = new ArrayList<ShaderError>();
-		testCompilePass(device, ShaderSourcePreparer.prepare(source, version, maxTextures),
-				ShaderError.IMAGE_PASS, errors);
+		testCompilePass(device, ShaderSourcePreparer.prepare(source, commonSource, version,
+				maxTextures), ShaderError.IMAGE_PASS, errors);
 		if (bufferSources != null) {
 			for (int buffer = 0; buffer < bufferSources.length; ++buffer) {
 				if (bufferSources[buffer] != null) {
 					testCompilePass(device, ShaderSourcePreparer.prepare(
-							bufferSources[buffer], version, maxTextures), buffer, errors);
+							bufferSources[buffer], commonSource, version, maxTextures), buffer,
+							errors);
 				}
 			}
 		}
@@ -1021,7 +1050,7 @@ final class RendererProgramManager {
 				fragmentShader.getLineMapping());
 		if (!result.succeeded() || result.getProgram() == null) {
 			for (var error : result.getInfoLog()) {
-				errors.add(buffer == ShaderError.IMAGE_PASS ? error : error.withPass(buffer));
+				addError(errors, buffer == ShaderError.IMAGE_PASS ? error : error.withPass(buffer));
 			}
 			if (result.getInfoLog().isEmpty()) {
 				var linkFailed = ShaderError.createGeneral("Link failed");
@@ -1066,6 +1095,7 @@ final class RendererProgramManager {
 				: null;
 		preparedShaderSource = ShaderSourcePreparer.prepare(
 				sourceText,
+				commonSource,
 				version,
 				maxTextures);
 		// One set of textures (saved images, camera, audio) for the whole
@@ -1082,7 +1112,8 @@ final class RendererProgramManager {
 				if (bufferSource == null) {
 					continue;
 				}
-				var prepared = ShaderSourcePreparer.prepare(bufferSource, version, maxTextures);
+				var prepared = ShaderSourcePreparer.prepare(bufferSource, commonSource, version,
+						maxTextures);
 				var pass = new BufferPass(buffer, bufferSource, prepared);
 				if (ShaderSourcePreparer.isSoundSource(bufferSource) && sound == null) {
 					sound = pass;
@@ -1105,15 +1136,24 @@ final class RendererProgramManager {
 		}
 		bufferPasses = List.copyOf(passes);
 		soundPass = sound;
-		String[] all = new String[1 + (bufferSourceTexts != null ? bufferSourceTexts.length : 0)];
+		String[] all = new String[2 + (bufferSourceTexts != null ? bufferSourceTexts.length : 0)];
 		all[0] = sourceText;
 		if (bufferSourceTexts != null) {
 			System.arraycopy(bufferSourceTexts, 0, all, 1, bufferSourceTexts.length);
 		}
+		all[all.length - 1] = commonSource;
 		moduleName = ModuleDirective.find(all);
 		steps = findSteps(all);
 		shaderUpscale = findUpscale(all);
 		textureResources = ShaderTextureResources.create(new ArrayList<>(samplers.values()));
+	}
+
+	// Every pass that starts with Common reports an error in it - once is
+	// enough.
+	private static void addError(@NonNull List<ShaderError> errors, @NonNull ShaderError error) {
+		if (error.getPass() != ShaderError.COMMON_PASS || !errors.contains(error)) {
+			errors.add(error);
+		}
 	}
 
 	private void clearPrograms() {

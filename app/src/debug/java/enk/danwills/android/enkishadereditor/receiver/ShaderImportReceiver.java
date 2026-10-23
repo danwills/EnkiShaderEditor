@@ -173,6 +173,7 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 			}
 		}
 		data.buffer.setBufferSources(id, parsed != null ? parsed.bufferSources() : new String[0]);
+		data.buffer.setCommonSource(id, parsed != null ? parsed.commonSource() : null);
 		data.text.setTexts(id, parsed != null ? parsed.texts() : Map.of());
 		return new Result(id, (replaced ? "Replaced " : "Added ") + name + " (" + id + ")");
 	}

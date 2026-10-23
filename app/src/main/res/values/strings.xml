@@ -640,6 +640,10 @@
 	<string name="offscreen_buffers_remove_message">This deletes the code in %1$s.</string>
 	<string name="offscreen_buffers_remove">Remove</string>
 	<string name="pass_tab_sound">Snd</string>
+	<string name="pass_tab_common">Common</string>
+	<string name="common_add">Add Common</string>
+	<string name="common_remove">Remove Common</string>
+	<string name="common_remove_message">This deletes the Common code, which every pass starts with.</string>
 	<string name="pass_tab_image">Img</string>
 	<string name="pass_tab_text">Text %1$s</string>
 	<string name="shader_texts_button">Texts…</string>

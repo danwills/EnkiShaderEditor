@@ -161,8 +161,10 @@ public class ShaderWallpaperService extends WallpaperService {
 				view.getRenderer().setFragmentShader(
 						projectSession.getEntryPointSource(),
 						projectSession.getProject().getBufferSources(),
+						projectSession.getProject().getCommonSource(),
 						projectSession.getQuality(),
-						projectSession.getShaderId());
+						projectSession.getShaderId(),
+						false);
 				if (!isPreview()) {
 					view.getRenderer().setRuntimeNanos(
 							ShaderEditorApp.preferences.getWallpaperRuntimeNanos(runtimeShaderId));
@@ -194,9 +196,7 @@ public class ShaderWallpaperService extends WallpaperService {
 				ShaderEditorApp.preferences.setWallpaperShader(shader.id());
 			}
 
-			return new LegacyShaderProjectSource(shader,
-					dataSource.buffer.getBufferSources(shader.id()),
-					dataSource.text.getTexts(shader.id())).openSession();
+			return LegacyShaderProjectSource.load(dataSource, shader).openSession();
 		}
 
 		private class ShaderWallpaperView extends ShaderView {

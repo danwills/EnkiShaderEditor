@@ -413,6 +413,13 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// backbuffer are all kept, not restarted.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
+		setFragmentShader(source, bufferSources, null, quality, shaderId, keepState);
+	}
+
+	// commonSource: the shader's Common section, which every pass starts
+	// with (see ShaderSourcePreparer.prepare()), or null for none.
+	public void setFragmentShader(String source, @Nullable String[] bufferSources,
+			@Nullable String commonSource, float quality, long shaderId, boolean keepState) {
 		if (keepState) {
 			builtinUniforms.keepClockThroughNextSurface();
 		} else {
@@ -422,7 +429,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 		setQuality(quality);
 		this.shaderId = shaderId;
-		programManager.setFragmentShader(source, bufferSources);
+		programManager.setFragmentShader(source, bufferSources, commonSource);
 		// Several changes before the next frame keep the state only if
 		// every one of them asked to.
 		pendingKeepState = keepState && (!pendingReload || pendingKeepState);
@@ -828,7 +835,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			String sourceHash = null;
 			String driverSignature = null;
 			if (shaderId > 0 && programBinaryCache != null && glVersion >= 3) {
-				String sourceText = programManager.getSourceText();
+				String sourceText = programManager.getCacheText(programManager.getSourceText());
 				if (sourceText != null) {
 					sourceHash = ProgramBinaryKey.sourceHash(sourceText, glVersion);
 					driverSignature = ProgramBinaryKey.driverSignature();

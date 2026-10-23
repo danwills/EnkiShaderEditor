@@ -15,9 +15,12 @@ import enk.danwills.android.enkishadereditor.opengl.ProgramBinary;
 // The offscreen buffer passes (Buffer A-D) of multipass shaders - see
 // DatabaseContract.BufferColumns. Sources are exchanged as a fixed-size
 // array indexed by buffer (0 = A ... MAX_BUFFERS - 1 = D), with null for
-// a buffer the shader doesn't have.
+// a buffer the shader doesn't have. A shader's Common section (code every
+// pass starts with - see ShaderSourcePreparer) is a row of its own, at
+// buffer COMMON, read and written apart from the buffers.
 public class BufferDao {
 	public static final int MAX_BUFFERS = 4;
+	public static final int COMMON = -1;
 
 	@NonNull
 	private final SQLiteOpenHelper dbHelper;
@@ -81,6 +84,46 @@ public class BufferDao {
 
 	public void copyBuffers(long fromShaderId, long toShaderId) {
 		setBufferSources(toShaderId, getBufferSources(fromShaderId));
+		setCommonSource(toShaderId, getCommonSource(fromShaderId));
+	}
+
+	// The shader's Common section, or null if it has none.
+	@Nullable
+	public String getCommonSource(long shaderId) {
+		return getCommonSource(dbHelper.getReadableDatabase(), shaderId);
+	}
+
+	// Makes the shader's Common section `source`, or removes it for null;
+	// a change counts as a source edit, as setBufferSources()'s do.
+	public void setCommonSource(long shaderId, @Nullable String source) {
+		SQLiteDatabase db = dbHelper.getWritableDatabase();
+		db.beginTransaction();
+		try {
+			String stored = getCommonSource(db, shaderId);
+			if (source == null ? stored == null : source.equals(stored)) {
+				db.setTransactionSuccessful();
+				return;
+			}
+			if (source == null) {
+				db.delete(DatabaseContract.BufferColumns.TABLE_NAME, whereBuffer(),
+						whereBufferArgs(shaderId, COMMON));
+			} else if (stored == null) {
+				insertBuffer(db, shaderId, COMMON, source);
+			} else {
+				var cv = new ContentValues();
+				cv.put(DatabaseContract.BufferColumns.SOURCE, source);
+				db.update(DatabaseContract.BufferColumns.TABLE_NAME, cv, whereBuffer(),
+						whereBufferArgs(shaderId, COMMON));
+			}
+			db.execSQL("UPDATE " + DatabaseContract.ShaderColumns.TABLE_NAME +
+					" SET " + DatabaseContract.ShaderColumns.SOURCE_MODIFIED +
+					" = datetime('now', 'localtime')" +
+					" WHERE " + DatabaseContract.ShaderColumns._ID + " = ?",
+					new Object[]{shaderId});
+			db.setTransactionSuccessful();
+		} finally {
+			db.endTransaction();
+		}
 	}
 
 	// Same contract as ShaderDao.getCompiledBinary(), for one buffer's
@@ -150,7 +193,8 @@ public class BufferDao {
 				return false;
 			}
 		}
-		return true;
+		String common = getCommonSource(src, fromShaderId);
+		return common == null || insertBuffer(dst, toShaderId, COMMON, common) >= 1;
 	}
 	// endregion
 
@@ -175,6 +219,20 @@ public class BufferDao {
 			}
 		}
 		return sources;
+	}
+
+	@Nullable
+	private static String getCommonSource(@NonNull SQLiteDatabase db, long shaderId) {
+		try (var cursor = db.query(
+				DatabaseContract.BufferColumns.TABLE_NAME,
+				new String[]{DatabaseContract.BufferColumns.SOURCE},
+				whereBuffer(),
+				whereBufferArgs(shaderId, COMMON),
+				null, null, null)) {
+			return cursor.moveToFirst()
+					? CursorHelpers.getString(cursor, DatabaseContract.BufferColumns.SOURCE)
+					: null;
+		}
 	}
 
 	private static long insertBuffer(@NonNull SQLiteDatabase db, long shaderId, int buffer,

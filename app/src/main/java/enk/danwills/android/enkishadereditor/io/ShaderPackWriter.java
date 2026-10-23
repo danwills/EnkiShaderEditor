@@ -87,10 +87,12 @@ public final class ShaderPackWriter {
 					continue;
 				}
 				String[] buffers = dataSource.buffer.getBufferSources(id);
-				textures.addAll(TextureReferences.find(shader.fragmentShader(), buffers));
-				String[] sources = new String[buffers.length + 1];
+				String common = dataSource.buffer.getCommonSource(id);
+				textures.addAll(TextureReferences.find(shader.fragmentShader(), buffers, common));
+				String[] sources = new String[buffers.length + 2];
 				sources[0] = shader.fragmentShader();
 				System.arraycopy(buffers, 0, sources, 1, buffers.length);
+				sources[sources.length - 1] = common;
 				String module = ModuleDirective.find(sources);
 				if (module != null) {
 					modules.add(module);

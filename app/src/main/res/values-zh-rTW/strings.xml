@@ -611,6 +611,10 @@
 	<string name="offscreen_buffers_remove_message">這將刪除 %1$s 中的程式碼。</string>
 	<string name="offscreen_buffers_remove">刪除</string>
 	<string name="pass_tab_sound">聲音</string>
+	<string name="pass_tab_common">共用</string>
+	<string name="common_add">新增共用程式碼</string>
+	<string name="common_remove">刪除共用程式碼</string>
+	<string name="common_remove_message">這會刪除每個通道開頭共用的程式碼。</string>
 	<string name="pass_tab_image">圖像</string>
 	<string name="pass_tab_text">文字 %1$s</string>
 	<string name="shader_texts_button">文字…</string>

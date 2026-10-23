@@ -122,6 +122,8 @@ public class ShaderViewManager {
 	private String appliedSource;
 	@Nullable
 	private String[] appliedBufferSources;
+	@Nullable
+	private String appliedCommonSource;
 	// The texts last handed to the renderer - see setProjectSessionIfChanged().
 	@NonNull
 	private Map<String, String> appliedTexts = Map.of();
@@ -481,7 +483,8 @@ public class ShaderViewManager {
 		return projectSession.getShaderId() == appliedShaderId &&
 				projectSession.getQuality() == appliedQuality &&
 				Objects.equals(projectSession.getEntryPointSource(), appliedSource) &&
-				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources);
+				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources) &&
+				Objects.equals(projectSession.getProject().getCommonSource(), appliedCommonSource);
 	}
 
 	// Shows the given offscreen buffer (0 = A) instead of the Image pass,
@@ -501,6 +504,7 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedCommonSource = projectSession.getProject().getCommonSource();
 		appliedTexts = projectSession.getProject().getTexts();
 		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		// Before setQuality() below - setQuality()/applyQuality() is a
@@ -514,8 +518,10 @@ public class ShaderViewManager {
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				projectSession.getProject().getBufferSources(),
+				appliedCommonSource,
 				projectSession.getQuality(),
-				projectSession.getShaderId());
+				projectSession.getShaderId(),
+				false);
 	}
 
 	// Runs the editor's version of a shader: if it's the one running (at
@@ -544,6 +550,7 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedCommonSource = projectSession.getProject().getCommonSource();
 		appliedTexts = projectSession.getProject().getTexts();
 		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		if (paused) {
@@ -552,6 +559,7 @@ public class ShaderViewManager {
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				bufferSources,
+				appliedCommonSource,
 				projectSession.getQuality(),
 				live ? 0 : projectSession.getShaderId(),
 				true);

@@ -1,12 +1,14 @@
 package enk.danwills.android.enkishadereditor.project;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 import enk.danwills.android.enkishadereditor.database.DataRecords;
+import enk.danwills.android.enkishadereditor.database.DataSource;
 
 public final class LegacyShaderProjectSource implements ShaderProjectSource {
 	@NonNull
@@ -22,6 +24,19 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 	// Name -> text, see ShaderProject.getTexts().
 	@NonNull
 	private final Map<String, String> texts;
+	// See ShaderProject.getCommonSource().
+	@Nullable
+	private final String commonSource;
+
+	// The shader with its buffers, texts and Common section, as stored.
+	@NonNull
+	public static LegacyShaderProjectSource load(@NonNull DataSource dataSource,
+			@NonNull DataRecords.Shader shader) {
+		return new LegacyShaderProjectSource(shader,
+				dataSource.buffer.getBufferSources(shader.id()),
+				dataSource.text.getTexts(shader.id()),
+				dataSource.buffer.getCommonSource(shader.id()));
+	}
 
 	public LegacyShaderProjectSource(@NonNull DataRecords.Shader shader) {
 		this(shader, new String[ShaderProjectPaths.MAX_BUFFERS]);
@@ -34,9 +49,16 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 
 	public LegacyShaderProjectSource(@NonNull DataRecords.Shader shader,
 			@NonNull String[] bufferSources, @NonNull Map<String, String> texts) {
+		this(shader, bufferSources, texts, null);
+	}
+
+	public LegacyShaderProjectSource(@NonNull DataRecords.Shader shader,
+			@NonNull String[] bufferSources, @NonNull Map<String, String> texts,
+			@Nullable String commonSource) {
 		this.shader = Objects.requireNonNull(shader);
 		this.bufferSources = Objects.requireNonNull(bufferSources);
 		this.texts = Objects.requireNonNull(texts);
+		this.commonSource = commonSource;
 		title = getTitle(shader);
 		origin = new ShaderProjectOrigin(
 				ShaderProjectOrigin.Type.LEGACY_DB,
@@ -61,6 +83,7 @@ public final class LegacyShaderProjectSource implements ShaderProjectSource {
 						ShaderProjectPaths.DEFAULT_ENTRY_FILE,
 						shader.fragmentShader())))
 				.withBufferSources(bufferSources)
+				.withCommonSource(commonSource)
 				.withTexts(texts);
 		return new ShaderProjectSession(
 				project,

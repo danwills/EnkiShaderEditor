@@ -20,7 +20,9 @@ import java.util.regex.Pattern;
 // <name>` lines - so a shared shader keeps them, and a sample can ship
 // one. A shader with neither is just its source, exactly as before.
 // ShaderToy's `//// Sound` section is read too, into a free buffer slot -
-// its mainSound() makes it a Sound pass (see SoundOutput).
+// its mainSound() makes it a Sound pass (see SoundOutput). A `//// Common`
+// section, after the Image pass, is code every pass starts with (as
+// ShaderToy's Common tab - see ShaderSourcePreparer).
 //
 // Copied and shared text starts with a `//// Name <name>` line, so pasting
 // or opening it brings the shader's name along - see withName() and
@@ -32,18 +34,22 @@ public final class MultipassSource {
 	private static final String MARKER_PREFIX = "//// Buffer ";
 	private static final String TEXT_MARKER_PREFIX = "//// Text ";
 	private static final int TEXT_SECTION = -3;
+	private static final String COMMON = "Common";
+	private static final String COMMON_MARKER = "//// " + COMMON;
+	private static final int COMMON_SECTION = -4;
 	private static final String SOUND = "Sound";
 	private static final int SOUND_SECTION = -2;
 	private static final Pattern PATTERN_MARKER = Pattern.compile(
-			"^//// (Image|Sound|Buffer ([A-" +
+			"^//// (Image|Sound|Common|Buffer ([A-" +
 					ShaderProjectPaths.getBufferLetter(ShaderProjectPaths.MAX_BUFFERS - 1) +
 					"])|Text ([A-Za-z_][A-Za-z0-9_]*))[ \\t]*$",
 			Pattern.MULTILINE);
 
 	// bufferSources: indexed by buffer, null where there's none - as
 	// ShaderProject.getBufferSources(). texts: name -> text, in order.
+	// commonSource: the Common section, or null for none.
 	public record Parsed(@NonNull String imageSource, @NonNull String[] bufferSources,
-			@NonNull Map<String, String> texts) {
+			@NonNull Map<String, String> texts, @Nullable String commonSource) {
 	}
 
 	// text: what's left once the name line is taken off; name: null when
@@ -82,7 +88,19 @@ public final class MultipassSource {
 	@NonNull
 	public static String join(@NonNull String imageSource, @NonNull String[] bufferSources,
 			@NonNull Map<String, String> texts) {
+		return join(imageSource, bufferSources, texts, null);
+	}
+
+	@NonNull
+	public static String join(@NonNull String imageSource, @NonNull String[] bufferSources,
+			@NonNull Map<String, String> texts, @Nullable String commonSource) {
 		StringBuilder text = new StringBuilder(imageSource);
+		if (commonSource != null) {
+			if (text.length() > 0 && text.charAt(text.length() - 1) != '\n') {
+				text.append('\n');
+			}
+			text.append(COMMON_MARKER).append('\n').append(commonSource);
+		}
 		for (int buffer = 0; buffer < bufferSources.length; ++buffer) {
 			if (bufferSources[buffer] == null) {
 				continue;
@@ -115,6 +133,7 @@ public final class MultipassSource {
 		String[] buffers = new String[ShaderProjectPaths.MAX_BUFFERS];
 		// The `//// Sound` section, if any - see placeSound().
 		String[] sound = new String[1];
+		String[] common = new String[1];
 		var texts = new LinkedHashMap<String, String>();
 		String textName = null;
 		boolean anyBuffer = false;
@@ -132,7 +151,7 @@ public final class MultipassSource {
 				}
 				leading = false;
 			} else {
-				store(section, content, buffers, sound, texts, textName);
+				store(section, content, buffers, sound, common, texts, textName);
 				if (section == -1) {
 					image = content;
 				}
@@ -143,7 +162,9 @@ public final class MultipassSource {
 					? letter.charAt(0) - 'A'
 					: textName != null
 							? TEXT_SECTION
-							: SOUND.equals(matcher.group(1)) ? SOUND_SECTION : -1;
+							: SOUND.equals(matcher.group(1))
+									? SOUND_SECTION
+									: COMMON.equals(matcher.group(1)) ? COMMON_SECTION : -1;
 			anyBuffer |= section != -1;
 			sectionStart = Math.min(text.length(), matcher.end() + 1);
 		}
@@ -151,14 +172,14 @@ public final class MultipassSource {
 			return null;
 		}
 		String content = text.substring(sectionStart);
-		store(section, content, buffers, sound, texts, textName);
+		store(section, content, buffers, sound, common, texts, textName);
 		if (section == -1) {
 			image = content;
 		}
 		if (sound[0] != null) {
 			placeSound(sound[0], buffers);
 		}
-		return new Parsed(image != null ? image : "", buffers, texts);
+		return new Parsed(image != null ? image : "", buffers, texts, common[0]);
 	}
 
 	// ShaderToy's Sound tab (`//// Sound`) becomes a buffer whose
@@ -175,12 +196,14 @@ public final class MultipassSource {
 	}
 
 	private static void store(int section, @NonNull String content, @NonNull String[] buffers,
-			@NonNull String[] sound, @NonNull Map<String, String> texts,
-			@Nullable String textName) {
+			@NonNull String[] sound, @NonNull String[] common,
+			@NonNull Map<String, String> texts, @Nullable String textName) {
 		if (section >= 0) {
 			buffers[section] = content;
 		} else if (section == SOUND_SECTION) {
 			sound[0] = content;
+		} else if (section == COMMON_SECTION) {
+			common[0] = content;
 		} else if (section == TEXT_SECTION && textName != null) {
 			// The line break before the next marker is the format's, not
 			// the text's.

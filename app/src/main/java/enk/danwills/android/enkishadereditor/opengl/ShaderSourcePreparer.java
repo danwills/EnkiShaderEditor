@@ -68,6 +68,18 @@ public final class ShaderSourcePreparer {
 			#define ENKI_HIGHP mediump
 			#endif
 			""";
+	// What a pass's copy of the Common section starts with (see
+	// prepare()): a line to find it by, and a default precision, since
+	// it comes before any the pass sets itself.
+	private static final String COMMON_BEGIN = """
+			// enki:common
+			#ifdef GL_FRAGMENT_PRECISION_HIGH
+			precision highp float;
+			precision highp int;
+			#else
+			precision mediump float;
+			#endif
+			""";
 	// Uniforms ShaderToy declares implicitly, in declaration order: the
 	// name, and the declaration added when a source uses it undeclared.
 	private static final String[][] SHADER_TOY_UNIFORMS = {
@@ -100,6 +112,21 @@ public final class ShaderSourcePreparer {
 			@Nullable String source,
 			int version,
 			int maxTextures) {
+		return prepare(source, null, version, maxTextures);
+	}
+
+	// common: the shader's Common section (see ShaderProject.
+	// getCommonSource()), which the pass gets as if it started with it -
+	// after its #version and #extension lines and any ShaderToy setup
+	// (uniforms the pass or Common uses undeclared), before its own first
+	// line. Errors in it are reported as the Common pass's (see
+	// ShaderLineMapping.toCommonLine()).
+	@NonNull
+	static PreparedShaderSource prepare(
+			@Nullable String source,
+			@Nullable String common,
+			int version,
+			int maxTextures) {
 		float fTimeMax = parseFTime(source);
 		if (source == null) {
 			return new PreparedShaderSource(
@@ -113,13 +140,14 @@ public final class ShaderSourcePreparer {
 
 		PreparedShaderInput preparedInput = adaptShaderToy(new PreparedShaderInput(
 				source,
-				ShaderLineMapping.identity()));
+				ShaderLineMapping.identity()), common);
 		String gles3Version = getGLES3Version(preparedInput.getSource(), version);
 		BackBufferParameters backBufferParameters = new BackBufferParameters();
 		ArrayList<DiscoveredSampler> samplers = new ArrayList<>();
 		ChannelParameters[] channels = new ChannelParameters[ChannelParameters.MAX_CHANNELS];
 
-		for (Matcher matcher = PATTERN_SAMPLER.matcher(source);
+		String declared = common != null ? common + "\n" + source : source;
+		for (Matcher matcher = PATTERN_SAMPLER.matcher(declared);
 				matcher.find() && samplers.size() < maxTextures; ) {
 			String type = matcher.group(1);
 			String name = matcher.group(2);
@@ -177,6 +205,16 @@ public final class ShaderSourcePreparer {
 		if (!preparedInput.getSource().contains(SHADER_EDITOR)) {
 			preparedInput = addPreprocessorDirective(preparedInput, SHADER_EDITOR);
 		}
+		if (common != null) {
+			// Found by its text now that nothing more goes in before it.
+			String prepared = preparedInput.getSource();
+			int at = prepared.indexOf(COMMON_BEGIN + common);
+			if (at >= 0) {
+				int first = countSourceLines(prepared, at) + countLines(COMMON_BEGIN) + 1;
+				preparedInput = new PreparedShaderInput(prepared,
+						preparedInput.getLineMapping().withCommon(first, countLines(common)));
+			}
+		}
 
 		return new PreparedShaderSource(
 				preparedInput,
@@ -195,8 +233,11 @@ public final class ShaderSourcePreparer {
 	// before the user's code via the line-mapped helpers below, or
 	// appended after it, so compile errors still point at the right line.
 	@NonNull
-	private static PreparedShaderInput adaptShaderToy(@NonNull PreparedShaderInput input) {
+	private static PreparedShaderInput adaptShaderToy(@NonNull PreparedShaderInput input,
+			@Nullable String common) {
 		String source = input.getSource();
+		// What may use ShaderToy's uniforms: the pass, and Common.
+		String uses = common != null ? common + "\n" + source : source;
 		boolean wrap = PATTERN_MAIN_IMAGE.matcher(source).find() &&
 				!PATTERN_MAIN.matcher(source).find();
 		if ((wrap || isSoundSource(source)) && !source.trim().startsWith("#version")) {
@@ -205,18 +246,22 @@ public final class ShaderSourcePreparer {
 
 		StringBuilder declarations = new StringBuilder();
 		for (String[] uniform : SHADER_TOY_UNIFORMS) {
-			if (usesUndeclared(source, uniform[0])) {
+			if (usesUndeclared(uses, uniform[0])) {
 				declarations.append(uniform[1]).append('\n');
 			}
 		}
 		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
 			String name = ChannelParameters.getChannelName(channel);
-			if (usesUndeclared(source, name)) {
+			if (usesUndeclared(uses, name)) {
 				declarations.append("uniform sampler2D ").append(name).append(";\n");
 			}
 		}
-		if (declarations.length() > 0) {
-			input = insertAfterExtensions(input, SHADER_TOY_PRECISION + declarations);
+		String inserted = declarations.length() > 0 ? SHADER_TOY_PRECISION + declarations : "";
+		if (common != null) {
+			inserted += COMMON_BEGIN + common + (common.endsWith("\n") ? "" : "\n");
+		}
+		if (!inserted.isEmpty()) {
+			input = insertAfterExtensions(input, inserted);
 		}
 
 		boolean sound = isSoundSource(source);

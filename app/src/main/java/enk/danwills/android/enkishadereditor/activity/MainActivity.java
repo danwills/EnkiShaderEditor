@@ -752,6 +752,9 @@ public class MainActivity extends AppCompatActivity {
 	private String suggestTextureName(@NonNull ShaderProjectSession session, int buffer) {
 		List<String> sources = new ArrayList<>();
 		sources.add(session.getEntryPointSource());
+		if (session.getProject().getCommonSource() != null) {
+			sources.add(session.getProject().getCommonSource());
+		}
 		for (String source : session.getProject().getBufferSources()) {
 			if (source != null) {
 				sources.add(source);
@@ -2019,6 +2022,7 @@ public class MainActivity extends AppCompatActivity {
 					var parsed = MultipassSource.parse(pastedSource);
 					if (parsed != null) {
 						shaderManager.setBufferSources(parsed.bufferSources());
+						shaderManager.setCommonSource(parsed.commonSource());
 						shaderManager.setTexts(parsed.texts());
 					}
 					editorFragment.setText(parsed != null ? parsed.imageSource() : pastedSource);
@@ -2487,11 +2491,14 @@ public class MainActivity extends AppCompatActivity {
 			dataSource.shader.updateShader(replaceId, source, null, quality);
 			dataSource.buffer.setBufferSources(replaceId,
 					parsed != null ? parsed.bufferSources() : new String[0]);
+			dataSource.buffer.setCommonSource(replaceId,
+					parsed != null ? parsed.commonSource() : null);
 			dataSource.text.setTexts(replaceId, parsed != null ? parsed.texts() : Map.of());
 		} else {
 			id = dataSource.shader.insertShader(source, name, null, quality);
 			if (parsed != null && id > 0) {
 				dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+				dataSource.buffer.setCommonSource(id, parsed.commonSource());
 				dataSource.text.setTexts(id, parsed.texts());
 			}
 		}
@@ -2778,7 +2785,8 @@ public class MainActivity extends AppCompatActivity {
 	private String getWholeShaderSource() {
 		var session = shaderManager.getEditedProjectSession();
 		return MultipassSource.join(session.getEntryPointSource(),
-				session.getProject().getBufferSources(), session.getProject().getTexts());
+				session.getProject().getBufferSources(), session.getProject().getTexts(),
+				session.getProject().getCommonSource());
 	}
 
 	// Offscreen buffers (ShaderToy-style multipass) - see EditorFragment's
@@ -2796,6 +2804,17 @@ public class MainActivity extends AppCompatActivity {
 						? smoothstep(40.0, 0.0, length(fragCoord - iMouse.xy))
 						: 0.0;
 				fragColor = vec4(max(previous * 0.98, vec3(paint)), 1.0);
+			}
+			""";
+	// A new Common section - see ShaderSourcePreparer.prepare().
+	private static final String COMMON_TEMPLATE = """
+			// Common: every pass starts with this code, as if it were at the top
+			// of each - so functions and #defines here are everyone's. Its own
+			// uniforms need declaring here; a pass's (iChannel0...) aren't seen.
+			#define TAU 6.28318530718
+
+			vec3 palette(float t) {
+				return 0.5 + 0.5 * cos(TAU * (t + vec3(0.0, 0.33, 0.67)));
 			}
 			""";
 
@@ -2841,7 +2860,8 @@ public class MainActivity extends AppCompatActivity {
 			present[i] = buffers[i] != null;
 			sound[i] = ShaderSourcePreparer.isSoundSource(buffers[i]);
 		}
-		editorFragment.setPassTabs(present, sound, getTextNames());
+		editorFragment.setPassTabs(present, sound, getTextNames(),
+				shaderManager.getEditedProjectSession().getProject().getCommonSource() != null);
 		shownSoundTabs = sound;
 		// Back to the Image pass if the shown buffer has gone, or another
 		// shader was loaded - see EditorFragment.getDisplayedPass().
@@ -2857,6 +2877,9 @@ public class MainActivity extends AppCompatActivity {
 
 	// A file's pass: its buffer, its text's tab, or the Image pass.
 	private int passForPath(@NonNull String path) {
+		if (ShaderProjectPaths.COMMON_PATH.equals(ShaderProjectPaths.normalize(path))) {
+			return ShaderError.COMMON_PASS;
+		}
 		String text = ShaderProjectPaths.getTextName(path);
 		if (text != null) {
 			int index = getTextNames().indexOf(text);
@@ -2869,6 +2892,11 @@ public class MainActivity extends AppCompatActivity {
 		String path;
 		if (pass == ShaderError.IMAGE_PASS) {
 			path = shaderManager.getEntryFilePath();
+		} else if (pass == ShaderError.COMMON_PASS) {
+			if (shaderManager.getEditedProjectSession().getProject().getCommonSource() == null) {
+				return;
+			}
+			path = ShaderProjectPaths.COMMON_PATH;
 		} else if (EditorFragment.isTextPass(pass)) {
 			List<String> names = getTextNames();
 			int index = pass - EditorFragment.TEXT_PASS_BASE;
@@ -2886,6 +2914,9 @@ public class MainActivity extends AppCompatActivity {
 	private void cyclePass(int direction) {
 		var passes = new ArrayList<Integer>();
 		passes.add(ShaderError.IMAGE_PASS);
+		if (shaderManager.getEditedProjectSession().getProject().getCommonSource() != null) {
+			passes.add(ShaderError.COMMON_PASS);
+		}
 		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
 		for (int i = 0; i < buffers.length; ++i) {
 			if (buffers[i] != null) {
@@ -2929,6 +2960,38 @@ public class MainActivity extends AppCompatActivity {
 				})
 				.setNeutralButton(R.string.shader_texts_button, (dialog, which) ->
 						showShaderTextsDialog())
+				.setPositiveButton(shaderManager.getEditedProjectSession().getProject()
+								.getCommonSource() != null
+								? R.string.common_remove
+								: R.string.common_add,
+						(dialog, which) -> toggleCommon())
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	// Adds a Common section (code every pass starts with) and opens it, or
+	// - after asking - removes the one there is.
+	private void toggleCommon() {
+		if (shaderManager.getEditedProjectSession(editorFragment.getText()).getProject()
+				.getCommonSource() == null) {
+			shaderManager.setCommonSource(COMMON_TEMPLATE);
+			refreshPassTabs();
+			shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+			switchToPass(ShaderError.COMMON_PASS);
+			return;
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.common_remove)
+				.setMessage(R.string.common_remove_message)
+				.setPositiveButton(R.string.offscreen_buffers_remove, (dialog, which) -> {
+					if (editorFragment.getActivePass() == ShaderError.COMMON_PASS) {
+						// Off its tab first, so the edit is committed before it goes.
+						switchToPass(ShaderError.IMAGE_PASS);
+					}
+					shaderManager.setCommonSource(null);
+					refreshPassTabs();
+					shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
 	}

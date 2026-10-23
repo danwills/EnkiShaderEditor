@@ -647,6 +647,10 @@
 	<string name="offscreen_buffers_remove_message">Код в %1$s будет удалён.</string>
 	<string name="offscreen_buffers_remove">Удалить</string>
 	<string name="pass_tab_sound">Звук</string>
+	<string name="pass_tab_common">Общий</string>
+	<string name="common_add">Добавить общий код</string>
+	<string name="common_remove">Удалить общий код</string>
+	<string name="common_remove_message">Это удалит общий код, с которого начинается каждый проход.</string>
 	<string name="pass_tab_image">Изоб</string>
 	<string name="pass_tab_text">Текст %1$s</string>
 	<string name="shader_texts_button">Тексты…</string>

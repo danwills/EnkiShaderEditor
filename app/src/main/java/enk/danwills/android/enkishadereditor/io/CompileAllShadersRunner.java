@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
@@ -67,6 +68,13 @@ public final class CompileAllShadersRunner {
 				@NonNull
 				public String source() {
 					return source;
+				}
+
+				// Looked up as it's compiled, on the compiler's thread.
+				@Override
+				@Nullable
+				public String common() {
+					return dataSource.buffer.getCommonSource(id);
 				}
 			});
 		}

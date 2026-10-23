@@ -16,6 +16,10 @@ public class ShaderError {
 	// Which pass of a multipass shader the error belongs to - the Image
 	// pass (the shader's entry file), or an offscreen buffer (0 = A).
 	public static final int IMAGE_PASS = -1;
+	// The shader's Common section, which every pass starts with - an error
+	// in it is the same in every pass, so it's Common's (see
+	// ShaderLineMapping.toCommonLine()).
+	public static final int COMMON_PASS = -2;
 
 	private final int sourceStringNumber;
 	private final int errorLine;
@@ -35,9 +39,12 @@ public class ShaderError {
 		this.pass = pass;
 	}
 
+	// The error as `pass`'s - unless it's in Common, which stays Common's.
 	@NonNull
 	ShaderError withPass(int pass) {
-		return new ShaderError(sourceStringNumber, errorLine, message, pass);
+		return this.pass == COMMON_PASS
+				? this
+				: new ShaderError(sourceStringNumber, errorLine, message, pass);
 	}
 
 	public int getPass() {
@@ -118,9 +125,13 @@ public class ShaderError {
 		if (errorLineString == null) {
 			return ShaderError.createGeneral(message);
 		}
-		int errorLine = lineMapping.toSourceLine(
-				Integer.parseInt(errorLineString));
+		int preparedLine = Integer.parseInt(errorLineString);
 		String infoLog = Objects.requireNonNull(matcher.group(3));
+		int commonLine = lineMapping.toCommonLine(preparedLine);
+		if (commonLine > 0) {
+			return new ShaderError(sourceStringNumber, commonLine, infoLog, COMMON_PASS);
+		}
+		int errorLine = lineMapping.toSourceLine(preparedLine);
 		return new ShaderError(sourceStringNumber, errorLine, infoLog);
 	}
 
@@ -151,7 +162,9 @@ public class ShaderError {
 	@NonNull
 	@Override
 	public String toString() {
-		String prefix = pass == IMAGE_PASS ? "" : "Buffer " + (char) ('A' + pass) + ": ";
+		String prefix = pass == IMAGE_PASS
+				? ""
+				: pass == COMMON_PASS ? "Common: " : "Buffer " + (char) ('A' + pass) + ": ";
 		if (hasLine()) {
 			return String.format(Locale.getDefault(),
 					"%s%d: %s", prefix, errorLine, message);

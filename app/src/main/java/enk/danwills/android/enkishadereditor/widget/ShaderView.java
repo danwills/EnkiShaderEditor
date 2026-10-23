@@ -108,10 +108,17 @@ public class ShaderView extends GLSurfaceView {
 	// keepState: see ShaderRenderer.setFragmentShader().
 	public void setFragmentShader(String src, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
+		setFragmentShader(src, bufferSources, null, quality, shaderId, keepState);
+	}
+
+	// commonSource: the Common section, see ShaderRenderer.setFragmentShader().
+	public void setFragmentShader(String src, @Nullable String[] bufferSources,
+			@Nullable String commonSource, float quality, long shaderId, boolean keepState) {
 		super.onPause();
 		renderer.unregisterListeners(true);
-		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources), quality,
-				shaderId, keepState);
+		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources),
+				commonSource != null ? removeNonAscii(commonSource) : null, quality, shaderId,
+				keepState);
 		onResume();
 	}
 

@@ -59,7 +59,9 @@ public class ErrorAdapter extends ListAdapter<ShaderError, ErrorAdapter.ViewHold
 			// Image pass - tapping it switches to that buffer's tab.
 			String pass = error.getPass() == ShaderError.IMAGE_PASS
 					? ""
-					: (char) ('A' + error.getPass()) + " ";
+					: error.getPass() == ShaderError.COMMON_PASS
+							? itemView.getContext().getString(R.string.pass_tab_common) + " "
+							: (char) ('A' + error.getPass()) + " ";
 			if (error.hasLine()) {
 				errorLine.setVisibility(View.VISIBLE);
 				errorLine.setText(String.format(Locale.getDefault(), "%s%d: ", pass,
