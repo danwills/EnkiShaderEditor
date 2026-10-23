@@ -37,7 +37,8 @@ import java.util.regex.Pattern;
 // it (and it's at the opacity Android lets them through another app's
 // overlay at). Each line starts with its kind's icon, and
 // is coloured: `code` in cyan, numbers in yellow, words that sound good
-// in green and bad in red.
+// in green and bad in red - and ends, dimmed, with how long its step's
+// likely to take, if Claude said (`?` when it can't tell).
 @RequiresApi(Build.VERSION_CODES.O)
 final class StatusOverlay {
 	private static final int MAX_LINES = 8;
@@ -82,7 +83,7 @@ final class StatusOverlay {
 
 	// Debug-only tooling, in English like the rest of it.
 	@SuppressLint("SetTextI18n")
-	void add(@NonNull String text, @Nullable String kind) {
+	void add(@NonNull String text, @Nullable String kind, @Nullable String eta) {
 		LinearLayout lines = panel();
 		lines.setVisibility(View.VISIBLE);
 		if (badge == null) {
@@ -101,7 +102,7 @@ final class StatusOverlay {
 		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
 		line.setLineSpacing(0, 1.1f);
 		line.setPadding(0, dp(3), 0, dp(3));
-		line.setText(styled(text, kind));
+		line.setText(styled(text, kind, eta));
 		lines.addView(line);
 	}
 
@@ -156,7 +157,8 @@ final class StatusOverlay {
 
 	// The line as shown: its kind's icon, then the text coloured.
 	@NonNull
-	private static CharSequence styled(@NonNull String text, @Nullable String kind) {
+	private static CharSequence styled(@NonNull String text, @Nullable String kind,
+			@Nullable String eta) {
 		var out = new SpannableStringBuilder();
 		String icon = icon(kind);
 		out.append(icon).append("  ");
@@ -182,6 +184,12 @@ final class StatusOverlay {
 		Integer tint = tint(kind);
 		if (tint != null) {
 			out.setSpan(new ForegroundColorSpan(tint), 0, start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		}
+		if (eta != null && !eta.isEmpty()) {
+			int from = out.length();
+			out.append("  ⏱ ").append(eta.equals("?") ? "no estimate" : eta);
+			out.setSpan(new ForegroundColorSpan(Color.rgb(150, 155, 170)), from, out.length(),
+					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		}
 		return out;
 	}

@@ -14,12 +14,13 @@
 # it's done, when the notification gets the log's tail instead. Without
 # the debug build it's quietly skipped.
 #
-#   status.sh post "Opening `Adjust Defines`..." [KIND]
+#   status.sh post "Opening `Adjust Defines`..." [KIND] [ESTIMATE]
 #                     a line (and, the first time in a run, the notification);
 #                     KIND picks its icon and colour: info step look tap type
 #                     wait build install load think good bad warn happy sad
 #                     party, or any emoji. `code`, numbers and good/bad words
-#                     are coloured too.
+#                     are coloured too. ESTIMATE, how long the step's likely
+#                     to take ("~30 s"; "?" for no estimate), ends the line.
 #   status.sh ask "Test the new splats mode?" [SECONDS]
 #                     a dialog on the phone asking whether Claude can use it
 #                     (TakeOverActivity, over whatever's showing). After
@@ -31,8 +32,11 @@
 #                     stopped the app (force-stop, install), which takes the
 #                     panel with it
 #   status.sh check   exit 1 if the notification was swiped away
-#   status.sh hide    the panel out of sight (a clean screenshot); the next
-#                     post brings it back, lines and all
+#   status.sh hide    the panel out of sight (a clean screenshot), saying so
+#                     first; the next post brings it back, lines and all
+#   status.sh shot FILE [WHY]
+#                     says it's hiding, hides, screenshots the phone to FILE
+#                     (PNG), and is back saying it's looking at it (at WHY)
 #   status.sh done "Back to Materialistic" [sad]
 #                     the panel gone at once, and the notification left
 #                     saying Claude's finished (or stopped), with the summary
@@ -81,6 +85,14 @@ icon() {
 	esac
 }
 
+# A line for the panel and the run's log: TEXT KIND [ESTIMATE].
+line() {
+	say "--es text $(quote "$1") --es kind $(quote "$2") --es eta $(quote "${3:-}")"
+	printf '%s\n%s\n' "$1" "$2" > "$LAST"
+	printf '%s\t%s\t%s' "$2" "$1" "${3:-}" | tr -d '\n' >> "$LOG"
+	echo >> "$LOG"
+}
+
 # A notification's key, by tag, if it's still there.
 key() {
 	adb shell cmd notification list | tr -d '\r' | grep "|$1|" | head -n 1
@@ -104,17 +116,14 @@ post)
 		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
-	say "--es text $(quote "${2:-Testing...}") --es kind $(quote "${3:-step}")"
-	printf '%s\n%s\n' "${2:-Testing...}" "${3:-step}" > "$LAST"
-	printf '%s\t%s\n' "${3:-step}" "${2:-Testing...}" | tr -d '\n' >> "$LOG"
-	echo >> "$LOG"
+	line "${2:-Testing...}" "${3:-step}" "${4:-}"
 	;;
 again)
 	# Only mid-run: the panel's back, with the pill and the run's last lines.
 	if [ -s "$STATE" ] && [ -s "$LOG" ]; then
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
-		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text; do
-			say "--es text $(quote "$text") --es kind $(quote "$kind")"
+		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text eta; do
+			say "--es text $(quote "$text") --es kind $(quote "$kind") --es eta $(quote "$eta")"
 		done
 	fi
 	;;
@@ -147,7 +156,18 @@ check)
 	[ -n "$(key "$(tag)")" ]
 	;;
 hide)
+	line "Hiding the panel for a moment - taking a screenshot" "📸"
+	sleep 0.5
 	say "--ez hide true"
+	;;
+shot)
+	[ -n "$2" ] || { echo "usage: $0 shot FILE [WHY]" >&2; exit 2; }
+	line "Hiding the panel for a moment - taking a screenshot" "📸" "~2 s"
+	sleep 0.5
+	say "--ez hide true"
+	sleep 0.4
+	adb exec-out screencap -p > "$2"
+	line "Back - looking at the screenshot${3:+ ($3)}" think "?"
 	;;
 done)
 	t=$(tag)
@@ -163,7 +183,7 @@ done)
 	if [ -s "$LOG" ]; then
 		body="$body
 
-$(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text; do
+$(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta; do
 			printf '%s %s\n' "$(icon "$k")" "$(printf %s "$text" | tr -d '`')"
 		done)"
 	fi
@@ -175,7 +195,7 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text; do
 	say "--ez done true"
 	;;
 *)
-	echo "usage: $0 post TEXT [KIND] | again | ask TEXT [SECONDS] | check | hide | done [TEXT] [sad]" >&2
+	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac

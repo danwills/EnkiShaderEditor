@@ -66,13 +66,16 @@ When driving Dan's phone over adb (only when he's said it's free):
   overlay (TestStatusReceiver/StatusOverlay: the run's last 8 lines over whatever's on screen,
   kept up the whole run - nothing fades), and the first post of a run also posts the
   notification. Before a pause to think (reading a screenshot or code, working something out),
-  post a `think` line saying so - it stays up until the next. KIND is
+  post a `think` line saying so - it stays up until the next. Give each line an estimate of how
+  long its step will take as a third argument (`'~30 s'`, `'~2 min'`; `'?'` when you can't
+  tell), shown dimmed at its end. KIND is
   its icon and colour - step, look, tap, type, wait, build, install, load, think, good, bad,
   warn, happy, sad, party, or any emoji: use good/bad for what worked or didn't. `code`,
   numbers and good/bad words are coloured too - so quote with single quotes, or the shell runs
-  the backticks. `status.sh hide` takes the panel out of sight for a screenshot that needs the
-  top of the screen (the next post brings it back, lines and all); `status.sh again` replays the
-  run's last lines. Run `status.sh check` between steps: if it fails, Dan swiped the notification
+  the backticks. For a screenshot use `status.sh shot file.png [why]`: it says it's hiding,
+  hides the panel, takes the screenshot and comes back saying it's looking at it (`hide` alone
+  just says so and hides; the next post brings it back, lines and all); `status.sh again`
+  replays the run's last lines. Run `status.sh check` between steps: if it fails, Dan swiped the notification
   away to interrupt - finish the step in hand (don't leave a dialog half-done), note where the
   test got to so it can be picked up later, and stop.
 - To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the

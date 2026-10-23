@@ -10,6 +10,7 @@ import android.widget.Toast;
 // Debug builds only: shows what Claude is doing while it drives Dan's
 // phone (tools/phone/status.sh sends it with an explicit `am broadcast`).
 // Extras: `text`; `kind` - its icon and colour (see StatusOverlay.icon());
+// `eta` - how long its step's likely to take ("?" for no estimate);
 // `hide` - the panel out of sight, for a clean screenshot; `done` - the
 // run's over, the panel gone at once (the notification has the log's end). Shown in StatusOverlay
 // over whatever's on screen, or - without the overlay permission, which
@@ -38,6 +39,6 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		if (text == null || text.isEmpty()) {
 			return;
 		}
-		overlay.add(text, intent.getStringExtra("kind"));
+		overlay.add(text, intent.getStringExtra("kind"), intent.getStringExtra("eta"));
 	}
 }

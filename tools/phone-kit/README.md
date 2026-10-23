@@ -37,14 +37,17 @@ owner might be holding it. It covers four things:
     when no phone is connected.
     `SECONDS` (default 15) is how long the question waits before the
     15 s countdown.
-  - `status.sh post 'text' [KIND]` adds a line to the panel, and the run
-    notification the first time.
+  - `status.sh post 'text' [KIND] [ESTIMATE]` adds a line to the panel,
+    and the run notification the first time. ESTIMATE (`'~30 s'`, or `'?'`
+    for no estimate) shows dimmed at the line's end.
   - `status.sh again` replays the run's last lines. The panel lives in
     the app's process, so a force-stop or install takes it away; call this
     straight after one.
   - `status.sh check` fails if the run notification was swiped away.
-  - `status.sh hide` takes the panel out of sight for a clean screenshot;
-    the next post brings it back, lines and all.
+  - `status.sh shot file.png [why]` says it's hiding, hides the panel,
+    takes a screenshot and comes back saying it's looking at it.
+  - `status.sh hide` says so and takes the panel out of sight; the next
+    post brings it back, lines and all.
   - `status.sh done 'summary' [sad]` takes the panel away at once and
     leaves the finished notification up, with the summary and the log's
     last lines.
@@ -96,9 +99,11 @@ When driving the phone over adb:
   is never empty while you're driving - with `status.sh post 'what I'"'"'m doing' KIND`
   (step, look, tap, type, wait, build, install, load, think, good, bad,
   warn, happy, sad, party): good/bad for what worked or didn't. Before a
-  pause to think, post a `think` line saying so. Quote with single quotes,
-  or the shell runs the backticks.
-- `status.sh hide` before a screenshot that needs the screen clear.
+  pause to think, post a `think` line saying so. Give each line an estimate
+  as a third argument (`'~30 s'`, `'?'` when unsure). Quote with single
+  quotes, or the shell runs the backticks.
+- Screenshots with `status.sh shot file.png [why]`, which hides the panel
+  around it and says so.
 - After anything that stops the app (force-stop, install, a restart),
   run `status.sh again` straight away: the panel went with the process,
   and this replays its lines.
