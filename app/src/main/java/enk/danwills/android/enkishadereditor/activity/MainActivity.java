@@ -1954,16 +1954,79 @@ public class MainActivity extends AppCompatActivity {
 		});
 	}
 
+	// A name's trailing number and what comes before it: thingYo2 ->
+	// thingYo, 2.
+	private static final Pattern TRAILING_NUMBER = Pattern.compile("(.*\\D)(\\d{1,9})");
+
 	// Asks for the postfix of a new shader's name after `name`, offering
-	// the first number not taken yet (name2, name3...): onName gets the
-	// whole name, or null for an empty postfix (an unnamed shader).
+	// the first number not taken yet (name2, name3...), with the whole
+	// name shown as it'll be. For a name that already ends with a number
+	// (thingYo2) it asks which: the next number along (thingYo3, the
+	// default), or a variation of it (thingYo2 and a word). onName gets
+	// the whole name, or null for an empty postfix (an unnamed shader).
 	private void askNewShaderName(@NonNull String name, @NonNull Consumer<String> onName) {
-		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
+		View view = getLayoutInflater().inflate(R.layout.dialog_save_as_new_name, null);
 		TextView prefixLabel = view.findViewById(R.id.prefix_label);
 		EditText postfixView = view.findViewById(R.id.postfix);
-		prefixLabel.setText(getString(R.string.name_group_prefix_label, name));
-		postfixView.setText(String.valueOf(nextFreeNumber(name)));
+		TextView preview = view.findViewById(R.id.name_preview);
+		RadioGroup kind = view.findViewById(R.id.name_kind);
+		RadioButton nextNumber = view.findViewById(R.id.name_next_number);
+		RadioButton variation = view.findViewById(R.id.name_variation);
+
+		Matcher numbered = TRAILING_NUMBER.matcher(name);
+		String base;
+		String next;
+		if (numbered.matches()) {
+			base = numbered.group(1);
+			next = String.valueOf(nextFreeNumber(base, Integer.parseInt(numbered.group(2)) + 1));
+		} else {
+			base = name;
+			next = String.valueOf(nextFreeNumber(name, 2));
+		}
+		String[] prefix = {base};
+		Runnable showPreview = () -> {
+			String postfix = postfixView.getText().toString().trim();
+			preview.setText(postfix.isEmpty()
+					? getString(R.string.save_as_new_unnamed)
+					: getString(R.string.save_as_new_preview, prefix[0] + postfix));
+		};
+		Runnable showPrefix = () -> prefixLabel.setText(
+				getString(R.string.name_group_prefix_label, prefix[0]));
+		if (numbered.matches()) {
+			kind.setVisibility(View.VISIBLE);
+			nextNumber.setText(getString(R.string.save_as_new_next_number, base + next));
+			variation.setText(getString(R.string.save_as_new_variation, name));
+			nextNumber.setChecked(true);
+			kind.setOnCheckedChangeListener((group, checkedId) -> {
+				boolean varied = checkedId == R.id.name_variation;
+				prefix[0] = varied ? name : base;
+				postfixView.setHint(varied
+						? R.string.save_as_new_variation_hint
+						: R.string.name_group_postfix_hint);
+				postfixView.setText(varied ? "" : next);
+				postfixView.selectAll();
+				showPrefix.run();
+				showPreview.run();
+			});
+		}
+		showPrefix.run();
+		postfixView.setText(next);
 		postfixView.selectAll();
+		showPreview.run();
+		postfixView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence text, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable text) {
+				showPreview.run();
+			}
+		});
 
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.duplicate_shader)
@@ -1974,8 +2037,9 @@ public class MainActivity extends AppCompatActivity {
 						onName.accept(null);
 						return;
 					}
+					String start = prefix[0];
 					shaderListManager.checkNamePrefixAndThen(postfix,
-							fixedPostfix -> onName.accept(name + fixedPostfix));
+							fixedPostfix -> onName.accept(start + fixedPostfix));
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.setOnDismissListener(d -> SoftKeyboard.hide(this, postfixView))
@@ -1983,8 +2047,8 @@ public class MainActivity extends AppCompatActivity {
 		postfixView.requestFocus();
 	}
 
-	// The first n from 2 with no shader named name + n.
-	private int nextFreeNumber(@NonNull String name) {
+	// The first n from `from` with no shader named name + n.
+	private int nextFreeNumber(@NonNull String name, int from) {
 		Set<String> taken = new HashSet<>();
 		for (var shader : shaderListManager.getAllShaders()) {
 			String title = shader.getTitle();
@@ -1992,7 +2056,7 @@ public class MainActivity extends AppCompatActivity {
 				taken.add(title.toLowerCase(Locale.ROOT));
 			}
 		}
-		int n = 2;
+		int n = from;
 		while (taken.contains((name + n).toLowerCase(Locale.ROOT))) {
 			n++;
 		}

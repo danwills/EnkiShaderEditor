@@ -1,0 +1,49 @@
+<!-- Save as New Shader's name - see MainActivity.askNewShaderName(). -->
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="match_parent"
+	android:orientation="vertical"
+	android:padding="16dp">
+	<!-- Only for a name that ends with a number: the next one along, or
+	     a variation of it. -->
+	<RadioGroup
+		android:id="@+id/name_kind"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:visibility="gone">
+		<RadioButton
+			android:id="@+id/name_next_number"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"/>
+		<RadioButton
+			android:id="@+id/name_variation"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"/>
+	</RadioGroup>
+	<TextView
+		android:id="@+id/prefix_label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginBottom="8dp"
+		android:textSize="14sp"/>
+	<EditText
+		tools:targetApi="o"
+		style="@android:style/Widget.EditText"
+		android:id="@+id/postfix"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:hint="@string/name_group_postfix_hint"
+		android:inputType="text"
+		android:importantForAutofill="no"/>
+	<!-- The whole new name, as it'll be. -->
+	<TextView
+		android:id="@+id/name_preview"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginTop="8dp"
+		android:textSize="14sp"
+		android:textStyle="bold"/>
+</LinearLayout>

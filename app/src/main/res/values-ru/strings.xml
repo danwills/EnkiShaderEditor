@@ -225,6 +225,11 @@
 	<string name="sort_by_similarity">Сортировать по схожести кода</string>
 	<string name="name_group_prefix_label">Новое имя будет начинаться с: %1$s</string>
 	<string name="name_group_postfix_hint">Окончание</string>
+	<string name="save_as_new_next_number">Следующий номер: %1$s</string>
+	<string name="save_as_new_variation">Вариант %1$s</string>
+	<string name="save_as_new_variation_hint">Слово, например Warm</string>
+	<string name="save_as_new_preview">Новое имя: %1$s</string>
+	<string name="save_as_new_unnamed">Без имени: безымянная копия</string>
 	<string name="name_already_exists">Шейдер с именем \"%1$s\" уже существует. Переименовать всё равно?</string>
 	<string name="sure_reparent_named_shader">Этот шейдер уже называется \"%1$s\". Изменение родителя переименует его в \"%2$s\". Продолжить?</string>
 	<string name="renamed_shader_to">Переименовано в %1$s</string>

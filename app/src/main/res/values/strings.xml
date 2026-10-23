@@ -225,6 +225,11 @@
 	<string name="sort_by_similarity">Sort by Code Similarity</string>
 	<string name="name_group_prefix_label">New name will start with: %1$s</string>
 	<string name="name_group_postfix_hint">Postfix</string>
+	<string name="save_as_new_next_number">Next number: %1$s</string>
+	<string name="save_as_new_variation">A variation of %1$s</string>
+	<string name="save_as_new_variation_hint">A word, e.g. Warm</string>
+	<string name="save_as_new_preview">New name: %1$s</string>
+	<string name="save_as_new_unnamed">No name: an unnamed copy</string>
 	<string name="name_already_exists">A shader is already named \"%1$s\". Rename anyway?</string>
 	<string name="sure_reparent_named_shader">This shader is already named \"%1$s\". Reparenting will rename it to \"%2$s\". Continue?</string>
 	<string name="renamed_shader_to">Renamed to %1$s</string>

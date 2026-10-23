@@ -225,6 +225,11 @@
 	<string name="sort_by_similarity">Сортувати за схожістю коду</string>
 	<string name="name_group_prefix_label">Нова назва почнеться з: %1$s</string>
 	<string name="name_group_postfix_hint">Закінчення</string>
+	<string name="save_as_new_next_number">Наступний номер: %1$s</string>
+	<string name="save_as_new_variation">Варіант %1$s</string>
+	<string name="save_as_new_variation_hint">Слово, наприклад Warm</string>
+	<string name="save_as_new_preview">Нова назва: %1$s</string>
+	<string name="save_as_new_unnamed">Без назви: копія без назви</string>
 	<string name="name_already_exists">Шейдер з назвою \"%1$s\" вже існує. Перейменувати попри це?</string>
 	<string name="sure_reparent_named_shader">Цей шейдер вже має назву \"%1$s\". Зміна батьківського елемента перейменує його на \"%2$s\". Продовжити?</string>
 	<string name="renamed_shader_to">Перейменовано на %1$s</string>

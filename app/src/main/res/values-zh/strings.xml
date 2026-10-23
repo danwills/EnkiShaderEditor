@@ -222,6 +222,11 @@
 	<string name="sort_by_similarity">按代码相似度排序</string>
 	<string name="name_group_prefix_label">新名称将以此开头：%1$s</string>
 	<string name="name_group_postfix_hint">后缀</string>
+	<string name="save_as_new_next_number">下一个编号：%1$s</string>
+	<string name="save_as_new_variation">%1$s 的变体</string>
+	<string name="save_as_new_variation_hint">一个词，例如 Warm</string>
+	<string name="save_as_new_preview">新名称：%1$s</string>
+	<string name="save_as_new_unnamed">无名称：未命名的副本</string>
 	<string name="name_already_exists">已存在名为\"%1$s\"的着色器。仍要重命名吗？</string>
 	<string name="sure_reparent_named_shader">此着色器已命名为\"%1$s\"。更改父级将把它重命名为\"%2$s\"。是否继续？</string>
 	<string name="renamed_shader_to">已重命名为 %1$s</string>
