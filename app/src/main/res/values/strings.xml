@@ -519,6 +519,8 @@
 	<string name="adjust_defines_no_matches">No defines match</string>
 	<string name="adjust_defines_treat_as_color">Treat as Color</string>
 	<string name="adjust_defines_edit_live">Edit Live</string>
+	<string name="adjust_defines_select_all">Select All</string>
+	<string name="adjust_defines_select_none">Select None</string>
 	<string name="adjust_defines_go_live">Go Live</string>
 	<string name="adjust_defines_back">Back</string>
 	<string name="adjust_defines_live_checking">Checking…</string>

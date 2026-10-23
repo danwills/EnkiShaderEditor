@@ -518,6 +518,8 @@
 	<string name="adjust_defines_no_matches">Немає відповідних defines</string>
 	<string name="adjust_defines_treat_as_color">Вважати кольором</string>
 	<string name="adjust_defines_edit_live">Наживо</string>
+	<string name="adjust_defines_select_all">Вибрати всі</string>
+	<string name="adjust_defines_select_none">Зняти всі</string>
 	<string name="adjust_defines_go_live">Почати</string>
 	<string name="adjust_defines_back">Назад</string>
 	<string name="adjust_defines_live_checking">Перевірка…</string>

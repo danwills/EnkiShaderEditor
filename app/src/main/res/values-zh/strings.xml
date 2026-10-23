@@ -498,6 +498,8 @@
 	<string name="adjust_defines_no_matches">没有匹配的 define</string>
 	<string name="adjust_defines_treat_as_color">视为颜色</string>
 	<string name="adjust_defines_edit_live">实时编辑</string>
+	<string name="adjust_defines_select_all">全选</string>
+	<string name="adjust_defines_select_none">全不选</string>
 	<string name="adjust_defines_go_live">开始实时</string>
 	<string name="adjust_defines_back">返回</string>
 	<string name="adjust_defines_live_checking">正在检查…</string>

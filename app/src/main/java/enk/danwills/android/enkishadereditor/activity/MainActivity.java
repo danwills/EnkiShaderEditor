@@ -3440,8 +3440,13 @@ public class MainActivity extends AppCompatActivity {
 			boolean setup = adapter.isLiveSetup();
 			positive.setText(setup ? R.string.adjust_defines_go_live : R.string.adjust_defines_make_edits);
 			negative.setText(setup ? R.string.adjust_defines_back : android.R.string.cancel);
-			neutral.setVisibility(setup ? View.GONE : View.VISIBLE);
+			// In live mode's setup, Select All (or None, once they're all
+			// ticked) over whatever the filter shows.
+			neutral.setText(!setup ? R.string.adjust_defines_edit_live
+					: adapter.allShownLive() ? R.string.adjust_defines_select_none
+					: R.string.adjust_defines_select_all);
 		};
+		adapter.setOnLiveChanged(updateButtons);
 		positive.setOnClickListener(v -> {
 			if (adapter.isLiveSetup()) {
 				checkLiveDefines(dialog, adapter, source, originalOrder, workingOrder, wasPaused,
@@ -3462,6 +3467,10 @@ public class MainActivity extends AppCompatActivity {
 			}
 		});
 		neutral.setOnClickListener(v -> {
+			if (adapter.isLiveSetup()) {
+				adapter.setAllShownLive(!adapter.allShownLive());
+				return;
+			}
 			SoftKeyboard.hide(this, filterView);
 			adapter.setLiveSetup(true);
 			updateButtons.run();
