@@ -88,6 +88,10 @@ final class StatusOverlay {
 	private LinearLayout thumbs;
 	private boolean paused;
 	private static final String CONTROL = "claude-control";
+	// The pill's verb, one picked a run - Dan's idea, for a bit of fun.
+	private static final String[] VERBS = {"Orbiting", "Exploring", "Tinkering with",
+			"Prodding", "Steering", "Charting", "Conducting", "Wrangling", "Roaming",
+			"Puzzling over", "Tuning", "Piloting"};
 
 	private StatusOverlay(@NonNull Context context) {
 		this.context = context;
@@ -117,7 +121,8 @@ final class StatusOverlay {
 		lines.setVisibility(View.VISIBLE);
 		if (badge == null) {
 			badge = new TextView(context);
-			badge.setText("🤖 Claude is using your phone");
+			badge.setText("🤖 Claude is " + VERBS[(int) (System.nanoTime() / 1000 % VERBS.length)] +
+					" your phone");
 			badge.setTextColor(Color.rgb(255, 200, 120));
 			badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
 			badge.setPadding(0, 0, 0, dp(2));
