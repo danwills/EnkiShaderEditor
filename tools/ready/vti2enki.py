@@ -1383,14 +1383,18 @@ vec3 rdColour(ivec2 q, ivec2 grid, vec4 mode) {
 	return rdMap(rdRepeat(t, grid), mode.y);
 }
 
-// Tile k at uv (0-1 across it): a chemical's level (in composite, its
-// part in it), or the colour view.
-vec3 rdTileColour(int k, vec2 uv, ivec2 grid, vec4 mode) {
-	ivec2 q = ivec2(clamp(uv, 0.0, 0.999) * vec2(grid));
+// Tile k at cell q: a chemical's level (in composite, its part in it),
+// or the colour view.
+vec3 rdCellColour(int k, ivec2 q, ivec2 grid, vec4 mode) {
 	if (k < CHEMICALS) {
 		return mode.x > 0.5 ? rdContribution(k, q, grid) : vec3(rdLevel(k, q));
 	}
 	return rdColour(q, grid, mode);
+}
+
+// The same at uv (0-1 across the tile).
+vec3 rdTileColour(int k, vec2 uv, ivec2 grid, vec4 mode) {
+	return rdCellColour(k, ivec2(clamp(uv, 0.0, 0.999) * vec2(grid)), grid, mode);
 }
 
 // The coverage of `code`'s glyph, at g (0-1 across its cell), drawn h
@@ -1641,7 +1645,9 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 			col = mix(col, wheel.rgb, wheel.a);
 		}
 	} else if (view == 2) {
-		col = rdTileColour(shown, p / screen, grid, mode);
+		// One screen row per grid row, as in the colour view below:
+		// scaling the grid to the screen showed its middle row twice.
+		col = rdCellColour(shown, rdCell(ivec2(p), grid), grid, mode);
 	} else {
 		// One screen row per grid row: the screen has one more than the
 		// grid (the state row), and stretching the grid over it showed
