@@ -19,6 +19,17 @@ The source folder is only read. Everything goes in the output folder:
                                a .vti like the file at PATH, its state
                                grown from the stored seed
   vtipack.py report OUT        sizes and seed kinds
+  vtipack.py shader OUT PATH DIR
+                               the Enki shader for the file at PATH, its
+                               start textures (PNGs to import as Exact
+                               Pixels) and thumbnail, into DIR
+  vtipack.py plan OUT          group the files into packs of related
+                               patterns: OUT/packs.json, to edit by hand
+  vtipack.py packs OUT DIR     every pack in OUT/packs.json, into DIR
+  vtipack.py pack OUT DEST.sqlite --id ID --title TITLE [PATH...]
+                               a shader pack of the files at the PATHs (or
+                               --match's), left-out ones skipped
+                               (see vtishader.py)
 
 A file whose initial pattern is applied when it loads needs no state;
 nor does one whose state is all one value per chemical (stored exactly,
@@ -50,6 +61,8 @@ import vtiseed  # noqa: E402
 import vtistate  # noqa: E402
 
 CROP = 512
+PACK_MOST = 48  # shaders in a pack, at most (plan)
+PACK_LEAST = 6  # a smaller group joins its neighbour
 LARGE = 1024 * 1024  # cells: a state this big is left out unless a seed restarts it
 
 
@@ -301,6 +314,171 @@ def report(out):
 			done - n, (old - o) / 1e9, new / 1e6, hdr / 1e6, n, o / 1e9))
 
 
+def shader(out, path, dest):
+	import vtishader
+	c = vtishader.Collection(out)
+	os.makedirs(dest, exist_ok=True)
+	name = os.path.splitext(os.path.basename(path))[0]
+	glsl, textures, thumb = c.shader(path)
+	with open(os.path.join(dest, name + ".glsl"), "w") as fh:
+		fh.write(glsl)
+	for t, png in textures.items():
+		with open(os.path.join(dest, t + ".png"), "wb") as fh:
+			fh.write(png)
+	if thumb:
+		with open(os.path.join(dest, name + "_thumb.jpg"), "wb") as fh:
+			fh.write(thumb)
+	print("%s -> %s (%s)" % (path, os.path.join(dest, name + ".glsl"), ", ".join(textures) or "no textures"))
+
+
+def _stem_tokens(path):
+	# A file's name in words: split at _ (and the folder's own prefix kept whole).
+	return os.path.splitext(os.path.basename(path))[0].split("_")
+
+
+def _split(paths, most, depth=1):
+	# Paths sharing their first `depth` name words, splitting further any
+	# group still too big; [(words, paths)].
+	groups = {}
+	for p in paths:
+		groups.setdefault(tuple(_stem_tokens(p)[:depth]), []).append(p)
+	if len(groups) == 1 and all(len(_stem_tokens(p)) <= depth for p in paths):
+		return [(next(iter(groups)), paths)]  # can't split further
+	out = []
+	for words, ps in sorted(groups.items()):
+		if len(ps) > most:
+			out += _split(ps, most, depth + 1)
+		else:
+			out.append((words, ps))
+	return out
+
+
+def _slug(text):
+	return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def _title(words):
+	# "grayscott-withWave", "Gray-Scott", "dotdotdot" -> "Grayscott With Wave Dotdotdot":
+	# words split at case changes and punctuation, each kept once (one
+	# already spelt out by those before it is dropped).
+	out, seen = [], ""
+	for w in re.split(r"[-_ ./]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", " ".join(words))):
+		key = re.sub(r"[^a-z0-9]", "", w.lower())
+		if key and key not in seen:
+			out.append(w[:1].upper() + w[1:])
+			seen += key + " "
+	return " ".join(out)
+
+
+ROMAN = ["", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"]
+
+
+def plan(out, most):
+	"""Groups the collection into packs of related patterns, at most `most`
+	each: by folder, then by rule (where a folder, or the top level, holds
+	several), then by the words their names start with. Groups too small to
+	stand alone are pooled into the folder's Miscellany. Written to
+	OUT/packs.json as [{id, title, description, rule, paths}], for editing
+	before packs runs."""
+	idx = json.load(open(os.path.join(out, "index.json")))
+	rule = {x["path"]: (f["names"] or ["?"])[0] for f, x in _files(idx)}
+	folders = {}
+	for p in rule:
+		folders.setdefault(p.split("/")[0] if "/" in p else "", []).append(p)
+	plans, titles = [], {}
+
+	def add(title, rule_name, paths):
+		for k in range(0, len(paths), most):
+			n = titles.get(title, 0)
+			titles[title] = n + 1
+			t = title + (ROMAN[n] if n < len(ROMAN) else " %d" % (n + 1))
+			plans.append({"id": _slug(t), "title": t, "description": "", "rule": rule_name,
+					"paths": paths[k:k + most]})
+
+	for folder, paths in sorted(folders.items(), key=lambda kv: (kv[0] == "", kv[0].lower())):
+		by_rule = {}
+		for p in sorted(paths):
+			by_rule.setdefault(rule[p], []).append(p)
+		if folder and len(paths) <= most:
+			by_rule = {"": sorted(paths)}
+		pooled = []
+		for name, ps in sorted(by_rule.items()):
+			if len(ps) < PACK_LEAST and len(by_rule) > 1:
+				pooled += ps
+				continue
+			base = [w for w in (folder, name) if w]
+			groups = _split(ps, most) if len(ps) > most else [((), ps)]
+			merged = []
+			for words, g in groups:
+				# Small groups join their neighbour, so packs aren't scraps.
+				if merged and (len(merged[-1][1]) < PACK_LEAST or len(g) < PACK_LEAST) and \
+						len(merged[-1][1]) + len(g) <= most:
+					merged[-1] = (merged[-1][0] + [words], merged[-1][1] + g)
+				else:
+					merged.append(([words], g))
+			for wordss, g in merged:
+				words = wordss[0] if len(wordss) == 1 else os.path.commonprefix([list(w) for w in wordss])
+				add(_title(base + list(words)), name or rule[g[0]], g)
+		if pooled:
+			add(_title([folder or "Ready", "Miscellany"]), "assorted", pooled)
+	json.dump(plans, open(os.path.join(out, "packs.json"), "w"), indent=1)
+	for x in plans:
+		print("%4d  %s" % (len(x["paths"]), x["title"]))
+	print("%d packs of %d files -> %s" % (len(plans), sum(len(x["paths"]) for x in plans),
+			os.path.join(out, "packs.json")))
+
+
+def packs(out, dest, only, src):
+	plans = json.load(open(os.path.join(out, "packs.json")))
+	os.makedirs(dest, exist_ok=True)
+	for x in plans:
+		if only and not re.search(only, x["id"]):
+			continue
+		ns = argparse.Namespace(out=out, src=src, dest=os.path.join(dest, x["id"] + "-v%d.sqlite" % x.get("version", 1)),
+				paths=x["paths"], match=None, id=x["id"], title=x["title"],
+				description=x.get("description") or _description(x), author=x.get("author", "Dan Wills"),
+				version=x.get("version", 1), quiet=True)
+		pack(ns)
+
+
+def _description(x):
+	return ("%d %s patterns, from Dan's Ready (GollyGang/ready) collection. Each restarts the way its saved "
+			"state did - from that state or a seed grown to match it. Paint with a finger, erase with two; "
+			"three fingers show every chemical." % (len(x["paths"]), x["rule"]))
+
+
+def pack(args):
+	import vtishader
+	c = vtishader.Collection(args.out, args.src)
+	paths = list(args.paths)
+	if args.match:
+		paths += [p for p in sorted(c.files) if re.search(args.match, p) and p not in paths]
+	quiet = getattr(args, "quiet", False)
+	shaders, names = [], set()
+	for path in paths:
+		path = c.idx["duplicates"].get(path, path)
+		try:
+			glsl, textures, thumb = c.shader(path)
+		except (KeyError, ValueError, vtishader.vti2enki.Unsupported) as e:
+			if not quiet:
+				print("%s: skipped - %s" % (path, e))
+			continue
+		name = os.path.splitext(os.path.basename(path))[0]
+		while name in names:
+			name += "_"
+		names.add(name)
+		shaders.append((name, glsl, textures, thumb))
+		if not quiet:
+			print("%s: %s" % (path, c.info(path)["kind"]))
+	if not shaders:
+		print("%s: nothing to pack (of %d)" % (args.dest, len(paths)))
+		return
+	vtishader.write_pack(args.dest, {"id": args.id, "title": args.title, "description": args.description,
+			"author": args.author, "version": args.version}, shaders)
+	print("wrote %s: %d of %d shaders, %.1f MB" % (args.dest, len(shaders), len(paths),
+			os.path.getsize(args.dest) / 1e6))
+
+
 def main():
 	ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
 	sub = ap.add_subparsers(dest="cmd", required=True)
@@ -319,6 +497,29 @@ def main():
 	a.add_argument("dest")
 	a = sub.add_parser("report")
 	a.add_argument("out")
+	a = sub.add_parser("plan")
+	a.add_argument("out")
+	a.add_argument("--most", type=int, default=PACK_MOST, help="shaders a pack holds at most (default %d)" % PACK_MOST)
+	a = sub.add_parser("packs")
+	a.add_argument("out")
+	a.add_argument("dir")
+	a.add_argument("--only", help="only packs whose id matches this regular expression")
+	a.add_argument("--src", help="the source folder, for thumbnails (default: the index's)")
+	a = sub.add_parser("shader")
+	a.add_argument("out")
+	a.add_argument("path", help="the file's path in the source folder")
+	a.add_argument("dir")
+	a = sub.add_parser("pack")
+	a.add_argument("out")
+	a.add_argument("dest")
+	a.add_argument("paths", nargs="*", help="files' paths in the source folder")
+	a.add_argument("--match", help="also every file whose path matches this regular expression")
+	a.add_argument("--id", required=True, help="the pack's id, e.g. grayscott-history-wave")
+	a.add_argument("--title", required=True)
+	a.add_argument("--description", default="")
+	a.add_argument("--author", default="Dan Wills")
+	a.add_argument("--version", type=int, default=1)
+	a.add_argument("--src", help="the source folder, for thumbnails (default: the index's)")
 	args = ap.parse_args()
 	if args.cmd == "index":
 		index(args.src, args.out)
@@ -326,6 +527,14 @@ def main():
 		build(args.src, args.out, tuple(int(v) for v in args.part.split("/")), args.steps, args.match)
 	elif args.cmd == "expand":
 		expand(args.out, args.path, args.dest)
+	elif args.cmd == "shader":
+		shader(args.out, args.path, args.dir)
+	elif args.cmd == "pack":
+		pack(args)
+	elif args.cmd == "plan":
+		plan(args.out, args.most)
+	elif args.cmd == "packs":
+		packs(args.out, args.dir, args.only, args.src)
 	else:
 		report(args.out)
 
