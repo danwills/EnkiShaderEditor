@@ -27,6 +27,9 @@ import vtistate
 
 SEED_TILE = 128
 THUMBNAIL_SIZE = 144
+# The resolution a pack's shaders start at (the app's quality, a fraction
+# of the screen's): 1/4, as these run slowly at full size on a phone.
+QUALITY = 0.25
 WHAT = {
 	"synthetic": "noise fitted to the saved state's statistics",
 	"patch": "copies of a typical window of the saved state",
@@ -226,8 +229,8 @@ def write_pack(path, pack, shaders, now=None):
 		created = (now - datetime.timedelta(seconds=len(shaders) - k)).strftime("%Y-%m-%d %H:%M:%S")
 		image, buffers = split_passes(glsl)
 		sid = db.execute("INSERT INTO shaders (shader, thumb, name, created, modified, quality, "
-				"source_modified) VALUES (?, ?, ?, ?, ?, 0.5, ?)",
-				(image, thumb, name, created, created, created)).lastrowid
+				"source_modified) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				(image, thumb, name, created, created, QUALITY, created)).lastrowid
 		for b, source in sorted(buffers.items()):
 			db.execute("INSERT INTO shader_buffers (shader_id, buffer, source) VALUES (?, ?, ?)",
 					(sid, b, source))
