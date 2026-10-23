@@ -7,12 +7,9 @@ import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
-import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
 import android.text.style.TypefaceSpan;
 import android.util.TypedValue;
@@ -32,19 +29,18 @@ import java.util.regex.Pattern;
 // Debug builds only: TestStatusReceiver's panel of Claude's status lines,
 // near the top of the screen (just under the status bar) over every app.
 // From a run's first line to its last, a pill at its top says Claude is
-// using the phone, so something always shows. Lines are added as they come
-// rather than queued: the newest at the bottom, MAX_LINES at most, each
-// fading out after a while, the panel going once they and the pill have. Touches go
-// straight through it (and it's at the opacity Android lets them through
-// another app's overlay at). Each line starts with its kind's icon, and
+// using the phone, and the run's last MAX_LINES lines stay, the newest at
+// the bottom, so it's always clear what's going on (Dan's wish: never an
+// empty panel while Claude's driving). hide() takes it out of sight for a
+// screenshot, lines kept; the run's end (done) takes it away at once -
+// the notification then has the log's tail. Touches go straight through
+// it (and it's at the opacity Android lets them through another app's
+// overlay at). Each line starts with its kind's icon, and
 // is coloured: `code` in cyan, numbers in yellow, words that sound good
 // in green and bad in red.
 @RequiresApi(Build.VERSION_CODES.O)
 final class StatusOverlay {
 	private static final int MAX_LINES = 8;
-	private static final long LINE_MILLIS = 20_000;
-	private static final long DONE_MILLIS = 15_000;
-	private static final long FADE_MILLIS = 600;
 	// The most a non-touchable overlay can show and still let touches
 	// through to another app (Android 12's touch occlusion rules).
 	private static final float OPACITY = 0.8f;
@@ -65,7 +61,6 @@ final class StatusOverlay {
 
 	private final Context context;
 	private final WindowManager windows;
-	private final Handler handler = new Handler(Looper.getMainLooper());
 	@Nullable
 	private LinearLayout panel;
 	// "Claude is using your phone", from a run's first line to its last.
@@ -87,53 +82,44 @@ final class StatusOverlay {
 
 	// Debug-only tooling, in English like the rest of it.
 	@SuppressLint("SetTextI18n")
-	void add(@NonNull String text, @Nullable String kind, boolean done) {
+	void add(@NonNull String text, @Nullable String kind) {
 		LinearLayout lines = panel();
-		// While a run's going, a pill at the top says so, whatever's faded.
-		if (!done && badge == null) {
+		lines.setVisibility(View.VISIBLE);
+		if (badge == null) {
 			badge = new TextView(context);
 			badge.setText("🤖 Claude is using your phone");
 			badge.setTextColor(Color.rgb(255, 200, 120));
 			badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
 			badge.setPadding(0, 0, 0, dp(2));
 			lines.addView(badge, 0);
-		} else if (done && badge != null) {
-			lines.removeView(badge);
-			badge = null;
 		}
 		while (lines.getChildCount() - (badge != null ? 1 : 0) >= MAX_LINES) {
 			lines.removeViewAt(badge != null ? 1 : 0);
 		}
 		var line = new TextView(context);
 		line.setTextColor(Color.rgb(235, 235, 240));
-		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, done ? 18 : 13.5f);
+		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
 		line.setLineSpacing(0, 1.1f);
-		line.setPadding(0, dp(done ? 8 : 3), 0, dp(done ? 8 : 3));
-		line.setText(styled(text, kind, done));
+		line.setPadding(0, dp(3), 0, dp(3));
+		line.setText(styled(text, kind));
 		lines.addView(line);
-		handler.postDelayed(() -> fade(line), done ? DONE_MILLIS : LINE_MILLIS);
 	}
 
+	// Out of sight for a moment (a clean screenshot): the next line
+	// brings it back, with the lines it had.
+	void hide() {
+		if (panel != null) {
+			panel.setVisibility(View.GONE);
+		}
+	}
+
+	// The run's over: gone at once, lines and all.
 	void clear() {
-		handler.removeCallbacksAndMessages(null);
 		if (panel != null) {
 			windows.removeView(panel);
 			panel = null;
 		}
-		// Back with the next line, if the run's still going.
 		badge = null;
-	}
-
-	private void fade(@NonNull TextView line) {
-		line.animate().alpha(0f).setDuration(FADE_MILLIS).withEndAction(() -> {
-			if (panel == null || line.getParent() != panel) {
-				return;
-			}
-			panel.removeView(line);
-			if (badge == null && panel.getChildCount() == 0) {
-				clear();
-			}
-		});
 	}
 
 	@NonNull
@@ -170,9 +156,9 @@ final class StatusOverlay {
 
 	// The line as shown: its kind's icon, then the text coloured.
 	@NonNull
-	private static CharSequence styled(@NonNull String text, @Nullable String kind, boolean done) {
+	private static CharSequence styled(@NonNull String text, @Nullable String kind) {
 		var out = new SpannableStringBuilder();
-		String icon = icon(kind, done);
+		String icon = icon(kind);
 		out.append(icon).append("  ");
 		int start = out.length();
 		// `code`: the backticks dropped, the rest kept to colour.
@@ -193,14 +179,9 @@ final class StatusOverlay {
 		colour(out, plain, start, NUMBER, Color.rgb(255, 214, 102), false);
 		colour(out, plain, start, GOOD, Color.rgb(120, 230, 140), true);
 		colour(out, plain, start, BAD, Color.rgb(255, 110, 110), true);
-		Integer tint = tint(kind, done);
+		Integer tint = tint(kind);
 		if (tint != null) {
 			out.setSpan(new ForegroundColorSpan(tint), 0, start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-		}
-		if (done) {
-			out.setSpan(new StyleSpan(Typeface.BOLD), start, out.length(),
-					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-			out.setSpan(new RelativeSizeSpan(1.25f), 0, start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		}
 		return out;
 	}
@@ -225,9 +206,9 @@ final class StatusOverlay {
 
 	// A kind's icon: a few named ones, or the kind itself (an emoji).
 	@NonNull
-	private static String icon(@Nullable String kind, boolean done) {
+	private static String icon(@Nullable String kind) {
 		if (kind == null || kind.isEmpty()) {
-			return done ? "😊" : "🔧";
+			return "🔧";
 		}
 		return switch (kind) {
 			case "info" -> "💬";
@@ -251,7 +232,7 @@ final class StatusOverlay {
 	}
 
 	@Nullable
-	private static Integer tint(@Nullable String kind, boolean done) {
+	private static Integer tint(@Nullable String kind) {
 		if (kind == null) {
 			return null;
 		}

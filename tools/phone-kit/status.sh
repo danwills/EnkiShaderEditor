@@ -9,8 +9,10 @@
 # until the next run replaces it. The running commentary shows over
 # whatever is on screen in your app's *debug* build's StatusOverlay (through
 # TestStatusReceiver; its overlay permission granted here with
-# appops) - a panel of the last few lines, each fading after a while, so
-# nothing queues up. Without the debug build it's quietly skipped.
+# appops) - a panel of the run's last 8 lines, there the whole run (Dan's
+# wish: never an empty panel while Claude's driving), gone at once when
+# it's done, when the notification gets the log's tail instead. Without
+# the debug build it's quietly skipped.
 #
 #   status.sh post "Opening `Adjust Defines`..." [KIND]
 #                     a line (and, the first time in a run, the notification);
@@ -25,13 +27,16 @@
 #                     a warning icon, and goes ahead (as Dan wants: never
 #                     stuck on a click).
 #                     Exit 0 to go ahead (prints yes), 1 for Not now
-#   status.sh again   the last line again - after anything that stopped the
-#                     app (force-stop, install), which takes the panel with it
+#   status.sh again   the run's last lines again - after anything that
+#                     stopped the app (force-stop, install), which takes the
+#                     panel with it
 #   status.sh check   exit 1 if the notification was swiped away
-#   status.sh hide    clear the panel for a moment (a clean screenshot)
+#   status.sh hide    the panel out of sight (a clean screenshot); the next
+#                     post brings it back, lines and all
 #   status.sh done "Back to Materialistic" [sad]
-#                     the last line, big and happy (or sad), and the
-#                     notification left saying Claude's finished
+#                     the panel gone at once, and the notification left
+#                     saying Claude's finished (or stopped), with the summary
+#                     and the log's last lines
 #
 # ANDROID_SERIAL picks the phone, as for adb.
 
@@ -43,6 +48,11 @@ STATE="${TMPDIR:-/tmp}/phone-kit-status-tag"
 FINISHED="${TMPDIR:-/tmp}/phone-kit-status-finished"
 # The last line posted, for `again`.
 LAST="${TMPDIR:-/tmp}/phone-kit-status-last"
+# The run's lines, KIND<tab>TEXT, for `again` and `done`.
+LOG="${TMPDIR:-/tmp}/phone-kit-status-log"
+# How many of them the panel shows (StatusOverlay.MAX_LINES), and the
+# notification at the end.
+TAIL=8
 
 tag() {
 	if [ ! -s "$STATE" ]; then
@@ -58,7 +68,19 @@ quote() {
 
 # extras: more `am broadcast` extras.
 say() {
-	adb shell "am broadcast -n $PKG/$CLS.TestStatusReceiver $1" >/dev/null 2>&1
+	# No stdin: in `again`'s loop it would eat the rest of the log.
+	adb shell "am broadcast -n $PKG/$CLS.TestStatusReceiver $1" </dev/null >/dev/null 2>&1
+}
+
+# A kind's icon, as StatusOverlay.icon() has it, for the notification.
+icon() {
+	case "$1" in
+	info) echo 💬 ;; step|'') echo 🔧 ;; look) echo 👀 ;; tap) echo 👆 ;;
+	type) echo ⌨️ ;; wait) echo ⏳ ;; build) echo 🛠️ ;; install) echo 📲 ;;
+	load) echo 📥 ;; think) echo 🤔 ;; good) echo ✅ ;; bad) echo ❌ ;;
+	warn) echo ⚠️ ;; happy) echo 😊 ;; sad) echo 😢 ;; party) echo 🎉 ;;
+	*) echo "$1" ;;
+	esac
 }
 
 # A notification's key, by tag, if it's still there.
@@ -80,17 +102,22 @@ post)
 	# down the last run's finished one.
 	if [ ! -s "$STATE" ]; then
 		[ -s "$FINISHED" ] && remove "$(cat "$FINISHED")" && rm -f "$FINISHED"
+		: > "$LOG"
 		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
 	say "--es text $(quote "${2:-Testing...}") --es kind $(quote "${3:-step}")"
 	printf '%s\n%s\n' "${2:-Testing...}" "${3:-step}" > "$LAST"
+	printf '%s\t%s\n' "${3:-step}" "${2:-Testing...}" | tr -d '\n' >> "$LOG"
+	echo >> "$LOG"
 	;;
 again)
-	# Only mid-run: the panel's back, with the pill and the last line.
-	if [ -s "$STATE" ] && [ -s "$LAST" ]; then
+	# Only mid-run: the panel's back, with the pill and the run's last lines.
+	if [ -s "$STATE" ] && [ -s "$LOG" ]; then
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
-		say "--es text $(quote "$(sed -n 1p "$LAST")") --es kind $(quote "$(sed -n 2p "$LAST")")"
+		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text; do
+			say "--es text $(quote "$text") --es kind $(quote "$kind")"
+		done
 	fi
 	;;
 ask)
@@ -133,11 +160,21 @@ done)
 		title="😊 Claude is all finished"
 		kind=happy
 	fi
+	# The summary, then the run's last lines, to look back over.
+	body="$(icon "$kind") ${2:-Finished testing} - nothing is driving your phone now."
+	if [ -s "$LOG" ]; then
+		body="$body
+
+$(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text; do
+			printf '%s %s\n' "$(icon "$k")" "$(printf %s "$text" | tr -d '`')"
+		done)"
+	fi
 	# Updated in place - left up, so it's clear nothing's driving the phone.
-	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "Nothing is driving your phone now. ${2:-}")" >/dev/null
+	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
 	echo "$t" > "$FINISHED"
-	rm -f "$STATE"
-	say "--es text $(quote "${2:-Finished testing} - the phone's all yours!") --es kind $kind --ez done true"
+	rm -f "$STATE" "$LOG" "$LAST"
+	# And the panel gone at once.
+	say "--ez done true"
 	;;
 *)
 	echo "usage: $0 post TEXT [KIND] | again | ask TEXT [SECONDS] | check | hide | done [TEXT] [sad]" >&2

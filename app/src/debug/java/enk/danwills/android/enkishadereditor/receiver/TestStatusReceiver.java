@@ -10,8 +10,8 @@ import android.widget.Toast;
 // Debug builds only: shows what Claude is doing while it drives Dan's
 // phone (tools/phone/status.sh sends it with an explicit `am broadcast`).
 // Extras: `text`; `kind` - its icon and colour (see StatusOverlay.icon());
-// `done` - the last message, big and happy (or, with kind `sad`, not);
-// `hide` - clear the panel, for a clean screenshot. Shown in StatusOverlay
+// `hide` - the panel out of sight, for a clean screenshot; `done` - the
+// run's over, the panel gone at once (the notification has the log's end). Shown in StatusOverlay
 // over whatever's on screen, or - without the overlay permission, which
 // status.sh grants with appops - as a plain toast.
 public class TestStatusReceiver extends BroadcastReceiver {
@@ -26,14 +26,18 @@ public class TestStatusReceiver extends BroadcastReceiver {
 			return;
 		}
 		var overlay = StatusOverlay.get(app);
-		if (intent.getBooleanExtra("hide", false)) {
+		if (intent.getBooleanExtra("done", false)) {
 			overlay.clear();
+			return;
+		}
+		if (intent.getBooleanExtra("hide", false)) {
+			overlay.hide();
 			return;
 		}
 		String text = intent.getStringExtra("text");
 		if (text == null || text.isEmpty()) {
 			return;
 		}
-		overlay.add(text, intent.getStringExtra("kind"), intent.getBooleanExtra("done", false));
+		overlay.add(text, intent.getStringExtra("kind"));
 	}
 }

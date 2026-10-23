@@ -63,13 +63,16 @@ When driving Dan's phone over adb (only when he's said it's free):
   in Enki debug's process: after a force-stop, install or restart, run `status.sh again`
   straight away (add_shader.sh does when it stops the app):
   `tools/phone/status.sh post 'what I'"'"'m doing' [KIND]` puts a line in the debug build's status
-  overlay (TestStatusReceiver/StatusOverlay: the last few lines over whatever's on screen, each
-  fading, so nothing queues), and the first post of a run also posts the notification. KIND is
+  overlay (TestStatusReceiver/StatusOverlay: the run's last 8 lines over whatever's on screen,
+  kept up the whole run - nothing fades), and the first post of a run also posts the
+  notification. Before a pause to think (reading a screenshot or code, working something out),
+  post a `think` line saying so - it stays up until the next. KIND is
   its icon and colour - step, look, tap, type, wait, build, install, load, think, good, bad,
   warn, happy, sad, party, or any emoji: use good/bad for what worked or didn't. `code`,
   numbers and good/bad words are coloured too - so quote with single quotes, or the shell runs
-  the backticks. `status.sh hide` clears the panel before a screenshot that needs the bottom of
-  the screen. Run `status.sh check` between steps: if it fails, Dan swiped the notification
+  the backticks. `status.sh hide` takes the panel out of sight for a screenshot that needs the
+  top of the screen (the next post brings it back, lines and all); `status.sh again` replays the
+  run's last lines. Run `status.sh check` between steps: if it fails, Dan swiped the notification
   away to interrupt - finish the step in hand (don't leave a dialog half-done), note where the
   test got to so it can be picked up later, and stop.
 - To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the
@@ -80,7 +83,8 @@ When driving Dan's phone over adb (only when he's said it's free):
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
   stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`
-  (`... sad` if it went badly), which leaves the notification up saying Claude's finished.
+  (`... sad` if it went badly): the panel goes at once, and the notification is left saying
+  Claude's finished, with the summary and the log's last 8 lines to look back over.
 
 ## Conventions
 
