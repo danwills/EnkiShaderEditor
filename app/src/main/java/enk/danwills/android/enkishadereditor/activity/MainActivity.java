@@ -6343,20 +6343,51 @@ public class MainActivity extends AppCompatActivity {
 		// they've asked for the thing to stop.
 		AtomicBoolean cancelRequested = new AtomicBoolean(false);
 		AtomicBoolean deletePartialOnCancel = new AtomicBoolean(false);
-		cancelButton.setOnClickListener(v -> new MaterialAlertDialogBuilder(this)
-				.setTitle(R.string.cancel_capture_title)
-				.setMessage(R.string.cancel_capture_message)
-				.setPositiveButton(R.string.cancel_capture_delete, (d, w) -> {
-					deletePartialOnCancel.set(true);
-					cancelRequested.set(true);
-					cancelButton.setEnabled(false);
-				})
-				.setNegativeButton(R.string.cancel_capture_keep, (d, w) -> {
-					cancelRequested.set(true);
-					cancelButton.setEnabled(false);
-				})
-				.setNeutralButton(R.string.cancel_capture_keep_rendering, null)
-				.show());
+		// While the Cancel dialog's up, the capture waits at its next frame,
+		// tile or video frame (awaitDecision()) - so it can't finish
+		// underneath the dialog and leave Delete or Keep with nothing to
+		// act on. Keep Rendering, Back or either answer lets it go on.
+		Object decisionLock = new Object();
+		boolean[] deciding = {false};
+		Runnable decided = () -> {
+			synchronized (decisionLock) {
+				deciding[0] = false;
+				decisionLock.notifyAll();
+			}
+		};
+		Runnable awaitDecision = () -> {
+			synchronized (decisionLock) {
+				while (deciding[0]) {
+					try {
+						decisionLock.wait();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+				}
+			}
+		};
+		cancelButton.setOnClickListener(v -> {
+			synchronized (decisionLock) {
+				deciding[0] = true;
+			}
+			new MaterialAlertDialogBuilder(this)
+					.setTitle(R.string.cancel_capture_title)
+					.setMessage(R.string.cancel_capture_message)
+					.setPositiveButton(R.string.cancel_capture_delete, (d, w) -> {
+						deletePartialOnCancel.set(true);
+						cancelRequested.set(true);
+						cancelButton.setEnabled(false);
+					})
+					.setNegativeButton(R.string.cancel_capture_keep, (d, w) -> {
+						cancelRequested.set(true);
+						cancelButton.setEnabled(false);
+					})
+					.setNeutralButton(R.string.cancel_capture_keep_rendering, null)
+					// Every way out - an answer, Keep Rendering, Back.
+					.setOnDismissListener(d -> decided.run())
+					.show();
+		});
 
 		// Only offered when a video is actually being made - stopping
 		// early has nothing extra to offer Cancel otherwise. Unlike
@@ -6420,6 +6451,7 @@ public class MainActivity extends AppCompatActivity {
 			// inside the Runnable) so the preview-clear below never
 			// fires for a frame that's actually about to be refused -
 			// see the !skipping branch's own doc.
+			awaitDecision.run();
 			boolean willContinue = !cancelRequested.get() && !interruptRequested.get();
 			if (!skipping && stepIndex == 1) {
 				frameStartNanos[0] = System.nanoTime();
@@ -6516,6 +6548,7 @@ public class MainActivity extends AppCompatActivity {
 			// already rendered. sequenceProgressListener (the only place
 			// a *new* frame or skip-step gets started) is where
 			// interruptRequested actually takes effect.
+			awaitDecision.run();
 			return !cancelRequested.get();
 		};
 
@@ -6666,6 +6699,7 @@ public class MainActivity extends AppCompatActivity {
 								formatEtaDuration(Math.round(avgEncodeSeconds * (totalFrames - frameIndex)))));
 						notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 					});
+					awaitDecision.run();
 					return !cancelRequested.get();
 				};
 				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + "." +
