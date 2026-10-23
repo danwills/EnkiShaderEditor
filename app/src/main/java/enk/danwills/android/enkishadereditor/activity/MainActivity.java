@@ -523,6 +523,12 @@ public class MainActivity extends AppCompatActivity {
 				v -> restartShader(),
 				v -> setFullscreen(!uiManager.isFullscreen()));
 		uiManager.setupScreenshotButton(v -> takeScreenshot());
+		uiManager.setupLiveDefinesButton(v -> goLiveFromToolbar(), v -> {
+			if (liveDefinesState == null && !goingLive) {
+				showAdjustDefinesDialog(true, null);
+			}
+			return true;
+		});
 		uiManager.setupAudioNavRow(v -> shaderViewManager.reacquireSystemAudio());
 
 		// updateUiToPreferences() itself also runs every onResume() (to
@@ -3282,24 +3288,15 @@ public class MainActivity extends AppCompatActivity {
 	// process death - deliberately session-scoped, not persisted.
 	private static final Set<String> recentlyEditedDefineNames = new LinkedHashSet<>();
 
-	// Opens the "Adjust Defines" tool (More Options menu) - a
-	// scrollable, reorderable list of every #define in the current
-	// shader that's actually referenced elsewhere in it (see
-	// ShaderDefineParser.parseUsedDefines()), each editable via a
-	// slider+text box (FLOAT/INT), a checkbox (BOOL) or a plain text
-	// box (anything else, including function-like macros). originalOrder
-	// keeps the defines' original file-order and ShaderDefine identity
-	// so showAdjustDefinesConfirmDialog()/ShaderDefineParser.reconstruct()
-	// can tell what changed and put it all back in the right place;
-	// workingOrder is the same ShaderDefine instances, live-edited and
-	// freely reordered by the dialog's own drag handles.
-	private void showAdjustDefinesDialog() {
-		String source = editorFragment.getText();
+	// Every define Adjust Defines lists for the open shader: the open
+	// pass's used defines, then the other passes' that it hasn't got - a
+	// define shared by several passes (a converted Ready pattern's
+	// parameters, say) is one entry, applied to them all. Null, with a
+	// toast, when there are none.
+	@Nullable
+	private List<ShaderDefine> adjustableDefines(@NonNull String source) {
 		List<ShaderDefine> originalOrder = usedDefines(shaderManager.getEditedProjectSession(source),
 				shaderManager.getActiveFilePath(), source);
-		// Then the other passes' that the open one hasn't got - a define
-		// shared by several passes (a converted Ready pattern's
-		// parameters, say) is one entry, applied to them all.
 		Set<String> listed = new HashSet<>();
 		for (ShaderDefine define : originalOrder) {
 			listed.add(define.name);
@@ -3315,6 +3312,33 @@ public class MainActivity extends AppCompatActivity {
 		}
 		if (originalOrder.isEmpty()) {
 			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
+			return null;
+		}
+		return originalOrder;
+	}
+
+	// Opens the "Adjust Defines" tool (More Options menu) - a
+	// scrollable, reorderable list of every #define in the current
+	// shader that's actually referenced elsewhere in it (see
+	// ShaderDefineParser.parseUsedDefines()), each editable via a
+	// slider+text box (FLOAT/INT), a checkbox (BOOL) or a plain text
+	// box (anything else, including function-like macros). originalOrder
+	// keeps the defines' original file-order and ShaderDefine identity
+	// so showAdjustDefinesConfirmDialog()/ShaderDefineParser.reconstruct()
+	// can tell what changed and put it all back in the right place;
+	// workingOrder is the same ShaderDefine instances, live-edited and
+	// freely reordered by the dialog's own drag handles.
+	private void showAdjustDefinesDialog() {
+		showAdjustDefinesDialog(false, null);
+	}
+
+	// liveSetup opens it on live mode's setup list (the toolbar's live
+	// button - see goLiveFromToolbar()), with liveErrors (by define name)
+	// marking any that just failed to go live.
+	private void showAdjustDefinesDialog(boolean liveSetup, @Nullable Map<String, String> liveErrors) {
+		String source = editorFragment.getText();
+		List<ShaderDefine> originalOrder = adjustableDefines(source);
+		if (originalOrder == null) {
 			return;
 		}
 		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
@@ -3323,6 +3347,14 @@ public class MainActivity extends AppCompatActivity {
 		if (liveNames != null) {
 			for (ShaderDefine define : workingOrder) {
 				define.live = liveNames.contains(define.name);
+			}
+		}
+		if (liveErrors != null) {
+			for (ShaderDefine define : workingOrder) {
+				define.liveError = liveErrors.get(define.name);
+				if (define.liveError != null) {
+					define.live = false;
+				}
 			}
 		}
 
@@ -3475,6 +3507,11 @@ public class MainActivity extends AppCompatActivity {
 			adapter.setLiveSetup(true);
 			updateButtons.run();
 		});
+		if (liveSetup) {
+			adapter.setLiveSetup(true);
+			updateButtons.run();
+			return;
+		}
 		// So typing a filter can start immediately, same rationale/pattern
 		// as the Find Shader dialog's query field above.
 		filterView.requestFocus();
@@ -3539,30 +3576,78 @@ public class MainActivity extends AppCompatActivity {
 	private LiveDefinesState liveDefinesState;
 	private LiveDefinesPanel liveDefinesPanel;
 
-	// Live mode's Go Live: makes sure every ticked define can be a
-	// uniform before going live. A define tested by #if/#ifdef can't (and
-	// wouldn't fail to compile, just quietly change what's compiled), so
-	// that's checked first; then the converted shader is test-compiled,
-	// and if it fails, each define on its own, to find the ones at fault.
-	// Those are unticked and shown in red with the reason, and the
-	// dialog stays open - so the next Go Live runs with the rest.
+	// Live mode's Go Live, from the dialog: checks the ticked defines (see
+	// checkLiveDefines() below). Any that can't be live are unticked and
+	// shown in red with the reason, and the dialog stays open - so the
+	// next Go Live runs with the rest.
 	private void checkLiveDefines(@NonNull AlertDialog dialog, @NonNull DefineAdapter adapter,
 			@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
 			@NonNull List<ShaderDefine> workingOrder, boolean wasPaused,
 			@NonNull boolean[] proceeding) {
-		List<ShaderDefine> live = new ArrayList<>();
-		for (ShaderDefine define : workingOrder) {
-			define.liveError = null;
-			if (define.live && define.canBeLive()) {
-				live.add(define);
-			}
-		}
+		List<ShaderDefine> live = tickedLiveDefines(workingOrder);
 		if (live.isEmpty()) {
 			adapter.refreshAll();
 			Toast.makeText(this, R.string.adjust_defines_live_none, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		List<ShaderDefine> failed = new ArrayList<>();
+		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+		positive.setEnabled(false);
+		positive.setText(R.string.adjust_defines_live_checking);
+		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
+			if (!dialog.isShowing()) {
+				return;
+			}
+			positive.setEnabled(true);
+			positive.setText(R.string.adjust_defines_go_live);
+			if (!reasons.isEmpty()) {
+				for (var entry : reasons.entrySet()) {
+					entry.getKey().liveError = entry.getValue();
+				}
+				showLiveDefinesFailed(adapter, new ArrayList<>(reasons.keySet()));
+				return;
+			}
+			proceeding[0] = true;
+			dialog.dismiss();
+			startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
+					liveSession, wasPaused);
+		});
+	}
+
+	// The defines ticked for live mode that could be live at all, each
+	// with any earlier failure cleared.
+	@NonNull
+	private static List<ShaderDefine> tickedLiveDefines(@NonNull List<ShaderDefine> defines) {
+		List<ShaderDefine> live = new ArrayList<>();
+		for (ShaderDefine define : defines) {
+			define.liveError = null;
+			if (define.live && define.canBeLive()) {
+				live.add(define);
+			}
+		}
+		return live;
+	}
+
+	private interface LiveDefinesChecked {
+		// reasons: each define that can't be live, and why - empty when
+		// they all can, and liveSession is the shader with them as
+		// uniforms.
+		void onChecked(@NonNull Map<ShaderDefine, String> reasons,
+				@NonNull ShaderProjectSession liveSession);
+	}
+
+	// Makes sure every one of `live` can be a uniform before going live,
+	// telling `checked` on the UI thread. A define tested by #if/#ifdef
+	// can't (and wouldn't fail to compile, just quietly change what's
+	// compiled), so that's checked first, straight away; then the
+	// converted shader is test-compiled, and if it fails, each define on
+	// its own, to find the ones at fault.
+	private void checkLiveDefines(@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
+			@NonNull List<ShaderDefine> workingOrder, @NonNull List<ShaderDefine> live,
+			@NonNull LiveDefinesChecked checked) {
+		// Everything the check needs, built here on the UI thread - the
+		// defines are the caller's, and only it changes them.
+		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
+		Map<ShaderDefine, String> conditionals = new LinkedHashMap<>();
 		Collection<String> others = otherPassSources(
 				shaderManager.getEditedProjectSession(source)).values();
 		for (ShaderDefine define : live) {
@@ -3571,21 +3656,13 @@ public class MainActivity extends AppCompatActivity {
 				conditional |= ShaderDefineParser.isUsedInConditional(other, define);
 			}
 			if (conditional) {
-				define.liveError = getString(R.string.adjust_defines_live_conditional);
-				failed.add(define);
+				conditionals.put(define, getString(R.string.adjust_defines_live_conditional));
 			}
 		}
-		if (!failed.isEmpty()) {
-			showLiveDefinesFailed(adapter, failed);
+		if (!conditionals.isEmpty()) {
+			checked.onChecked(conditionals, liveSession);
 			return;
 		}
-
-		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-		positive.setEnabled(false);
-		positive.setText(R.string.adjust_defines_live_checking);
-		// Everything the check needs, built here on the UI thread - the
-		// defines are the dialog's, and only it changes them.
-		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
 		Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
 		for (ShaderDefine define : live) {
 			singles.put(define, withDefines(source, originalOrder, workingOrder, List.of(define)));
@@ -3608,25 +3685,67 @@ public class MainActivity extends AppCompatActivity {
 					}
 				}
 			}
-			runOnUiThread(() -> {
-				if (!dialog.isShowing()) {
-					return;
-				}
-				positive.setEnabled(true);
-				positive.setText(R.string.adjust_defines_go_live);
-				if (!reasons.isEmpty()) {
-					for (var entry : reasons.entrySet()) {
-						entry.getKey().liveError = entry.getValue();
-					}
-					showLiveDefinesFailed(adapter, new ArrayList<>(reasons.keySet()));
-					return;
-				}
-				proceeding[0] = true;
-				dialog.dismiss();
-				startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
-						liveSession, wasPaused);
-			});
+			runOnUiThread(() -> checked.onChecked(reasons, liveSession));
 		}, "LiveDefinesCheck").start();
+	}
+
+	// Set while the toolbar's live button is checking, so a second tap
+	// doesn't start another.
+	private boolean goingLive;
+
+	// The toolbar's live button: straight into live mode with the
+	// defines last ticked for this shader (this app session - see
+	// liveDefineNames), or the setup list to tick some when there
+	// aren't any yet, or they can't all be live; long-pressing it
+	// always opens the setup list.
+	private void goLiveFromToolbar() {
+		if (liveDefinesState != null || goingLive) {
+			return;
+		}
+		String source = editorFragment.getText();
+		Set<String> names = liveDefineNames.get(
+				shaderManager.getEditedProjectSession(source).getShaderId());
+		if (names == null || names.isEmpty()) {
+			showAdjustDefinesDialog(true, null);
+			return;
+		}
+		List<ShaderDefine> originalOrder = adjustableDefines(source);
+		if (originalOrder == null) {
+			return;
+		}
+		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
+		for (ShaderDefine define : workingOrder) {
+			define.live = names.contains(define.name);
+		}
+		List<ShaderDefine> live = tickedLiveDefines(workingOrder);
+		if (live.isEmpty()) {
+			showAdjustDefinesDialog(true, null);
+			return;
+		}
+		goingLive = true;
+		boolean wasPaused = shaderViewManager.isPaused();
+		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
+			goingLive = false;
+			// Edited (or another shader opened) meanwhile: what was
+			// checked isn't what's open now.
+			if (isFinishing() || liveDefinesState != null
+					|| !source.equals(editorFragment.getText())) {
+				return;
+			}
+			if (!reasons.isEmpty()) {
+				Map<String, String> errors = new HashMap<>();
+				for (var entry : reasons.entrySet()) {
+					errors.put(entry.getKey().name, entry.getValue());
+				}
+				Toast.makeText(this, getResources().getQuantityString(
+						R.plurals.adjust_defines_live_failed, errors.size(), errors.size()),
+						Toast.LENGTH_LONG).show();
+				showAdjustDefinesDialog(true, errors);
+				return;
+			}
+			startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
+					liveSession, wasPaused);
+		});
 	}
 
 	@NonNull
