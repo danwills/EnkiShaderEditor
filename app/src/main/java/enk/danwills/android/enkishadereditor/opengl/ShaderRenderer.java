@@ -915,9 +915,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// change showed black for however long that took, which for a
 			// slow shader in progressive mode can be several seconds.
 			renderPipeline.releaseTargetsKeepingLastFrame();
-			// Buffers simply restart at the new size, as on ShaderToy.
+			// Buffers simply restart at the new size, as on ShaderToy -
+			// but for any rows a pass keeps (`///stateRow:`).
 			for (var pass : programManager.getBufferPasses()) {
-				pass.releaseTargets(device);
+				pass.keepForResize(device);
 			}
 			stateRowMigrationPending = true;
 			abandonProgressiveFrame();
@@ -1108,6 +1109,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 
 		ensureBufferTargets();
+		saveStateRowsNowAndThen();
 
 		if (progressiveAbandonRequested) {
 			progressiveAbandonRequested = false;
@@ -1336,6 +1338,29 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				programManager.getTextureResources());
 	}
 
+	// When saveStateRowsNowAndThen() last read the state rows back.
+	private long stateRowsSavedNanos;
+	private static final long STATE_ROWS_SAVE_NANOS = 250_000_000L;
+
+	// A few times a second, the state rows of passes that keep them
+	// (`///stateRow:`) read back, to come back if the context goes - see
+	// BufferPass.saveStateRows(). ES 3 only (float readback).
+	private void saveStateRowsNowAndThen() {
+		if (glVersion < 3) {
+			return;
+		}
+		long now = System.nanoTime();
+		if (now - stateRowsSavedNanos < STATE_ROWS_SAVE_NANOS) {
+			return;
+		}
+		stateRowsSavedNanos = now;
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.hasStateRows()) {
+				pass.saveStateRows(device);
+			}
+		}
+	}
+
 	private void ensureBufferTargets() {
 		int width = renderPipeline.getTargetWidth();
 		int height = renderPipeline.getTargetHeight();
@@ -1347,6 +1372,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 				pass.ensureTargets(device, width, height, halfFloatBuffers, float32Buffers,
 						errors);
+				pass.copyKeptStateRows(device, glVersion >= 3);
 			}
 		}
 		if (errors != null && !errors.isEmpty()) {
