@@ -462,6 +462,8 @@ public class LiveDefinesPanel extends LinearLayout {
 	//   the same sideways movement change the value less (see
 	//   FINE_STEPS_DP), for precision without a smaller range;
 	// - double-tapping the label puts the range back to the first guess.
+	// A drag that starts up or down rather than sideways scrolls the
+	// panel instead, leaving the value alone.
 	// Ranges are kept per shader and name for the app session (see
 	// rangeKeyPrefix), so going live again picks up where it was.
 	// Returns what sets the slider from outside (without calling
@@ -515,9 +517,17 @@ public class LiveDefinesPanel extends LinearLayout {
 			}
 		});
 
+		int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
 		slider.setOnTouchListener(new OnTouchListener() {
 			private float lastX;
+			private float downX;
 			private float downY;
+			// Not a drag until the finger's moved past the touch slop:
+			// sideways first makes it one, up or down first leaves the
+			// touch to the panel's scrolling, so scrolling a long list
+			// over the sliders doesn't nudge them.
+			private boolean dragging;
+			private boolean scrolling;
 
 			@Override
 			public boolean onTouch(View v, MotionEvent event) {
@@ -527,11 +537,30 @@ public class LiveDefinesPanel extends LinearLayout {
 				}
 				switch (event.getActionMasked()) {
 					case MotionEvent.ACTION_DOWN -> {
-						v.getParent().requestDisallowInterceptTouchEvent(true);
-						lastX = event.getX();
+						downX = event.getX();
 						downY = event.getY();
+						dragging = false;
+						scrolling = false;
 					}
 					case MotionEvent.ACTION_MOVE -> {
+						if (scrolling) {
+							return false;
+						}
+						if (!dragging) {
+							float dx = event.getX() - downX;
+							float dy = event.getY() - downY;
+							if (Math.hypot(dx, dy) < slop) {
+								return true;
+							}
+							if (Math.abs(dy) > Math.abs(dx)) {
+								scrolling = true;
+								return false;
+							}
+							// From here, so the slop's movement doesn't jump it.
+							dragging = true;
+							lastX = event.getX();
+							v.getParent().requestDisallowInterceptTouchEvent(true);
+						}
 						float scale = fineScale(downY - event.getY());
 						hint[0] = scale < 1f
 								? String.format(Locale.US, "  (\u00d71/%d)", Math.round(1f / scale))
@@ -542,7 +571,9 @@ public class LiveDefinesPanel extends LinearLayout {
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
 						hint[0] = "";
-						extendAtEnd();
+						if (dragging) {
+							extendAtEnd();
+						}
 						showValue.run();
 					}
 					default -> {
