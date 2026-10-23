@@ -903,6 +903,7 @@ def common_code(p, chems, params_block):
 	out.extend(formula_helpers(ftokens))
 	out.extend(initial_code(p, chems))
 	out.extend(cell_code(p))
+	out.append(HSV_CODE)
 	out.append(UI_SHARED % p.ui)
 	out.append("// Each pass's own: the state row, and chemical i at cell q.")
 	out.append("vec4 rdState(int texel, ivec2 grid);")
@@ -1352,10 +1353,9 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	return s;
 }"""
 
-# The Image pass: the views, the buttons and the composite colour wheel.
-IMAGE_VIEWS = """\
-const int ACTIVE = %(active)d; // the chemical the colour view shows
-
+# Colour conversions, for the colour maps and composite colour - in
+# Common, or else every pass, ahead of the colour map that needs them.
+HSV_CODE = """\
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
 	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -1368,6 +1368,11 @@ vec3 hsv2rgb(vec3 c) {
 	vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
 	return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
 }
+"""
+
+# The Image pass: the views, the buttons and the composite colour wheel.
+IMAGE_VIEWS = """\
+const int ACTIVE = %(active)d; // the chemical the colour view shows
 
 // Chemical i at q, 0-1 across its range (rdShowRange()).
 float rdLevel(int i, ivec2 q, ivec2 grid) {
@@ -1885,6 +1890,8 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.extend(cell_code(p))
 	out.extend(wide_blur_code(used_stencils, groups))
 	ui = dict(p.ui, view="1.0" if p.start_masks else "0.0")
+	if not p.common:
+		out.append(HSV_CODE)
 	out.append((UI_STATE if p.common else UI_COMMON) % ui)
 	out.append("")
 	if not p.common:
@@ -2507,6 +2514,8 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	if not p.common:
 		image.extend(display_block)
 		image.append("")
+	if not p.common:
+		image.append(HSV_CODE)
 	image.append(colour_code)
 	image.append("")
 	image.append((UI_STATE if p.common else UI_COMMON) % p.ui)
