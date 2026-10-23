@@ -5722,14 +5722,14 @@ public class MainActivity extends AppCompatActivity {
 						oversample, tileDescription);
 	}
 
-	// "Whole Frame (no tiling)" once singlePass is actually what the real
-	// capture will do (see HighResScreenshotCapture's own `singlePass`
-	// branch), otherwise the bucket size's own display name and pixel
-	// size - e.g. "Large (1024px)".
-	@NonNull
+	// Null - nothing said about tiles - once singlePass is actually what
+	// the real capture will do (see HighResScreenshotCapture's own
+	// `singlePass` branch), otherwise the bucket size's own display name
+	// and pixel size - e.g. "Large (1024px)".
+	@Nullable
 	private String tileDescriptionFor(@NonNull TileBucketSize bucketSize, boolean singlePass) {
 		if (singlePass) {
-			return getString(R.string.progress_tile_whole_frame);
+			return null;
 		}
 		String name = getResources().getStringArray(R.array.bucket_size_names)[bucketSize.ordinal()];
 		return getString(R.string.progress_tile_named, name, bucketSize.pixels);
@@ -6286,7 +6286,8 @@ public class MainActivity extends AppCompatActivity {
 		AtomicReference<TileRenderOrder> liveTileOrder = new AtomicReference<>(initialTileOrder);
 		ShaderRenderer.TileOrderSupplier tileOrderSupplier = liveTileOrder::get;
 		Spinner tileOrderSpinner = progressView.findViewById(R.id.progress_tile_order);
-		tileOrderSpinner.setVisibility(View.VISIBLE);
+		// The order tiles go in means nothing without tiles.
+		tileOrderSpinner.setVisibility(singlePass ? View.GONE : View.VISIBLE);
 		tileOrderSpinner.setSelection(initialTileOrder.ordinal());
 		tileOrderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override

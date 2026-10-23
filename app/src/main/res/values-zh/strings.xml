@@ -77,7 +77,6 @@
 	<string name="auto_detect_tile_size_whole_frame_label">整帧</string>
 	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d（%5$d×）</string>
 	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d（%5$d×）· 分块：%6$s</string>
-	<string name="progress_tile_whole_frame">整帧（不分块）</string>
 	<string name="progress_tile_named">%1$s（%2$dpx）</string>
 	<string name="bucket_size_max_label">%1$s（尽可能大）</string>
 	<string name="interrupt_save_partial_button">停止并保存已渲染部分</string>
