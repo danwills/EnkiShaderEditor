@@ -20,7 +20,9 @@
 #                     wait build install load think good bad warn happy sad
 #                     party, or any emoji. `code`, numbers and good/bad words
 #                     are coloured too. ESTIMATE, how long the step's likely
-#                     to take ("~30 s"; "?" for no estimate), ends the line.
+#                     to take ("~30 s"; "?" for no estimate), ends the line;
+#                     when the next line comes, the last one gets how long
+#                     it actually took ("→ took 12 s").
 #   status.sh ask "Test the new splats mode?" [SECONDS]
 #                     a dialog on the phone asking whether Claude can use it
 #                     (TakeOverActivity, over whatever's showing). After
@@ -86,11 +88,41 @@ icon() {
 	esac
 }
 
-# A line for the panel and the run's log: TEXT KIND [ESTIMATE].
+# Seconds as the log shows them: 12 s, 3 min 5 s.
+duration() {
+	if [ "$1" -lt 60 ]; then
+		echo "$1 s"
+	else
+		echo "$(($1 / 60)) min $(($1 % 60)) s"
+	fi
+}
+
+# The log's last line, given how long it took (from when it was posted
+# to now) - on the panel too - if it was estimated or took a while.
+took() {
+	[ -s "$LOG" ] || return 0
+	last=$(tail -n 1 "$LOG")
+	k=$(printf %s "$last" | cut -f1); text=$(printf %s "$last" | cut -f2)
+	eta=$(printf %s "$last" | cut -f3); start=$(printf %s "$last" | cut -f4)
+	done_=$(printf %s "$last" | cut -f5)
+	[ -n "$start" ] && [ -z "$done_" ] || return 0
+	secs=$(($(date +%s) - start))
+	if [ "$eta" != "-" ] || [ "$secs" -ge 3 ]; then
+		t=$(duration "$secs")
+		say "--es took $(quote "$t")"
+		sed -i '$d' "$LOG"
+		printf '%s\t%s\t%s\t%s\t%s\n' "$k" "$text" "$eta" "$start" "$t" >> "$LOG"
+	fi
+}
+
+# A line for the panel and the run's log: TEXT KIND [ESTIMATE]; the
+# previous line first gets how long it took.
 line() {
+	took
 	say "--es text $(quote "$1") --es kind $(quote "$2") --es eta $(quote "${3:-}")"
 	printf '%s\n%s\n' "$1" "$2" > "$LAST"
-	printf '%s\t%s\t%s' "$2" "$1" "${3:-}" | tr -d '\n' >> "$LOG"
+	# "-" for no estimate: read with a tab IFS would run two tabs together.
+	printf '%s\t%s\t%s\t%s' "$2" "$1" "${3:--}" "$(date +%s)" | tr -d '\n' >> "$LOG"
 	echo >> "$LOG"
 }
 
@@ -123,8 +155,10 @@ again)
 	# Only mid-run: the panel's back, with the pill and the run's last lines.
 	if [ -s "$STATE" ] && [ -s "$LOG" ]; then
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
-		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text eta; do
+		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text eta start t; do
+			[ "$eta" = - ] && eta=
 			say "--es text $(quote "$text") --es kind $(quote "$kind") --es eta $(quote "$eta")"
+			[ -n "$t" ] && say "--es took $(quote "$t")"
 		done
 	fi
 	;;
@@ -186,6 +220,7 @@ shot)
 	line "Back - looking at the screenshot${3:+ ($3)}" think "?"
 	;;
 done)
+	took
 	t=$(tag)
 	if [ "$3" = sad ]; then
 		title="😢 Claude has stopped"
@@ -199,8 +234,8 @@ done)
 	if [ -s "$LOG" ]; then
 		body="$body
 
-$(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta; do
-			printf '%s %s\n' "$(icon "$k")" "$(printf %s "$text" | tr -d '`')"
+$(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t; do
+			printf '%s %s%s\n' "$(icon "$k")" "$(printf %s "$text" | tr -d '`')" "${t:+ (took $t)}"
 		done)"
 	fi
 	# Updated in place - left up, so it's clear nothing's driving the phone.

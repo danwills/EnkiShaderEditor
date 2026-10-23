@@ -41,7 +41,9 @@ owner might be holding it. It covers four things:
     15 s countdown.
   - `status.sh post 'text' [KIND] [ESTIMATE]` adds a line to the panel,
     and the run notification the first time. ESTIMATE (`'~30 s'`, or `'?'`
-    for no estimate) shows dimmed at the line's end.
+    for no estimate) shows dimmed at the line's end; when the next line
+    comes, it gets how long the step actually took ("→ took 12 s"), in
+    the finished notification's tail too.
   - `status.sh again` replays the run's last lines. The panel lives in
     the app's process, so a force-stop or install takes it away; call this
     straight after one.

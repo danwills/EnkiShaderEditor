@@ -11,6 +11,8 @@ import android.widget.Toast;
 // phone (tools/phone/status.sh sends it with an explicit `am broadcast`).
 // Extras: `text`; `kind` - its icon and colour (see StatusOverlay.icon());
 // `eta` - how long its step's likely to take ("?" for no estimate);
+// `took` - how long the newest line's step actually took (on its own,
+// amending that line);
 // `hide` - the panel out of sight, for a clean screenshot; `done` - the
 // run's over, the panel gone at once (the notification has the log's end). Shown in StatusOverlay
 // over whatever's on screen, or - without the overlay permission, which
@@ -29,6 +31,11 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		var overlay = StatusOverlay.get(app);
 		if (intent.getBooleanExtra("done", false)) {
 			overlay.clear();
+			return;
+		}
+		String took = intent.getStringExtra("took");
+		if (took != null && !took.isEmpty()) {
+			overlay.amendLast(took);
 			return;
 		}
 		if (intent.getBooleanExtra("hide", false)) {

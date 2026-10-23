@@ -38,7 +38,8 @@ import java.util.regex.Pattern;
 // overlay at). Each line starts with its kind's icon, and
 // is coloured: `code` in cyan, numbers in yellow, words that sound good
 // in green and bad in red - and ends, dimmed, with how long its step's
-// likely to take, if Claude said (`?` when it can't tell).
+// likely to take, if Claude said (`?` when it can't tell) - and, once
+// the next line comes, how long it actually took (amendLast()).
 @RequiresApi(Build.VERSION_CODES.O)
 final class StatusOverlay {
 	private static final int MAX_LINES = 8;
@@ -102,8 +103,20 @@ final class StatusOverlay {
 		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
 		line.setLineSpacing(0, 1.1f);
 		line.setPadding(0, dp(3), 0, dp(3));
-		line.setText(styled(text, kind, eta));
+		line.setText(styled(text, kind, eta, null));
+		line.setTag(new String[]{text, kind, eta});
 		lines.addView(line);
+	}
+
+	// The newest line, with how long its step actually took.
+	void amendLast(@NonNull String took) {
+		if (panel == null || panel.getChildCount() == 0) {
+			return;
+		}
+		var last = panel.getChildAt(panel.getChildCount() - 1);
+		if (last instanceof TextView line && line.getTag() instanceof String[] parts) {
+			line.setText(styled(parts[0], parts[1], parts[2], took));
+		}
 	}
 
 	// Out of sight for a moment (a clean screenshot): the next line
@@ -158,7 +171,7 @@ final class StatusOverlay {
 	// The line as shown: its kind's icon, then the text coloured.
 	@NonNull
 	private static CharSequence styled(@NonNull String text, @Nullable String kind,
-			@Nullable String eta) {
+			@Nullable String eta, @Nullable String took) {
 		var out = new SpannableStringBuilder();
 		String icon = icon(kind);
 		out.append(icon).append("  ");
@@ -185,11 +198,21 @@ final class StatusOverlay {
 		if (tint != null) {
 			out.setSpan(new ForegroundColorSpan(tint), 0, start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		}
-		if (eta != null && !eta.isEmpty()) {
+		boolean estimated = eta != null && !eta.isEmpty();
+		if (estimated || took != null) {
 			int from = out.length();
-			out.append("  ⏱ ").append(eta.equals("?") ? "no estimate" : eta);
+			out.append("  ⏱ ");
+			if (estimated) {
+				out.append(eta.equals("?") ? "no estimate" : eta);
+			}
 			out.setSpan(new ForegroundColorSpan(Color.rgb(150, 155, 170)), from, out.length(),
 					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			if (took != null) {
+				int at = out.length();
+				out.append(estimated ? " → took " : "took ").append(took);
+				out.setSpan(new ForegroundColorSpan(Color.rgb(190, 175, 230)), at, out.length(),
+						Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			}
 		}
 		return out;
 	}
