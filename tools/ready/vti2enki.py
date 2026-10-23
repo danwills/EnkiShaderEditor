@@ -670,8 +670,9 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define RANDOM_NUDGE 0.0003 // how far wandering moves a look along its search, a step
 #define RANDOM_PULL 0.002  // and how far towards one that shows every chemical
 #define SEARCH_STRETCH 0.5 // seconds wandering keeps to one direction before judging it
-#define RANGE_GROW 0.003  // how far a chemical's range widens towards its values' a frame,
-#define RANGE_SHRINK 0.001 // and narrows - slowly both ways, so the look holds steady
+#define RANGE_GROW 0.0003  // how far a chemical's range widens towards its values' a frame,
+#define RANGE_SHRINK 0.0001 // and narrows - very slowly both ways (a minute or more to
+                            // settle), so the look holds steady as the wave moves
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
@@ -842,15 +843,6 @@ vec2 rdShowRange(int i, ivec2 grid) {
 	return vec2(r.x, max(r.y, r.x + least));
 }
 
-// Whether the simulation has started: a mark in the state row, rather than
-// iFrame == 0 - the app's frame count goes back to 0 whenever its surface
-// is made again (the screen timing out, the app coming back), though the
-// buffers carry on; so only buffers that really are blank (new, or cleared
-// by Restart) start the initial pattern again. The mark is 2, not 1: the
-// app clears new buffers to black with an alpha of 1. And at this grid
-// size: the app keeps the state row across a resize (`///stateRow:top`),
-// a rotation say, while the grid comes back blank - then the grid starts
-// again, but the interface carries on as it was (see rdFresh()).
 // How big the brush is now, of the grid's shorter side.
 float rdBrushSize(ivec2 grid) {
 	return BRUSH_SIZE * (S_PAINT < grid.x ? clamp(rdState(S_PAINT, grid).x, 0.25, 2.0) : 1.0);
@@ -868,6 +860,17 @@ bool rdFresh(ivec2 grid) {
 	return rdState(S_FINGERS, grid).w < 1.5;
 }
 
+// Whether the simulation has started: a mark in the state row, rather than
+// iFrame == 0 - the app's frame count goes back to 0 whenever its surface
+// is made again (the screen timing out, the app coming back), though the
+// buffers carry on; so only buffers that really are blank (new, or cleared
+// by Restart) start the initial pattern again. The mark is 2, not 1: the
+// app clears new buffers to black with an alpha of 1. And with its
+// grid not blank: the app keeps the state row across a resize or a
+// rotation (`///stateRow:top`) and tiles the old grid over the new one
+// (`///resize:tile`), so both carry on; where it can't keep the grid
+// (an older app, 8-bit buffers) it comes back blank, and starts again
+// while the interface carries on (see rdFresh(), rdNextSize()).
 bool rdStarted(ivec2 grid) {
 	if (rdFresh(grid)) {
 		return false;
@@ -875,8 +878,9 @@ bool rdStarted(ivec2 grid) {
 	if (S_SIZE >= grid.x) {
 		return true;
 	}
-	vec4 s = rdState(S_SIZE, grid);
-	return all(equal(ivec2(s.xy + 0.5), grid)) && s.z > 0.5;
+	// Not the size: the app tiles a kept grid over a new one
+	// (`///resize:tile`), so a rotated one carries on.
+	return rdState(S_SIZE, grid).z > 0.5;
 }"""
 
 # UI_COMMON in two: what a Common section can hold, and the part that
@@ -2052,6 +2056,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out = []
 	out.append("///float32")
 	out.append("///stateRow:top")
+	out.append("///resize:tile")
 	for g, b in enumerate(src_buffers):
 		out.append("uniform sampler2D iChannel%d; ///buf:%s;" % (g, b))
 	if not p.common:
