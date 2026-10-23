@@ -46,6 +46,17 @@
 			android:text="@string/adjust_defines_show_recent"/>
 	</LinearLayout>
 
+	<!-- While Go Live checks the ticked defines can go live - see
+	     MainActivity.checkLiveDefines(). -->
+	<ProgressBar
+		android:id="@+id/adjust_defines_live_progress"
+		style="?android:attr/progressBarStyleHorizontal"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="16dp"
+		android:indeterminate="true"
+		android:visibility="gone"/>
+
 	<FrameLayout
 		android:layout_width="match_parent"
 		android:layout_height="match_parent">

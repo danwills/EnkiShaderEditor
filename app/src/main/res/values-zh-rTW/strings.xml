@@ -502,7 +502,6 @@
 	<string name="adjust_defines_select_none">全不選</string>
 	<string name="adjust_defines_go_live">開始即時</string>
 	<string name="adjust_defines_back">返回</string>
-	<string name="adjust_defines_live_checking">正在檢查…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">請至少勾選一個 define 進行即時調整</string>
 	<string name="adjust_defines_live_conditional">被 #if 或 #ifdef 使用，必須保持為 #define</string>
@@ -514,6 +513,7 @@
 	<string name="live_defines_discard">放棄</string>
 	<string name="live_defines_reset">重設</string>
 	<string name="live_defines_filter_hint">篩選</string>
+	<string name="live_defines_preparing">正在準備即時編輯…</string>
 	<string name="live_defines_brightness">亮度</string>
 	<string name="live_defines_done">完成</string>
 	<string name="live_defines_discard_title">放棄即時修改？</string>

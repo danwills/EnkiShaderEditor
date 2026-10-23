@@ -35,6 +35,7 @@ import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -3672,14 +3673,21 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+		// Greyed out, under a progress bar, until it's done - its label
+		// stays, so the dialog's buttons don't move about.
 		positive.setEnabled(false);
-		positive.setText(R.string.adjust_defines_live_checking);
+		View progress = dialog.findViewById(R.id.adjust_defines_live_progress);
+		if (progress != null) {
+			progress.setVisibility(View.VISIBLE);
+		}
 		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
 			if (!dialog.isShowing()) {
 				return;
 			}
+			if (progress != null) {
+				progress.setVisibility(View.GONE);
+			}
 			positive.setEnabled(true);
-			positive.setText(R.string.adjust_defines_go_live);
 			if (!reasons.isEmpty()) {
 				for (var entry : reasons.entrySet()) {
 					entry.getKey().liveError = entry.getValue();
@@ -3725,7 +3733,16 @@ public class MainActivity extends AppCompatActivity {
 	private void checkLiveDefines(@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
 			@NonNull List<ShaderDefine> workingOrder, @NonNull List<ShaderDefine> live,
 			@NonNull LiveDefinesChecked checked) {
-		// Everything the check needs, built here on the UI thread - the
+		// Building the sources below takes a moment on a big shader, so
+		// it waits for a frame: the caller's "checking" shows first.
+		Choreographer.getInstance().postFrameCallback(frame -> getWindow().getDecorView().post(
+				() -> runLiveDefinesCheck(source, originalOrder, workingOrder, live, checked)));
+	}
+
+	private void runLiveDefinesCheck(@NonNull String source,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			@NonNull List<ShaderDefine> live, @NonNull LiveDefinesChecked checked) {
+		// What the check needs is built here on the UI thread - the
 		// defines are the caller's, and only it changes them.
 		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
 		Map<ShaderDefine, String> conditionals = new LinkedHashMap<>();
@@ -3744,29 +3761,38 @@ public class MainActivity extends AppCompatActivity {
 			checked.onChecked(conditionals, liveSession);
 			return;
 		}
-		Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
-		for (ShaderDefine define : live) {
-			singles.put(define, withDefines(source, originalOrder, workingOrder, List.of(define)));
-		}
 		new Thread(() -> {
 			List<ShaderError> errors = shaderViewManager.testCompileAndWait(liveSession);
-			Map<ShaderDefine, String> reasons = new LinkedHashMap<>();
-			if (!errors.isEmpty()) {
-				for (var entry : singles.entrySet()) {
-					List<ShaderError> own = shaderViewManager.testCompileAndWait(entry.getValue());
-					if (!own.isEmpty()) {
-						reasons.put(entry.getKey(), describeLiveError(own.get(0)));
-					}
-				}
-				// Each compiles alone but not together - nothing to single
-				// out, so they all go.
-				if (reasons.isEmpty()) {
-					for (ShaderDefine define : live) {
-						reasons.put(define, describeLiveError(errors.get(0)));
-					}
-				}
+			if (errors.isEmpty()) {
+				runOnUiThread(() -> checked.onChecked(Map.of(), liveSession));
+				return;
 			}
-			runOnUiThread(() -> checked.onChecked(reasons, liveSession));
+			// Then each on its own, to find the ones at fault - built
+			// only now, as there's one whole shader per define.
+			runOnUiThread(() -> {
+				Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
+				for (ShaderDefine define : live) {
+					singles.put(define, withDefines(source, originalOrder, workingOrder,
+							List.of(define)));
+				}
+				new Thread(() -> {
+					Map<ShaderDefine, String> reasons = new LinkedHashMap<>();
+					for (var entry : singles.entrySet()) {
+						List<ShaderError> own = shaderViewManager.testCompileAndWait(entry.getValue());
+						if (!own.isEmpty()) {
+							reasons.put(entry.getKey(), describeLiveError(own.get(0)));
+						}
+					}
+					// Each compiles alone but not together - nothing to
+					// single out, so they all go.
+					if (reasons.isEmpty()) {
+						for (ShaderDefine define : live) {
+							reasons.put(define, describeLiveError(errors.get(0)));
+						}
+					}
+					runOnUiThread(() -> checked.onChecked(reasons, liveSession));
+				}, "LiveDefinesCheck").start();
+			});
 		}, "LiveDefinesCheck").start();
 	}
 
@@ -3779,6 +3805,7 @@ public class MainActivity extends AppCompatActivity {
 		View button = findViewById(R.id.live_defines_nav);
 		button.setEnabled(!checking);
 		button.setAlpha(checking ? 0.4f : 1f);
+		findViewById(R.id.live_defines_progress).setVisibility(checking ? View.VISIBLE : View.GONE);
 	}
 
 	// The toolbar's live button: straight into live mode with the
@@ -3810,10 +3837,9 @@ public class MainActivity extends AppCompatActivity {
 			showAdjustDefinesDialog(true, null);
 			return;
 		}
-		// The check can take a while on a big shader: the button greys
-		// out until it's done.
+		// The check can take a while on a big shader: a spinner shows,
+		// and the button greys out, until it's done.
 		setGoingLive(true);
-		Toast.makeText(this, R.string.adjust_defines_live_checking, Toast.LENGTH_SHORT).show();
 		boolean wasPaused = shaderViewManager.isPaused();
 		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
 			setGoingLive(false);

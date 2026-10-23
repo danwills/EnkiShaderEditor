@@ -522,7 +522,6 @@
 	<string name="adjust_defines_select_none">Снять все</string>
 	<string name="adjust_defines_go_live">Начать</string>
 	<string name="adjust_defines_back">Назад</string>
-	<string name="adjust_defines_live_checking">Проверка…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">Отметьте хотя бы один define для живой настройки</string>
 	<string name="adjust_defines_live_conditional">Используется в #if или #ifdef, поэтому должен остаться #define</string>
@@ -537,6 +536,7 @@
 	<string name="live_defines_discard">Отменить</string>
 	<string name="live_defines_reset">Сбросить</string>
 	<string name="live_defines_filter_hint">Фильтр</string>
+	<string name="live_defines_preparing">Подготовка живого режима…</string>
 	<string name="live_defines_brightness">Яркость</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Отменить живые правки?</string>

@@ -522,7 +522,6 @@
 	<string name="adjust_defines_select_none">Зняти всі</string>
 	<string name="adjust_defines_go_live">Почати</string>
 	<string name="adjust_defines_back">Назад</string>
-	<string name="adjust_defines_live_checking">Перевірка…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">Позначте хоча б один define для живого налаштування</string>
 	<string name="adjust_defines_live_conditional">Використовується в #if або #ifdef, тому має лишитися #define</string>
@@ -537,6 +536,7 @@
 	<string name="live_defines_discard">Скасувати</string>
 	<string name="live_defines_reset">Скинути</string>
 	<string name="live_defines_filter_hint">Фільтр</string>
+	<string name="live_defines_preparing">Підготовка живого режиму…</string>
 	<string name="live_defines_brightness">Яскравість</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Скасувати живі зміни?</string>

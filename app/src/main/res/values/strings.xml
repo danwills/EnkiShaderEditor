@@ -523,7 +523,6 @@
 	<string name="adjust_defines_select_none">Select None</string>
 	<string name="adjust_defines_go_live">Go Live</string>
 	<string name="adjust_defines_back">Back</string>
-	<string name="adjust_defines_live_checking">Checking…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">Tick at least one define to adjust live</string>
 	<string name="adjust_defines_live_conditional">Used by #if or #ifdef, so it has to stay a #define</string>
@@ -536,6 +535,7 @@
 	<string name="live_defines_discard">Discard</string>
 	<string name="live_defines_reset">Reset</string>
 	<string name="live_defines_filter_hint">Filter</string>
+	<string name="live_defines_preparing">Getting live mode ready…</string>
 	<string name="live_defines_brightness">Brightness</string>
 	<string name="live_defines_done">Done</string>
 	<string name="live_defines_discard_title">Discard live edits?</string>
