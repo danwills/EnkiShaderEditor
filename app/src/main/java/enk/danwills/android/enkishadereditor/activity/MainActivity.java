@@ -3295,7 +3295,8 @@ public class MainActivity extends AppCompatActivity {
 	// freely reordered by the dialog's own drag handles.
 	private void showAdjustDefinesDialog() {
 		String source = editorFragment.getText();
-		List<ShaderDefine> originalOrder = ShaderDefineParser.parseUsedDefines(source);
+		List<ShaderDefine> originalOrder = usedDefines(shaderManager.getEditedProjectSession(source),
+				shaderManager.getActiveFilePath(), source);
 		// Then the other passes' that the open one hasn't got - a define
 		// shared by several passes (a converted Ready pattern's
 		// parameters, say) is one entry, applied to them all.
@@ -3304,7 +3305,8 @@ public class MainActivity extends AppCompatActivity {
 			listed.add(define.name);
 		}
 		for (var entry : otherPassSources(shaderManager.getEditedProjectSession(source)).entrySet()) {
-			for (ShaderDefine define : ShaderDefineParser.parseUsedDefines(entry.getValue())) {
+			for (ShaderDefine define : usedDefines(shaderManager.getEditedProjectSession(source),
+					entry.getKey(), entry.getValue())) {
 				if (listed.add(define.name)) {
 					define.passPath = entry.getKey();
 					originalOrder.add(define);
@@ -3806,8 +3808,8 @@ public class MainActivity extends AppCompatActivity {
 				Toast.LENGTH_SHORT).show();
 	}
 
-	// Every GLSL pass but the open one, by path - the Image pass and the
-	// buffers, not texts.
+	// Every GLSL pass but the open one, by path - the Image pass, the
+	// buffers and Common, not texts.
 	@NonNull
 	private static Map<String, String> otherPassSources(@NonNull ShaderProjectSession session) {
 		Map<String, String> sources = new LinkedHashMap<>();
@@ -3815,11 +3817,31 @@ public class MainActivity extends AppCompatActivity {
 		for (var file : session.getProject().getFiles()) {
 			String path = file.path();
 			if (!path.equals(session.getActiveFilePath()) &&
-					(path.equals(entry) || ShaderProjectPaths.getBufferIndex(path) >= 0)) {
+					(path.equals(entry) || ShaderProjectPaths.getBufferIndex(path) >= 0 ||
+							path.equals(ShaderProjectPaths.COMMON_PATH))) {
 				sources.put(path, file.source());
 			}
 		}
 		return sources;
+	}
+
+	// The defines in the pass at `path` (its source as given) that are
+	// used - for Common, used by any pass.
+	@NonNull
+	private static List<ShaderDefine> usedDefines(@NonNull ShaderProjectSession session,
+			@NonNull String path, @NonNull String source) {
+		if (!ShaderProjectPaths.COMMON_PATH.equals(path)) {
+			return ShaderDefineParser.parseUsedDefines(source);
+		}
+		var passes = new StringBuilder();
+		for (var file : session.getProject().getFiles()) {
+			String other = file.path();
+			if (other.equals(session.getProject().getEntryFilePath()) ||
+					ShaderProjectPaths.getBufferIndex(other) >= 0) {
+				passes.append(file.source()).append('\n');
+			}
+		}
+		return ShaderDefineParser.parseUsedDefines(source, passes.toString());
 	}
 
 	// The shader as Adjust Defines leaves it: the open pass rebuilt from
@@ -3854,7 +3876,7 @@ public class MainActivity extends AppCompatActivity {
 			String other = entry.getValue();
 			String[] lines = other.split("\n", -1);
 			boolean changed = false;
-			for (ShaderDefine theirs : ShaderDefineParser.parseUsedDefines(other)) {
+			for (ShaderDefine theirs : usedDefines(session, entry.getKey(), other)) {
 				ShaderDefine ours = byName.get(theirs.name);
 				if (ours == null || theirs.lineIndex >= lines.length) {
 					continue;
