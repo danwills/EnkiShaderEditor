@@ -646,6 +646,10 @@ const int S_RANGE = 41;  // + a chemical: the range its values have had lately (
 const int S_SEARCH = 49; // wandering's search: the stretch it's on (by SEARCH_STRETCH), its
                          // direction, the look's score as it began, 1 going on or -1
                          // going back - see rdNextSearch()
+const int S_SIZE = 50;   // the grid's size (x, y) the simulation's running at, and 1 if
+                         // its grid wasn't blank last step - see rdStarted()
+const int S_CLOCK = 51;  // iTime as this frame's first step saw it - see rdNewFrame()
+const int S_PAINT = 52;  // the brush's size, times BRUSH_SIZE (x) - see rdNextPaint()
 // The brush's chemicals (-1 none): what dragging it sets.
 const ivec2 BRUSH_PAINT = ivec2(%(brush_paint)s);
 const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
@@ -743,9 +747,21 @@ bool rdOnRandomButton(vec2 p, vec2 screen) {
 	return distance(p, b.xy) < b.z * 1.5;
 }
 
+// The brush size button, left of the random one: centre, radius.
+vec3 rdPaintButton(vec2 screen) {
+	vec3 b = rdRandomButton(screen);
+	return vec3(b.x - b.z * 3.2, b.y, b.z);
+}
+
+bool rdOnPaintButton(vec2 p, vec2 screen) {
+	vec3 b = rdPaintButton(screen);
+	return distance(p, b.xy) < b.z * 1.5;
+}
+
 bool rdOnButton(vec2 p, vec2 screen) {
 	return rdOnMapButton(p, screen) || rdOnCompositeButton(p, screen) ||
-			rdOnBrushButton(p, screen) || rdOnRandomButton(p, screen);
+			rdOnBrushButton(p, screen) || rdOnRandomButton(p, screen) ||
+			rdOnPaintButton(p, screen);
 }
 
 // Held on the colour map button: a strip of every map, one a row from the
@@ -831,9 +847,36 @@ vec2 rdShowRange(int i, ivec2 grid) {
 // is made again (the screen timing out, the app coming back), though the
 // buffers carry on; so only buffers that really are blank (new, or cleared
 // by Restart) start the initial pattern again. The mark is 2, not 1: the
-// app clears new buffers to black with an alpha of 1.
+// app clears new buffers to black with an alpha of 1. And at this grid
+// size: the app keeps the state row across a resize (`///stateRow:top`),
+// a rotation say, while the grid comes back blank - then the grid starts
+// again, but the interface carries on as it was (see rdFresh()).
+// How big the brush is now, of the grid's shorter side.
+float rdBrushSize(ivec2 grid) {
+	return BRUSH_SIZE * (S_PAINT < grid.x ? clamp(rdState(S_PAINT, grid).x, 0.25, 2.0) : 1.0);
+}
+
+// Whether this is a frame's first step: what drifts slowly (wandering,
+// the ranges) moves once a frame, however many steps a frame takes
+// (`///steps:`) - by iTime, the same for every step of a frame.
+bool rdNewFrame(ivec2 grid) {
+	return S_CLOCK >= grid.x || rdState(S_CLOCK, grid).x != iTime;
+}
+
+// Whether the state row is blank too - so the interface starts afresh.
+bool rdFresh(ivec2 grid) {
+	return rdState(S_FINGERS, grid).w < 1.5;
+}
+
 bool rdStarted(ivec2 grid) {
-	return rdState(S_FINGERS, grid).w > 1.5;
+	if (rdFresh(grid)) {
+		return false;
+	}
+	if (S_SIZE >= grid.x) {
+		return true;
+	}
+	vec4 s = rdState(S_SIZE, grid);
+	return all(equal(ivec2(s.xy + 0.5), grid)) && s.z > 0.5;
 }"""
 
 # UI_COMMON in two: what a Common section can hold, and the part that
@@ -914,6 +957,7 @@ def common_code(p, chems, params_block):
 	out.append("vec4 rdState(int texel, ivec2 grid);")
 	out.append("float rdChem(int i, ivec2 q);")
 	out.append("vec2 rdShowRange(int i, ivec2 grid);")
+	out.append("bool rdNewFrame(ivec2 grid);")
 	out.append("")
 	out.append(UI_UPDATE % dict(p.ui, view="1.0" if p.start_masks else "0.0"))
 	out.append("")
@@ -949,6 +993,7 @@ vec4 rdStartState(int texel) {
 	if (texel == S_BRUSH) return %(brush_start)s;
 	if (texel == S_FINGERS) return vec4(0.0, -1.0, 0.0, 2.0);
 	if (texel == S_MAP) return vec4(1.0, 0.0, 0.0, 0.0);
+	if (texel == S_PAINT) return vec4(1.0, 0.0, 0.0, 0.0);
 	return vec4(0.0);
 }
 
@@ -1123,6 +1168,33 @@ bool rdRandomTapped(ivec2 grid, vec2 screen) {
 	return pointerCount == 0 && pg.x > 0.0 && pg.x < 1.5 && pt.z < 0.5 &&
 			iTime - pg.y < TAP_TIME && pg.z > 0.5 && pg.z < 1.5 &&
 			rdOnRandomButton(pt.xy, screen);
+}
+
+// The size texel next step: the grid's size, and whether the grid's
+// blank - as the app leaves new buffers, (0, 0, 0, 1), at a few cells -
+// which it is when the app's put back the state row alone (a rotation,
+// the shader opened again), so the grid starts again (rdStarted()).
+vec4 rdNextSize(ivec2 grid) {
+	bool blank = true;
+	for (int k = 0; k < 6; ++k) {
+		ivec2 q = ivec2(vec2(0.13 + 0.15 * float(k), 0.71 - 0.11 * float(k)) * vec2(grid));
+		blank = blank && rdChem(0, q) == 0.0 && rdChem(1, q) == 0.0 &&
+				rdChem(2, q) == 0.0 && rdChem(3, q) == 1.0;
+	}
+	return vec4(vec2(grid), blank ? 0.0 : 1.0, 0.0);
+}
+
+// The brush size texel next frame: a tap on its button, the next size -
+// a quarter, a half, one, then twice BRUSH_SIZE, and round again.
+vec4 rdNextPaint(ivec2 grid, vec2 screen) {
+	vec4 s = rdState(S_PAINT, grid);
+	vec4 pg = rdState(S_GESTURE, grid);
+	vec4 pt = rdState(S_TOUCH, grid);
+	if (pointerCount == 0 && pg.x > 0.0 && pg.x < 1.5 && pt.z < 0.5 &&
+			iTime - pg.y < TAP_TIME && pg.z > 0.5 && pg.z < 1.5 && rdOnPaintButton(pt.xy, screen)) {
+		s.x = s.x > 1.5 ? 0.25 : s.x * 2.0;
+	}
+	return s;
 }
 
 // A new random look's seed - the same in every texel this frame.
@@ -1411,7 +1483,7 @@ vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) 
 	// moment before it was let go; a tap, a new one.
 	vec4 r = rdState(S_RANDOM, grid);
 	if (m.z > 5.5) {
-		return rdWanderStep(texel, chem, s, grid);
+		return rdNewFrame(grid) ? rdWanderStep(texel, chem, s, grid) : s;
 	}
 	if (r.z > 0.5) {
 		// Just let go: back to the older snapshot, a moment before.
@@ -1624,6 +1696,21 @@ vec4 rdRandomButtonColour(vec2 p, vec2 screen, vec4 mode) {
 	return vec4(col, smoothstep(1.05, 0.98, r));
 }
 
+// The brush size button: a disc as big, next to the button, as the brush
+// is next to its largest.
+vec4 rdPaintButtonColour(vec2 p, vec2 screen, ivec2 grid) {
+	vec3 b = rdPaintButton(screen);
+	vec2 v = (p - b.xy) / b.z;
+	float r = length(v);
+	if (r > 1.05) {
+		return vec4(0.0);
+	}
+	float size = 0.2 + 0.55 * sqrt(rdBrushSize(grid) / (2.0 * BRUSH_SIZE));
+	vec3 col = mix(vec3(0.08), vec3(0.95), smoothstep(size + 0.05, size, r));
+	col = mix(col, vec3(0.9), smoothstep(0.8, 0.86, r) * step(size + 0.08, r));
+	return vec4(col, smoothstep(1.05, 0.98, r));
+}
+
 // Picking a colour map: every map, a row each, the current one framed.
 vec4 rdMapPickerColour(vec2 p, vec2 screen, vec4 mode) {
 	vec4 r = rdMapPicker(screen);
@@ -1810,6 +1897,8 @@ void mainImage(out vec4 fragColor, vec2 fragCoord) {
 		col = mix(col, b.rgb, b.a);
 		b = rdRandomButtonColour(p, screen, mode);
 		col = mix(col, b.rgb, b.a);
+		b = rdPaintButtonColour(p, screen, grid);
+		col = mix(col, b.rgb, b.a);
 		if (mode.z > 2.5 && mode.z < 4.5) {
 			b = rdBrushPad(p, screen, grid, mode.z > 3.5);
 			col = mix(col, b.rgb, b.a);
@@ -1962,6 +2051,7 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	ftokens = set(TOKEN.findall(formula))
 	out = []
 	out.append("///float32")
+	out.append("///stateRow:top")
 	for g, b in enumerate(src_buffers):
 		out.append("uniform sampler2D iChannel%d; ///buf:%s;" % (g, b))
 	if not p.common:
@@ -2015,7 +2105,8 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 	out.append("\tvec4 uiGesture, uiTouch, uiMode, uiDrag, uiFingers;")
 	if is_first_stage:
 		out.append("\tbool starting = !rdStarted(grid);")
-		out.append("\tif (starting) {")
+		out.append("\tbool fresh = rdFresh(grid);")
+		out.append("\tif (fresh) {")
 		out.append("\t\tuiGesture = rdStartState(S_GESTURE);")
 		out.append("\t\tuiTouch = rdStartState(S_TOUCH);")
 		out.append("\t\tuiMode = rdStartState(S_MODE);")
@@ -2039,7 +2130,10 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\telse if (texel == S_MODE) fragColor = uiMode;")
 		out.append("\t\telse if (texel == S_DRAG) fragColor = uiDrag;")
 		out.append("\t\telse if (texel == S_FINGERS) fragColor = uiFingers;")
-		out.append("\t\telse if (starting) fragColor = rdStartState(texel);")
+		out.append("\t\telse if (texel == S_SIZE) fragColor = rdNextSize(grid);")
+		out.append("\t\telse if (texel == S_CLOCK) fragColor = vec4(iTime, 0.0, 0.0, 0.0);")
+		out.append("\t\telse if (!fresh && texel == S_PAINT) fragColor = rdNextPaint(grid, screen);")
+		out.append("\t\telse if (fresh) fragColor = rdStartState(texel);")
 		out.append("\t\telse if (texel == S_BRUSH || texel == S_BRUSH_ON) {")
 		out.append("\t\t\tfragColor = rdNextBrush(texel, grid, screen, uiMode, uiFingers);")
 		out.append("\t\t}")
@@ -2396,7 +2490,7 @@ def paint_code(p, chems, mine, paint, erase, is_first_stage):
 	out.append("\t\t} else if (view == 2 && shown < CHEMICALS) {")
 	out.append("\t\t\tonly = shown;")
 	out.append("\t\t}")
-	out.append("\t\tfloat away = distance(at, fragCoord) / (BRUSH_SIZE * float(min(grid.x, grid.y)));")
+	out.append("\t\tfloat away = distance(at, fragCoord) / (rdBrushSize(grid) * float(min(grid.x, grid.y)));")
 	out.append("\t\tif (erasing && away < ERASE_SIZE) {")
 	out.append("\t\t\tif (only < 0) {")
 	for c in mine:
@@ -2522,7 +2616,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	params_block.append("// round each (the brush's radius, of the grid's shorter side - the")
 	params_block.append("// same on screen at any quality; the eraser's, times that), and how")
 	params_block.append("// long a touch lasts before it paints:")
-	params_block.append("#define BRUSH_SIZE 0.05")
+	params_block.append("#define BRUSH_SIZE 0.2 // the button next to random makes it a quarter to twice this")
 	params_block.append("#define ERASE_SIZE 1.5")
 	params_block.append("#define PAINT_DELAY 0.2 // seconds - a quicker touch is a tap")
 	for c, v in p.paint:
@@ -2607,6 +2701,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	image.append("")
 	if not p.common:
 		image.extend(display_block)
+		image.append(next(l for l in params_block if l.startswith("#define BRUSH_SIZE ")))
 		image.append("")
 	if not p.common:
 		image.append(HSV_CODE)
