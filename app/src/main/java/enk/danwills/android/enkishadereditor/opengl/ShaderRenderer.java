@@ -3,6 +3,8 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
@@ -2097,11 +2099,24 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			if (oversample != 1 || !isLiveRenderSize(width, height)) {
 				return null;
 			}
+			byte[] png;
 			if (captureUpscaled) {
 				GlTexture2D frame = renderPipeline.getBackTexture();
-				return frame != null ? readUpscaled(useDevice, frame) : null;
+				png = frame != null ? readUpscaled(useDevice, frame) : null;
+			} else {
+				png = renderPipeline.readCompletedFrame(captureEncoding);
 			}
-			return renderPipeline.readCompletedFrame(captureEncoding);
+			// One "tile", so a progress dialog still hears that the
+			// compile's over and the frame's done (it's already captured,
+			// so a cancel here is left to the caller's next step) - and
+			// sees it, the whole frame as its preview.
+			if (png != null && progressListener != null) {
+				progressListener.onProgress(1, 1);
+			}
+			if (png != null && tilePreviewListener != null) {
+				previewWholeFrame(png, tilePreviewListener);
+			}
+			return png;
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
@@ -2397,6 +2412,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		} finally {
 			renderPipeline.endSharedContext();
 		}
+	}
+
+	// A captured frame (as encoded) to tilePreviewListener as one tile
+	// covering the whole image - skipped for an encoding Android can't
+	// decode.
+	private static void previewWholeFrame(@NonNull byte[] encoded,
+			@NonNull TilePreviewListener tilePreviewListener) {
+		Bitmap bitmap = BitmapFactory.decodeByteArray(encoded, 0, encoded.length);
+		if (bitmap == null) {
+			return;
+		}
+		int w = bitmap.getWidth();
+		int h = bitmap.getHeight();
+		int[] argb = new int[w * h];
+		bitmap.getPixels(argb, 0, w, 0, 0, w, h);
+		bitmap.recycle();
+		tilePreviewListener.onTilePreview(0, 0, w, h, w, h, argb);
 	}
 
 	private void resetFps() {

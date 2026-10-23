@@ -6379,10 +6379,11 @@ public class MainActivity extends AppCompatActivity {
 		// runHighResCapture()'s own copy of these two.
 		boolean[] serviceActive = {false};
 		int[] lastNotifiedPercent = {-1};
-		// Marked by tileProgressListener at the first tile of whichever
-		// frame is currently rendering, read back by frameListener once
-		// that frame completes - the two together give one frame's
-		// actual wall-clock render time, averaged across every frame
+		// Marked as the first frame starts (sequenceProgressListener),
+		// then by frameListener as each frame completes - so each gap is
+		// one frame's actual wall-clock time, stepping the simulation
+		// included (all of it, for a buffer shader, whose capture is
+		// just reading back the frame), averaged across every frame
 		// completed so far (frameAvgTotalSeconds / framesTimed) for the
 		// Avg/ETA line, same idea as runHighResCapture()'s own
 		// per-tile version but at frame granularity.
@@ -6396,6 +6397,9 @@ public class MainActivity extends AppCompatActivity {
 			// fires for a frame that's actually about to be refused -
 			// see the !skipping branch's own doc.
 			boolean willContinue = !cancelRequested.get() && !interruptRequested.get();
+			if (!skipping && stepIndex == 1) {
+				frameStartNanos[0] = System.nanoTime();
+			}
 			runOnUiThread(() -> {
 				if (!skipping) {
 					// Clears the whole-image preview right as the *next*
@@ -6457,9 +6461,6 @@ public class MainActivity extends AppCompatActivity {
 							: pickRandomStatus(
 									numFrames > 1 ? R.array.status_tile_sequence : R.array.status_tile_single);
 				}
-				if (tilesDone == 1) {
-					frameStartNanos[0] = System.nanoTime();
-				}
 				overallBar.setProgress(PROGRESS_COMPILE_UNITS + skipFrames +
 						currentFrameIndex[0] * tilesPerFrame[0] + tilesDone);
 				subtaskBar.setVisibility(View.VISIBLE);
@@ -6510,7 +6511,9 @@ public class MainActivity extends AppCompatActivity {
 				frameUris.add(saved.uri());
 			}
 			currentFrameIndex[0] = frameIndex + 1;
-			double frameSeconds = (System.nanoTime() - frameStartNanos[0]) / 1e9;
+			long now = System.nanoTime();
+			double frameSeconds = (now - frameStartNanos[0]) / 1e9;
+			frameStartNanos[0] = now;
 			frameAvgTotalSeconds[0] += frameSeconds;
 			++framesTimed[0];
 			int remainingFrames = totalFrames - currentFrameIndex[0];
