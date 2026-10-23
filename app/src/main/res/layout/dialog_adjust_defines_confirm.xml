@@ -41,6 +41,18 @@
 			android:textSize="12sp"/>
 	</LinearLayout>
 
+	<!-- The changes as a new shader named after this one (with a
+	     postfix), this one left as it was - see
+	     MainActivity.showAdjustDefinesConfirmDialog(). -->
+	<Button
+		android:id="@+id/adjust_defines_confirm_save_as_new"
+		style="@style/BarButton"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginHorizontal="8dp"
+		android:layout_marginTop="8dp"
+		android:text="@string/duplicate_shader"/>
+
 	<!-- Custom row (not AlertDialog's own 3-button slots) so the order
 	     reads left-to-right exactly as asked for: Apply, Apply and
 	     Save, Cancel - see showCustomResolutionDialog()'s own comment

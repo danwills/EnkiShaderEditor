@@ -545,6 +545,21 @@ public class ShaderManager {
 		return newId;
 	}
 
+	// A new shader from `session` - every pass, Common and texts - with
+	// the current thumbnail and quality, unnamed; the selected shader is
+	// left as it is. Returns the new id, or NO_SHADER.
+	public long insertShader(@NonNull ShaderProjectSession session) {
+		long newId = dataSource.shader.insertShader(session.getEntryPointSource(), null,
+				getThumbnail(), quality);
+		if (newId <= 0) {
+			return NO_SHADER;
+		}
+		dataSource.buffer.setBufferSources(newId, session.getProject().getBufferSources());
+		dataSource.buffer.setCommonSource(newId, session.getProject().getCommonSource());
+		dataSource.text.setTexts(newId, session.getProject().getTexts());
+		return newId;
+	}
+
 	public void deleteShader(long shaderId) {
 		dataSource.shader.removeShader(shaderId);
 		if (shaderId == selectedShaderId) {

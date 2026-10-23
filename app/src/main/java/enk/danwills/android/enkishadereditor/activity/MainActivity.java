@@ -1763,23 +1763,9 @@ public class MainActivity extends AppCompatActivity {
 					shaderManager.saveShader();
 				}
 				long id = shaderManager.getSelectedShaderId();
-				String name = null;
-				for (var shader : shaderListManager.getAllShaders()) {
-					if (shader.id() == id) {
-						name = shader.name();
-						// The copy isn't in the pack: drop "<Pack Title>: ".
-						int separator = name != null && shader.isFromPack()
-								? name.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR)
-								: -1;
-						if (separator >= 0) {
-							name = name.substring(separator +
-									DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
-						}
-						break;
-					}
-				}
-				if (name != null && !name.trim().isEmpty()) {
-					showSaveAsNewShaderDialog(id, name.trim());
+				String name = copyBaseName(id);
+				if (name != null) {
+					showSaveAsNewShaderDialog(id, name);
 				} else {
 					duplicateShader(id);
 				}
@@ -1927,14 +1913,56 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	// What a copy of shader `id` is named after: its name without any
+	// "<Pack Title>: " (the copy isn't in the pack), or null if it has
+	// none.
+	@Nullable
+	private String copyBaseName(long id) {
+		for (var shader : shaderListManager.getAllShaders()) {
+			if (shader.id() != id) {
+				continue;
+			}
+			String name = shader.name();
+			int separator = name != null && shader.isFromPack()
+					? name.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR)
+					: -1;
+			if (separator >= 0) {
+				name = name.substring(separator +
+						DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
+			}
+			return name != null && !name.trim().isEmpty() ? name.trim() : null;
+		}
+		return null;
+	}
+
 	// Save as New Shader for a named shader: the copy's name is that name
 	// plus a postfix, as the sidebar's name-group dialog does (an empty
 	// postfix leaves the copy unnamed, as for an unnamed shader).
 	private void showSaveAsNewShaderDialog(long id, @NonNull String name) {
+		askNewShaderName(name, newName -> {
+			if (newName == null) {
+				duplicateShader(id);
+				return;
+			}
+			long newId = shaderManager.duplicateShader(id);
+			if (newId > 0) {
+				shaderManager.selectShader(newId);
+				shaderListManager.loadShadersAsync();
+				checkConflictAndRename(newId, newName);
+			}
+		});
+	}
+
+	// Asks for the postfix of a new shader's name after `name`, offering
+	// the first number not taken yet (name2, name3...): onName gets the
+	// whole name, or null for an empty postfix (an unnamed shader).
+	private void askNewShaderName(@NonNull String name, @NonNull Consumer<String> onName) {
 		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
 		TextView prefixLabel = view.findViewById(R.id.prefix_label);
 		EditText postfixView = view.findViewById(R.id.postfix);
 		prefixLabel.setText(getString(R.string.name_group_prefix_label, name));
+		postfixView.setText(String.valueOf(nextFreeNumber(name)));
+		postfixView.selectAll();
 
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.duplicate_shader)
@@ -1942,22 +1970,32 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String postfix = postfixView.getText().toString().trim();
 					if (postfix.isEmpty()) {
-						duplicateShader(id);
+						onName.accept(null);
 						return;
 					}
-					shaderListManager.checkNamePrefixAndThen(postfix, fixedPostfix -> {
-						long newId = shaderManager.duplicateShader(id);
-						if (newId > 0) {
-							shaderManager.selectShader(newId);
-							shaderListManager.loadShadersAsync();
-							checkConflictAndRename(newId, name + fixedPostfix);
-						}
-					});
+					shaderListManager.checkNamePrefixAndThen(postfix,
+							fixedPostfix -> onName.accept(name + fixedPostfix));
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.setOnDismissListener(d -> SoftKeyboard.hide(this, postfixView))
 				.show();
 		postfixView.requestFocus();
+	}
+
+	// The first n from 2 with no shader named name + n.
+	private int nextFreeNumber(@NonNull String name) {
+		Set<String> taken = new HashSet<>();
+		for (var shader : shaderListManager.getAllShaders()) {
+			String title = shader.getTitle();
+			if (title != null) {
+				taken.add(title.toLowerCase(Locale.ROOT));
+			}
+		}
+		int n = 2;
+		while (taken.contains((name + n).toLowerCase(Locale.ROOT))) {
+			n++;
+		}
+		return n;
 	}
 
 	private void updateWallpaper() {
@@ -3557,6 +3595,49 @@ public class MainActivity extends AppCompatActivity {
 				onApplied.run();
 			}
 			dialog.dismiss();
+		});
+		// A new shader with the changes, named after this one; this one
+		// stays as it was. The dialog waits for the name, so cancelling
+		// that comes back here.
+		view.findViewById(R.id.adjust_defines_confirm_save_as_new).setOnClickListener(v -> {
+			long id = shaderManager.getSelectedShaderId();
+			String name = copyBaseName(id);
+			Consumer<String> save = newName -> {
+				if (!dialog.isShowing()) {
+					return;
+				}
+				ShaderProjectSession edited = withDefines(originalSource, originalOrder,
+						workingOrder, null);
+				long newId = shaderManager.insertShader(edited);
+				if (newId <= 0) {
+					return;
+				}
+				for (ShaderDefine define : workingOrder) {
+					if (define.isValueChanged() || define.isCommentChanged()) {
+						recentlyEditedDefineNames.add(define.name);
+					}
+				}
+				// So the live button carries on with the same defines there.
+				Set<String> liveNames = liveDefineNames.get(id);
+				if (liveNames != null) {
+					liveDefineNames.put(newId, new HashSet<>(liveNames));
+				}
+				applied[0] = true;
+				if (onApplied != null) {
+					onApplied.run();
+				}
+				dialog.dismiss();
+				shaderManager.selectShader(newId);
+				shaderListManager.loadShadersAsync();
+				if (newName != null) {
+					checkConflictAndRename(newId, newName);
+				}
+			};
+			if (name != null) {
+				askNewShaderName(name, save);
+			} else {
+				save.accept(null);
+			}
 		});
 	}
 
