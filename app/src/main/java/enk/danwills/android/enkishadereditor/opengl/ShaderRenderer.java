@@ -918,7 +918,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// Buffers simply restart at the new size, as on ShaderToy -
 			// but for any rows a pass keeps (`///stateRow:`).
 			for (var pass : programManager.getBufferPasses()) {
-				pass.keepForResize(device);
+				pass.keepForResize(device, glVersion >= 3, displayRotation());
 			}
 			stateRowMigrationPending = true;
 			abandonProgressiveFrame();
@@ -1109,7 +1109,6 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		}
 
 		ensureBufferTargets();
-		saveStateRowsNowAndThen();
 
 		if (progressiveAbandonRequested) {
 			progressiveAbandonRequested = false;
@@ -1338,25 +1337,25 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				programManager.getTextureResources());
 	}
 
-	// When saveStateRowsNowAndThen() last read the state rows back.
-	private long stateRowsSavedNanos;
-	private static final long STATE_ROWS_SAVE_NANOS = 250_000_000L;
+	// What buffers keep (`///stateRow:`, `///resize:tile`) read back, for
+	// the next targets made for them - when the app pauses, since a
+	// rotation then recreates the activity and with it the GL context.
+	// GL thread; ES 3 only (float readback).
+	// The display's rotation now (Surface.ROTATION_*), which a kept
+	// buffer's grid is turned to match - see BufferPass.restoreSaved().
+	private int displayRotation() {
+		DisplayManager displays = context.getSystemService(DisplayManager.class);
+		Display display = displays != null ? displays.getDisplay(Display.DEFAULT_DISPLAY) : null;
+		return display != null ? display.getRotation() : 0;
+	}
 
-	// A few times a second, the state rows of passes that keep them
-	// (`///stateRow:`) read back, to come back if the context goes - see
-	// BufferPass.saveStateRows(). ES 3 only (float readback).
-	private void saveStateRowsNowAndThen() {
+	public void saveBuffers() {
 		if (glVersion < 3) {
 			return;
 		}
-		long now = System.nanoTime();
-		if (now - stateRowsSavedNanos < STATE_ROWS_SAVE_NANOS) {
-			return;
-		}
-		stateRowsSavedNanos = now;
 		for (var pass : programManager.getBufferPasses()) {
-			if (pass.hasStateRows()) {
-				pass.saveStateRows(device);
+			if (pass.keepsState()) {
+				pass.saveForLater(device, displayRotation());
 			}
 		}
 	}
@@ -1372,7 +1371,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 				pass.ensureTargets(device, width, height, halfFloatBuffers, float32Buffers,
 						errors);
-				pass.copyKeptStateRows(device, glVersion >= 3);
+				pass.restoreSaved(device, glVersion >= 3, displayRotation());
 			}
 		}
 		if (errors != null && !errors.isEmpty()) {

@@ -29,15 +29,22 @@ import java.util.regex.Pattern;
 // 11 bits would stall, e.g. reaction-diffusion), falling back to RGBA16F.
 // A buffer whose source has a `///stateRow:top` (or `bottom`, and
 // optionally a count, `///stateRow:top,2`) line keeps those rows across
-// a resize - a rotation or a quality change - where the rest restarts,
-// as on ShaderToy: the state a simulation's interface keeps there. They're
-// also read back now and then (saveStateRows()), so they come back when
-// the GL context itself is gone and made again - a rotation recreates
-// the activity - or the shader's opened again this app session.
+// a resize or a rotation, where the rest restarts, as on ShaderToy: the
+// state a simulation's interface keeps there. With a `///resize:tile`
+// line too, the rest is kept as well: turned with the screen when it's
+// rotated (so what was at the top of the phone stays there), and tiled
+// over the new size from the bottom left (so a simulation that wraps at
+// its edges carries on, its copies meeting seamlessly). Either way it's read back as floats (ES 3,
+// float targets) just before a resize (keepForResize()) and when the
+// app pauses (ShaderRenderer.saveBuffers()) - a rotation recreates the
+// activity and its GL context - and put into the next targets made for
+// the same pass source, once.
 final class BufferPass {
 	private static final String TAG = "BufferPass";
 	private static final Pattern FLOAT32 = Pattern.compile(
 			"^[ \\t]*///float32[ \\t]*$", Pattern.MULTILINE);
+	private static final Pattern RESIZE_TILE = Pattern.compile(
+			"^[ \\t]*///resize:tile[ \\t]*$", Pattern.MULTILINE);
 	private static final Pattern STATE_ROW = Pattern.compile(
 			"^[ \\t]*///stateRow:(top|bottom)(?:,([0-9]{1,2}))?[ \\t]*$", Pattern.MULTILINE);
 
@@ -60,35 +67,38 @@ final class BufferPass {
 	private boolean float32;
 	private long swaps;
 	private final boolean wantsFloat32;
-	// The last state rows read back from each pass, by pass and source -
-	// see saveStateRows(). A few shaders' worth, for the app session.
-	private record SavedRows(int width, int rows, @NonNull FloatBuffer pixels) {
+	// What saveForLater() read back, by pass and source, until the next
+	// targets made for it take it (restoreSaved()): its size, and its
+	// pixels, RGBA floats bottom row first - and when, as it's only for
+	// targets made again soon after (SAVED_NANOS): a pause the app comes
+	// back from, its context kept, shouldn't put an old frame into the
+	// shader opened next time.
+	private record Saved(int width, int height, @NonNull FloatBuffer pixels, long nanos,
+			int rotation) {
 	}
 
-	private static final int SAVED_MAX = 16;
-	private static final Map<String, SavedRows> saved = new LinkedHashMap<>(16, 0.75f, true) {
+	private static final long SAVED_NANOS = 10_000_000_000L;
+
+	private static final int SAVED_MAX = 8;
+	private static final Map<String, Saved> saved = new LinkedHashMap<>(16, 0.75f, true) {
 		@Override
-		protected boolean removeEldestEntry(Map.Entry<String, SavedRows> eldest) {
+		protected boolean removeEldestEntry(Map.Entry<String, Saved> eldest) {
 			return size() > SAVED_MAX;
 		}
 	};
 
 	// See STATE_ROW: rows kept across a resize (0 none), and whether
-	// they're the top ones.
+	// they're the top ones; and RESIZE_TILE.
 	private final int stateRows;
 	private final boolean stateRowsAtTop;
-	// The last frame before a resize, kept until the new targets have
-	// the state rows copied in - see keepForResize().
-	@Nullable
-	private GlFramebuffer keptFramebuffer;
-	@Nullable
-	private GlTexture2D keptTexture;
+	private final boolean resizeTile;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
 		this.buffer = buffer;
 		this.sourceText = sourceText;
 		this.prepared = prepared;
 		wantsFloat32 = FLOAT32.matcher(sourceText).find();
+		resizeTile = RESIZE_TILE.matcher(sourceText).find();
 		Matcher stateRow = STATE_ROW.matcher(sourceText);
 		if (stateRow.find()) {
 			stateRows = stateRow.group(2) != null
@@ -101,16 +111,12 @@ final class BufferPass {
 		}
 	}
 
-	// A resize is coming (see ShaderRenderer.onSurfaceChanged()): the
-	// targets go, but a pass with state rows keeps its last frame until
-	// ensureTargets() has made the new ones and copied them in.
-	void keepForResize(@NonNull GlDevice device) {
-		releaseKept(device);
-		if (stateRows > 0 && hasTargets()) {
-			keptFramebuffer = framebuffers[current];
-			keptTexture = textures[current];
-			framebuffers[current] = null;
-			textures[current] = null;
+	// A resize is coming (see ShaderRenderer.onSurfaceChanged()): what's
+	// kept is read back for the new targets, then the targets go.
+	// rotation: the display's (Surface.ROTATION_*) - see saveForLater().
+	void keepForResize(@NonNull GlDevice device, boolean es3, int rotation) {
+		if (es3) {
+			saveForLater(device, rotation);
 		}
 		releaseTargets(device);
 	}
@@ -119,82 +125,134 @@ final class BufferPass {
 		return buffer + ":" + sourceText.length() + ":" + sourceText.hashCode();
 	}
 
-	// Reads this pass's state rows back (as floats - ES 3 and float
-	// targets only) for restoreSavedRows(), GL thread.
-	void saveStateRows(@NonNull GlDevice device) {
+	boolean keepsState() {
+		return stateRows > 0;
+	}
+
+	// Reads this pass's last frame back (all of it with RESIZE_TILE, else
+	// just its state rows) for the next targets made for it - ES 3 and
+	// float targets only. GL thread. rotation: the display's now
+	// (Surface.ROTATION_*), so restoreSaved() can turn it to match.
+	void saveForLater(@NonNull GlDevice device, int rotation) {
 		if (stateRows <= 0 || !hasTargets() || !floatTargets || textures[current] == null) {
 			return;
 		}
 		int width = getWidth();
-		int rows = Math.min(stateRows, getHeight());
+		int height = getHeight();
+		int rows = resizeTile ? height : Math.min(stateRows, height);
+		int y = stateRowsAtTop ? height - rows : 0;
 		FloatBuffer pixels = ByteBuffer.allocateDirect(width * rows * 16)
 				.order(ByteOrder.nativeOrder()).asFloatBuffer();
 		while (GLES20.glGetError() != GLES20.GL_NO_ERROR) {
 			// Earlier errors aren't this read's.
 		}
 		device.bindFramebuffer(framebuffers[current]);
-		GLES20.glReadPixels(0, stateRowsAtTop ? getHeight() - rows : 0, width, rows,
-				GLES20.GL_RGBA, GLES20.GL_FLOAT, pixels);
+		GLES20.glReadPixels(0, y, width, rows, GLES20.GL_RGBA, GLES20.GL_FLOAT, pixels);
 		if (GLES20.glGetError() == GLES20.GL_NO_ERROR) {
-			saved.put(savedKey(), new SavedRows(width, rows, pixels));
+			// As if all `height` rows, the state rows at their own end.
+			saved.put(savedKey(), new Saved(width, resizeTile ? height : rows, pixels,
+					System.nanoTime(), rotation));
 		}
 	}
 
-	boolean hasStateRows() {
-		return stateRows > 0;
-	}
-
-	// New targets with nothing kept from a resize: the state rows last
-	// read back from this pass (the same source), if any, into both.
-	private void restoreSavedRows(@NonNull GlDevice device) {
-		SavedRows rows = saved.get(savedKey());
-		if (rows == null || !floatTargets || textures[0] == null) {
+	// New targets: what saveForLater() read back for this pass (the same
+	// source), if anything, into both - the state rows at their end, and
+	// with RESIZE_TILE the rest turned by however far the display's
+	// rotation (Surface.ROTATION_*) has gone since, and tiled over the
+	// rest - then forgotten.
+	void restoreSaved(@NonNull GlDevice device, boolean es3, int rotation) {
+		Saved old = saved.remove(savedKey());
+		if (old == null || System.nanoTime() - old.nanos() > SAVED_NANOS ||
+				!es3 || !floatTargets || !hasTargets() || textures[0] == null) {
 			return;
 		}
-		int width = Math.min(rows.width(), textures[0].getWidth());
-		int count = Math.min(rows.rows(), textures[0].getHeight());
-		int y = stateRowsAtTop ? textures[0].getHeight() - count : 0;
-		// Row by row: the saved rows are their own width apart.
+		int width = textures[0].getWidth();
+		int height = textures[0].getHeight();
+		int keep = Math.min(stateRows, Math.min(height, old.height()));
+		FloatBuffer from = old.pixels();
+		if (resizeTile && old.height() > stateRows) {
+			int oldRest = old.height() - stateRows;
+			int oldWidth = old.width();
+			// Quarter turns anticlockwise the display's gone: the grid turns
+			// as much, so it stays put on the phone.
+			int turns = Math.floorMod(rotation - old.rotation(), 4);
+			// Bottom row first, as GL has them; the rest's rows start at 0
+			// when the state rows are at the top, at stateRows if not.
+			int oldBase = stateRowsAtTop ? 0 : stateRows;
+			int base = stateRowsAtTop ? 0 : keep;
+			float[] row = new float[width * 4];
+			float[] source = new float[old.width() * old.height() * 4];
+			from.position(0);
+			from.get(source);
+			FloatBuffer out = ByteBuffer.allocateDirect(width * height * 16)
+					.order(ByteOrder.nativeOrder()).asFloatBuffer();
+			for (int y = 0; y < height; ++y) {
+				int sy;
+				boolean state = stateRowsAtTop ? y >= height - keep : y < keep;
+				if (state) {
+					sy = stateRowsAtTop ? old.height() - (height - y) : y;
+				} else {
+					sy = 0;
+				}
+				int gy = y - base;
+				for (int x = 0; x < width; ++x) {
+					int sx;
+					if (state) {
+						sx = Math.min(x, oldWidth - 1);
+					} else {
+						// Where (x, gy) of the new grid was in the old one.
+						int ox;
+						int oy;
+						switch (turns) {
+							case 1 -> {
+								ox = gy;
+								oy = oldRest - 1 - x;
+							}
+							case 2 -> {
+								ox = oldWidth - 1 - x;
+								oy = oldRest - 1 - gy;
+							}
+							case 3 -> {
+								ox = oldWidth - 1 - gy;
+								oy = x;
+							}
+							default -> {
+								ox = x;
+								oy = gy;
+							}
+						}
+						sx = Math.floorMod(ox, oldWidth);
+						sy = oldBase + Math.floorMod(oy, oldRest);
+					}
+					boolean beyond = state && x >= oldWidth;
+					for (int c = 0; c < 4; ++c) {
+						row[x * 4 + c] = beyond ? (c == 3 ? 1f : 0f)
+								: source[(sy * oldWidth + sx) * 4 + c];
+					}
+				}
+				out.put(row);
+			}
+			out.position(0);
+			for (GlTexture2D texture : textures) {
+				device.bindTexture(0, texture);
+				GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, 0, width, height,
+						GLES20.GL_RGBA, GLES20.GL_FLOAT, out);
+				out.position(0);
+			}
+			return;
+		}
+		// Just the state rows, as much of each as fits.
+		int copyWidth = Math.min(width, old.width());
+		int y = stateRowsAtTop ? height - keep : 0;
 		for (GlTexture2D texture : textures) {
 			device.bindTexture(0, texture);
-			for (int r = 0; r < count; ++r) {
-				int from = (stateRowsAtTop ? rows.rows() - count + r : r) * rows.width() * 4;
-				rows.pixels().position(from);
-				GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, y + r, width, 1,
-						GLES20.GL_RGBA, GLES20.GL_FLOAT, rows.pixels().slice());
+			for (int r = 0; r < keep; ++r) {
+				int sy = stateRowsAtTop ? old.height() - keep + r : r;
+				from.position(sy * old.width() * 4);
+				GLES20.glTexSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, y + r, copyWidth, 1,
+						GLES20.GL_RGBA, GLES20.GL_FLOAT, from.slice());
 			}
 		}
-		rows.pixels().position(0);
-	}
-
-	// Once the new targets are made: the kept frame's state rows into
-	// both, as they are (a blit, so floats stay exact) - as much of each
-	// row as fits; then the kept frame goes. Needs ES 3 (es3) and the
-	// same kind of target - else the buffer just restarts. With nothing
-	// kept, the rows last read back, if any (restoreSavedRows()).
-	void copyKeptStateRows(@NonNull GlDevice device, boolean es3) {
-		GlTexture2D kept = keptTexture;
-		GlFramebuffer from = keptFramebuffer;
-		if (stateRows > 0 && kept == null && es3 && hasTargets()) {
-			restoreSavedRows(device);
-		}
-		if (kept != null && from != null && hasTargets() && es3) {
-			int width = Math.min(kept.getWidth(), textures[0].getWidth());
-			int rows = Math.min(stateRows, Math.min(kept.getHeight(), textures[0].getHeight()));
-			int fromY = stateRowsAtTop ? kept.getHeight() - rows : 0;
-			int toY = stateRowsAtTop ? textures[0].getHeight() - rows : 0;
-			for (GlFramebuffer to : framebuffers) {
-				device.blitFramebuffer(from, to, 0, fromY, 0, toY, width, rows);
-			}
-		}
-		releaseKept(device);
-	}
-
-	private void releaseKept(@NonNull GlDevice device) {
-		device.deleteFramebuffer(keptFramebuffer);
-		keptFramebuffer = null;
-		device.deleteTexture(keptTexture);
-		keptTexture = null;
 	}
 
 	// What this pass's `sourceText` shows: its own source, or the pass
@@ -370,7 +428,6 @@ final class BufferPass {
 	// alive.
 	void release(@NonNull GlDevice device) {
 		releaseTargets(device);
-		releaseKept(device);
 		if (sourceTextTexture != null) {
 			sourceTextTexture.release(device);
 			sourceTextTexture = null;

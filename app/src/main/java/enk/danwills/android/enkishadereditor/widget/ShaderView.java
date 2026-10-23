@@ -51,9 +51,29 @@ public class ShaderView extends GLSurfaceView {
 	// super.onPause() itself), so the clock carries on through it.
 	@Override
 	public void onPause() {
+		saveBuffers();
 		super.onPause();
 		renderer.unregisterListeners();
 		renderer.holdClockThroughPause();
+	}
+
+	// What the buffers keep, read back on the GL thread before pausing -
+	// a pause for a rotation is followed by the GL context going with the
+	// activity (see ShaderRenderer.saveBuffers()). Waits a moment for it;
+	// never long, so a stuck GL thread can't hold up the pause.
+	private void saveBuffers() {
+		var done = new CountDownLatch(1);
+		queueEvent(() -> {
+			renderer.saveBuffers();
+			done.countDown();
+		});
+		try {
+			if (!done.await(500, TimeUnit.MILLISECONDS)) {
+				Log.w("ShaderView", "Saving buffers timed out");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	// unregisterListeners() above clears the renderer's per-program

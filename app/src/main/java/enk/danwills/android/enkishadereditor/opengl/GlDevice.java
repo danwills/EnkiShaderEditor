@@ -362,19 +362,6 @@ final class GlDevice {
 		stateCache.currentFramebufferId = framebufferId;
 	}
 
-	// Copies a rectangle of pixels from one framebuffer to another, as
-	// they are (ES 3: GL_NEAREST, no scaling) - formats must match, float
-	// ones included. Leaves no framebuffer bound.
-	void blitFramebuffer(@NonNull GlFramebuffer from, @NonNull GlFramebuffer to,
-			int fromX, int fromY, int toX, int toY, int width, int height) {
-		GLES30.glBindFramebuffer(GLES30.GL_READ_FRAMEBUFFER, from.getId());
-		GLES30.glBindFramebuffer(GLES30.GL_DRAW_FRAMEBUFFER, to.getId());
-		GLES30.glBlitFramebuffer(fromX, fromY, fromX + width, fromY + height,
-				toX, toY, toX + width, toY + height, GLES20.GL_COLOR_BUFFER_BIT, GLES20.GL_NEAREST);
-		GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-		stateCache.currentFramebufferId = 0;
-	}
-
 	void attachColor(@NonNull GlFramebuffer framebuffer,
 			@NonNull GlTexture2D texture) {
 		bindFramebuffer(framebuffer);
