@@ -16,6 +16,7 @@ Needs PyOpenGL and a GPU with EGL (any desktop Linux driver).
 import ctypes
 import os
 import re
+import time
 import sys
 
 os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
@@ -192,6 +193,18 @@ def best_window(chems, s):
 	return chems[:, y:y + s, x:x + s].copy()
 
 
+# The share of the time a trial keeps the GPU busy: below 1, it rests
+# between samples for as long as each took, scaled to leave the rest idle
+# (vtipack build --duty), so a long build can run gently beside other work.
+DUTY = 1.0
+
+
+def _rest(since):
+	if DUTY < 1.0:
+		gl.glFinish()
+		time.sleep((time.time() - since) * (1.0 / max(DUTY, 0.05) - 1.0))
+
+
 class Trial:
 	"""A pattern's shader run from its saved state, for comparing starts with."""
 
@@ -214,10 +227,13 @@ class Trial:
 			runs = max(self.steps // sim.stages, 1)
 			every = max(runs // self.samples, 1)
 			frames, series = [], []
+			since = time.time()
 			for i in range(runs + 1):
 				if i % every == 0:
 					series.append(stats(sim.read()))
 					frames.append(sim.frame * sim.stages)
+					_rest(since)
+					since = time.time()
 				if i < runs:
 					sim.run()
 			return np.array(frames), np.array(series), sim.read()

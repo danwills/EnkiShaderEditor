@@ -491,6 +491,8 @@ def main():
 	a.add_argument("--part", default="0/1", help="i/n: this process's share (default 0/1, all)")
 	a.add_argument("--steps", type=int, default=20000, help="steps each trial runs (default 20000)")
 	a.add_argument("--match", help="only files whose path matches this regular expression")
+	a.add_argument("--duty", type=float, default=1.0,
+			help="the share of the time it keeps the GPU busy, resting the rest (default 1)")
 	a = sub.add_parser("expand")
 	a.add_argument("out")
 	a.add_argument("path", help="the file's path in the source folder")
@@ -524,6 +526,8 @@ def main():
 	if args.cmd == "index":
 		index(args.src, args.out)
 	elif args.cmd == "build":
+		import rdheadless
+		rdheadless.DUTY = args.duty
 		build(args.src, args.out, tuple(int(v) for v in args.part.split("/")), args.steps, args.match)
 	elif args.cmd == "expand":
 		expand(args.out, args.path, args.dest)
