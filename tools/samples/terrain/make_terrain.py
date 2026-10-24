@@ -12,9 +12,12 @@ Fingers fly the camera:
   two fingers    drag up or down to tilt (as far as straight down), across
                  to slide sideways; pinch to climb or dive, twist to turn
                  (it drifts forward by itself)
-  triple tap     over to the pattern's own interface (its colour view and
-                 tiles, painting, the buttons) - and a triple tap there
-                 back to the terrain
+  three fingers  into the pattern's tiles and buttons (the colour map,
+                 random looks, the brush), and out again, as the flat
+                 pattern's three fingers do - the terrain stands in for
+                 its colour view
+  triple tap     the terrain for the pattern's own flat colour view, and
+                 back
 (Restart puts the camera back where it started.)
 The look is set by the #defines at the top of the Image pass (heights,
 speed, lens curvature, fog) - Adjust Defines' live mode suits them.
@@ -30,7 +33,7 @@ const int CAM_LOOK = 54;  // pitch (down from level), when last moved (iTime), l
                           // frame's finger count, and 2 once started (new buffers clear
                           // to an alpha of 1)
 const int CAM_TOUCH = 55; // last frame's first two fingers (x, y, x, y)
-const int CAM_TAPS = 56;  // 1 in the pattern's own interface (0 the terrain), taps so far,
+const int CAM_TAPS = 56;  // 1 for the pattern's flat colour view (0 the terrain), taps so far,
                           // when the last ended, when this touch began
 const int CAM_DOWN = 57;  // where this touch began (x, y), 1 once it's moved too far for a tap
 #define CAM_TAP_TIME 0.3   // seconds a tap may last
@@ -47,9 +50,10 @@ void camStart(ivec2 grid, out vec4 pose, out vec4 look) {
 	look = vec4(CAM_PITCH, iTime, 0.0, 2.0);
 }
 
-// Whether the pattern's own interface is up, not the terrain.
+// Whether the pattern's own interface is up, not the terrain: its tiles (three
+// fingers), or its flat colour view (a triple tap).
 bool camInterface(ivec2 grid) {
-	return CAM_TAPS < grid.x && rdState(CAM_TAPS, grid).x > 0.5;
+	return rdState(S_GESTURE, grid).z > 0.5 || (CAM_TAPS < grid.x && rdState(CAM_TAPS, grid).x > 0.5);
 }
 
 // The camera's texels next frame, from last frame's and the fingers.
@@ -76,6 +80,9 @@ void camNext(ivec2 grid, vec2 screen, out vec4 pose, out vec4 look, out vec4 tou
 	int was = int(look.z + 0.5);
 	vec2 p0 = pointers[0].xy;
 	vec2 p1 = pointers[1].xy;
+	// The pattern's gesture: its most fingers this touch, and its view (the
+	// tiles' taps are theirs, not a triple tap's).
+	vec4 gesture = rdState(S_GESTURE, grid);
 	// Taps, counted for a triple tap: short, one finger, hardly moving.
 	if (n > 0 && was == 0) {
 		taps.w = iTime;
@@ -85,7 +92,7 @@ void camNext(ivec2 grid, vec2 screen, out vec4 pose, out vec4 look, out vec4 tou
 		down.z = 1.0;
 	}
 	if (n == 0 && was == 1) {
-		if (down.z < 0.5 && iTime - taps.w < CAM_TAP_TIME) {
+		if (down.z < 0.5 && iTime - taps.w < CAM_TAP_TIME && gesture.z < 0.5) {
 			taps.y = iTime - taps.z < CAM_TAP_GAP ? taps.y + 1.0 : 1.0;
 			taps.z = iTime;
 			if (taps.y >= 3.0) {
@@ -97,8 +104,9 @@ void camNext(ivec2 grid, vec2 screen, out vec4 pose, out vec4 look, out vec4 tou
 		}
 	}
 	look.z = float(n);
-	if (taps.x > 0.5) {
-		// The interface has the fingers; the camera waits where it is.
+	if (taps.x > 0.5 || gesture.z > 0.5 || gesture.x > 2.5) {
+		// The interface has the fingers (three are its), the camera waits
+		// where it is.
 		touch = vec4(p0, p1);
 		return;
 	}
@@ -348,16 +356,16 @@ def main():
 	# The Image pass: the pattern's own (its main renamed rdViews()), then
 	# the terrain, which hands over to it in the interface.
 	views = image.replace("void mainImage(out vec4 fragColor, vec2 fragCoord) {",
-			"// The pattern's own views, for when a triple tap's put its interface up.\n"
+			"// The pattern's own views, when its interface is up (tiles, or flat).\n"
 			"void rdViews(out vec4 fragColor, vec2 fragCoord) {", 1)
 	assert views != image
 	head = views.split("\n")
 	title = head[0].replace("converted from Ready", "flown over as terrain - from Ready")
-	keep = "\n".join([title, "// Fingers fly the camera: one steers and tilts; two slide, pinch to climb",
-			"// or dive, twist to turn (Restart for the start view). A triple tap puts the",
-			"// pattern's own interface up (painting, its tiles and buttons), and another",
-			"// takes it away again. The look is set by the terrain's #defines (Adjust",
-			"// Defines' live mode suits them)."] + head[1:])
+	keep = "\n".join([title, "// One finger paints; two fly the camera: drag up or down to tilt, across to",
+			"// slide, pinch to climb or dive, twist to turn (Restart for the start view).",
+			"// Three fingers go into the pattern's tiles and buttons and out again, as",
+			"// they do flat; a triple tap swaps the terrain for the flat colour view. The",
+			"// look is set by the terrain's #defines (Adjust Defines' live mode suits them)."] + head[1:])
 	image = keep + IMAGE
 	common = sections["//// Common"]
 	common += CAMERA
