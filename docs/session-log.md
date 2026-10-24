@@ -532,3 +532,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   the 5-minute quiet timeout take the panel down while paused. **"Yes add that [a notification
   saying why], then jump on the phone":** when the panel times out, the debug app now posts
   "Claude's gone quiet ... the panel's down" (cancelled by the next line).
+- Phone run: latest debug build installed; FuseWorms 2D (1033) and the Tiles Test copy (1034)
+  updated to the active-chemical-as-main colourings. Four taps gave yellow on blue, pink on green,
+  orange on teal, orange on violet; hold/stop below the middle/scrub right/scrub back/let go all
+  behaved (scrub back matched the stopped look exactly, no rewind when stopped). Dan's Hang on
+  stepped aside 30 s and came back as designed. Phone handed back (DoorDash), stay-awake and
+  appear-on-top off.
