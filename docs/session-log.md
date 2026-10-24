@@ -521,3 +521,10 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   notification has the same buttons, its Hang on +30 s); `status.sh ask` brings it back with
   `am start` when the time's up (an app in the background can't come forward itself), and its
   15 s countdown only starts once it's back on screen. Kit copies, skill and docs updated; lint 50.
+- **"It says paused on the last line but the button is the pause button, not play."** Dan had
+  paused before my install; the reinstalled app's new panel assumed running while
+  files/claude-control still said paused (so `check` kept waiting). The panel now reads that file
+  when it starts. Dan also asked to turn off access outside the project: no settings grant it
+  (only `./gradlew assembleDebug` is allowed), so pointed at /permissions; I'm keeping to the
+  repo (screenshots to the scratchpad, the skill repo left as it is - its copies of today's kit
+  changes are the latest skill commits; this pause fix is only in tools/phone-kit).

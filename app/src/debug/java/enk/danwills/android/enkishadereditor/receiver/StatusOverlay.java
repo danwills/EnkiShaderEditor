@@ -241,6 +241,18 @@ final class StatusOverlay {
 		add("Stop asked - Claude will finish this step, put things back and stop", "⏹", null, false);
 	}
 
+	@Nullable
+	private String read(@NonNull String name) {
+		var file = new java.io.File(context.getFilesDir(), name);
+		try (var in = new java.io.BufferedReader(new java.io.InputStreamReader(
+				new java.io.FileInputStream(file), java.nio.charset.StandardCharsets.UTF_8))) {
+			String line = in.readLine();
+			return line != null ? line.trim() : null;
+		} catch (java.io.IOException e) {
+			return null;
+		}
+	}
+
 	private void write(@NonNull String name, @NonNull String content) {
 		try (var out = new java.io.FileOutputStream(new java.io.File(context.getFilesDir(), name))) {
 			out.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -356,6 +368,9 @@ final class StatusOverlay {
 			controls.setVisibility(View.VISIBLE);
 			return controls;
 		}
+		// As files/claude-control has it: the app may have restarted (an
+		// install) while paused, and Claude's still waiting for Continue.
+		paused = "paused".equals(read(CONTROL));
 		var bar = new LinearLayout(context);
 		bar.setOrientation(LinearLayout.HORIZONTAL);
 		pauseButton = iconButton(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE), v -> togglePause());
