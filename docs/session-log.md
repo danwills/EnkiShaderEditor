@@ -486,3 +486,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   logs `vtipack/build_d.log`/`build_e.log`). FuseWorms Terrain: three fingers go into the
   pattern's tiles and buttons and back out to the terrain, as they do in the flat shader (the
   terrain stands in for the colour view); a triple tap still swaps in the flat colour view.
+- Dan: the 3D terrain was a "how well would it work?" experiment, nearly explored enough - he'll
+  try this version, then back to honing the 2D one. (Phone not connected over adb yet, so the new
+  terrain isn't in the debug library.)
