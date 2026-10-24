@@ -581,3 +581,14 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - **Water:** a deeper blue the harder it's pressed (its depth plus how over-packed it is), paler and whiter the faster it flows, with a sun glint along its surface. The ripples are now faint.
   - **Jelly:** a smooth, glossy dome with a specular highlight. C relaxes a height field over each blob, and jelly's F is now stored as an angle and a unit stretch to make room for it. Jelly drops and the stress test behave as in v6.
   - **Sand:** each grain carries a shade, dark to bright, in C from the moment it's painted. A cell takes one landing grain's shade, picked at random by mass, so the colours travel with the sand and don't fade.
+- **"the Jell-O has a rough edge when it's placed ... a smooth edge like concrete has but concrete could have the rough Edge instead and concrete seems a bit liquid like ... use the gradient of the concrete Colors to shade like a bump map the concrete is also too active and keeps jumping around ... the jello seems to be able to be compressed by having lots of concrete on top of it ... if we fill up the whole screen of jello it forms bubbles underneath ... concrete sound to be much baseier and more more noisy ... make the paint paint on top of existing materials instead of avoiding them."** v8:
+  - **Painting:** paint now covers whatever's there, except walls. Jelly and rock fill the brush and are held where they're drawn until the finger lifts, so each stroke is one piece. Rock's brush edge is rough, eaten into by noise.
+  - **Jelly's edge:** it went frilly as soon as it moved. Any tension at its surface clumped the edge. Its volume is now tracked from its own deformation (J), with cohesion only inside it: a dropped blob stays a smooth glossy ball.
+  - **Jelly under load:** under a pile of rock it keeps its volume (density ~1.0; v7 was ~2.1). A whole screen of jelly no longer breaks into bubbles at the bottom: that was a checkerboard instability, fixed by spreading packed jelly a little more.
+  - **Rock:**
+    - A resting rock now comes properly to rest. It had been churning under its own weight for ever.
+    - Different rocks no longer merge cells, which had flung bits off.
+    - Each rock's rotation is evened out across it, so big rocks don't bend like dough when they land.
+    - It's drawn with a bump map from its own colour pattern: pebbles, pits and grain.
+    - It sounds much deeper: 83% of its sound is now below 100 Hz, was 12%.
+  - **Known:** mass still swaps slowly at boundaries between materials. It averages out but wanders, e.g. ±20% for a small rock in water over 40 s, as in v7.
