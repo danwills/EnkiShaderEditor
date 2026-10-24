@@ -5,8 +5,9 @@
 // with sound made from the simulation itself.
 //
 // Paint with a finger; the palette along the bottom picks what you paint
-// (Sand, Water, Jelly, Wall, Erase) and the brush size (the last button).
-// Hold Erase to clear everything.
+// (Sand, Water, Jelly, Wall, Erase) and the brush size (the last button: tap
+// it for the next size, or drag out from it to any size). Hold Erase to
+// clear everything.
 //
 // How it works: the simulation grid is CELL screen pixels a cell, and every
 // cell holds at most one blob of material (its centre of mass, velocity,
@@ -29,7 +30,9 @@
 uniform sampler2D iChannel0; ///buf:B;
 uniform sampler2D iChannel1; ///buf:C;
 
-// The metaball field of every material at a point, for drawing.
+// The metaball field of every material at a point, for drawing: how much
+// of it there is about there (1 for a cell's worth all round) - smooth
+// enough not to show the grid where it's thinned out.
 void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain) {
 	field = vec4(0.0);
 	grain = ivec2(0);
@@ -50,7 +53,7 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			vec2 d = at - q.X;
 			float r2 = dot(d, d) / (BLOB * BLOB);
 			float k = max(0.0, 1.0 - r2);
-			k *= k * q.M;
+			k *= k * q.M * 3.0 / (3.14159265 * BLOB * BLOB);
 			int slot = q.mat == SAND ? 0 : q.mat == WATER ? 1 : 2;
 			field[slot] += k;
 			float dist = length(d);
@@ -104,15 +107,39 @@ vec3 palette(vec2 fragCoord, vec2 res, vec4 ui, bool clearing) {
 				face = mix(face, vec3(0.9, 0.2, 0.2), 0.5);
 			}
 		}
-		if (int(ui.x) == tool) {
-			col = mix(col, vec3(1.0), smoothstep(4.0, 2.0, abs(box + 3.0)));
-		}
 	} else {
 		// The brush: a disc as big as it paints.
 		float r = ui.y * CELL;
 		face = mix(face, vec3(0.9), smoothstep(1.5, 0.0, length(local) - min(r, halfSize.y * 0.9)));
 	}
 	col = mix(col, face, smoothstep(1.0, -1.0, box));
+	if (b < TOOLS && int(ui.x) == toolAt(b)) {
+		// The tool in hand: outlined.
+		col = mix(col, SELECTED, smoothstep(2.0, 0.5, abs(box - 1.5)));
+	}
+	return col;
+}
+
+// What's drawn over the rest: while the brush is being sized, a circle as
+// big as it, out from its button; while painting, its outline round each
+// finger.
+vec3 overlay(vec3 col, vec2 fragCoord, vec2 res, vec4 ui, vec4 sizing) {
+	float r = ui.y * CELL;
+	if (pointerCount > 0 && sizing.z > 0.5) {
+		float d = abs(distance(fragCoord, brushButton(res)) - r);
+		return mix(col, SELECTED, smoothstep(2.5, 1.0, d));
+	}
+	if (ui.w < 0.5) {
+		for (int i = 0; i < 10; ++i) {
+			if (i >= pointerCount) {
+				break;
+			}
+			if (pointers[i].y >= res.y * PALETTE) {
+				float d = abs(distance(fragCoord, pointers[i].xy) - r);
+				col = mix(col, SELECTED, 0.5 * smoothstep(1.5, 0.5, d));
+			}
+		}
+	}
 	return col;
 }
 
@@ -121,9 +148,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	ivec2 grid = gridSize(res);
 	int floorRow = floorRowOf(res);
 	vec4 ui = texelFetch(iChannel1, ivec2(UI_TEXEL, int(res.y) - 1), 0);
+	vec4 sizing = texelFetch(iChannel1, ivec2(SIZE_TEXEL, int(res.y) - 1), 0);
 	if (fragCoord.y < res.y * PALETTE) {
 		bool clearing = texelFetch(iChannel1, ivec2(TOUCH_TEXEL, int(res.y) - 1), 0).w > 0.5;
 		fragColor = vec4(palette(fragCoord, res, ui, clearing), 1.0);
+		fragColor.rgb = overlay(fragColor.rgb, fragCoord, res, ui, sizing);
 		return;
 	}
 	vec2 at = fragCoord / CELL;
@@ -142,23 +171,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	ivec2 grain;
 	fields(at, grid, floorRow, field, nearest, grain);
 	// Water under the rest: translucent, foamy where it's fast.
-	if (field.y > 0.25) {
-		float edge = smoothstep(0.25, 0.6, field.y);
-		vec3 water = mix(vec3(0.1, 0.35, 0.85), vec3(0.2, 0.55, 1.0), smoothstep(0.6, 1.4, field.y));
+	if (field.y > 0.2) {
+		float edge = smoothstep(0.2, 0.35, field.y);
+		vec3 water = mix(vec3(0.1, 0.35, 0.85), vec3(0.2, 0.55, 1.0), smoothstep(0.5, 1.2, field.y));
 		col = mix(col, water, 0.85 * edge);
-		col += vec3(0.25) * smoothstep(0.6, 0.3, field.y) * edge;
+		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * edge;
 	}
-	if (field.z > 0.35) {
-		vec3 jelly = vec3(0.95, 0.35, 0.65) * (0.75 + 0.35 * smoothstep(0.35, 1.2, field.z));
-		col = mix(col, jelly, smoothstep(0.35, 0.55, field.z));
+	if (field.z > 0.25) {
+		vec3 jelly = vec3(0.95, 0.35, 0.65) * (0.75 + 0.35 * smoothstep(0.3, 1.0, field.z));
+		col = mix(col, jelly, smoothstep(0.25, 0.4, field.z));
 	}
-	if (field.x > 0.35) {
+	if (field.x > 0.25) {
 		// Sand: each grain its own colour, darker as it's wetter.
 		vec3 sand = sandColour(nearest.w);
-		sand *= 0.8 + 0.2 * smoothstep(0.35, 1.0, field.x);
+		sand *= 0.8 + 0.2 * smoothstep(0.3, 0.8, field.x);
 		sand *= 1.0 - 0.45 * wetness(texelFetch(iChannel1, grain, 0));
-		col = mix(col, sand, smoothstep(0.35, 0.5, field.x));
+		col = mix(col, sand, smoothstep(0.25, 0.38, field.x));
 	}
+	col = overlay(col, fragCoord, res, ui, sizing);
 	fragColor = vec4(col, 1.0);
 }
 
@@ -179,10 +209,11 @@ precision highp int;
 #define SAND_STIFFNESS 0.6
 #define JELLY_STIFFNESS 0.3
 // Settled sand rolls off what it rests on, down to the side, where it's
-// open: this fast (cells a step), and as likely a step - dry, and damp (it
-// stands up in clumps).
+// open: this fast (cells a step), and as likely a step - dry, damp (it
+// stands up in clumps) and soaked (it slumps).
 #define ROLL 0.1
 #define DAMP_ROLL 0.02
+#define SOAKED_ROLL 0.5
 // How much flowing sand takes on the velocity of the sand (and walls) it
 // rubs against, a step: so it pours, and doesn't splash.
 #define SAND_GRIP 0.15
@@ -216,10 +247,11 @@ precision highp int;
 // Cells a step, at most: anything, and jelly.
 #define VMAX 0.85
 #define JELLY_VMAX 0.3
-// The brush's starting radius, in cells.
+// The brush's starting radius, and the biggest it's sized to, in cells.
 #define BRUSH 5.0
+#define BRUSH_MAX 40.0
 // How far a blob reaches when drawn, in cells.
-#define BLOB 1.25
+#define BLOB 1.8
 
 uniform vec3 pointers[10];
 uniform int pointerCount;
@@ -239,7 +271,14 @@ const int TOOLS = 5;
 // everything (Erase held).
 const int UI_TEXEL = 0;
 const int TOUCH_TEXEL = 1;
+// And where a touch on the brush button began (xy), and 1 (z) once it's
+// dragged out from it, sizing the brush.
+const int SIZE_TEXEL = 2;
+// The selected tool's outline, and the brush's.
+const vec3 SELECTED = vec3(1.0, 0.85, 0.2);
 const float INIT = 7.0;
+// Water's tint (which it doesn't show) when its box isn't spread.
+const int TIGHT = 1;
 // How long Erase is held to clear everything, in seconds.
 const float CLEAR_HOLD = 0.6;
 // What C holds for anything but jelly (whose F fills all four): the weight
@@ -265,6 +304,12 @@ float cohesion(float wet) {
 // The pressure in sand from its packing (pulling, when it's damp).
 float sandPressure(float M, float wet) {
 	return SAND_STIFFNESS * max(M - 1.0, -cohesion(wet) / SAND_STIFFNESS);
+}
+
+// The brush button's centre.
+vec2 brushButton(vec2 res) {
+	float w = res.x / float(TOOLS + 1);
+	return vec2((float(TOOLS) + 0.5) * w, 0.5 * res.y * PALETTE);
 }
 
 int toolAt(int b) {
@@ -351,9 +396,12 @@ Particle wallAt(ivec2 c) {
 // difference, can't see) - but less for a lone sliver, which would only
 // fray.
 float spread(Particle p) {
-	// (Not jelly, which holds itself together, and would only thin out,
-	// nor sand, which would blur a heap.)
-	return p.mat == WATER ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
+	// (Water's and jelly's: not sand's, which would blur a heap; nor
+	// water's beside sand or jelly - each cell holds one material, picked
+	// at random by how much of each lands on it, so what's spread on them
+	// would turn their cells to water and back, now and then, all the
+	// time.)
+	return (p.mat == JELLY || p.mat == WATER) && p.tint != TIGHT ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
 }
 
 // The part of q's box, moved by its velocity, landing on cell c - or on
@@ -495,8 +543,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 grip = vec2(0.0);
 	// For sand: how much of what's around it is water.
 	vec2 wateriness = vec2(0.0);
-	// For water: how much the sand beside it soaks up.
+	// For water: how much the sand beside it soaks up, and whether there's
+	// sand or jelly beside it.
 	float soaked = 0.0;
+	bool beside = false;
+	// How many neighbours it has.
+	int around = 0;
 	mat2 own = stress(p, c);
 	for (int j = -1; j <= 1; ++j) {
 		for (int i = -1; i <= 1; ++i) {
@@ -508,13 +560,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			if (q.mat == EMPTY) {
 				continue;
 			}
+			++around;
 			vec2 dx = q.X - p.X;
 			float w = exp(-dot(dx, dx));
 			// A wall pushes back as hard as it's pushed (the floor holds
-			// a heap up), and different materials push apart where they
-			// overlap.
+			// a heap up) but never pulls (so water slides off it), and
+			// different materials push apart where they overlap.
 			float squeeze = 0.5 * (own[0][0] + own[1][1]);
-		mat2 pair = own + (q.mat == WALL ? mat2(max(squeeze, 0.0)) : stress(q, n));
+			mat2 pair = q.mat == WALL ? own + mat2(2.0 * max(squeeze, 0.0) - squeeze) : own + stress(q, n);
 			if (q.mat != p.mat && q.mat != WALL) {
 				pair += mat2(APART * max(0.0, 1.0 - length(dx)));
 			}
@@ -536,8 +589,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				if (p.mat == WATER && q.mat == SAND) {
 					soaked += SOAK * w * (1.0 - wetAt(n));
 				}
-				grip += w * share * (p.mat == WATER || q.mat == WATER ? WATER_VISCOSITY
-						: q.mat == JELLY && p.mat == JELLY ? JELLY_GRIP : MAX_GRIP) * dv;
+				// (Water slides off walls.)
+				if (p.mat != WATER || q.mat != WALL) {
+					grip += w * share * (p.mat == WATER || q.mat == WATER ? WATER_VISCOSITY
+							: q.mat == JELLY && p.mat == JELLY ? JELLY_GRIP : MAX_GRIP) * dv;
+				}
+				if (p.mat == WATER && (q.mat == SAND || q.mat == JELLY) || p.mat == JELLY && q.mat != JELLY) {
+					beside = true;
+				}
 			}
 			// Artificial bulk viscosity: pairs closing in on each other
 			// are slowed, damping pressure waves (not the flow).
@@ -552,15 +611,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	p.V += push + grip + vec2(0.0, -weight);
 	// Water the sand beside it soaks up.
 	p.M *= 1.0 - min(soaked, 0.5);
+	if (p.mat == WATER || p.mat == JELLY) {
+		// Water beside sand or jelly, and jelly at its edge, aren't spread
+		// (see spread()).
+		p.tint = beside || p.mat == JELLY && around < 8 ? TIGHT : 0;
+	}
 	// Sand, settled on something solid and still (or nearly): it rolls off
 	// it, down to the side, where that's open; otherwise it stays put on it
 	// - unless it's knocked harder than the weight on it holds it there,
-	// when it slides on it, slowed as hard. Damp sand
-	// seldom rolls; saturated sand among water doesn't settle (mud).
+	// when it slides on it, slowed as hard. Damp sand seldom rolls, soaked
+	// sand more; saturated sand thinly spread through water doesn't settle
+	// (mud).
 	if (p.mat == SAND) {
 		vec4 e = texelFetch(iChannel1, c, 0);
 		float wet = wetness(e);
-		float mud = smoothstep(0.8, 1.0, wet) * smoothstep(0.25, 0.6, wateriness.x / max(wateriness.y, 1e-4));
+		// (Mud: saturated, and thinly spread through water - packed sand
+		// settles, under water or not.)
+		float mud = smoothstep(0.8, 1.0, wet) * smoothstep(0.5, 0.75, wateriness.x / max(wateriness.y, 1e-4));
 		Particle below = at(c - ivec2(0, 1), grid, floorRow);
 		if (mud < 0.5 && holds(below) && length(below.V) < SETTLED) {
 			vec2 slip = p.V - below.V;
@@ -569,7 +636,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				bool left = open(at(c + ivec2(-1, -1), grid, floorRow)) && open(at(c + ivec2(-1, 0), grid, floorRow));
 				bool right = open(at(c + ivec2(1, -1), grid, floorRow)) && open(at(c + ivec2(1, 0), grid, floorRow));
 				float h = hash12(vec2(c) + fract(float(iFrame) * vec2(0.4142, 0.7321)) * 1013.0);
-				float chance = mix(1.0, DAMP_ROLL, smoothstep(0.05, 0.4, wet));
+				float chance = mix(mix(1.0, DAMP_ROLL, smoothstep(0.05, 0.4, wet)), SOAKED_ROLL, smoothstep(0.8, 1.0, wet));
 				p.V = below.V;
 				if ((left || right) && h < chance) {
 					float side = left && right ? (fract(h * 17.0) < 0.5 ? -1.0 : 1.0) : left ? -1.0 : 1.0;
@@ -609,9 +676,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 	}
 	// Nor does jelly go into the cell of something else beside it, nor
-	// anything else into jelly's - but as far as that's moving away: they
-	// keep apart (each cell holds one material, so where they'd mix, bits
-	// of jelly would be scattered through the rest).
+	// anything else into jelly's, nor water into sand that's settled - but
+	// as far as that's moving away: they keep apart (each cell holds one
+	// material, so where they'd mix, bits of jelly would be scattered
+	// through the rest, and settled sand would keep turning to water and
+	// back).
 	for (int k = 0; k < 4; ++k) {
 		ivec2 e = k == 0 ? ivec2(1, 0) : k == 1 ? ivec2(-1, 0) : k == 2 ? ivec2(0, 1) : ivec2(0, -1);
 		ivec2 n = c + e;
@@ -619,7 +688,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			continue;
 		}
 		Particle q = load(iChannel0, n);
-		if (q.mat == EMPTY || q.mat == WALL || q.M < 0.5 || (q.mat == JELLY) == (p.mat == JELLY)) {
+		bool settled = p.mat == WATER && q.mat == SAND && length(q.V) < SETTLED;
+		if (q.mat == EMPTY || q.mat == WALL || q.M < 0.5 || (q.mat == JELLY) == (p.mat == JELLY) && !settled) {
 			continue;
 		}
 		if (k == 0) {
@@ -814,9 +884,11 @@ vec4 palette(ivec2 c, vec2 res) {
 	int top = int(res.y) - 1;
 	vec4 ui = texelFetch(iChannel2, ivec2(UI_TEXEL, top), 0);
 	vec4 touch = texelFetch(iChannel2, ivec2(TOUCH_TEXEL, top), 0);
+	vec4 sizing = texelFetch(iChannel2, ivec2(SIZE_TEXEL, top), 0);
 	if (ui.z != INIT) {
 		ui = vec4(float(SAND), BRUSH, INIT, 0.0);
 		touch = vec4(0.0, 0.0, -1.0, 0.0);
+		sizing = vec4(0.0);
 	}
 	if (pointerCount > 0 && touch.x < 0.5) {
 		// A new touch: on the palette, it picks a tool (or the brush).
@@ -828,23 +900,37 @@ vec4 palette(ivec2 c, vec2 res) {
 			touch.z = float(b);
 			if (b < TOOLS) {
 				ui.x = float(toolAt(b));
-			} else {
-				ui.y = ui.y < 3.0 ? 5.0 : ui.y < 6.0 ? 10.0 : ui.y < 11.0 ? 20.0 : 2.0;
 			}
+			sizing = vec4(at, 0.0, 0.0);
 			ui.w = 1.0;
 		} else {
 			ui.w = 0.0;
 		}
 	}
+	if (int(touch.z) == TOOLS) {
+		// On the brush button: dragged out from it, the brush is as big as
+		// the finger's far from it; just tapped, it's the next size.
+		if (pointerCount > 0) {
+			if (distance(pointers[0].xy, sizing.xy) > 0.25 * res.y * PALETTE) {
+				sizing.z = 1.0;
+			}
+			if (sizing.z > 0.5) {
+				ui.y = clamp(distance(pointers[0].xy, brushButton(res)) / CELL, 1.0, BRUSH_MAX);
+			}
+		} else if (sizing.z < 0.5) {
+			ui.y = ui.y < 3.0 ? 5.0 : ui.y < 6.0 ? 10.0 : ui.y < 11.0 ? 20.0 : 2.0;
+		}
+	}
 	if (pointerCount == 0) {
 		ui.w = 0.0;
 		touch.z = -1.0;
+		sizing.z = 0.0;
 	}
 	// Erase held: clear everything.
-	touch.w = pointerCount > 0 && touch.z >= 0.0 && toolAt(int(touch.z)) == ERASE
+	touch.w = pointerCount > 0 && touch.z >= 0.0 && int(touch.z) < TOOLS && toolAt(int(touch.z)) == ERASE
 			&& iTime - touch.y > CLEAR_HOLD ? 1.0 : 0.0;
 	touch.x = float(pointerCount);
-	return c.x == UI_TEXEL ? ui : c.x == TOUCH_TEXEL ? touch : vec4(0.0);
+	return c.x == UI_TEXEL ? ui : c.x == TOUCH_TEXEL ? touch : c.x == SIZE_TEXEL ? sizing : vec4(0.0);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
