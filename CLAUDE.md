@@ -58,7 +58,10 @@ When driving Dan's phone over adb (only when he's said it's free):
   and goes ahead (Dan's wish: never stuck waiting on a click); Hang on a sec puts the dialog
   out of his way for 30 s (the notification's Hang on, 30 s more), then `ask` brings it back to
   count down again. Exit 0 means go ahead; 1 is Not now - say so and wait;
-  2, no phone connected.
+  2, no phone connected. The one exception: when Dan has just said, in the chat, to do a
+  specific thing on the phone straight away ("install it now"), that's his answer - skip
+  `ask` for that one thing (still post status lines, and note what's on screen). Anything
+  more, or later, asks on the phone as usual.
 - Note what's on screen first (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
 - Keep Dan posted, in detail - he wants to hear about every step, as it happens, with a line
   before every action or batch so the panel is never empty while you're driving. The panel lives
