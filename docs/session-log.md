@@ -592,3 +592,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
     - It's drawn with a bump map from its own colour pattern: pebbles, pits and grain.
     - It sounds much deeper: 83% of its sound is now below 100 Hz, was 12%.
   - **Known:** mass still swaps slowly at boundaries between materials. It averages out but wanders, e.g. ±20% for a small rock in water over 40 s, as in v7.
+
+## 2026-10-25
+
+- **"let's wrap up for today and close any processes, and summarise where we are at"** Stopped the VTI curation server (its picks are saved as they're made, in `vtipack/packs.json`) and the Gradle and Kotlin daemons. Moved the Powder test scripts out of /tmp to `~/dev/shaderEditor/powder-tests/`. The phone is as found, with the Claude app on screen and stay-awake off. Powder MPM v8 (id 1044) is on the phone and still to be tried there; the next one is v9.
