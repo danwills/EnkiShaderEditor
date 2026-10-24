@@ -9,7 +9,7 @@
 # until the next run replaces it. The running commentary shows over
 # whatever is on screen in your app's *debug* build's StatusOverlay (through
 # TestStatusReceiver; its overlay permission granted here with
-# appops) - a panel of the run's last 8 lines, there the whole run (Dan's
+# appops for the run, and given back at `done`) - a panel of the run's last 8 lines, there the whole run (Dan's
 # wish: never an empty panel while Claude's driving), gone at once when
 # it's done, when the notification gets the log's tail instead. Without
 # the debug build it's quietly skipped.
@@ -291,8 +291,11 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 	echo "$t" > "$FINISHED"
 	rm -f "$STATE" "$LOG" "$LAST"
 	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
-	# And the panel gone at once.
+	# And the panel gone at once, and "appear on top" back as it was (off,
+	# unless it's been turned on in Settings) - so it's never left on, to
+	# get in the way after the run.
 	say "--ez done true"
+	adb shell appops set $PKG SYSTEM_ALERT_WINDOW default >/dev/null 2>&1
 	;;
 *)
 	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | rate TEXT [SECONDS] | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2

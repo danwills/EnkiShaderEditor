@@ -89,7 +89,8 @@ overlay permission.
 5. Add the instructions below to the project's `CLAUDE.md` (or AGENTS.md).
 
 `status.sh post` grants the overlay permission itself (`appops set ...
-SYSTEM_ALERT_WINDOW allow`). Without it, lines fall back to plain toasts.
+SYSTEM_ALERT_WINDOW allow`), and `status.sh done` gives it back (`default`),
+so it's only on during a run. Without it, lines fall back to plain toasts.
 The prompt's fallback notification needs POST_NOTIFICATIONS on Android
 13+; grant it once on the phone, or with `adb shell pm grant <app>
 android.permission.POST_NOTIFICATIONS`.
@@ -130,6 +131,12 @@ When driving the phone over adb:
 
 ## Lessons learned
 
+- **Don't leave an overlay up.** Some Settings screens (Developer options,
+  Wireless debugging) ignore taps while another app's overlay covers them,
+  so a panel left up after a run that never finished (the phone dropped
+  off wifi) kept the user out of the very screen needed to reconnect. The
+  panel now goes by itself after 5 quiet minutes, and `done` turns
+  "appear on top" back off.
 - **Touches through an overlay.** Since Android 12 a non-touchable overlay
   from another app only lets touches through at an opacity of 0.8 or
   less, so the panel's window alpha is 0.8.

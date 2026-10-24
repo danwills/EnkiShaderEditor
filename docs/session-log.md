@@ -510,3 +510,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   state row) and on the phone (four taps: e.g. yellow solitons on blue, cyan on gold) via a
   "FuseWorms 2D Tiles Test" copy (debug id 1034, starts in the tiles since adb can't do three
   fingers). The phone dropped off wifi before the final version (active chemical as main) went on.
+- **"I can't get to the wireless debugging settings because it keeps popping back to enki with the log overlay ... Enki had 'appear on top' enabled - if it gets left stuck on, it's not good."**
+  The log showed Enki never actually came to the front: the run's status panel was left up after
+  the phone dropped off wifi, and Settings' Developer/Wireless debugging screens ignore taps under
+  another app's overlay. Fixed in the kit: `status.sh done` now gives "appear on top" back
+  (`appops ... default`), so it's only on during a run, and the panel takes itself down after 5
+  quiet minutes (not while paused). Enki's copy, tools/phone-kit, the skill and its notes updated.

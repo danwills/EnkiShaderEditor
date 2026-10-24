@@ -12,6 +12,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
@@ -51,12 +53,18 @@ import java.util.regex.Pattern;
 // between steps (files/claude-control: "paused" or "stopped"), and - only
 // while Claude's asking whether something looks right (askRating()) -
 // thumbs up and down (files/claude-rate-<id>: "up" or "down").
+// If Claude goes quiet for QUIET_MS (the connection dropped, say) the
+// panel takes itself away, so it's never left over everything: an
+// overlay can stop taps getting through to some of Settings' screens.
 @RequiresApi(Build.VERSION_CODES.O)
 final class StatusOverlay {
 	private static final int MAX_LINES = 8;
 	// The most a non-touchable overlay can show and still let touches
 	// through to another app (Android 12's touch occlusion rules).
 	private static final float OPACITY = 0.8f;
+	// How long the panel stays with no new line before it goes by itself
+	// (not while paused).
+	private static final long QUIET_MS = 5 * 60 * 1000;
 
 	private static final Pattern CODE = Pattern.compile("`([^`]+)`");
 	private static final Pattern NUMBER = Pattern.compile(
@@ -87,6 +95,14 @@ final class StatusOverlay {
 	@Nullable
 	private LinearLayout thumbs;
 	private boolean paused;
+	private final Handler handler = new Handler(Looper.getMainLooper());
+	private final Runnable quiet = () -> {
+		if (paused) {
+			waitQuietly();
+		} else {
+			clear();
+		}
+	};
 	private static final String CONTROL = "claude-control";
 	// The pill's verb, one picked a run - Dan's idea, for a bit of fun.
 	private static final String[] VERBS = {"Orbiting", "Exploring", "Tinkering with",
@@ -145,6 +161,13 @@ final class StatusOverlay {
 			line.setTag(new String[]{text, kind, eta});
 		}
 		lines.addView(line);
+		waitQuietly();
+	}
+
+	// The panel goes after QUIET_MS more with no new line.
+	private void waitQuietly() {
+		handler.removeCallbacks(quiet);
+		handler.postDelayed(quiet, QUIET_MS);
 	}
 
 	// Claude's newest line, with how long its step actually took.
@@ -356,6 +379,7 @@ final class StatusOverlay {
 
 	// The run's over: gone at once, lines and all.
 	void clear() {
+		handler.removeCallbacks(quiet);
 		if (panel != null) {
 			windows.removeView(panel);
 			panel = null;
