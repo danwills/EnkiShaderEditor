@@ -6,12 +6,16 @@ card with thumbnails of its pattern as it starts and after a warm-up
 run on the GPU - and a button that sends a shader to Enki debug on the
 phone to look at properly.
 
-  vticurate.py OUT [--port 8770] [--warm 1200]
+  vticurate.py OUT [--port 8770] [--warm 1200] [--prefill DUTY]
 
 then open http://127.0.0.1:PORT/. Changes save to OUT/packs.json as they're
 made (the file as it was first kept as packs.json.bak). Thumbnails are made
 as they're first asked for, one at a time on the GPU, and kept in
-OUT/thumbs/. Send to phone builds a one-shader pack and installs it with
+OUT/thumbs/. --prefill makes the rest in the background, the packs' first,
+resting after each so the GPU's busy only DUTY of the time (0.55: about
+9 s on the GPU a pair, so some 5-6 hours for 1,250 on metalucia alongside
+a build; progress in OUT/thumbs/prefill.log).
+Send to phone builds a one-shader pack and installs it with
 tools/phone/add_pack.sh --replace --open: it replaces the last one sent
 (the "VTI Curation" pack in Enki debug's library) and opens it.
 """
@@ -26,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 
@@ -109,6 +114,8 @@ class Thumbs:
 		self.jobs = queue.Queue()
 		self.waiting = {}
 		self.lock = threading.Lock()
+		# Seconds spent converting and on the GPU, all told.
+		self.cpu = self.gpu = 0.0
 		threading.Thread(target=self._work, daemon=True).start()
 
 	def path(self, md5, which):
@@ -152,9 +159,12 @@ class Thumbs:
 				done.set()
 
 	def _make(self, path, md5):
+		t = time.time()
 		glsl, textures, p, kind, rec = self.c.convert(path)
 		w, h = self.c.info(path)["grid"]
 		w, h = min(w, THUMB_GRID), min(h, THUMB_GRID)
+		self.cpu += time.time() - t
+		t = time.time()
 		sim = StartSim(glsl, w, h, textures)
 		try:
 			sim.run()
@@ -164,12 +174,37 @@ class Thumbs:
 			self._save(md5, "warm", vtishader.thumbnail(p, np.nan_to_num(sim.read())))
 		finally:
 			sim.close()
+			self.gpu += time.time() - t
 
 	def _save(self, md5, which, jpeg):
 		tmp = self.path(md5, which) + ".tmp"
 		with open(tmp, "wb") as fh:
 			fh.write(jpeg)
 		os.replace(tmp, self.path(md5, which))
+
+
+def prefill(app, duty):
+	"""Makes every thumbnail not made yet, the packs' first, resting
+	after each so the GPU's busy only duty of the time (converting, on the
+	CPU at the server's niceness, doesn't count)."""
+	log = open(os.path.join(app.thumbs.dir, "prefill.log"), "a", buffering=1)
+	packs = json.load(open(app.packs_file))
+	first = [p for pack in packs for p in pack["paths"]]
+	order = list(dict.fromkeys(first + sorted(app.c.files)))
+	todo = [p for p in order if p in app.c.files
+			and not os.path.exists(app.thumbs.path(app.c.files[p][1]["md5"], "warm"))]
+	log.write("%s: %d to make at duty %.2f\n" % (time.strftime("%H:%M"), len(todo), duty))
+	start = time.time()
+	for n, path in enumerate(todo, 1):
+		gpu = app.thumbs.gpu
+		app.thumbs.get(path, "warm")
+		if n % 25 == 0 or n == len(todo):
+			left = (time.time() - start) / n * (len(todo) - n)
+			log.write("%s: %d of %d; %.0f s converting, %.0f s on the GPU, %.0f s in all; ~%.1f h to go\n" % (
+					time.strftime("%H:%M"), n, len(todo), app.thumbs.cpu, app.thumbs.gpu,
+					time.time() - start, left / 3600))
+		time.sleep((app.thumbs.gpu - gpu) * (1 - duty) / duty)
+	log.write("%s: done\n" % time.strftime("%H:%M"))
 
 
 class App:
@@ -295,8 +330,12 @@ def main():
 	ap.add_argument("--port", type=int, default=8770)
 	ap.add_argument("--warm", type=int, default=1200,
 			help="runs of the buffers before the warm thumbnail (default 1200, ~10 s on the phone)")
+	ap.add_argument("--prefill", type=float, metavar="DUTY",
+			help="make every thumbnail in the background, the GPU busy this share of the time (0-1)")
 	args = ap.parse_args()
 	app = App(args.out, args.warm)
+	if args.prefill:
+		threading.Thread(target=prefill, args=(app, args.prefill), daemon=True).start()
 	server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler(app))
 	print("curating %s at http://127.0.0.1:%d/" % (os.path.join(args.out, "packs.json"), args.port))
 	server.serve_forever()
