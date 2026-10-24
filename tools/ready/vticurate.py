@@ -6,9 +6,11 @@ card with thumbnails of its pattern as it starts and after a warm-up
 run on the GPU - and a button that sends a shader to Enki debug on the
 phone to look at properly.
 
-  vticurate.py OUT [--port 8770] [--warm 1200] [--prefill DUTY]
+  vticurate.py OUT [--host ADDRESS] [--port 8770] [--warm 1200] [--prefill DUTY]
 
-then open http://127.0.0.1:PORT/. Changes save to OUT/packs.json as they're
+then open http://127.0.0.1:PORT/ (--host 0.0.0.0 serves the LAN too, e.g. a
+phone's browser - anyone on it can then edit packs.json and send to the
+phone, so only on a network you trust). Changes save to OUT/packs.json as they're
 made (the file as it was first kept as packs.json.bak). Thumbnails are made
 as they're first asked for, one at a time on the GPU, and kept in
 OUT/thumbs/. --prefill makes the rest in the background, the packs' first,
@@ -27,6 +29,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -327,6 +330,8 @@ def handler(app):
 def main():
 	ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
 	ap.add_argument("out", help="the vtipack output folder")
+	ap.add_argument("--host", default="127.0.0.1",
+			help="the address to serve on (default this computer only; 0.0.0.0 for the LAN)")
 	ap.add_argument("--port", type=int, default=8770)
 	ap.add_argument("--warm", type=int, default=1200,
 			help="runs of the buffers before the warm thumbnail (default 1200, ~10 s on the phone)")
@@ -336,8 +341,14 @@ def main():
 	app = App(args.out, args.warm)
 	if args.prefill:
 		threading.Thread(target=prefill, args=(app, args.prefill), daemon=True).start()
-	server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler(app))
-	print("curating %s at http://127.0.0.1:%d/" % (os.path.join(args.out, "packs.json"), args.port))
+	server = http.server.ThreadingHTTPServer((args.host, args.port), handler(app))
+	host = args.host
+	if host == "0.0.0.0":
+		# The address other machines reach this one by.
+		with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+			s.connect(("10.255.255.255", 1))
+			host = s.getsockname()[0]
+	print("curating %s at http://%s:%d/" % (os.path.join(args.out, "packs.json"), host, args.port))
 	server.serve_forever()
 
 
