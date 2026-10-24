@@ -65,6 +65,8 @@ final class StatusOverlay {
 	// How long the panel stays with no new line before it goes by itself
 	// (not while paused).
 	private static final long QUIET_MS = 5 * 60 * 1000;
+	private static final String QUIET_CHANNEL = "claude_status";
+	private static final int QUIET_NOTIFICATION = 7302;
 
 	private static final Pattern CODE = Pattern.compile("`([^`]+)`");
 	private static final Pattern NUMBER = Pattern.compile(
@@ -101,6 +103,7 @@ final class StatusOverlay {
 			waitQuietly();
 		} else {
 			clear();
+			notifyQuiet();
 		}
 	};
 	private static final String CONTROL = "claude-control";
@@ -162,6 +165,33 @@ final class StatusOverlay {
 		}
 		lines.addView(line);
 		waitQuietly();
+		context.getSystemService(android.app.NotificationManager.class).cancel(QUIET_NOTIFICATION);
+	}
+
+	// Why the panel went by itself, so it doesn't just vanish.
+	private void notifyQuiet() {
+		var manager = context.getSystemService(android.app.NotificationManager.class);
+		if (manager.getNotificationChannel(QUIET_CHANNEL) == null) {
+			manager.createNotificationChannel(new android.app.NotificationChannel(QUIET_CHANNEL,
+					"Claude's status panel", android.app.NotificationManager.IMPORTANCE_DEFAULT));
+		}
+		var notification = new androidx.core.app.NotificationCompat.Builder(context, QUIET_CHANNEL)
+				.setSmallIcon(android.R.drawable.ic_dialog_info)
+				.setContentTitle("🤖 Claude's gone quiet")
+				.setContentText("Nothing new for " + QUIET_MS / 60000 + " minutes (the connection " +
+						"may have dropped), so the panel's down.")
+				.setStyle(new androidx.core.app.NotificationCompat.BigTextStyle().bigText(
+						"Nothing new for " + QUIET_MS / 60000 + " minutes (the connection may have " +
+								"dropped), so the status panel's down. \"Appear on top\" may " +
+								"still be allowed until Claude finishes - turn it off in Settings " +
+								"if you like."))
+				.setAutoCancel(true)
+				.build();
+		try {
+			manager.notify(QUIET_NOTIFICATION, notification);
+		} catch (SecurityException e) {
+			android.util.Log.w("StatusOverlay", "Can't post the notification", e);
+		}
 	}
 
 	// The panel goes after QUIET_MS more with no new line.

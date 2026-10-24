@@ -528,3 +528,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   (only `./gradlew assembleDebug` is allowed), so pointed at /permissions; I'm keeping to the
   repo (screenshots to the scratchpad, the skill repo left as it is - its copies of today's kit
   changes are the latest skill commits; this pause fix is only in tools/phone-kit).
+- **"I swiped away the notification because the log had disappeared"** - the paused-state bug let
+  the 5-minute quiet timeout take the panel down while paused. **"Yes add that [a notification
+  saying why], then jump on the phone":** when the panel times out, the debug app now posts
+  "Claude's gone quiet ... the panel's down" (cancelled by the next line).
