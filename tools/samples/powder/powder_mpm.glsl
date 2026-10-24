@@ -13,7 +13,7 @@
 //
 // How it works: the simulation grid is CELL screen pixels a cell, and every
 // cell holds at most one blob of material (its centre of mass, velocity,
-// mass, material, a colour and how hard it's just been hit, packed into
+// mass, material, a few flags and how hard it's just been hit, packed into
 // one float texel). Each step:
 //   Buffer A - forces: pressure, cohesion and friction between neighbours,
 //              the jelly's elastic stress, gravity; rock held to its shape
@@ -24,10 +24,13 @@
 //   Buffer C - what a blob carries besides, carried along the same way:
 //              the jelly's deformation gradient (turned by the local
 //              velocity gradient), where rock was in its shape (and how far
-//              it's turned), sand's wetness (soaked up from the water
-//              beside it); and the weight on sand and water (so deep
-//              sand's held still harder); its top row holds the palette's
-//              state.
+//              it's turned), sand's colour and wetness (soaked up from the
+//              water beside it); and the weight on sand, water and rock
+//              (so deep sand's held still harder); its top row holds the
+//              palette's state.
+//   Image    - each material's smooth field, lit by daylight as a surface
+//              rising where there's more of it; water shaded by how hard
+//              it's pressed and how fast it flows.
 //   Buffer D - sound: grains taken from random cells - sand rumbles, water
 //              sloshes and bubbles, jelly wobbles, rock knocks - as loud
 //              as they move.
@@ -37,19 +40,21 @@ uniform sampler2D iChannel1; ///buf:C;
 
 // The metaball field of every material at a point, for drawing: how much
 // of it there is about there (1 for a cell's worth all round) - smooth
-// enough not to show the grid where it's thinned out.
-void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain, out vec2 flow,
-		out ivec2 stone) {
-	field = vec4(0.0);
-	// (And how the water there flows, as smoothly.)
+// enough not to show the grid where it's thinned out - and which way it
+// rises (its gradient, x and y, for its surface's normal: see daylight());
+// for water, how it flows and how hard it's pressed, and how high jelly
+// bulges (see dome()), as smoothly (summed as the field is, with their
+// gradients); the nearest grain of sand, and how far it is; and the
+// nearest bit of rock.
+void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 gx, out vec4 gy, out vec2 flow,
+		out float pressure, out vec3 bulge, out ivec2 grain, out float grainDist, out ivec2 stone) {
+	field = gx = gy = vec4(0.0);
 	flow = vec2(0.0);
-	grain = ivec2(0);
-	// How far the nearest blob of each material is (sand, water, jelly,
-	// rock), and the nearest grain of sand's tint (and where it and the
-	// nearest rock are).
-	nearest = vec4(1e9);
-	float sandTint = 0.0;
-	stone = ivec2(0);
+	pressure = 0.0;
+	bulge = vec3(0.0);
+	grain = stone = ivec2(0);
+	grainDist = 1e9;
+	float stoneDist = 1e9;
 	ivec2 c = ivec2(floor(at));
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
@@ -63,26 +68,59 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			}
 			vec2 d = at - q.X;
 			float r2 = dot(d, d) / (BLOB * BLOB);
-			float k = max(0.0, 1.0 - r2);
-			k *= k * q.M * 3.0 / (3.14159265 * BLOB * BLOB);
+			if (r2 >= 1.0) {
+				continue;
+			}
+			float scale = q.M * 3.0 / (3.14159265 * BLOB * BLOB);
+			float k = (1.0 - r2) * (1.0 - r2) * scale;
+			vec2 g = -4.0 * (1.0 - r2) * scale / (BLOB * BLOB) * d;
 			int slot = q.mat - SAND;
 			field[slot] += k;
+			gx[slot] += g.x;
+			gy[slot] += g.y;
 			if (slot == 1) {
+				// (Its pressure: the weight of the water on it, and how
+				// much more it's packed than that makes it.)
 				flow += k * q.V;
+				vec4 e = texelFetch(iChannel1, n, 0);
+				pressure += k * (e.z + max(q.M - 1.0 - GRAVITY * e.z / WATER_STIFFNESS, 0.0) * WATER_STIFFNESS / GRAVITY);
+			} else if (slot == 2) {
+				float h = texelFetch(iChannel1, n, 0).w;
+				bulge += vec3(k, g) * (h < NOT_JELLY ? h : 0.0);
 			}
 			float dist = length(d);
-			if (dist < nearest[slot]) {
-				nearest[slot] = dist;
-				if (slot == 0) {
-					sandTint = float(q.tint);
-					grain = n;
-				} else if (slot == 3) {
-					stone = n;
-				}
+			if (slot == 0 && dist < grainDist) {
+				grainDist = dist;
+				grain = n;
+			} else if (slot == 3 && dist < stoneDist) {
+				stoneDist = dist;
+				stone = n;
 			}
 		}
 	}
-	nearest.w = sandTint;
+}
+
+// Daylight: the sun, up and to the left (and toward us), and the sky.
+const vec3 SUN = vec3(-0.45, 0.62, 0.64);
+const vec3 SUNLIGHT = vec3(1.0, 0.93, 0.8);
+const vec3 SKYLIGHT = vec3(0.6, 0.73, 0.95);
+
+// How a surface slopes that rises `rise` cells as a field f (of gradient
+// g) goes from lo to hi - eased, so it's flat on top, rounded at its edges.
+vec2 rounded(float f, vec2 g, float lo, float hi, float rise) {
+	float t = clamp((f - lo) / (hi - lo), 0.0, 1.0);
+	return rise * 6.0 * t * (1.0 - t) / (hi - lo) * g;
+}
+
+// A surface lit by daylight: its colour, how it slopes (its height's
+// gradient), how shiny it is and how tight its highlights.
+vec3 daylight(vec3 albedo, vec2 slope, float shine, float tight) {
+	vec3 n = normalize(vec3(-slope, 1.0));
+	// (The sky lighting it from above more than below; as bright, flat on,
+	// as it was unlit.)
+	vec3 light = 1.5 * (0.55 * SKYLIGHT * (0.8 + 0.2 * n.y) + 0.55 * SUNLIGHT * max(dot(n, SUN), 0.0));
+	float highlight = shine * pow(max(dot(n, normalize(SUN + vec3(0.0, 0.0, 1.0))), 0.0), tight);
+	return albedo * light + highlight * SUNLIGHT;
 }
 
 // Smooth noise, about 1 across a unit.
@@ -111,8 +149,10 @@ float ripples(vec2 at, vec2 v) {
 	return r;
 }
 
-vec3 sandColour(float tint) {
-	return mix(vec3(0.86, 0.68, 0.38), vec3(0.62, 0.45, 0.24), tint / 7.0);
+// Sand of a shade, 0 to 1: dark to bright, the middle as it always was.
+vec3 sandColour(float shade) {
+	return shade < 0.5 ? mix(vec3(0.42, 0.29, 0.15), vec3(0.76, 0.58, 0.32), 2.0 * shade)
+			: mix(vec3(0.76, 0.58, 0.32), vec3(0.97, 0.87, 0.64), 2.0 * shade - 1.0);
 }
 
 // Rock, at a point in its shape (in cells): mottled, flecked light and
@@ -134,7 +174,7 @@ vec3 bricks(vec2 at) {
 
 vec3 toolColour(int tool, vec2 at) {
 	if (tool == SAND) {
-		return sandColour(floor(hash12(floor(at * 0.25)) * 8.0));
+		return sandColour(newShade(floor(at * 0.25)));
 	} else if (tool == WATER) {
 		return vec3(0.15, 0.45, 0.95);
 	} else if (tool == JELLY) {
@@ -219,55 +259,71 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		return;
 	}
 	vec2 at = fragCoord / CELL;
-	vec3 col = mix(vec3(0.05, 0.06, 0.09), vec3(0.11, 0.12, 0.17), fragCoord.y / res.y);
+	// The sky.
+	vec3 col = mix(vec3(0.86, 0.87, 0.82), vec3(0.47, 0.64, 0.88), smoothstep(0.0, 1.0, fragCoord.y / res.y));
 	ivec2 c = ivec2(floor(at));
 	if (!inside(c, grid, floorRow) || load(iChannel0, c).mat == WALL) {
 		// Walls (and past the grid's edges).
 		fragColor = vec4(bricks(at), 1.0);
 		return;
 	}
-	vec4 field, nearest;
-	ivec2 grain;
+	vec4 field, gx, gy;
 	vec2 flow;
-	ivec2 stone;
-	fields(at, grid, floorRow, field, nearest, grain, flow, stone);
-	// Water under the rest: translucent, foamy at its edges with the air,
-	// its flow shown by ripples carried along with it. (Counted with the
-	// jelly and rock beside it, so there's no gap between them, flickering.)
+	float pressure, grainDist;
+	vec3 bulge;
+	ivec2 grain, stone;
+	fields(at, grid, floorRow, field, gx, gy, flow, pressure, bulge, grain, grainDist, stone);
+	// Water under the rest: translucent; a deeper blue the harder it's
+	// pressed (as deep), paler and whiter the faster it flows; a little
+	// glint of light where its surface curves, foamy at its edges with the
+	// air; and faintly, ripples carried along with it. (Its edge counted
+	// with the jelly and rock beside it, so there's no gap between them,
+	// flickering.)
 	float solids = field.z + field.w;
 	if (field.y > 0.05) {
 		float edge = smoothstep(0.2, 0.35, field.y + solids) * smoothstep(0.05, 0.15, field.y);
-		vec3 water = mix(vec3(0.1, 0.35, 0.85), vec3(0.2, 0.55, 1.0), smoothstep(0.5, 1.2, field.y));
-		water += RIPPLES * vec3(0.4, 0.6, 0.8) * ripples(at, flow / field.y) * smoothstep(0.3, 0.8, field.y);
+		vec2 v = flow / field.y;
+		float pressed = smoothstep(0.0, PRESSED, pressure / field.y);
+		vec3 water = mix(vec3(0.3, 0.62, 0.95), vec3(0.03, 0.2, 0.58), pressed);
+		water = mix(water, vec3(0.78, 0.93, 1.0), 0.65 * smoothstep(0.03, 0.4, length(v)));
+		water += RIPPLES * vec3(0.4, 0.6, 0.8) * ripples(at, v) * smoothstep(0.3, 0.8, field.y);
+		water = daylight(water, rounded(field.y + solids, vec2(gx.y + gx.z + gx.w, gy.y + gy.z + gy.w), 0.15, 0.9, 1.5), 0.5, 60.0);
 		col = mix(col, water, 0.85 * edge);
 		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * (1.0 - smoothstep(0.05, 0.25, solids)) * edge;
 	}
+	// Jelly: a smooth, glossy dome (its bulge, as smoothly as its field:
+	// the square root of its average, and that's gradient), rounded off at
+	// its edges.
 	if (field.z > 0.25) {
-		vec3 jelly = vec3(0.95, 0.35, 0.65) * (0.75 + 0.35 * smoothstep(0.3, 1.0, field.z));
+		vec2 g = vec2(gx.z, gy.z);
+		float h = bulge.x / field.z;
+		vec2 dh = (bulge.yz - h * g) / field.z;
+		vec2 slope = DOME * 0.5 * dh / sqrt(h + 0.5) + rounded(field.z, g, 0.2, 1.0, 1.0);
+		vec3 jelly = daylight(vec3(0.93, 0.33, 0.62), slope, 0.8, 40.0);
 		col = mix(col, jelly, smoothstep(0.25, 0.4, field.z));
 	}
 	// Rock: its colour where each point is in its shape (from the nearest
 	// bit of it - where it was, and how far it's turned), so it moves and
-	// turns with it; darker to its edges, so a lump looks rounded.
+	// turns with it; rounded, and a little shiny.
 	if (field.w > 0.3) {
 		vec4 s = texelFetch(iChannel1, stone, 0);
 		vec2 d = at - load(iChannel0, stone).X;
 		vec2 r = notJelly(s) ? at : s.xy + mat2(cos(s.z), -sin(s.z), sin(s.z), cos(s.z)) * d;
-		vec3 rock = stoneColour(r) * (0.6 + 0.4 * smoothstep(0.35, 0.9, field.w));
+		vec3 rock = daylight(stoneColour(r), rounded(field.w, vec2(gx.w, gy.w), 0.3, 1.0, 3.0), 0.15, 12.0);
 		col = mix(col, rock, smoothstep(0.3, 0.4, field.w));
 	}
-	// Sand: each grain its own colour, darker as it's wetter - and where
-	// it's thinned out (spraying), its grains apart, each as big as there's
-	// sand in its cell.
-	// (Not the slivers - a haze.)
+	// Sand: each grain its own colour (carried along with it, in C), darker
+	// as it's wetter; matt, lit as the heap slopes - and where it's thinned
+	// out (spraying), its grains apart, each as big as there's sand in its
+	// cell. (Not the slivers - a haze.)
 	float grainM = load(iChannel0, grain).M;
 	float grainSize = GRAIN * sqrt(grainM);
 	float cover = max(smoothstep(0.25, 0.38, field.x),
-			smoothstep(0.1, 0.2, grainM) * smoothstep(0.5 / CELL, -0.5 / CELL, nearest.x - grainSize));
+			smoothstep(0.1, 0.2, grainM) * smoothstep(0.5 / CELL, -0.5 / CELL, grainDist - grainSize));
 	if (cover > 0.0) {
-		vec3 sand = sandColour(nearest.w);
-		sand *= 0.8 + 0.2 * smoothstep(0.3, 0.8, field.x);
-		sand *= 1.0 - 0.45 * wetness(texelFetch(iChannel1, grain, 0));
+		vec4 e = texelFetch(iChannel1, grain, 0);
+		vec3 sand = sandColour(e.y > 0.5 ? e.y - 1.0 : 0.5) * (1.0 - 0.45 * wetness(e));
+		sand = daylight(sand, rounded(field.x, vec2(gx.x, gy.x), 0.2, 1.0, 2.0), 0.0, 1.0);
 		col = mix(col, sand, cover);
 	}
 	col = overlay(col, fragCoord, res, ui, sizing);
@@ -376,10 +432,15 @@ precision highp int;
 // How big a grain of sand's drawn, in cells, with a cell's worth of sand.
 #define GRAIN 0.6
 // Water's ripples: how big (cells), how long each layer's carried along
-// before it fades (seconds) and how strongly they shade it.
+// before it fades (seconds) and how strongly they shade it (faintly: they
+// don't quite move with it).
 #define RIPPLE_SIZE 5.0
 #define RIPPLE_TIME 0.8
-#define RIPPLES 0.3
+#define RIPPLES 0.08
+// How deep water's at its deepest blue (in cells' weight on it); and how
+// high jelly's drawn bulging, as a share of how wide it is (see dome()).
+#define PRESSED 40.0
+#define DOME 0.6
 
 uniform vec3 pointers[10];
 uniform int pointerCount;
@@ -418,16 +479,27 @@ const float CLEAR_HOLD = 0.6;
 // And Rock, to swap it between moving and fixed.
 const float SWAP_HOLD = 0.5;
 // What C holds for rock: where it was in its shape (xy, in cells), how far
-// it's turned since (z) and the weight on it (w). For anything but jelly (whose F fills all
-// four) and rock: how far
-// sand is from what holds it up in x (see support()); the weight on sand or
-// water (its own and what's above it) in z; NOT_JELLY plus sand's wetness
-// in w.
+// it's turned since (z) and the weight on it (w). For anything else but
+// jelly (whose F fills all four): how far sand is from what holds it up in
+// x (see support()); sand's colour in y (1 + its shade, 0 to 1, dark to
+// bright); the weight on sand or water (its own and what's above it) in z;
+// NOT_JELLY plus sand's wetness in w.
 const float NOT_JELLY = 1000.0;
 const float UNSUPPORTED = 99.0;
+// The highest jelly bulges (see dome()): a blob 40 cells across.
+const float DOME_MAX = 400.0;
 
 bool notJelly(vec4 c) {
 	return c.w >= NOT_JELLY;
+}
+
+// What C holds for jelly: its deformation gradient F's shape (it's only
+// that that pushes back - its volume's its density's), as its rotation (x)
+// and its stretch S (y, z: S's xx and xy - its yy is what makes its
+// determinant 1); and (w) how high it bulges there (see dome()).
+mat2 jellyF(vec4 e) {
+	mat2 S = mat2(e.y, e.z, e.z, (1.0 + e.z * e.z) / e.y);
+	return mat2(cos(e.x), sin(e.x), -sin(e.x), cos(e.x)) * S;
 }
 
 // Whether a material's firm - jelly and moving rock: it holds together,
@@ -478,7 +550,7 @@ struct Particle {
 	vec2 V; // cells a step
 	float M; // mass: 1 is a cell full at rest
 	int mat;
-	int tint; // 0-7, the grain's own colour
+	int tint; // 0-7: water's, jelly's and rock's flags (TIGHT, AMID)
 	int imp; // 0-7, how hard it's just been hit (for sound)
 };
 
@@ -486,6 +558,12 @@ float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
 	p3 += dot(p3, p3.yzx + 33.33);
 	return fract((p3.x + p3.y) * p3.z);
+}
+
+// A new grain of sand's shade, 0 to 1: mostly middling, now and then
+// darker or brighter.
+float newShade(vec2 seed) {
+	return 0.5 + 0.5 * (hash12(seed * 0.71 + 3.1) + hash12(seed * 1.37 + 7.7) - 1.0);
 }
 
 // The grid: whole cells, below the buffers' top row (C's state).
@@ -561,7 +639,7 @@ float spread(Particle p) {
 	// time.)
 	// Sand's is only as big as the sand in it: a thinned-out cell's full
 	// box would overhang what's next to it, packing it, and sand pushed
-	// apart where it's packed, so a falling block would swell up.
+	// apart where it's packing, so a falling block would swell up.
 	// (Rock's too: it'd fray, a halo of slivers spread out round it.)
 	if (p.mat == SAND || p.mat == ROCK) {
 		return clamp(p.M, 0.3, 1.0);
@@ -592,7 +670,7 @@ uniform sampler2D iChannel1; ///buf:C;
 
 mat2 loadF(ivec2 c) {
 	vec4 f = texelFetch(iChannel1, c, 0);
-	return notJelly(f) ? mat2(1.0) : mat2(f.xy, f.zw);
+	return notJelly(f) ? mat2(1.0) : jellyF(f);
 }
 
 float wetAt(ivec2 c) {
@@ -614,10 +692,9 @@ mat2 stress(Particle p, ivec2 c) {
 		// (Its shape's held below.)
 		return mat2(ROCK_STIFFNESS * max(p.M - 1.0, 0.0));
 	}
-	// (Only F's shape, its volume taken out: averaged as it moves, F
-	// shrinks a little, and would push the jelly ever bigger.)
+	// (Only F's shape, its volume taken out - see jellyF(): averaged as it
+	// moves, F shrinks a little, and would push the jelly ever bigger.)
 	mat2 F = loadF(c);
-	F /= sqrt(max(determinant(F), 0.04));
 	// R, F's rotation (its polar decomposition, in 2D).
 	float a = atan(F[0][1] - F[1][0], F[0][0] + F[1][1]);
 	mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));
@@ -678,7 +755,7 @@ Particle scene(ivec2 c, ivec2 grid, int floorRow) {
 	float h = hash12(vec2(c) * 1.37);
 	Particle p = emptyAt(c);
 	if (u.y < 0.3 * (1.0 - abs(u.x - 0.22) / 0.2)) {
-		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, SAND, int(h * 8.0), 0);
+		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, SAND, 0, 0);
 	} else if (u.x > 0.55 && u.x < 0.97 && u.y > 0.5 && u.y < 0.53) {
 		p = wallAt(c);
 	} else if (u.x > 0.62 && u.x < 0.97 && u.y > 0.53 && u.y < 0.75) {
@@ -732,8 +809,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 					p = Particle(centre, vec2(0.0), 1.0, ROCK, 0, 0);
 				}
 			} else if (p.mat == EMPTY && h < (tool == SAND ? 0.25 : 0.5)) {
-				p = Particle(centre + (vec2(h, fract(h * 7.3)) - 0.5) * 0.3, vec2(0.0), 1.0, tool,
-						tool == SAND ? int(fract(h * 13.7) * 8.0) : 0, 0);
+				p = Particle(centre + (vec2(h, fract(h * 7.3)) - 0.5) * 0.3, vec2(0.0), 1.0, tool, 0, 0);
 			}
 		}
 	}
@@ -826,7 +902,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	if (p.mat == JELLY) {
 		// Jelly that's thinned out, or in something else, and the jelly
 		// around it, out to two cells, pull each other together: bits
-		// knocked off back in, gaps closed, the rest kept out. (Not packed
+		// knocked off back in, gaps closed, the rest kept out. (Not packing
 		// jelly in the open, which it would only squash.)
 		for (int j = -2; j <= 2; ++j) {
 			for (int i = -2; i <= 2; ++i) {
@@ -942,7 +1018,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 					hash12(vec2(c) * 2.57 + fract(float(iFrame) * vec2(0.6541, 0.2754)) * 613.0)) - 0.5;
 			p.V += SPRAY * flying * length(p.V) * r;
 		}
-		// (Mud: saturated, and thinly spread through water - packed sand
+		// (Mud: saturated, and thinly spread through water - packing sand
 		// settles, under water or not.)
 		float mud = smoothstep(0.8, 1.0, wet) * smoothstep(0.5, 0.75, wateriness.x / max(wateriness.y, 1e-4));
 		Particle below = at(c - ivec2(0, 1), grid, floorRow);
@@ -1069,10 +1145,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 X = vec2(0.0), V = vec2(0.0);
 	Particle p = emptyAt(c);
 	int hit = 0;
-	// Each material's share of what lands, and how much of its own sand
-	// stays.
+	// Each material's share of what lands.
 	vec4 share = vec4(0.0);
-	float stays = 0.0;
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
 			ivec2 n = c + ivec2(i, j);
@@ -1094,9 +1168,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			hit = max(hit, q.imp);
 			int k = q.mat - SAND;
 			share[k] += w;
-			if (n == c && k == 0) {
-				stays = w;
-			}
 		}
 	}
 	// A cell holds one material: one of those landing, at random as
@@ -1109,17 +1180,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			: r < share.x + share.y || share.z + share.w <= 0.0 ? 1
 			: r < share.x + share.y + share.z || share.w <= 0.0 ? 2 : 3;
 	p.mat = SAND + k;
-	// Sand that mostly stays keeps its tint; sand that's moved takes a new
-	// one. (Taking one from what lands, even at random, has a patch of one
-	// tint grow, drawn out into stripes as sand flows.)
-	// (The others' are their flags, which they keep - see A.)
-	if (k == 0 && self.mat == SAND && stays > 0.5 * share.x || k != 0 && self.mat == p.mat) {
-		p.tint = self.tint;
-	} else if (k != 0) {
-		p.tint = 0;
-	} else {
-		p.tint = int(hash12(vec2(c) * 0.93 + fract(float(iFrame) * vec2(0.2207, 0.8812)) * 877.0) * 8.0);
-	}
+	// (Its tint's its flags, which it keeps - see A. Sand's colour's in C.)
+	p.tint = self.mat == p.mat ? self.tint : 0;
 	if (m < 0.5 / 2048.0) {
 		fragColor = pack(emptyAt(c), c);
 		return;
@@ -1227,6 +1289,12 @@ float supportOf(ivec2 c, ivec2 grid, int floorRow, float wet, bool started) {
 // from what holds it up; and the weight on it.
 vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 	float wet = 0.0, total = 0.0;
+	// Its colour: one of the bits of sand landing's, at random as likely
+	// as its share (each taking the place of the last as likely as it's
+	// this share of what's landed so far) - so each grain keeps its own as
+	// it goes. (Averaged, they'd all soon fade to the same.) Sand just
+	// painted has none yet: it gets its own.
+	float shade = 0.0;
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
 			ivec2 n = c + ivec2(i, j);
@@ -1239,8 +1307,13 @@ vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 			}
 			float w = q.M * landing(q, vec2(c), vec2(c) + 1.0).z;
 			if (w > 0.0) {
-				wet += w * (started ? wetness(texelFetch(iChannel2, n, 0)) : 0.0);
+				vec4 was = texelFetch(iChannel2, n, 0);
+				wet += w * (started ? wetness(was) : 0.0);
 				total += w;
+				vec2 seed = vec2(n) * 1.13 + vec2(c) * 0.29 + fract(float(iFrame) * vec2(0.3819, 0.9271)) * 557.0;
+				if (hash12(seed) * total < w) {
+					shade = started && notJelly(was) && was.y > 0.5 ? was.y : 1.0 + newShade(seed);
+				}
 			}
 		}
 	}
@@ -1260,7 +1333,27 @@ vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 		}
 	}
 	wet = clamp(wet + water * (1.0 - wet) / SOAKS_UP, 0.0, 1.0);
-	return vec4(supportOf(c, grid, floorRow, wet, started), 0.0, weightOn(c, p, grid, floorRow), NOT_JELLY + wet);
+	return vec4(supportOf(c, grid, floorRow, wet, started), shade, weightOn(c, p, grid, floorRow), NOT_JELLY + wet);
+}
+
+// How high jelly at c bulges, for drawing it (squared, in cells): from
+// what it was beside it, settling a little each step to h = R^2 - r^2 in a
+// round blob of radius R (h's laplacian -4: each cell its neighbours'
+// average plus one), 0 past its edge - so its square root, drawn, is a
+// dome as high as the blob's wide.
+float dome(ivec2 c, ivec2 grid, int floorRow, bool started) {
+	float h = 0.0;
+	for (int k = 0; k < 4; ++k) {
+		ivec2 n = c + (k == 0 ? ivec2(1, 0) : k == 1 ? ivec2(-1, 0) : k == 2 ? ivec2(0, 1) : ivec2(0, -1));
+		if (!inside(n, grid, floorRow) || load(iChannel1, n).mat != JELLY) {
+			continue;
+		}
+		// (What was there may have been something else, by its texel
+		// in C - rock's weight, say: kept within reason.)
+		vec4 e = texelFetch(iChannel2, n, 0);
+		h += started && !notJelly(e) ? clamp(e.w, 0.0, DOME_MAX) : 0.0;
+	}
+	return 0.25 * h + 1.0;
 }
 
 // Where rock q at n (in A) was in its shape, and how far it's turned since
@@ -1439,10 +1532,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			if (w > 0.0) {
 				// (Until the scene's set up, C holds no F yet.)
 				vec4 f = texelFetch(iChannel2, n, 0);
-				if (!started || notJelly(f)) {
-					f = vec4(1.0, 0.0, 0.0, 1.0);
-				}
-				F += w * mat2(f.xy, f.zw);
+				F += w * (!started || notJelly(f) ? mat2(1.0) : jellyF(f));
 				total += w;
 			}
 		}
@@ -1450,6 +1540,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	F = total > 0.0 ? F / total : mat2(1.0);
 	// F turned by the velocity gradient around it.
 	F = (mat2(1.0) + velocityGradient(c, p, grid, floorRow)) * F;
+	F /= sqrt(max(determinant(F), 0.04));
 	// Stretched or squashed past what it takes, it gives (so it's dented
 	// for good, not flung apart): F = R S, its rotation and stretch, with
 	// S's stretches kept within reach.
@@ -1461,9 +1552,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float r = length(vec2(0.5 * (sxx - syy), sxy));
 	float t = 0.5 * atan(2.0 * sxy, sxx - syy);
 	vec2 stretch = clamp(vec2(mid + r, mid - r), JELLY_SQUASH, JELLY_STRETCH);
+	stretch /= sqrt(stretch.x * stretch.y);
 	mat2 Q = mat2(cos(t), sin(t), -sin(t), cos(t));
-	F = R * Q * mat2(stretch.x, 0.0, 0.0, stretch.y) * transpose(Q);
-	fragColor = vec4(F[0], F[1]);
+	S = Q * mat2(stretch.x, 0.0, 0.0, stretch.y) * transpose(Q);
+	fragColor = vec4(a, S[0][0], S[1][0], dome(c, grid, floorRow, started));
 }
 
 //// Buffer D
