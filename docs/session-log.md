@@ -552,3 +552,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Each card has start and warmed-up thumbnails from the real shader with its start textures (1,200 runs on the desktop GPU), cached in `vtipack/thumbs/`.
   - 📱 Send builds a one-shader "VTI Curation" pack and runs `add_pack.sh --replace --open`. The debug receiver can now replace a pack and logs its shader ids, so the newest one opens.
   - Tested locally (headless Chrome); the phone side isn't tried yet.
+- **"Change the rules so that you have access to anything in ~/dev/shaderEditor."** Added it to `additionalDirectories` in `.claude/settings.local.json` and noted the rule (still no writes outside it: the skill repo, Ready's Patterns).
