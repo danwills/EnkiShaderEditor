@@ -178,23 +178,32 @@ ask)
 	fi
 	id="ask$(date +%s)"
 	wait="${3:-15}"
-	adb shell "am start -n $PKG/enk.danwills.android.enkishadereditor.activity.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15" >/dev/null 2>&1
+	start="am start -n $PKG/enk.danwills.android.enkishadereditor.activity.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15"
+	adb shell "$start" >/dev/null 2>&1
 	waited=0
 	held=
+	back=
 	limit=$((wait + 25))
 	# The dialog answers itself after wait + 15 s; a little longer, in case
 	# it never showed (the screen off, say) - and then go ahead anyway.
-	# Hang on a sec writes hold:SECONDS, how long it now holds and counts
-	# down for: wait that long from now (and a little).
+	# Hang on a sec writes hold:N:SECONDS (N holds so far) and gets out of
+	# the way that long: bring it back then (it can't come forward from
+	# the background itself), and wait for its 15 s countdown (and a little).
 	while [ "$waited" -lt "$limit" ]; do
+		if [ -n "$back" ] && [ "$waited" -ge "$back" ]; then
+			back=
+			adb shell "$start" >/dev/null 2>&1
+			echo "hang on: asking again" >&2
+		fi
 		answer=$(adb shell "run-as $PKG cat files/takeover-$id 2>/dev/null" | tr -d '\r')
 		case "$answer" in
 		hold:*)
 			# Left there (the answer replaces it) - each new hold once.
 			if [ "$answer" != "$held" ]; then
 				held="$answer"
-				limit=$((waited + ${answer#hold:} + 10))
-				echo "hang on: waiting up to ${answer#hold:} s more" >&2
+				back=$((waited + ${answer##*:}))
+				limit=$((back + 25))
+				echo "hang on: asking again in ${answer##*:} s" >&2
 			fi
 			answer=
 			;;

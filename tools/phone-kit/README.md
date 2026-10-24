@@ -6,8 +6,9 @@ owner might be holding it. It covers four things:
 
 1. **Ask first.** A dialog on the phone, over whatever's showing:
    "Can Claude use your phone?", with Go ahead, Not now and Hang on a
-   sec (a minute more each tap before it counts down - for when it's
-   nearly OK but the owner needs a moment).
+   sec (out of the way for 30 s, then back to count down - for when
+   it's nearly OK but the owner needs a moment to finish something; the
+   notification it leaves has the same buttons, its Hang on 30 s more).
    - If nobody answers, it counts down ("Claude will go ahead in 15 s",
      with a yellow warning icon) and carries on. The owner's wish: never
      stuck waiting on a click.

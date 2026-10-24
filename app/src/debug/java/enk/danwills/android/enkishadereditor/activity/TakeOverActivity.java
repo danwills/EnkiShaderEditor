@@ -31,22 +31,25 @@ import java.nio.charset.StandardCharsets;
 // see-through activity over whatever's showing, in a task of its own, so
 // answering leaves things as they were. Unanswered for `wait` seconds, it
 // says Claude will go ahead in `countdown` seconds, and then does (Dan's
-// choice: never stuck waiting on a click). Hang on a sec holds it off for
-// HOLD_SECONDS more (each tap another lot), before the countdown starts
-// again - for when it's nearly OK but Dan needs a moment to get ready.
+// choice: never stuck waiting on a click). Hang on a sec gets it out of
+// the way for HOLD_SECONDS (the notification's Hang on, another lot) -
+// for when it's nearly OK but Dan needs a moment to finish what he's
+// doing - and then status.sh brings it back (an app in the background
+// can't bring itself forward), counting down again.
 // A tap outside doesn't close it;
 // left unanswered (another app opened over it, say), it posts a
 // notification with the same answers, which also brings it back. The
 // answer - yes or no, Back being no - goes to files/takeover-<id> in the
 // app's storage, which status.sh reads with run-as; a hold writes
-// "hold:<seconds>" there first, so status.sh waits longer.
+// "hold:<holds so far>:<seconds away>" there first, so status.sh knows
+// when to bring it back.
 public class TakeOverActivity extends AppCompatActivity {
 	private static final String TAG = "TakeOver";
 	private static final String CHANNEL = "claude_takeover";
 	private static final int NOTIFICATION = 7301;
 	private static final String ANSWER = "answer";
 	private static final String HOLD = "hold";
-	private static final int HOLD_SECONDS = 60;
+	private static final int HOLD_SECONDS = 30;
 	private boolean answered;
 	@Nullable
 	private String id;
@@ -57,8 +60,13 @@ public class TakeOverActivity extends AppCompatActivity {
 	@Nullable
 	private String message;
 	private int countdown;
-	// Seconds of hold left, while held - see hold().
+	// Seconds of hold left, while held, and how many holds - see hold().
 	private int held;
+	private int holds;
+	// A hold's over but it's not back on screen yet: the countdown waits
+	// for it (onStart()).
+	private boolean due;
+	private boolean started;
 
 	@Override
 	protected void onCreate(Bundle state) {
@@ -99,14 +107,17 @@ public class TakeOverActivity extends AppCompatActivity {
 		handler.postDelayed(() -> count(id, shown, countdown), wait * 1000L);
 	}
 
-	// Hang on a sec: HOLD_SECONDS more before the countdown, however far
-	// it had got - another lot each tap - and status.sh told to wait.
+	// Hang on a sec: out of the way for HOLD_SECONDS more, however far it
+	// had got - another lot each tap - and status.sh told when to bring
+	// it back.
 	private void hold() {
 		if (answered || dialog == null || id == null || message == null) {
 			return;
 		}
 		held += HOLD_SECONDS;
-		write(id, HOLD + ":" + (held + countdown));
+		++holds;
+		write(id, HOLD + ":" + holds + ":" + held);
+		moveTaskToBack(true);
 		handler.removeCallbacksAndMessages(null);
 		if (warned) {
 			warned = false;
@@ -120,7 +131,11 @@ public class TakeOverActivity extends AppCompatActivity {
 			return;
 		}
 		if (held <= 0) {
-			count(id, message, countdown);
+			if (started) {
+				count(id, message, countdown);
+			} else {
+				due = true;
+			}
 			return;
 		}
 		dialog.setTitle("🤖 Waiting for you - " + held + " s");
@@ -170,6 +185,7 @@ public class TakeOverActivity extends AppCompatActivity {
 	@Override
 	protected void onStop() {
 		super.onStop();
+		started = false;
 		if (!answered && !isFinishing()) {
 			notifyUnanswered();
 		}
@@ -178,7 +194,12 @@ public class TakeOverActivity extends AppCompatActivity {
 	@Override
 	protected void onStart() {
 		super.onStart();
+		started = true;
 		getSystemService(NotificationManager.class).cancel(NOTIFICATION);
+		if (due && !answered && id != null && message != null) {
+			due = false;
+			count(id, message, countdown);
+		}
 	}
 
 	private void notifyUnanswered() {
@@ -191,7 +212,8 @@ public class TakeOverActivity extends AppCompatActivity {
 		var notification = new NotificationCompat.Builder(this, CHANNEL)
 				.setSmallIcon(android.R.drawable.ic_dialog_alert)
 				.setContentTitle("🤖 Claude is waiting to use your phone")
-				.setContentText("It'll go ahead soon unless you say not now.")
+				.setContentText(held > 0 ? "It'll ask again in " + held + " s."
+						: "It'll go ahead soon unless you say not now.")
 				.setContentIntent(reply(null, 0))
 				.addAction(0, "Not now", reply("no", 1))
 				.addAction(0, "Hang on", reply(HOLD, 3))

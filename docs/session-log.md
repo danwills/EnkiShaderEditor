@@ -516,3 +516,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   another app's overlay. Fixed in the kit: `status.sh done` now gives "appear on top" back
   (`appops ... default`), so it's only on during a run, and the panel takes itself down after 5
   quiet minutes (not while paused). Enki's copy, tools/phone-kit, the skill and its notes updated.
+- **"Can it [the Hang on a sec dialog] dismiss itself for like 30s"** ("Yes exactly": out of the
+  way, then back). Hang on a sec now moves the ask dialog's task to the back for 30 s (its
+  notification has the same buttons, its Hang on +30 s); `status.sh ask` brings it back with
+  `am start` when the time's up (an app in the background can't come forward itself), and its
+  15 s countdown only starts once it's back on screen. Kit copies, skill and docs updated; lint 50.
