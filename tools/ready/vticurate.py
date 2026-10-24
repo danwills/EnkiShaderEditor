@@ -318,6 +318,10 @@ def handler(app):
 					return
 				app.save(body)
 				self.send(200, {"ok": True})
+			elif self.path == "/api/error":
+				print("page error from %s: %s\n  %s" % (self.client_address[0], body.get("text"),
+						body.get("agent")), flush=True)
+				self.send(200, {"ok": True})
 			elif self.path == "/api/push":
 				ok, message = app.push(body["path"], body.get("quality"))
 				self.send(200, {"ok": ok, "message": message})
