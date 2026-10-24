@@ -613,13 +613,15 @@ UI_COMMON = """\
 // The interface. Views: 0 colour; 1 every chemical, and the colour view,
 // as tiles; 2 one tile full screen. Buttons just above the tiles (in the
 // tiles view only): the colour map (tap for the next, hold and drag up and
-// down to pick one), random (tap for a random composite look; hold to
-// wander through them, stopping a moment before letting go), the brush
+// down to pick one), random (tap for a new random composite look; hold to
+// wander along its path - drag down to slow it, past the screen's middle
+// to stop it, and across to go back and forward along it), the brush
 // (drag to set what one finger paints; a second finger joining the drag
 // sets what two erase; tap to go back to the file's own), and composite
 // colour (tap to switch).
 const int CHEMICALS = %(n)d;
 const int TILES = CHEMICALS + 1; // the chemicals, then the colour view
+const int MAIN_CHEMICAL = %(main)d; // the file's active chemical: random looks' main hue
 const float MAPS = %(maps)d.0;   // 0 the file's own map, then colormaps' rows
 // The state row's texels:
 const int S_GESTURE = 0; // most fingers this touch, when it began, view, the tile shown
@@ -632,20 +634,23 @@ const int S_FINGERS = 4; // last frame's finger count, a chemical whose compleme
                          // 2 once started - see rdStarted()
 const int S_BRUSH = 5;   // what the brush paints (its two chemicals), and erases (two)
 const int S_BRUSH_ON = 6; // 1 once the brush (x), eraser (y) has been set by dragging
-const int S_RANDOM = 7;  // the random look's seed, when wandering began, 1 while wandering,
-                         // the RANDOM_REWIND period its snapshots were last taken in
+const int S_RANDOM = 7;  // the random look's seed, how far along its path (see rdLook()),
+                         // 1 while wandering, and how fast it was going (path a second)
 const int S_COLOUR = 8;  // + a chemical: its composite hue, saturation, value, weight
-const int S_POWER = 16;  // + a chemical: its composite power, complement (1: 1 - level)
+const int S_POWER = 16;  // + a chemical: its composite power, complement (1: 1 - level),
+                         // and a stretch about its typical level (centre, factor; 0 none)
+                         // - see rdShownLevel()
 const int S_MAP = 24;    // the colour map's frequency: how many times it runs over the range
-const int S_SNAP = 25;   // + a chemical: snapshots of its hue and weight; + CHEMICALS + a
-                         // chemical: of its power and complement - each the newer (x, y)
-                         // and older (z, w), for wandering's rewind
+const int S_GUIDE = 25;  // + a chemical: what the grid shows of it lately - its levels'
+                         // mean, spread, how they go with the main chemical's (a
+                         // correlation), and its part in a random look, plus 1 (0 not yet
+                         // known) - see rdNextGuide()
 const int S_RANGE = 41;  // + a chemical: the range its values have had lately (low, high),
                          // and 1 once measured - what the views show it across, see
                          // rdShowRange()
-const int S_SEARCH = 49; // wandering's search: the stretch it's on (by SEARCH_STRETCH), its
-                         // direction, the look's score as it began, 1 going on or -1
-                         // going back - see rdNextSearch()
+const int S_SCORE = 49;  // how good the composite look is now (rdLookScore()), and lately
+                         // (a slow mean), and 1 once measured - wandering lingers where
+                         // it's better
 const int S_SIZE = 50;   // the grid's size (x, y) the simulation's running at, and 1 if
                          // its grid wasn't blank last step - see rdStarted()
 const int S_CLOCK = 51;  // iTime as this frame's first step saw it - see rdNewFrame()
@@ -666,16 +671,27 @@ const ivec2 BRUSH_ERASE = ivec2(%(brush_erase)s);
 #define COMPOSITE_GAIN 1.6
 #define POWER_RATE 3.0    // power doubles in about a quarter screen's drag
 #define BRUSH_RATE 1.0    // a chemical's whole range per screen width (or height) dragged
-#define RANDOM_REWIND 0.25 // wandering stops this to twice this before letting go
-#define RANDOM_NUDGE 0.0003 // how far wandering moves a look along its search, a step
-#define RANDOM_PULL 0.002  // and how far towards one that shows every chemical
-#define SEARCH_STRETCH 0.5 // seconds wandering keeps to one direction before judging it
+#define RANDOM_RATE 0.06   // how far wandering goes along a look's path a second,
+#define RANDOM_LINGER 0.3  // and how much slower while the look's better than lately
+#define RANDOM_SCRUB 3.0   // and how far along it dragging across the screen goes
+#define RANDOM_REWIND 0.4  // seconds back along the path it stops, let go
 #define RANGE_GROW 0.0003  // how far a chemical's range widens towards its values' a frame,
 #define RANGE_SHRINK 0.0001 // and narrows - very slowly both ways (a minute or more to
                             // settle), so the look holds steady as the wave moves
 
 float rdUnit(vec2 screen) {
 	return min(screen.x, screen.y);
+}
+
+// A chemical's level (0-1) as composite colour shows it, by its power
+// texel: its complement, if asked; stretched about its typical level, if
+// asked (so fine detail shows); then raised to its power.
+float rdShownLevel(float level, vec4 power) {
+	level = power.y > 0.5 ? 1.0 - level : level;
+	if (power.w > 1.0) {
+		level = clamp(power.z + (level - power.z) * power.w, 0.0, 1.0);
+	}
+	return pow(level, power.x);
 }
 
 bool rdInBox(vec2 p, vec4 box) {
@@ -1206,58 +1222,12 @@ float rdNewSeed() {
 	return floor(fract(sin(iTime * 12.9898) * 43758.5453) * 500.0);
 }
 
-// The random texel next frame: m is the next mode.
-vec4 rdNextRandom(ivec2 grid, vec4 m) {
-	vec4 s = rdState(S_RANDOM, grid);
-	float period = floor(iTime / RANDOM_REWIND);
-	if (m.z > 5.5) {
-		return s.z > 0.5 ? vec4(s.xyz, period) : vec4(rdNewSeed(), iTime, 1.0, period);
-	}
-	return vec4(s.xy, 0.0, period);
-}
-
-// A snapshot texel next frame: at each new RANDOM_REWIND period the newer
-// snapshot becomes the older, and the chemical's look now the newer - so
-// the older is always a period or two back.
-vec4 rdNextSnapshot(int texel, ivec2 grid) {
-	vec4 snap = rdState(texel, grid);
-	if (floor(iTime / RANDOM_REWIND) == rdState(S_RANDOM, grid).w) {
-		return snap;
-	}
-	int k = texel - S_SNAP;
-	if (k < CHEMICALS) {
-		vec4 now = rdState(S_COLOUR + k, grid);
-		return vec4(now.x, now.w, snap.xy);
-	}
-	return vec4(rdState(S_POWER + k - CHEMICALS, grid).xy, snap.xy);
-}
-
 float rdHash(float seed, float k) {
 	return fract(sin(dot(vec2(seed, k), vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-// Chemical i's levels (0-1 across its range, rdShowRange()) over an 8x8 sample of
-// the grid, each sample jittered off the lattice so a regular pattern
-// can't fool it: their mean and standard deviation.
-vec2 rdLevelStats(int i, ivec2 grid) {
-	vec2 r = rdShowRange(i, grid);
-	float sum = 0.0;
-	float squares = 0.0;
-	for (int y = 0; y < 8; ++y) {
-		for (int x = 0; x < 8; ++x) {
-			vec2 jitter = vec2(rdHash(float(x), float(y)), rdHash(float(y) + 7.0, float(x)));
-			ivec2 q = ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid));
-			float level = clamp((rdChem(i, q) - r.x) / (r.y - r.x), 0.0, 1.0);
-			sum += level;
-			squares += level * level;
-		}
-	}
-	float mean = sum / 64.0;
-	return vec2(mean, sqrt(max(squares / 64.0 - mean * mean, 0.0)));
-}
-
-// Chemical i's range texel next frame, from the same sample as
-// rdLevelStats(): eased slowly towards the range of the values there now
+// Chemical i's range texel next frame, from an 8x8 sample of the grid, each
+// sample jittered off the lattice so a regular pattern can't fool it: eased slowly towards the range of the values there now
 // - a little faster out (RANGE_GROW) than in (RANGE_SHRINK) - so a
 // passing spike doesn't make the whole view flash darker; values beyond
 // it meanwhile just clamp. Measured outright the first time.
@@ -1285,122 +1255,164 @@ vec4 rdNextRange(int texel, ivec2 grid) {
 	return vec4(mix(r.x, lo, easeLo), mix(r.y, hi, easeHi), 1.0, 0.0);
 }
 
-// How good the composite look is now, from the same sample as
-// rdLevelStats(): its contrast (the spread of its brightness), how
-// colourful it is, and how much its colour varies - less for samples
-// crushed to black or blown to white. What wandering climbs.
-float rdLookScore(ivec2 grid) {
-	vec3 tint[CHEMICALS];
-	vec2 power[CHEMICALS];
-	vec2 range[CHEMICALS];
-	for (int i = 0; i < CHEMICALS; ++i) {
-		vec4 c = rdState(S_COLOUR + i, grid);
-		tint[i] = c.w * hsv2rgb(c.xyz);
-		power[i] = rdState(S_POWER + i, grid).xy;
-		range[i] = rdShowRange(i, grid);
+// Chemical i's level (0-1 across its range r) at q, wrapped onto the grid.
+float rdSampleLevel(int i, ivec2 q, ivec2 grid, vec2 r) {
+	q = ivec2(mod(vec2(q), vec2(grid)));
+	return clamp((rdChem(i, q) - r.x) / (r.y - r.x), 0.0, 1.0);
+}
+
+// The sample rdNextRange() takes too: point k (0-63) of an 8x8 lattice
+// over the grid, jittered.
+ivec2 rdSamplePoint(int k, ivec2 grid) {
+	float x = float(k - (k / 8) * 8);
+	float y = float(k / 8);
+	vec2 jitter = vec2(rdHash(x, y), rdHash(y + 7.0, x));
+	return ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid));
+}
+
+// Chemical i's guide texel next frame (m is the next mode), from the
+// sample: its levels' mean and spread (standard deviation); how they go
+// with the main chemical's (MAIN_CHEMICAL) as composite colour would show
+// it (its complement, if it's mostly high) - a correlation, -1 to 1; and
+// from that its part in a random look, plus 1: 0 the main chemical, 1
+// going with it, 2 against it, 3 neither (the detail). The part changes
+// only once the correlation's well past the line, and not while
+// wandering, so looks don't jump.
+vec4 rdNextGuide(int texel, ivec2 grid, vec4 m) {
+	vec4 old = rdState(texel, grid);
+	if (!rdNewFrame(grid)) {
+		return old;
 	}
+	int i = texel - S_GUIDE;
+	int top = MAIN_CHEMICAL;
+	bool flip = rdState(S_GUIDE + top, grid).x > 0.55;
+	vec2 r = rdShowRange(i, grid);
+	vec2 rt = rdShowRange(top, grid);
+	float sum = 0.0;
+	float squares = 0.0;
+	float sumT = 0.0;
+	float squaresT = 0.0;
+	float both = 0.0;
+	for (int k = 0; k < 64; ++k) {
+		ivec2 q = rdSamplePoint(k, grid);
+		float v = rdSampleLevel(i, q, grid, r);
+		float w = rdSampleLevel(top, q, grid, rt);
+		w = flip ? 1.0 - w : w;
+		sum += v;
+		squares += v * v;
+		sumT += w;
+		squaresT += w * w;
+		both += v * w;
+	}
+	float mean = sum / 64.0;
+	float meanT = sumT / 64.0;
+	float sd = sqrt(max(squares / 64.0 - mean * mean, 0.0));
+	float sdT = sqrt(max(squaresT / 64.0 - meanT * meanT, 0.0));
+	float corr = i == top ? 1.0 : clamp((both / 64.0 - mean * meanT) / max(sd * sdT, 1e-6), -1.0, 1.0);
+	int was = int(old.w + 0.5) - 1;
+	int role = i == top ? 0 : corr > 0.35 ? 1 : corr < -0.35 ? 2 : 3;
+	if ((was >= 0 && m.z > 5.5) || (was == 1 && corr > 0.2) || (was == 2 && corr < -0.2) ||
+			(was == 3 && abs(corr) < 0.5)) {
+		role = was;
+	}
+	return vec4(mean, sd, corr, float(role + 1));
+}
+
+// The composite look's colour at q, as the Image pass draws it.
+vec3 rdLookColour(ivec2 q, ivec2 grid) {
+	q = ivec2(mod(vec2(q), vec2(grid)));
+	vec3 c = vec3(0.0);
+	for (int i = 0; i < CHEMICALS; ++i) {
+		vec4 colour = rdState(S_COLOUR + i, grid);
+		vec2 r = rdShowRange(i, grid);
+		float level = clamp((rdChem(i, q) - r.x) / (r.y - r.x), 0.0, 1.0);
+		c += colour.w * hsv2rgb(colour.xyz) * rdShownLevel(level, rdState(S_POWER + i, grid));
+	}
+	return clamp(c, 0.0, 1.0);
+}
+
+// How good the composite look is now, from the sample: its contrast (the
+// spread of its brightness), how colourful it is, how much its colour
+// varies, and its fine detail (how much it changes from a cell to one a
+// couple off) - less for samples crushed to black or blown to white.
+float rdLookScore(ivec2 grid) {
 	float l = 0.0;
 	float ll = 0.0;
 	float chroma = 0.0;
 	vec3 hue = vec3(0.0);
 	vec3 hues = vec3(0.0);
 	float lost = 0.0;
-	for (int y = 0; y < 8; ++y) {
-		for (int x = 0; x < 8; ++x) {
-			vec2 jitter = vec2(rdHash(float(x), float(y)), rdHash(float(y) + 7.0, float(x)));
-			ivec2 q = ivec2((vec2(x, y) + jitter) / 8.0 * vec2(grid));
-			vec3 c = vec3(0.0);
-			for (int i = 0; i < CHEMICALS; ++i) {
-				float level = clamp((rdChem(i, q) - range[i].x) / (range[i].y - range[i].x), 0.0, 1.0);
-				level = power[i].y > 0.5 ? 1.0 - level : level;
-				c += tint[i] * pow(level, power[i].x);
-			}
-			c = clamp(c, 0.0, 1.0);
-			float lum = dot(c, vec3(0.299, 0.587, 0.114));
-			l += lum;
-			ll += lum * lum;
-			chroma += max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
-			hue += c - lum;
-			hues += (c - lum) * (c - lum);
-			lost += lum < 0.03 || lum > 0.97 ? 1.0 : 0.0;
-		}
+	float fine = 0.0;
+	for (int k = 0; k < 64; ++k) {
+		ivec2 q = rdSamplePoint(k, grid);
+		vec3 c = rdLookColour(q, grid);
+		float lum = dot(c, vec3(0.299, 0.587, 0.114));
+		l += lum;
+		ll += lum * lum;
+		chroma += max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+		hue += c - lum;
+		hues += (c - lum) * (c - lum);
+		lost += lum < 0.03 || lum > 0.97 ? 1.0 : 0.0;
+		fine += length(c - rdLookColour(q + ivec2(2, 1), grid));
 	}
 	l /= 64.0;
 	hue /= 64.0;
 	float contrast = sqrt(max(ll / 64.0 - l * l, 0.0));
 	vec3 spread = max(hues / 64.0 - hue * hue, 0.0);
-	return contrast + 0.6 * chroma / 64.0 + 0.6 * sqrt(spread.r + spread.g + spread.b) -
-			0.3 * lost / 64.0;
+	return contrast + 0.6 * chroma / 64.0 + 0.6 * sqrt(spread.r + spread.g + spread.b) +
+			1.5 * fine / 64.0 - 0.3 * lost / 64.0;
 }
 
-// The search texel next frame (m is the next mode). While random's held
-// the look wanders a stretch at a time (SEARCH_STRETCH) along a direction
-// picked at random; at each stretch's end, if the look scores better
-// (rdLookScore()) it carries on that way, and if not it goes back the way
-// it came - and from there, a new direction. So it climbs, slowly,
-// towards looks with more contrast and more colour.
-vec4 rdNextSearch(ivec2 grid, vec4 m) {
-	vec4 s = rdState(S_SEARCH, grid);
-	float stretch = floor(iTime / SEARCH_STRETCH);
-	if (m.z < 5.5) {
-		return vec4(stretch, stretch, 0.0, 1.0);
-	}
-	if (stretch == s.x) {
+// The score texel next frame (m is the next mode): measured each frame
+// while wandering, with a slow mean of it, which starts at the first.
+vec4 rdNextScore(ivec2 grid, vec4 m) {
+	vec4 s = rdState(S_SCORE, grid);
+	if (m.z < 5.5 || !rdNewFrame(grid)) {
 		return s;
 	}
 	float score = rdLookScore(grid);
-	if (s.w < 0.0) {
-		// Back where the last good direction left it: a new one.
-		return vec4(stretch, stretch, score, 1.0);
+	return vec4(score, s.z < 0.5 ? score : mix(s.y, score, 0.01), 1.0, 0.0);
+}
+
+// The random texel next frame (m is the next mode). A tap on random: a new
+// look's seed, at the start of its path. Held: along its path, at
+// RANDOM_RATE - slower while the look scores better than lately
+// (RANDOM_LINGER), slower as the finger's dragged down from where it
+// began, and stopped past the screen's middle - and dragged across, back
+// and forward along it. Let go: RANDOM_REWIND seconds back, at the pace
+// it was going, as a finger's always a moment late.
+vec4 rdNextRandom(ivec2 grid, vec2 screen, vec4 m) {
+	vec4 s = rdState(S_RANDOM, grid);
+	if (rdRandomTapped(grid, screen)) {
+		return vec4(rdNewSeed(), 0.0, 0.0, 0.0);
 	}
-	return vec4(stretch, s.y, score, score > s.z ? 1.0 : -1.0);
-}
-
-// The way the search goes this stretch for one of chemical chem's values
-// (j), -1 to 1.
-float rdSearchStep(vec4 search, float k) {
-	return (rdHash(search.y, k) - 0.5) * 2.0 * search.w;
-}
-
-// Spread round the hue circle by rank: 0, a half, a quarter, three
-// quarters, an eighth... - so the two most varied chemicals get opposite
-// (complementary) hues, and each next one the biggest gap left.
-float rdHueSpread(int rank) {
-	float v = 0.0;
-	float f = 0.5;
-	int n = rank;
-	for (int k = 0; k < 3; ++k) {
-		if (n - (n / 2) * 2 == 1) {
-			v += f;
-		}
-		n /= 2;
-		f *= 0.5;
+	if (m.z < 5.5) {
+		return vec4(s.x, s.z > 0.5 ? s.y - s.w * RANDOM_REWIND : s.y, 0.0, 0.0);
 	}
-	return v;
-}
-
-// What would show chemical chem clearly, from a sample of the grid now:
-// its rank by how much it varies (0 the most), that variation's share of
-// all of theirs, and its levels' mean.
-void rdGuide(int chem, ivec2 grid, out int rank, out float share, out float mean) {
-	vec2 mine = rdLevelStats(chem, grid);
-	float total = 0.0;
-	rank = 0;
-	for (int j = 0; j < CHEMICALS; ++j) {
-		float sd = j == chem ? mine.y : rdLevelStats(j, grid).y;
-		total += sd;
-		if (sd > mine.y || (sd == mine.y && j < chem)) {
-			++rank;
-		}
+	if (!rdNewFrame(grid) || pointerCount == 0) {
+		return s;
 	}
-	share = mine.y / max(total, 1e-3);
-	mean = mine.x;
+	float dt = S_CLOCK < grid.x ? clamp(iTime - rdState(S_CLOCK, grid).x, 0.0, 0.1) : 0.016;
+	float start = rdState(S_TOUCH, grid).y;
+	float middle = 0.5 * screen.y;
+	float speed = clamp((pointers[0].y - middle) / max(start - middle, 1.0), 0.0, 1.0);
+	vec4 score = rdState(S_SCORE, grid);
+	float better = score.z > 0.5 ? (score.x - score.y) / max(score.y, 0.05) : 0.0;
+	float pace = RANDOM_RATE * speed * speed * mix(1.0, RANDOM_LINGER, smoothstep(0.0, 0.15, better));
+	return vec4(s.x, s.y + pace * dt + rdMoved(grid, screen).x * RANDOM_SCRUB, 1.0, pace);
 }
 
-// The weight that shows a chemical with `share` of the variation: some for
-// every chemical, more for the varied ones, adding up to COMPOSITE_GAIN.
-float rdGuidedWeight(float share) {
-	return COMPOSITE_GAIN * mix(1.0 / float(CHEMICALS), share, 0.6);
+// Eased value noise along a path, -1 to 1.
+float rdValueNoise(float seed, float k, float t) {
+	float i = floor(t);
+	float f = t - i;
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(rdHash(seed + i * 7.31, k), rdHash(seed + (i + 1.0) * 7.31, k), f) * 2.0 - 1.0;
+}
+
+// Smooth noise along a look's path: two octaves, about -1 to 1.
+float rdDrift(float seed, float k, float t) {
+	return (rdValueNoise(seed, k, t) + 0.5 * rdValueNoise(seed, k + 50.0, t * 2.3)) / 1.5;
 }
 
 // The power putting a typical level (0-1) about mid-way.
@@ -1408,74 +1420,46 @@ float rdGuidedPower(float typical) {
 	return clamp(log(0.4) / log(clamp(typical, 0.03, 0.97)), 0.25, 6.0);
 }
 
-// Chemical chem's colour or power texel in a new random look, `seed`'s:
-// hues spread round the circle by how much each chemical varies (see
-// rdGuide()), each power putting its typical level about mid-way (its
-// complement, if mostly high, so its features show bright), weights by
-// variation - each nudged by chance.
-vec4 rdRandomLook(int texel, int chem, float seed, ivec2 grid) {
-	float k = float(chem) * 8.0;
-	int rank;
-	float share, mean;
-	rdGuide(chem, grid, rank, share, mean);
-	if (texel < S_POWER) {
-		float hue = fract(rdHash(seed, 90.0) + rdHueSpread(rank) + (rdHash(seed, k) - 0.5) * 0.15);
-		return vec4(hue, mix(0.75, 1.0, rdHash(seed, k + 1.0)), mix(0.85, 1.0, rdHash(seed, k + 2.0)),
-				rdGuidedWeight(share) * mix(0.6, 1.4, rdHash(seed, k + 3.0)));
-	}
-	bool high = mean > 0.55;
-	float power = rdGuidedPower(high ? 1.0 - mean : mean) * exp((rdHash(seed, k + 4.0) - 0.5) * 0.8);
-	return vec4(power, high ? 1.0 : 0.0, 0.0, 0.0);
-}
+// Main hues a look often takes: orange, amber, yellow, cyan, sky blue.
+const float MAIN_HUES[5] = float[5](0.07, 0.11, 0.15, 0.5, 0.55);
 
-// Chemical chem's colour or power texel s, one step of wandering on: a
-// little way along the search's direction (RANDOM_NUDGE, see
-// rdNextSearch()), and a little way (RANDOM_PULL)
-// towards what would show it clearly - its hue the biggest gap from the
-// most varied chemical's (see rdHueSpread()), its weight and power as
-// rdRandomLook() picks them, its complement now and then.
-vec4 rdWanderStep(int texel, int chem, vec4 s, ivec2 grid) {
-	float n = float(iFrame);
-	float k = float(chem) * 8.0;
-	vec4 search = S_SEARCH < grid.x ? rdState(S_SEARCH, grid) : vec4(n, n, 0.0, 1.0);
-	int rank;
-	float share, mean;
-	rdGuide(chem, grid, rank, share, mean);
+// Chemical chem's colour or power texel in random look `seed`, at t along
+// its path: a colouring from what the grid shows (see rdNextGuide()). The
+// main chemical (the file's active one) takes the main hue (often orange, yellow or cyan);
+// those that go with it, hues near it, so where it's high stays that hue;
+// those against it (high where it's low) the complement, dimmer - the
+// background; and the rest, the finer detail, a third hue, stretched about
+// their typical level so it shows. Along the path each wanders a little,
+// and the main hue slowly round the circle, the rest keeping their places
+// from it.
+vec4 rdLook(int texel, int chem, float seed, float t, ivec2 grid) {
+	float k = float(chem) * 8.0 + 10.0;
+	vec4 g = rdState(S_GUIDE + chem, grid);
+	// 0 the main chemical, 1 with it, 2 against it, 3 detail.
+	int role = max(int(g.w + 0.5) - 1, 0);
 	if (texel < S_POWER) {
-		int top = 0;
-		for (int j = 0; j < CHEMICALS; ++j) {
-			int r;
-			float sh, me;
-			if (j != chem) {
-				rdGuide(j, grid, r, sh, me);
-				if (r == 0) {
-					top = j;
-				}
-			} else if (rank == 0) {
-				top = j;
-			}
-		}
-		float want = fract(rdState(S_COLOUR + top, grid).x + rdHueSpread(rank));
-		float off = fract(want - s.x + 0.5) - 0.5;
-		s.x = fract(s.x + rdSearchStep(search, k) * 0.5 * RANDOM_NUDGE * 4.0 +
-				(top == chem ? 0.0 : off * RANDOM_PULL * 4.0));
-		s.y = clamp(s.y + rdSearchStep(search, k + 1.0) * 0.5 * RANDOM_NUDGE +
-				(0.9 - s.y) * RANDOM_PULL, 0.5, 1.0);
-		s.z = clamp(s.z + rdSearchStep(search, k + 2.0) * 0.5 * RANDOM_NUDGE +
-				(0.95 - s.z) * RANDOM_PULL, 0.6, 1.0);
-		s.w += rdSearchStep(search, k + 3.0) * 0.5 * RANDOM_NUDGE * 2.0 +
-				(rdGuidedWeight(share) - s.w) * RANDOM_PULL;
-		return s;
+		float pick = rdHash(seed, 1.0);
+		float main = pick < 0.6 ? MAIN_HUES[int(min(pick / 0.6 * 5.0, 4.0))] : rdHash(seed, 2.0);
+		main += 0.35 * rdDrift(seed, 3.0, t * 0.5);
+		float own = (rdHash(seed, k) - 0.5) * 0.1 + 0.05 * rdDrift(seed, k, t);
+		float hue = role == 0 ? 0.0 : role == 1 ? own
+				: role == 2 ? 0.5 + (rdHash(seed, 4.0) - 0.5) * 0.16 + own * 0.5
+				: mix(0.25, 0.75, rdHash(seed, 5.0)) + own;
+		float sat = role == 2 ? mix(0.55, 0.9, rdHash(seed, k + 1.0)) : mix(0.75, 1.0, rdHash(seed, k + 1.0));
+		float val = role == 2 ? mix(0.6, 0.9, rdHash(seed, k + 2.0)) : mix(0.9, 1.0, rdHash(seed, k + 2.0));
+		float weight = role == 0 ? 0.85 : role == 1 ? 0.3 : role == 2 ? 0.4 : 0.55;
+		weight *= mix(0.75, 1.3, rdHash(seed, k + 3.0)) * exp(0.35 * rdDrift(seed, k + 1.0, t));
+		return vec4(fract(main + hue), clamp(sat + 0.1 * rdDrift(seed, k + 2.0, t), 0.4, 1.0), val, weight);
 	}
-	bool high = mean > 0.55;
-	float lp = log(max(s.x, 0.1));
-	lp += rdSearchStep(search, k + 4.0) * 0.5 * RANDOM_NUDGE * 4.0 +
-			(log(rdGuidedPower(high ? 1.0 - mean : mean)) - lp) * RANDOM_PULL;
-	s.x = clamp(exp(lp), 0.1, 10.0);
-	if ((s.y > 0.5) != high && rdHash(n, k + 5.0) < RANDOM_PULL) {
-		s.y = high ? 1.0 : 0.0;
-	}
-	return s;
+	// The main chemical and the detail as their features show bright (the
+	// complement if mostly high); the rest as they are, so the background
+	// stays the background.
+	bool complement = (role == 0 || role == 3) && g.x > 0.55;
+	float typical = complement ? 1.0 - g.x : g.x;
+	float stretch = clamp((role == 3 ? 0.16 : 0.28) / max(g.y, 1e-3), 1.0, 8.0);
+	float power = rdGuidedPower(typical) * exp((rdHash(seed, k + 4.0) - 0.5) * 0.6 +
+			0.3 * rdDrift(seed, k + 3.0, t));
+	return vec4(clamp(power, 0.1, 10.0), complement ? 1.0 : 0.0, typical, stretch);
 }
 
 // A chemical's composite colour or power texel, next frame: m, d and f
@@ -1483,22 +1467,16 @@ vec4 rdWanderStep(int texel, int chem, vec4 s, ivec2 grid) {
 vec4 rdNextChemical(int texel, ivec2 grid, vec2 screen, vec4 m, vec4 d, vec4 f) {
 	vec4 s = rdState(texel, grid);
 	int chem = texel >= S_POWER ? texel - S_POWER : texel - S_COLOUR;
-	// Random looks: wandering while random's held, then where it was a
-	// moment before it was let go; a tap, a new one.
-	vec4 r = rdState(S_RANDOM, grid);
-	if (m.z > 5.5) {
-		return rdNewFrame(grid) ? rdWanderStep(texel, chem, s, grid) : s;
-	}
-	if (r.z > 0.5) {
-		// Just let go: back to the older snapshot, a moment before.
-		vec4 snap = rdState(S_SNAP + (texel >= S_POWER ? CHEMICALS : 0) + chem, grid);
-		return texel < S_POWER ? vec4(snap.z, s.y, s.z, snap.w) : vec4(snap.zw, 0.0, 0.0);
-	}
-	if (rdRandomTapped(grid, screen)) {
-		return rdRandomLook(texel, chem, rdNewSeed(), grid);
+	// Random looks (see rdNextRandom()): a tap, a new one; held, along its
+	// path, and let go, a moment back.
+	if (m.z > 5.5 || rdState(S_RANDOM, grid).z > 0.5 || rdRandomTapped(grid, screen)) {
+		vec4 r = rdNextRandom(grid, screen, m);
+		return rdLook(texel, chem, r.x, r.y, grid);
 	}
 	if (texel >= S_POWER && abs(f.y - float(chem)) < 0.5) {
+		// Its complement, and the stretch's centre with it.
 		s.y = 1.0 - s.y;
+		s.z = 1.0 - s.z;
 	}
 	if (abs(m.w - float(chem)) > 0.5 || pointerCount == 0) {
 		return s;
@@ -1558,8 +1536,8 @@ vec3 rdMap(float t, float slot) {
 	return texture(colormaps, vec2(t, 1.0 - (slot - 0.5) / float(colormapCount))).rgb;
 }
 
-// Composite colour: each chemical's level (or its complement, 1 - level),
-// raised to its power, times its colour and weight, added up - so it can
+// Composite colour: each chemical's level as rdShownLevel() has it (its
+// complement, stretched, raised to its power), times its colour and weight, added up - so it can
 // be as bright as the weights make it; a weight of 0 hides a chemical, and
 // a negative one darkens where it is.
 vec3 rdComposite(ivec2 q, ivec2 grid) {
@@ -1567,11 +1545,7 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 	for (int i = 0; i < CHEMICALS; ++i) {
 		vec4 c = rdState(S_COLOUR + i, grid);
 		vec4 power = rdState(S_POWER + i, grid);
-		float level = rdLevel(i, q, grid);
-		// Its complement first, if a two-finger tap asked - levels are 0-1,
-		// so it stays 0-1.
-		level = power.y > 0.5 ? 1.0 - level : level;
-		sum += c.w * hsv2rgb(c.xyz) * pow(level, power.x);
+		sum += c.w * hsv2rgb(c.xyz) * rdShownLevel(rdLevel(i, q, grid), power);
 	}
 	return clamp(sum, 0.0, 1.0);
 }
@@ -1583,9 +1557,7 @@ vec3 rdComposite(ivec2 q, ivec2 grid) {
 vec3 rdContribution(int i, ivec2 q, ivec2 grid) {
 	vec4 c = rdState(S_COLOUR + i, grid);
 	vec4 power = rdState(S_POWER + i, grid);
-	float level = rdLevel(i, q, grid);
-	level = power.y > 0.5 ? 1.0 - level : level;
-	return hsv2rgb(c.xyz) * pow(level, power.x) *
+	return hsv2rgb(c.xyz) * rdShownLevel(rdLevel(i, q, grid), power) *
 			clamp(abs(c.w) * float(CHEMICALS) / COMPOSITE_GAIN, 0.0, 1.0);
 }
 
@@ -2142,14 +2114,14 @@ def step_pass(p, chems, stage, group, groups, stages, params_block, is_first_sta
 		out.append("\t\telse if (texel == S_BRUSH || texel == S_BRUSH_ON) {")
 		out.append("\t\t\tfragColor = rdNextBrush(texel, grid, screen, uiMode, uiFingers);")
 		out.append("\t\t}")
-		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, uiMode);")
+		out.append("\t\telse if (texel == S_RANDOM) fragColor = rdNextRandom(grid, screen, uiMode);")
 		out.append("\t\telse if (texel == S_MAP) fragColor = rdNextMap(grid, screen, uiMode);")
-		out.append("\t\telse if (texel == S_SEARCH) fragColor = rdNextSearch(grid, uiMode);")
+		out.append("\t\telse if (texel == S_SCORE) fragColor = rdNextScore(grid, uiMode);")
 		out.append("\t\telse if (texel >= S_RANGE && texel < S_RANGE + CHEMICALS) {")
 		out.append("\t\t\tfragColor = rdNextRange(texel, grid);")
 		out.append("\t\t}")
-		out.append("\t\telse if (texel >= S_SNAP && texel < S_SNAP + 2 * CHEMICALS) {")
-		out.append("\t\t\tfragColor = rdNextSnapshot(texel, grid);")
+		out.append("\t\telse if (texel >= S_GUIDE && texel < S_GUIDE + CHEMICALS) {")
+		out.append("\t\t\tfragColor = rdNextGuide(texel, grid, uiMode);")
 		out.append("\t\t}")
 		out.append("\t\telse if ((texel >= S_COLOUR && texel < S_COLOUR + CHEMICALS) ||")
 		out.append("\t\t\t\t(texel >= S_POWER && texel < S_POWER + CHEMICALS)) {")
@@ -2659,7 +2631,7 @@ def convert(path, colormap_override=None, paint_spec="a=init,b=init", erase_spec
 	brush_start = "vec4(%s)" % ", ".join(glsl_float(round(x, 6)) for x in (
 			start(p.paint, brush_paint, 0), start(p.paint, brush_paint, 1),
 			start(p.erase, brush_erase, 0), start(p.erase, brush_erase, 1)))
-	p.ui = {"n": p.n_chemicals, "maps": p.maps,
+	p.ui = {"n": p.n_chemicals, "maps": p.maps, "main": min(ai, p.n_chemicals - 1),
 			"brush_paint": "%d, %d" % tuple(brush_paint),
 			"brush_erase": "%d, %d" % tuple(brush_erase),
 			"brush_start": brush_start,

@@ -495,3 +495,18 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   add_shader.sh); same fix in the phone-kit and skill copies.
 - "Can you put a version there that is back to 2d please?": added the flat fuseWormsDev (latest
   vti2enki, the vtipack seed start) as FuseWorms 2D (debug id 1033, 1/4 res); nothing replaced.
+- **Composite colour: "why is the green wave reagent so faint ... meander to settings that put the higher frequency details on display with good contrast ... get to bright yellow/orange (and cyan) solitons with a complementary blue/purple background ... taps on randomise pick a whole new colouring ... still too fast ... hold on randomise: drag down to slow, past the middle to stop; drag left/right to scrub through the past and future of the meandering."**
+  vti2enki's random looks rebuilt. A look is now a colouring by role, from new per-chemical guide
+  texels (mean, spread, correlation with the file's active chemical, sticky role): the active
+  chemical gets the main hue (often orange/amber/yellow/cyan), chemicals that go with it nearby
+  hues, ones against it the complement, dimmer (the background), and the rest (detail, e.g. the
+  wave reagents) a third hue, stretched about their typical level so fine detail shows (new
+  stretch in the power texel, rdShownLevel()). Each tap is a new seed = a whole new colouring.
+  Holding follows that seed's deterministic path (smooth noise of t): RANDOM_RATE 0.06/s,
+  lingering (x0.3) while the score beats its recent mean (score now rewards fine detail too);
+  dragging down slows it (to stopped past the screen's middle), across scrubs the path back and
+  forward (3 units per screen width); let go rewinds 0.4 s at the pace it was going (none if
+  stopped). Roles freeze while held. Verified headlessly (tap/hold/slow/stop/scrub/release on the
+  state row) and on the phone (four taps: e.g. yellow solitons on blue, cyan on gold) via a
+  "FuseWorms 2D Tiles Test" copy (debug id 1034, starts in the tiles since adb can't do three
+  fingers). The phone dropped off wifi before the final version (active chemical as main) went on.
