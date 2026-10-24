@@ -493,3 +493,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   added as FuseWorms Terrain 2 (debug id 1032, 1/8 res), old 1031 untouched. Fixed
   `status.sh again` exiting 1 when the last line had no "took" time (which stopped
   add_shader.sh); same fix in the phone-kit and skill copies.
+- "Can you put a version there that is back to 2d please?": added the flat fuseWormsDev (latest
+  vti2enki, the vtipack seed start) as FuseWorms 2D (debug id 1033, 1/4 res); nothing replaced.
