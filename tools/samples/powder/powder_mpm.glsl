@@ -331,9 +331,9 @@ precision highp int;
 #define JELLY_SHEAR 0.45
 #define JELLY_SQUASH 0.4
 #define JELLY_STRETCH 2.5
-// How hard jelly's pulled to the jelly around it.
-#define JELLY_PULL 0.045
-#define LONE_PULL 0.15
+// How hard jelly's pulled to the jelly around it (where it's thinned out,
+// or in something else).
+#define JELLY_PULL 0.12
 // Moving rock: how much heavier than water it is; its stiffness against
 // packing; how much of its velocity that isn't the rock around it moving
 // as one (out to two cells, turning and all) it loses a step, and how much
@@ -409,14 +409,16 @@ const int ROCK_TEXEL = 3;
 const vec3 SELECTED = vec3(1.0, 0.85, 0.2);
 const vec3 FIXED = vec3(0.35, 0.75, 1.0);
 const float INIT = 7.0;
-// Water's tint (which it doesn't show) when its box isn't spread.
+// Flags water, jelly and rock keep in their tint (which they don't show):
+// its box isn't spread, and it's beside something else.
 const int TIGHT = 1;
+const int AMID = 2;
 // How long Erase is held to clear everything, in seconds.
 const float CLEAR_HOLD = 0.6;
 // And Rock, to swap it between moving and fixed.
 const float SWAP_HOLD = 0.5;
-// What C holds for rock: where it was in its shape (xy, in cells) and how
-// far it's turned since (z). For anything but jelly (whose F fills all
+// What C holds for rock: where it was in its shape (xy, in cells), how far
+// it's turned since (z) and the weight on it (w). For anything but jelly (whose F fills all
 // four) and rock: how far
 // sand is from what holds it up in x (see support()); the weight on sand or
 // water (its own and what's above it) in z; NOT_JELLY plus sand's wetness
@@ -564,7 +566,7 @@ float spread(Particle p) {
 	if (p.mat == SAND || p.mat == ROCK) {
 		return clamp(p.M, 0.3, 1.0);
 	}
-	return (p.mat == JELLY || p.mat == WATER) && p.tint != TIGHT ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
+	return (p.mat == JELLY || p.mat == WATER) && (p.tint & TIGHT) == 0 ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
 }
 
 // The part of q's box, moved by its velocity, landing on cell c - or on
@@ -645,6 +647,19 @@ Particle at(ivec2 c, ivec2 grid, int floorRow) {
 	return inside(c, grid, floorRow) ? load(iChannel0, c) : wallAt(c);
 }
 
+// How hard jelly (or rock) p and q beside it pull each other together:
+// where either's thinned out, or in something else - as a pair, so they
+// don't move off together, nor hold themselves up. (Pulled only one way, a
+// blob falling - thinned out where it leads - held itself up, hanging in
+// the air; and jelly and rock in water, pulled in where they're under it,
+// floated up out of it.) Shared by the pair as their masses are, as
+// pressure is.
+vec2 pull(Particle p, Particle q) {
+	float pa = (p.tint & AMID) != 0 ? 1.0 : smoothstep(1.0, 0.6, p.M);
+	float qa = (q.tint & AMID) != 0 ? 1.0 : smoothstep(1.0, 0.6, q.M);
+	return max(pa, qa) * 2.0 * q.M / (p.M + q.M) * (q.X - p.X) / 12.0;
+}
+
 // Whether sand can settle on q: a wall, or most of a cell of anything but
 // water.
 bool holds(Particle q) {
@@ -667,9 +682,9 @@ Particle scene(ivec2 c, ivec2 grid, int floorRow) {
 	} else if (u.x > 0.55 && u.x < 0.97 && u.y > 0.5 && u.y < 0.53) {
 		p = wallAt(c);
 	} else if (u.x > 0.62 && u.x < 0.97 && u.y > 0.53 && u.y < 0.75) {
-		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, WATER, int(h * 8.0), 0);
+		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, WATER, 0, 0);
 	} else if (abs(u.x - 0.42) < 0.08 && abs(u.y - 0.6) < 0.06) {
-		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, JELLY, int(h * 8.0), 0);
+		p = Particle(vec2(c) + 0.5, vec2(0.0), 1.0, JELLY, 0, 0);
 	}
 	return p;
 }
@@ -714,11 +729,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			} else if (tool == ROCK) {
 				// (Solid: every cell full.)
 				if (p.mat == EMPTY) {
-					p = Particle(centre, vec2(0.0), 1.0, ROCK, int(fract(h * 13.7) * 8.0), 0);
+					p = Particle(centre, vec2(0.0), 1.0, ROCK, 0, 0);
 				}
 			} else if (p.mat == EMPTY && h < (tool == SAND ? 0.25 : 0.5)) {
 				p = Particle(centre + (vec2(h, fract(h * 7.3)) - 0.5) * 0.3, vec2(0.0), 1.0, tool,
-						int(fract(h * 13.7) * 8.0), 0);
+						tool == SAND ? int(fract(h * 13.7) * 8.0) : 0, 0);
 			}
 		}
 	}
@@ -809,11 +824,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 	}
 	if (p.mat == JELLY) {
-		// Jelly that's thinned out, or in something else, is pulled to the
-		// jelly around it, out to two cells: bits knocked off back in, gaps
-		// closed, the rest kept out. (Not packed jelly in the open, which it
-		// would only squash.)
-		vec3 around2 = vec3(0.0);
+		// Jelly that's thinned out, or in something else, and the jelly
+		// around it, out to two cells, pull each other together: bits
+		// knocked off back in, gaps closed, the rest kept out. (Not packed
+		// jelly in the open, which it would only squash.)
 		for (int j = -2; j <= 2; ++j) {
 			for (int i = -2; i <= 2; ++i) {
 				ivec2 n = c + ivec2(i, j);
@@ -822,14 +836,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				}
 				Particle q = load(iChannel0, n);
 				if (q.mat == JELLY) {
-					around2 += vec3(q.M * (q.X - p.X), q.M);
+					grip += JELLY_PULL * pull(p, q);
 				}
 			}
-		}
-		if (around2.z > 0.0) {
-			// (Harder on a bit of jelly with little around it, coming off.)
-			float pull = mix(JELLY_PULL, LONE_PULL, smoothstep(10.0, 3.0, around2.z));
-			grip += pull * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * around2.xy / max(around2.z, 2.0);
 		}
 	} else if (p.mat == ROCK) {
 		// Rock keeps its shape: moved back toward its place in the shape
@@ -865,6 +874,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				spin += q.M * (d.x * q.V.y - d.y * q.V.x);
 				inertia += q.M * dot(d, d);
 				placed += q.M * outerProduct(d, r);
+				// (A sliver of it - its place in the shape's only where it's
+				// been spread to - and the rock beside it pull each other
+				// together; as does rock in something else, so it's kept
+				// out.)
+				grip += ROCK_PULL * pull(p, q);
 			}
 		}
 		if (total > p.M) {
@@ -893,10 +907,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 					p.V = q.V;
 				}
 			}
-			// (A sliver of it - its place in the shape's only where it's
-			// been spread to - pulled back in; and rock in something else,
-			// so it's kept out.)
-			grip += ROCK_PULL * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * centre;
 		}
 	}
 	vec2 before = p.V;
@@ -909,10 +919,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	}
 	// Water the sand beside it soaks up.
 	p.M *= 1.0 - min(soaked, 0.5);
-	if (p.mat == WATER || p.mat == JELLY) {
-		// Water beside sand or jelly, and jelly at its edge, aren't spread
-		// (see spread()).
-		p.tint = beside || p.mat == JELLY && around < 8 ? TIGHT : 0;
+	if (p.mat != SAND) {
+		// Water beside something else, and jelly at its edge, aren't spread
+		// (see spread()); jelly and rock beside something else are pulled
+		// in harder (see pull()).
+		p.tint = (beside || p.mat == JELLY && around < 8 ? TIGHT : 0) + (amid ? AMID : 0);
 	}
 	// Sand, settled - held up by what's below it, down to something solid
 	// (or, damp, from the side; see support()): it rolls off it, down to
@@ -1101,8 +1112,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	// Sand that mostly stays keeps its tint; sand that's moved takes a new
 	// one. (Taking one from what lands, even at random, has a patch of one
 	// tint grow, drawn out into stripes as sand flows.)
-	if (k == 0 && self.mat == SAND && stays > 0.5 * share.x) {
+	// (The others' are their flags, which they keep - see A.)
+	if (k == 0 && self.mat == SAND && stays > 0.5 * share.x || k != 0 && self.mat == p.mat) {
 		p.tint = self.tint;
+	} else if (k != 0) {
+		p.tint = 0;
 	} else {
 		p.tint = int(hash12(vec2(c) * 0.93 + fract(float(iFrame) * vec2(0.2207, 0.8812)) * 877.0) * 8.0);
 	}
@@ -1155,17 +1169,20 @@ mat2 velocityGradient(ivec2 c, Particle p, ivec2 grid, int floorRow) {
 	return dvdx * inverse(dxdx);
 }
 
-// The weight on sand or water at c: its own, and (as it was last step) the
-// weight on what's just above it - so it reaches down a few cells a step.
+// The weight on sand, water or rock at c: its own, and (as it was last
+// step) the weight on what's just above it - so it reaches down a few cells
+// a step. (Rock's, so sand under it holds it up - not knowing it's there,
+// it'd slip out from under it, and the rock would sink down through it.)
 float weightOn(ivec2 c, Particle p, ivec2 grid, int floorRow) {
-	float own = p.M * (p.mat == SAND ? SAND_WEIGHT : 1.0);
+	float own = p.M * (p.mat == SAND ? SAND_WEIGHT : p.mat == ROCK ? ROCK_WEIGHT : 1.0);
 	ivec2 up = c + ivec2(0, 1);
 	if (!inside(up, grid, floorRow)) {
 		return own;
 	}
 	Particle q = load(iChannel1, up);
 	vec4 above = texelFetch(iChannel2, up, 0);
-	return own + ((q.mat == SAND || q.mat == WATER) && notJelly(above) ? above.z : 0.0);
+	return own + ((q.mat == SAND || q.mat == WATER) && notJelly(above) ? above.z
+			: q.mat == ROCK && !notJelly(above) ? above.w : 0.0);
 }
 
 // How far sand at c is from what holds it up (see support()): down a
@@ -1248,9 +1265,11 @@ vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 
 // Where rock q at n (in A) was in its shape, and how far it's turned since
 // (rock just painted has no shape yet: it's as it is).
-vec4 shapeOf(ivec2 n, Particle q, bool started) {
+vec2 shapeOf(ivec2 n, Particle q, bool started, out float turn) {
 	vec4 s = texelFetch(iChannel2, n, 0);
-	return !started || notJelly(s) ? vec4(q.X, 0.0, 0.0) : s;
+	bool none = !started || notJelly(s);
+	turn = none ? 0.0 : s.z;
+	return none ? q.X : s.xy;
 }
 
 // Where rock at c was in its shape, and how far it's turned since: each
@@ -1270,8 +1289,9 @@ vec4 rock(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 			Particle q = load(iChannel0, n);
 			float w = q.mat == ROCK ? q.M * landing(q, vec2(c), vec2(c) + 1.0).z : 0.0;
 			if (w > most) {
+				float turn;
 				most = w;
-				whose = shapeOf(n, q, started).xy;
+				whose = shapeOf(n, q, started, turn);
 			}
 		}
 	}
@@ -1289,21 +1309,23 @@ vec4 rock(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 			}
 			vec3 part = landing(q, vec2(c), vec2(c) + 1.0);
 			float w = q.M * part.z;
-			vec4 s = shapeOf(n, q, started);
-			if (w <= 0.0 || distance(s.xy, whose) > ROCK_BODY) {
+			float turn;
+			vec2 at = shapeOf(n, q, started, turn);
+			if (w <= 0.0 || distance(at, whose) > ROCK_BODY) {
 				continue;
 			}
 			vec2 d = part.xy - (q.X + q.V);
-			rest += w * (s.xy + mat2(cos(s.z), -sin(s.z), sin(s.z), cos(s.z)) * d);
-			turned += w * vec2(cos(s.z), sin(s.z));
+			rest += w * (at + mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * d);
+			turned += w * vec2(cos(turn), sin(turn));
 			total += w;
 		}
 	}
+	float weight = weightOn(c, p, grid, floorRow);
 	if (total <= 0.0) {
-		return vec4(p.X, 0.0, 0.0);
+		return vec4(p.X, 0.0, weight);
 	}
 	mat2 L = velocityGradient(c, p, grid, floorRow);
-	return vec4(rest / total, atan(turned.y, turned.x) + 0.5 * (L[0][1] - L[1][0]), 0.0);
+	return vec4(rest / total, atan(turned.y, turned.x) + 0.5 * (L[0][1] - L[1][0]), weight);
 }
 
 vec4 palette(ivec2 c, vec2 res) {
