@@ -33,8 +33,10 @@ uniform sampler2D iChannel1; ///buf:C;
 // The metaball field of every material at a point, for drawing: how much
 // of it there is about there (1 for a cell's worth all round) - smooth
 // enough not to show the grid where it's thinned out.
-void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain) {
+void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain, out vec2 flow) {
 	field = vec4(0.0);
+	// (And how the water there flows, as smoothly.)
+	flow = vec2(0.0);
 	grain = ivec2(0);
 	// How far the nearest blob of each material is (sand, water, jelly),
 	// and the nearest grain of sand's tint.
@@ -56,6 +58,9 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			k *= k * q.M * 3.0 / (3.14159265 * BLOB * BLOB);
 			int slot = q.mat == SAND ? 0 : q.mat == WATER ? 1 : 2;
 			field[slot] += k;
+			if (slot == 1) {
+				flow += k * q.V;
+			}
 			float dist = length(d);
 			if (dist < nearest[slot]) {
 				nearest[slot] = dist;
@@ -66,6 +71,32 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			}
 		}
 	}
+}
+
+// Smooth noise, about 1 across a unit.
+float smoothNoise2(vec2 x) {
+	vec2 i = floor(x), f = fract(x);
+	f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+	return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
+			mix(hash12(i + vec2(0.0, 1.0)), hash12(i + 1.0), f.x), f.y);
+}
+
+// Ripples at a point in water flowing at v (cells a step), carried along
+// with it: two layers of noise, each moved along by the flow for a while
+// and faded out before it's dragged too far, half a while apart.
+float ripples(vec2 at, vec2 v) {
+	float t = iTime / RIPPLE_TIME;
+	vec2 drift = v * 240.0 * RIPPLE_TIME;
+	float r = 0.0;
+	for (int k = 0; k < 2; ++k) {
+		float phase = fract(t + 0.5 * float(k));
+		vec2 x = (at - drift * phase) / RIPPLE_SIZE + float(k) * vec2(17.3, 41.7) + floor(t + 0.5 * float(k)) * vec2(3.1, 7.9);
+		// (Its ridges: thin bright lines, like light through ripples.)
+		float n = 0.65 * smoothNoise2(x) + 0.35 * smoothNoise2(x * 2.3 + 5.0);
+		n = 1.0 - abs(2.0 * n - 1.0);
+		r += (1.0 - abs(2.0 * phase - 1.0)) * n * n * n;
+	}
+	return r;
 }
 
 vec3 sandColour(float tint) {
@@ -169,24 +200,35 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	}
 	vec4 field, nearest;
 	ivec2 grain;
-	fields(at, grid, floorRow, field, nearest, grain);
-	// Water under the rest: translucent, foamy where it's fast.
-	if (field.y > 0.2) {
-		float edge = smoothstep(0.2, 0.35, field.y);
+	vec2 flow;
+	fields(at, grid, floorRow, field, nearest, grain, flow);
+	// Water under the rest: translucent, foamy at its edges with the air,
+	// its flow shown by ripples carried along with it. (Counted with the
+	// jelly beside it, so there's no gap between them, flickering.)
+	if (field.y > 0.05) {
+		float edge = smoothstep(0.2, 0.35, field.y + field.z) * smoothstep(0.05, 0.15, field.y);
 		vec3 water = mix(vec3(0.1, 0.35, 0.85), vec3(0.2, 0.55, 1.0), smoothstep(0.5, 1.2, field.y));
+		water += RIPPLES * vec3(0.4, 0.6, 0.8) * ripples(at, flow / field.y) * smoothstep(0.3, 0.8, field.y);
 		col = mix(col, water, 0.85 * edge);
-		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * edge;
+		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * (1.0 - smoothstep(0.05, 0.25, field.z)) * edge;
 	}
 	if (field.z > 0.25) {
 		vec3 jelly = vec3(0.95, 0.35, 0.65) * (0.75 + 0.35 * smoothstep(0.3, 1.0, field.z));
 		col = mix(col, jelly, smoothstep(0.25, 0.4, field.z));
 	}
-	if (field.x > 0.25) {
-		// Sand: each grain its own colour, darker as it's wetter.
+	// Sand: each grain its own colour, darker as it's wetter - and where
+	// it's thinned out (spraying), its grains apart, each as big as there's
+	// sand in its cell.
+	// (Not the slivers - a haze.)
+	float grainM = load(iChannel0, grain).M;
+	float grainSize = GRAIN * sqrt(grainM);
+	float cover = max(smoothstep(0.25, 0.38, field.x),
+			smoothstep(0.1, 0.2, grainM) * smoothstep(0.5 / CELL, -0.5 / CELL, nearest.x - grainSize));
+	if (cover > 0.0) {
 		vec3 sand = sandColour(nearest.w);
 		sand *= 0.8 + 0.2 * smoothstep(0.3, 0.8, field.x);
 		sand *= 1.0 - 0.45 * wetness(texelFetch(iChannel1, grain, 0));
-		col = mix(col, sand, smoothstep(0.25, 0.38, field.x));
+		col = mix(col, sand, cover);
 	}
 	col = overlay(col, fragCoord, res, ui, sizing);
 	fragColor = vec4(col, 1.0);
@@ -212,7 +254,7 @@ precision highp int;
 // open: this fast (cells a step), and as likely a step - dry, damp (it
 // stands up in clumps) and soaked (it slumps).
 #define ROLL 0.1
-#define DAMP_ROLL 0.02
+#define DAMP_ROLL 0.003
 #define SOAKED_ROLL 0.5
 // How much flowing sand takes on the velocity of the sand (and walls) it
 // rubs against, a step: so it pours, and doesn't splash.
@@ -223,11 +265,16 @@ precision highp int;
 // through it (cells a step).
 #define SAND_DRAG 0.25
 #define SINK 0.02
-// How slow what sand's on moves for it to settle on it (cells a step).
+// How slow sand moves to count as settled (for water and jelly beside it,
+// and sand on jelly).
 #define SETTLED 0.02
-// How hard damp sand holds together, stretched or sheared: it holds
-// together in clumps, and crumbles.
-#define DAMP_COHESION 0.02
+// Damp sand: how far it reaches out sideways from what holds it up, in
+// cells (it stands in steep faces and overhangs, and crumbles), and how
+// hard it grips the damp sand beside it (it holds together in clumps).
+#define OVERHANG 3.0
+#define DAMP_GRIP 0.35
+// How much dry sand flying sprays out (of its speed, a step).
+#define SPRAY 0.015
 // How fast sand soaks up the water beside it, and how much water (in
 // cells' worth) soaks a cell of sand.
 #define SOAK 0.01
@@ -246,6 +293,7 @@ precision highp int;
 #define JELLY_STRETCH 2.5
 // How hard jelly's pulled to the jelly around it.
 #define JELLY_PULL 0.045
+#define LONE_PULL 0.15
 // How much there has to be in a cell to keep the others out of it.
 #define KEEP_OUT 0.5
 // Pressure between different materials, so they keep apart.
@@ -262,6 +310,13 @@ precision highp int;
 #define BRUSH_MAX 40.0
 // How far a blob reaches when drawn, in cells.
 #define BLOB 1.8
+// How big a grain of sand's drawn, in cells, with a cell's worth of sand.
+#define GRAIN 0.6
+// Water's ripples: how big (cells), how long each layer's carried along
+// before it fades (seconds) and how strongly they shade it.
+#define RIPPLE_SIZE 5.0
+#define RIPPLE_TIME 0.8
+#define RIPPLES 0.3
 
 uniform vec3 pointers[10];
 uniform int pointerCount;
@@ -291,10 +346,12 @@ const float INIT = 7.0;
 const int TIGHT = 1;
 // How long Erase is held to clear everything, in seconds.
 const float CLEAR_HOLD = 0.6;
-// What C holds for anything but jelly (whose F fills all four): the weight
-// on sand or water (its own and what's above it) in z; NOT_JELLY plus
-// sand's wetness in w.
+// What C holds for anything but jelly (whose F fills all four): how far
+// sand is from what holds it up in x (see support()); the weight on sand or
+// water (its own and what's above it) in z; NOT_JELLY plus sand's wetness
+// in w.
 const float NOT_JELLY = 1000.0;
+const float UNSUPPORTED = 99.0;
 
 bool notJelly(vec4 c) {
 	return c.w >= NOT_JELLY;
@@ -305,15 +362,24 @@ float wetness(vec4 c) {
 	return notJelly(c) ? c.w - NOT_JELLY : 0.0;
 }
 
-// How hard damp sand holds together: not dry sand, most when damp, less
-// again when it's saturated.
-float cohesion(float wet) {
-	return DAMP_COHESION * smoothstep(0.05, 0.35, wet) * (1.0 - smoothstep(0.8, 1.0, wet));
+// How far sand is from what holds it up, from its texel in C: 0 on a
+// column of sand down to a wall or still jelly, a cell more for each it
+// reaches out sideways from one (damp), or UNSUPPORTED.
+float support(vec4 c) {
+	return notJelly(c) ? c.x : UNSUPPORTED;
 }
 
-// The pressure in sand from its packing (pulling, when it's damp).
-float sandPressure(float M, float wet) {
-	return SAND_STIFFNESS * max(M - 1.0, -cohesion(wet) / SAND_STIFFNESS);
+// How damp sand is, for its crumbliness: not dry, most when damp, less
+// again when it's saturated.
+float damp(float wet) {
+	return smoothstep(0.01, 0.08, wet) * (1.0 - smoothstep(0.8, 1.0, wet));
+}
+
+// The pressure in sand from its packing. (It doesn't pull: damp sand's
+// cohesion, as tension, foamed - it holds together by its grip and its
+// support instead.)
+float sandPressure(float M) {
+	return SAND_STIFFNESS * max(M - 1.0, 0.0);
 }
 
 // The brush button's centre.
@@ -412,6 +478,12 @@ float spread(Particle p) {
 	// at random by how much of each lands on it, so what's spread on them
 	// would turn their cells to water and back, now and then, all the
 	// time.)
+	// Sand's is only as big as the sand in it: a thinned-out cell's full
+	// box would overhang what's next to it, packing it, and sand pushed
+	// apart where it's packed, so a falling block would swell up.
+	if (p.mat == SAND) {
+		return clamp(p.M, 0.3, 1.0);
+	}
 	return (p.mat == JELLY || p.mat == WATER) && p.tint != TIGHT ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
 }
 
@@ -455,7 +527,7 @@ mat2 stress(Particle p, ivec2 c) {
 	} else if (p.mat == WATER) {
 		return mat2(WATER_STIFFNESS * max(p.M - 1.0, -0.01));
 	} else if (p.mat == SAND) {
-		return mat2(sandPressure(p.M, wetAt(c)));
+		return mat2(sandPressure(p.M));
 	}
 	// (Only F's shape, its volume taken out: averaged as it moves, F
 	// shrinks a little, and would push the jelly ever bigger.)
@@ -567,6 +639,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	// How many neighbours it has.
 	int around = 0;
 	mat2 own = stress(p, c);
+	// For sand: how far it's flying, dry (not held up): it doesn't grip the
+	// sand beside it, and sprays out (see below).
+	vec4 e = texelFetch(iChannel1, c, 0);
+	float flying = p.mat == SAND && support(e) >= UNSUPPORTED ? 1.0 - damp(wetness(e)) : 0.0;
 	for (int j = -1; j <= 1; ++j) {
 		for (int i = -1; i <= 1; ++i) {
 			ivec2 n = c + ivec2(i, j);
@@ -602,7 +678,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				if (q.mat == WATER) {
 					waterV += w * q.V;
 				} else {
-					grip += w * share * SAND_GRIP * dv;
+					grip += w * share * (q.mat == SAND ? mix(SAND_GRIP * (1.0 - flying), DAMP_GRIP, damp(wetAt(c)) * damp(wetAt(n))) : SAND_GRIP) * dv;
 				}
 			} else {
 				if (p.mat == WATER && q.mat == SAND) {
@@ -647,7 +723,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			}
 		}
 		if (around2.z > 0.0) {
-			grip += JELLY_PULL * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * around2.xy / max(around2.z, 4.0);
+			// (Harder on a bit of jelly with little around it, coming off.)
+			float pull = mix(JELLY_PULL, LONE_PULL, smoothstep(10.0, 3.0, around2.z));
+			grip += pull * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * around2.xy / max(around2.z, 2.0);
 		}
 	}
 	vec2 before = p.V;
@@ -665,31 +743,41 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		// (see spread()).
 		p.tint = beside || p.mat == JELLY && around < 8 ? TIGHT : 0;
 	}
-	// Sand, settled on something solid and still (or nearly): it rolls off
-	// it, down to the side, where that's open; otherwise it stays put on it
-	// - unless it's knocked harder than the weight on it holds it there,
-	// when it slides on it, slowed as hard. Damp sand seldom rolls, soaked
-	// sand more; saturated sand thinly spread through water doesn't settle
-	// (mud).
+	// Sand, settled - held up by what's below it, down to something solid
+	// (or, damp, from the side; see support()): it rolls off it, down to
+	// the side, where that's open; otherwise it stays put on it - unless
+	// it's knocked harder than the weight on it holds it there, when it
+	// slides on it, slowed as hard. Damp sand seldom rolls, soaked sand
+	// more; saturated sand thinly spread through water doesn't settle
+	// (mud). (Not on sand that's only nearly still: a falling block would
+	// peel off it row by row.)
 	if (p.mat == SAND) {
-		vec4 e = texelFetch(iChannel1, c, 0);
 		float wet = wetness(e);
+		if (flying > 0.0) {
+			// Dry sand flying sprays out: each grain a little off its
+			// neighbours' way, the faster it goes.
+			vec2 r = vec2(hash12(vec2(c) * 1.91 + fract(float(iFrame) * vec2(0.1312, 0.4381)) * 731.0),
+					hash12(vec2(c) * 2.57 + fract(float(iFrame) * vec2(0.6541, 0.2754)) * 613.0)) - 0.5;
+			p.V += SPRAY * flying * length(p.V) * r;
+		}
 		// (Mud: saturated, and thinly spread through water - packed sand
 		// settles, under water or not.)
 		float mud = smoothstep(0.8, 1.0, wet) * smoothstep(0.5, 0.75, wateriness.x / max(wateriness.y, 1e-4));
 		Particle below = at(c - ivec2(0, 1), grid, floorRow);
-		if (mud < 0.5 && holds(below) && length(below.V) < SETTLED) {
-			vec2 slip = p.V - below.V;
+		if (mud < 0.5 && support(e) < UNSUPPORTED) {
+			// (On what's below it, or held up from the side.)
+			vec2 on = holds(below) ? below.V : vec2(0.0);
+			vec2 slip = p.V - on;
 			float hold = GRAVITY * max(e.z, p.M * SAND_WEIGHT) / max(p.M, 0.25);
 			if (length(slip) <= hold) {
 				bool left = open(at(c + ivec2(-1, -1), grid, floorRow)) && open(at(c + ivec2(-1, 0), grid, floorRow));
 				bool right = open(at(c + ivec2(1, -1), grid, floorRow)) && open(at(c + ivec2(1, 0), grid, floorRow));
 				float h = hash12(vec2(c) + fract(float(iFrame) * vec2(0.4142, 0.7321)) * 1013.0);
-				float chance = mix(mix(1.0, DAMP_ROLL, smoothstep(0.05, 0.4, wet)), SOAKED_ROLL, smoothstep(0.8, 1.0, wet));
+				float chance = mix(mix(1.0, DAMP_ROLL, damp(wet)), SOAKED_ROLL, smoothstep(0.8, 1.0, wet));
 				// (Eased to its cell's middle: a box off it leaks slivers into
 				// the cells beside it, where water's would turn to sand and
 				// back.)
-				p.V = below.V + CENTRE * (vec2(c) + 0.5 - p.X);
+				p.V = on + CENTRE * (vec2(c) + 0.5 - p.X);
 				if ((left || right) && h < chance) {
 					float side = left && right ? (fract(h * 17.0) < 0.5 ? -1.0 : 1.0) : left ? -1.0 : 1.0;
 					p.V.x += side * ROLL;
@@ -732,7 +820,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	// as far as that's moving away: they keep apart (each cell holds one
 	// material, so where they'd mix, bits of jelly would be scattered
 	// through the rest, and settled sand would keep turning to water and
-	// back).
+	// back). Only kept from going further in, though, not put back out:
+	// snapped back in a step, they'd jitter.
+	vec2 apartLo = vec2(-1e9), apartHi = vec2(1e9);
 	for (int k = 0; k < 4; ++k) {
 		ivec2 e = k == 0 ? ivec2(1, 0) : k == 1 ? ivec2(-1, 0) : k == 2 ? ivec2(0, 1) : ivec2(0, -1);
 		ivec2 n = c + e;
@@ -745,15 +835,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			continue;
 		}
 		if (k == 0) {
-			hi.x = min(hi.x, float(n.x) - reach + max(q.V.x, 0.0));
+			apartHi.x = min(apartHi.x, float(n.x) - reach + max(q.V.x, 0.0));
 		} else if (k == 1) {
-			lo.x = max(lo.x, float(c.x) + reach + min(q.V.x, 0.0));
+			apartLo.x = max(apartLo.x, float(c.x) + reach + min(q.V.x, 0.0));
 		} else if (k == 2) {
-			hi.y = min(hi.y, float(n.y) - reach + max(q.V.y, 0.0));
+			apartHi.y = min(apartHi.y, float(n.y) - reach + max(q.V.y, 0.0));
 		} else {
-			lo.y = max(lo.y, float(c.y) + reach + min(q.V.y, 0.0));
+			apartLo.y = max(apartLo.y, float(c.y) + reach + min(q.V.y, 0.0));
 		}
 	}
+	lo = max(lo, min(apartLo, p.X));
+	hi = min(hi, max(apartHi, p.X));
 	vec2 held = clamp(to, lo, max(lo, hi));
 	if (held != to) {
 		p.V = held - p.X;
@@ -898,9 +990,46 @@ float weightOn(ivec2 c, Particle p, ivec2 grid, int floorRow) {
 	return own + ((q.mat == SAND || q.mat == WATER) && notJelly(above) ? above.z : 0.0);
 }
 
+// How far sand at c is from what holds it up (see support()): down a
+// column of sand (looking four cells down a step, so it's known soon after
+// it lands, or falls) to a wall or still jelly; or, damp, out sideways
+// from sand beside it that's held up, as far as it reaches.
+float supportOf(ivec2 c, ivec2 grid, int floorRow, float wet, bool started) {
+	float held = UNSUPPORTED;
+	for (int k = 1; k <= 4; ++k) {
+		ivec2 n = c - ivec2(0, k);
+		Particle q = inside(n, grid, floorRow) ? load(iChannel1, n) : wallAt(n);
+		if (q.mat == WALL || q.mat == JELLY && q.M > 0.5 && length(q.V) < SETTLED) {
+			held = 0.0;
+			break;
+		}
+		if (q.mat != SAND || q.M <= 0.5 || k == 4) {
+			// (How far the lowest sand of the column is.)
+			ivec2 lowest = q.mat == SAND && q.M > 0.5 ? n : n + ivec2(0, 1);
+			if (lowest != c && started) {
+				held = support(texelFetch(iChannel2, lowest, 0));
+			}
+			break;
+		}
+	}
+	float reach = floor(OVERHANG * damp(wet) + 0.5);
+	for (int s = -1; s <= 1; s += 2) {
+		ivec2 n = c + ivec2(s, 0);
+		if (!started || !inside(n, grid, floorRow)) {
+			continue;
+		}
+		Particle q = load(iChannel1, n);
+		float far = support(texelFetch(iChannel2, n, 0)) + 1.0;
+		if (q.mat == SAND && q.M > 0.5 && far <= reach) {
+			held = min(held, far);
+		}
+	}
+	return held;
+}
+
 // Sand's wetness, carried along with it as B carried it, and soaked up
-// from the water beside it (as A has that water lose it); and the weight
-// on it.
+// from the water beside it (as A has that water lose it); how far it is
+// from what holds it up; and the weight on it.
 vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 	float wet = 0.0, total = 0.0;
 	for (int j = -2; j <= 2; ++j) {
@@ -936,7 +1065,7 @@ vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 		}
 	}
 	wet = clamp(wet + water * (1.0 - wet) / SOAKS_UP, 0.0, 1.0);
-	return vec4(0.0, 0.0, weightOn(c, p, grid, floorRow), NOT_JELLY + wet);
+	return vec4(supportOf(c, grid, floorRow, wet, started), 0.0, weightOn(c, p, grid, floorRow), NOT_JELLY + wet);
 }
 
 vec4 palette(ivec2 c, vec2 res) {
