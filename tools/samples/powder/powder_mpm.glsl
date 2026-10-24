@@ -1,31 +1,36 @@
 // Powder MPM - a Powder Toy-style sandbox on a 2D MPM solver (reintegration
 // tracking, after Mykhailo Moroz's shadertoy MPM): dry sand that heaps and
 // avalanches, soaks up water, crumbles in clumps when damp and slumps into
-// mud when saturated; water that splashes and pools; wobbly jelly; walls -
-// with sound made from the simulation itself.
+// mud when saturated; water that splashes and pools; wobbly jelly; rock
+// that falls and tumbles, and fixed rock - with sound made from the
+// simulation itself.
 //
 // Paint with a finger; the palette along the bottom picks what you paint
-// (Sand, Water, Jelly, Wall, Erase) and the brush size (the last button: tap
-// it for the next size, or drag out from it to any size). Hold Erase to
-// clear everything.
+// (Sand, Water, Jelly, Rock, Erase) and the brush size (the last button: tap
+// it for the next size, or drag out from it to any size). Hold Rock to swap
+// it between moving rock and fixed (outlined blue, drawn as bricks); hold
+// Erase to clear everything.
 //
 // How it works: the simulation grid is CELL screen pixels a cell, and every
 // cell holds at most one blob of material (its centre of mass, velocity,
 // mass, material, a colour and how hard it's just been hit, packed into
 // one float texel). Each step:
 //   Buffer A - forces: pressure, cohesion and friction between neighbours,
-//              the jelly's elastic stress, gravity; sand settling and
-//              rolling off, as in the Powder Toy; walls; painting.
+//              the jelly's elastic stress, gravity; rock held to its shape
+//              and moving as one; sand settling and rolling off, as in the
+//              Powder Toy; walls (fixed rock); painting.
 //   Buffer B - reintegration: each blob moves as a box of material, and
 //              every cell gathers the part of each box landing on it.
 //   Buffer C - what a blob carries besides, carried along the same way:
 //              the jelly's deformation gradient (turned by the local
-//              velocity gradient), sand's wetness (soaked up from the water
+//              velocity gradient), where rock was in its shape (and how far
+//              it's turned), sand's wetness (soaked up from the water
 //              beside it); and the weight on sand and water (so deep
 //              sand's held still harder); its top row holds the palette's
 //              state.
 //   Buffer D - sound: grains taken from random cells - sand rumbles, water
-//              sloshes and bubbles, jelly wobbles - as loud as they move.
+//              sloshes and bubbles, jelly wobbles, rock knocks - as loud
+//              as they move.
 ///steps:4
 uniform sampler2D iChannel0; ///buf:B;
 uniform sampler2D iChannel1; ///buf:C;
@@ -33,14 +38,18 @@ uniform sampler2D iChannel1; ///buf:C;
 // The metaball field of every material at a point, for drawing: how much
 // of it there is about there (1 for a cell's worth all round) - smooth
 // enough not to show the grid where it's thinned out.
-void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain, out vec2 flow) {
+void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest, out ivec2 grain, out vec2 flow,
+		out ivec2 stone) {
 	field = vec4(0.0);
 	// (And how the water there flows, as smoothly.)
 	flow = vec2(0.0);
 	grain = ivec2(0);
-	// How far the nearest blob of each material is (sand, water, jelly),
-	// and the nearest grain of sand's tint.
-	nearest = vec4(1e9, 1e9, 1e9, 0.0);
+	// How far the nearest blob of each material is (sand, water, jelly,
+	// rock), and the nearest grain of sand's tint (and where it and the
+	// nearest rock are).
+	nearest = vec4(1e9);
+	float sandTint = 0.0;
+	stone = ivec2(0);
 	ivec2 c = ivec2(floor(at));
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
@@ -56,7 +65,7 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			float r2 = dot(d, d) / (BLOB * BLOB);
 			float k = max(0.0, 1.0 - r2);
 			k *= k * q.M * 3.0 / (3.14159265 * BLOB * BLOB);
-			int slot = q.mat == SAND ? 0 : q.mat == WATER ? 1 : 2;
+			int slot = q.mat - SAND;
 			field[slot] += k;
 			if (slot == 1) {
 				flow += k * q.V;
@@ -65,12 +74,15 @@ void fields(vec2 at, ivec2 grid, int floorRow, out vec4 field, out vec4 nearest,
 			if (dist < nearest[slot]) {
 				nearest[slot] = dist;
 				if (slot == 0) {
-					nearest.w = float(q.tint);
+					sandTint = float(q.tint);
 					grain = n;
+				} else if (slot == 3) {
+					stone = n;
 				}
 			}
 		}
 	}
+	nearest.w = sandTint;
 }
 
 // Smooth noise, about 1 across a unit.
@@ -103,6 +115,23 @@ vec3 sandColour(float tint) {
 	return mix(vec3(0.86, 0.68, 0.38), vec3(0.62, 0.45, 0.24), tint / 7.0);
 }
 
+// Rock, at a point in its shape (in cells): mottled, flecked light and
+// dark.
+vec3 stoneColour(vec2 r) {
+	float n = 0.6 * smoothNoise2(r * 0.25) + 0.4 * smoothNoise2(r * 0.7 + 7.0);
+	vec3 col = mix(vec3(0.33, 0.32, 0.34), vec3(0.62, 0.58, 0.53), n);
+	float g = hash12(floor(r * 1.3) + 0.5);
+	return col * (g > 0.9 ? 1.3 : g < 0.12 ? 0.65 : 0.93 + 0.14 * g);
+}
+
+// Walls (fixed rock), at a point in cells: bricks.
+vec3 bricks(vec2 at) {
+	vec2 b = at * vec2(0.5, 1.0);
+	b.x += 0.5 * mod(floor(b.y), 2.0);
+	vec2 m = abs(fract(b) - 0.5);
+	return vec3(0.42, 0.44, 0.5) * (0.85 + 0.15 * hash12(floor(b))) * (0.7 + 0.3 * smoothstep(0.5, 0.42, max(m.x, m.y * 0.5 + 0.25)));
+}
+
 vec3 toolColour(int tool, vec2 at) {
 	if (tool == SAND) {
 		return sandColour(floor(hash12(floor(at * 0.25)) * 8.0));
@@ -110,13 +139,15 @@ vec3 toolColour(int tool, vec2 at) {
 		return vec3(0.15, 0.45, 0.95);
 	} else if (tool == JELLY) {
 		return vec3(0.95, 0.35, 0.65);
+	} else if (tool == ROCK) {
+		return stoneColour(at / 3.0);
 	} else if (tool == WALL) {
-		return vec3(0.5, 0.52, 0.58);
+		return bricks(at / 4.0);
 	}
 	return vec3(0.12);
 }
 
-vec3 palette(vec2 fragCoord, vec2 res, vec4 ui, bool clearing) {
+vec3 palette(vec2 fragCoord, vec2 res, vec4 ui, bool clearing, bool fixedRock) {
 	float top = res.y * PALETTE;
 	float w = res.x / float(TOOLS + 1);
 	int b = int(fragCoord.x / w);
@@ -127,7 +158,7 @@ vec3 palette(vec2 fragCoord, vec2 res, vec4 ui, bool clearing) {
 	vec3 col = vec3(0.07, 0.08, 0.1);
 	vec3 face = vec3(0.16);
 	if (b < TOOLS) {
-		int tool = toolAt(b);
+		int tool = toolAt(b, fixedRock);
 		face = toolColour(tool, fragCoord);
 		if (tool == ERASE) {
 			// A cross.
@@ -144,9 +175,9 @@ vec3 palette(vec2 fragCoord, vec2 res, vec4 ui, bool clearing) {
 		face = mix(face, vec3(0.9), smoothstep(1.5, 0.0, length(local) - min(r, halfSize.y * 0.9)));
 	}
 	col = mix(col, face, smoothstep(1.0, -1.0, box));
-	if (b < TOOLS && int(ui.x) == toolAt(b)) {
-		// The tool in hand: outlined.
-		col = mix(col, SELECTED, smoothstep(2.0, 0.5, abs(box - 1.5)));
+	if (b < TOOLS && int(ui.x) == toolAt(b, fixedRock)) {
+		// The tool in hand: outlined (blue for fixed rock).
+		col = mix(col, int(ui.x) == WALL ? FIXED : SELECTED, smoothstep(2.0, 0.5, abs(box - 1.5)));
 	}
 	return col;
 }
@@ -167,7 +198,7 @@ vec3 overlay(vec3 col, vec2 fragCoord, vec2 res, vec4 ui, vec4 sizing) {
 			}
 			if (pointers[i].y >= res.y * PALETTE) {
 				float d = abs(distance(fragCoord, pointers[i].xy) - r);
-				col = mix(col, SELECTED, 0.5 * smoothstep(1.5, 0.5, d));
+				col = mix(col, int(ui.x) == WALL ? FIXED : SELECTED, 0.5 * smoothstep(1.5, 0.5, d));
 			}
 		}
 	}
@@ -182,7 +213,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 sizing = texelFetch(iChannel1, ivec2(SIZE_TEXEL, int(res.y) - 1), 0);
 	if (fragCoord.y < res.y * PALETTE) {
 		bool clearing = texelFetch(iChannel1, ivec2(TOUCH_TEXEL, int(res.y) - 1), 0).w > 0.5;
-		fragColor = vec4(palette(fragCoord, res, ui, clearing), 1.0);
+		bool fixedRock = texelFetch(iChannel1, ivec2(ROCK_TEXEL, int(res.y) - 1), 0).x > 0.5;
+		fragColor = vec4(palette(fragCoord, res, ui, clearing, fixedRock), 1.0);
 		fragColor.rgb = overlay(fragColor.rgb, fragCoord, res, ui, sizing);
 		return;
 	}
@@ -190,31 +222,39 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec3 col = mix(vec3(0.05, 0.06, 0.09), vec3(0.11, 0.12, 0.17), fragCoord.y / res.y);
 	ivec2 c = ivec2(floor(at));
 	if (!inside(c, grid, floorRow) || load(iChannel0, c).mat == WALL) {
-		// Walls (and past the grid's edges): bricks.
-		vec2 b = at * vec2(0.5, 1.0);
-		b.x += 0.5 * mod(floor(b.y), 2.0);
-		vec2 m = abs(fract(b) - 0.5);
-		col = vec3(0.42, 0.44, 0.5) * (0.85 + 0.15 * hash12(floor(b))) * (0.7 + 0.3 * smoothstep(0.5, 0.42, max(m.x, m.y * 0.5 + 0.25)));
-		fragColor = vec4(col, 1.0);
+		// Walls (and past the grid's edges).
+		fragColor = vec4(bricks(at), 1.0);
 		return;
 	}
 	vec4 field, nearest;
 	ivec2 grain;
 	vec2 flow;
-	fields(at, grid, floorRow, field, nearest, grain, flow);
+	ivec2 stone;
+	fields(at, grid, floorRow, field, nearest, grain, flow, stone);
 	// Water under the rest: translucent, foamy at its edges with the air,
 	// its flow shown by ripples carried along with it. (Counted with the
-	// jelly beside it, so there's no gap between them, flickering.)
+	// jelly and rock beside it, so there's no gap between them, flickering.)
+	float solids = field.z + field.w;
 	if (field.y > 0.05) {
-		float edge = smoothstep(0.2, 0.35, field.y + field.z) * smoothstep(0.05, 0.15, field.y);
+		float edge = smoothstep(0.2, 0.35, field.y + solids) * smoothstep(0.05, 0.15, field.y);
 		vec3 water = mix(vec3(0.1, 0.35, 0.85), vec3(0.2, 0.55, 1.0), smoothstep(0.5, 1.2, field.y));
 		water += RIPPLES * vec3(0.4, 0.6, 0.8) * ripples(at, flow / field.y) * smoothstep(0.3, 0.8, field.y);
 		col = mix(col, water, 0.85 * edge);
-		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * (1.0 - smoothstep(0.05, 0.25, field.z)) * edge;
+		col += vec3(0.25) * smoothstep(0.45, 0.25, field.y) * (1.0 - smoothstep(0.05, 0.25, solids)) * edge;
 	}
 	if (field.z > 0.25) {
 		vec3 jelly = vec3(0.95, 0.35, 0.65) * (0.75 + 0.35 * smoothstep(0.3, 1.0, field.z));
 		col = mix(col, jelly, smoothstep(0.25, 0.4, field.z));
+	}
+	// Rock: its colour where each point is in its shape (from the nearest
+	// bit of it - where it was, and how far it's turned), so it moves and
+	// turns with it; darker to its edges, so a lump looks rounded.
+	if (field.w > 0.3) {
+		vec4 s = texelFetch(iChannel1, stone, 0);
+		vec2 d = at - load(iChannel0, stone).X;
+		vec2 r = notJelly(s) ? at : s.xy + mat2(cos(s.z), -sin(s.z), sin(s.z), cos(s.z)) * d;
+		vec3 rock = stoneColour(r) * (0.6 + 0.4 * smoothstep(0.35, 0.9, field.w));
+		col = mix(col, rock, smoothstep(0.3, 0.4, field.w));
 	}
 	// Sand: each grain its own colour, darker as it's wetter - and where
 	// it's thinned out (spraying), its grains apart, each as big as there's
@@ -294,6 +334,29 @@ precision highp int;
 // How hard jelly's pulled to the jelly around it.
 #define JELLY_PULL 0.045
 #define LONE_PULL 0.15
+// Moving rock: how much heavier than water it is; its stiffness against
+// packing; how much of its velocity that isn't the rock around it moving
+// as one (out to two cells, turning and all) it loses a step, and how much
+// of the way back to its place in its shape it's moved to go a step; how
+// far apart in their shape bits of rock are, at most, to be the same rock;
+// and its top speed (cells a step).
+#define ROCK_WEIGHT 2.5
+#define ROCK_STIFFNESS 1.0
+#define RIGID 0.8
+#define SHAPE 0.6
+#define ROCK_BODY 3.5
+#define ROCK_VMAX 0.5
+// How much of its bounce off what it lands on rock loses a step, and of
+// its rolling (or sliding) on it.
+#define ROCK_THUD 0.5
+#define ROCK_DRAG 0.15
+// How much of its turning rock loses a step (so it doesn't roll on and
+// on); and how slow rock that's on something stops on it (cells a step).
+#define ROCK_SPIN 0.01
+#define ROCK_STICK 0.1
+// How hard a sliver of rock (or rock in something else) is pulled back to
+// the rock around it.
+#define ROCK_PULL 0.15
 // How much there has to be in a cell to keep the others out of it.
 #define KEEP_OUT 0.5
 // Pressure between different materials, so they keep apart.
@@ -326,6 +389,7 @@ const int WALL = 1;
 const int SAND = 2;
 const int WATER = 3;
 const int JELLY = 4;
+const int ROCK = 5;
 // Not a material: the tool that empties cells.
 const int ERASE = 15;
 const int TOOLS = 5;
@@ -339,14 +403,21 @@ const int TOUCH_TEXEL = 1;
 // And where a touch on the brush button began (xy), and 1 (z) once it's
 // dragged out from it, sizing the brush.
 const int SIZE_TEXEL = 2;
-// The selected tool's outline, and the brush's.
+// And 1 (x) while the Rock button paints fixed rock (walls).
+const int ROCK_TEXEL = 3;
+// The selected tool's outline, and the brush's - fixed rock's.
 const vec3 SELECTED = vec3(1.0, 0.85, 0.2);
+const vec3 FIXED = vec3(0.35, 0.75, 1.0);
 const float INIT = 7.0;
 // Water's tint (which it doesn't show) when its box isn't spread.
 const int TIGHT = 1;
 // How long Erase is held to clear everything, in seconds.
 const float CLEAR_HOLD = 0.6;
-// What C holds for anything but jelly (whose F fills all four): how far
+// And Rock, to swap it between moving and fixed.
+const float SWAP_HOLD = 0.5;
+// What C holds for rock: where it was in its shape (xy, in cells) and how
+// far it's turned since (z). For anything but jelly (whose F fills all
+// four) and rock: how far
 // sand is from what holds it up in x (see support()); the weight on sand or
 // water (its own and what's above it) in z; NOT_JELLY plus sand's wetness
 // in w.
@@ -357,14 +428,20 @@ bool notJelly(vec4 c) {
 	return c.w >= NOT_JELLY;
 }
 
+// Whether a material's firm - jelly and moving rock: it holds together,
+// and keeps out of the rest's cells (and they out of its).
+bool firm(int mat) {
+	return mat == JELLY || mat == ROCK;
+}
+
 // Sand's wetness, 0 to 1, from its texel in C.
 float wetness(vec4 c) {
 	return notJelly(c) ? c.w - NOT_JELLY : 0.0;
 }
 
 // How far sand is from what holds it up, from its texel in C: 0 on a
-// column of sand down to a wall or still jelly, a cell more for each it
-// reaches out sideways from one (damp), or UNSUPPORTED.
+// column of sand down to a wall or still jelly or rock, a cell more for
+// each it reaches out sideways from one (damp), or UNSUPPORTED.
 float support(vec4 c) {
 	return notJelly(c) ? c.x : UNSUPPORTED;
 }
@@ -388,8 +465,10 @@ vec2 brushButton(vec2 res) {
 	return vec2((float(TOOLS) + 0.5) * w, 0.5 * res.y * PALETTE);
 }
 
-int toolAt(int b) {
-	return b == 0 ? SAND : b == 1 ? WATER : b == 2 ? JELLY : b == 3 ? WALL : ERASE;
+// The tool on palette button b (the Rock button's moving rock, or fixed
+// when it's swapped).
+int toolAt(int b, bool fixedRock) {
+	return b == 0 ? SAND : b == 1 ? WATER : b == 2 ? JELLY : b == 3 ? (fixedRock ? WALL : ROCK) : ERASE;
 }
 
 struct Particle {
@@ -481,7 +560,8 @@ float spread(Particle p) {
 	// Sand's is only as big as the sand in it: a thinned-out cell's full
 	// box would overhang what's next to it, packing it, and sand pushed
 	// apart where it's packed, so a falling block would swell up.
-	if (p.mat == SAND) {
+	// (Rock's too: it'd fray, a halo of slivers spread out round it.)
+	if (p.mat == SAND || p.mat == ROCK) {
 		return clamp(p.M, 0.3, 1.0);
 	}
 	return (p.mat == JELLY || p.mat == WATER) && p.tint != TIGHT ? 1.0 + SPREAD * smoothstep(0.1, 0.5, p.M) : 1.0;
@@ -518,9 +598,9 @@ float wetAt(ivec2 c) {
 }
 
 // The stress a blob pushes its neighbours away with (a pressure where it's
-// a fluid): its over-packing (stretched, damp sand and jelly pull), and the
-// jelly's elastic resistance to shear (fixed corotated, from its
-// deformation gradient F; its volume is its density's).
+// a fluid): its over-packing (stretched jelly pulls), and the jelly's
+// elastic resistance to shear (fixed corotated, from its deformation
+// gradient F; its volume is its density's).
 mat2 stress(Particle p, ivec2 c) {
 	if (p.mat == WALL) {
 		return mat2(0.0);
@@ -528,6 +608,9 @@ mat2 stress(Particle p, ivec2 c) {
 		return mat2(WATER_STIFFNESS * max(p.M - 1.0, -0.01));
 	} else if (p.mat == SAND) {
 		return mat2(sandPressure(p.M));
+	} else if (p.mat == ROCK) {
+		// (Its shape's held below.)
+		return mat2(ROCK_STIFFNESS * max(p.M - 1.0, 0.0));
 	}
 	// (Only F's shape, its volume taken out: averaged as it moves, F
 	// shrinks a little, and would push the jelly ever bigger.)
@@ -540,6 +623,20 @@ mat2 stress(Particle p, ivec2 c) {
 	return -cauchy + mat2(JELLY_STIFFNESS * max(p.M - 1.0, -JELLY_COHESION));
 }
 
+// Where rock q at c was in its shape (C's xy - or, just painted, where it
+// is).
+vec2 restOf(ivec2 c, Particle q) {
+	vec4 s = texelFetch(iChannel1, c, 0);
+	return notJelly(s) ? q.X : s.xy;
+}
+
+// Whether rock p at c and q at n are the same rock: next to each other in
+// its shape. (Two rocks, landing on each other, don't stick together.)
+bool sameRock(ivec2 c, Particle p, ivec2 n, Particle q) {
+	vec2 r = restOf(n, q) - restOf(c, p);
+	return dot(r, r) < ROCK_BODY * ROCK_BODY;
+}
+
 bool solid(ivec2 c, ivec2 grid, int floorRow) {
 	return !inside(c, grid, floorRow) || load(iChannel0, c).mat == WALL;
 }
@@ -548,9 +645,10 @@ Particle at(ivec2 c, ivec2 grid, int floorRow) {
 	return inside(c, grid, floorRow) ? load(iChannel0, c) : wallAt(c);
 }
 
-// Whether sand can settle on q: a wall, or most of a cell of sand or jelly.
+// Whether sand can settle on q: a wall, or most of a cell of anything but
+// water.
 bool holds(Particle q) {
-	return q.mat == WALL || (q.mat == SAND || q.mat == JELLY) && q.M > 0.5;
+	return q.mat == WALL || q.mat != EMPTY && q.mat != WATER && q.M > 0.5;
 }
 
 // Whether sand can roll into q: (next to) empty, or water.
@@ -613,6 +711,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				p = emptyAt(c);
 			} else if (tool == WALL) {
 				p = wallAt(c);
+			} else if (tool == ROCK) {
+				// (Solid: every cell full.)
+				if (p.mat == EMPTY) {
+					p = Particle(centre, vec2(0.0), 1.0, ROCK, int(fract(h * 13.7) * 8.0), 0);
+				}
 			} else if (p.mat == EMPTY && h < (tool == SAND ? 0.25 : 0.5)) {
 				p = Particle(centre + (vec2(h, fract(h * 7.3)) - 0.5) * 0.3, vec2(0.0), 1.0, tool,
 						int(fract(h * 13.7) * 8.0), 0);
@@ -634,7 +737,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	// sand or jelly beside it.
 	float soaked = 0.0;
 	bool beside = false;
-	// For jelly: whether there's water or sand beside it.
+	// For jelly and rock: whether there's something else beside it (but
+	// walls).
 	bool amid = false;
 	// How many neighbours it has.
 	int around = 0;
@@ -689,10 +793,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 					grip += w * share * (p.mat == WATER || q.mat == WATER ? WATER_VISCOSITY
 							: q.mat == JELLY && p.mat == JELLY ? JELLY_GRIP : MAX_GRIP) * dv;
 				}
-				if (p.mat == WATER && (q.mat == SAND || q.mat == JELLY) || p.mat == JELLY && q.mat != JELLY) {
+				if (p.mat == WATER && q.mat != WATER && q.mat != WALL || p.mat == JELLY && q.mat != JELLY) {
 					beside = true;
 				}
-				if (p.mat == JELLY && (q.mat == WATER || q.mat == SAND)) {
+				if (firm(p.mat) && q.mat != p.mat && q.mat != WALL) {
 					amid = true;
 				}
 			}
@@ -705,7 +809,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 	}
 	if (p.mat == JELLY) {
-		// Jelly that's thinned out, or in water or sand, is pulled to the
+		// Jelly that's thinned out, or in something else, is pulled to the
 		// jelly around it, out to two cells: bits knocked off back in, gaps
 		// closed, the rest kept out. (Not packed jelly in the open, which it
 		// would only squash.)
@@ -727,9 +831,76 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			float pull = mix(JELLY_PULL, LONE_PULL, smoothstep(10.0, 3.0, around2.z));
 			grip += pull * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * around2.xy / max(around2.z, 2.0);
 		}
+	} else if (p.mat == ROCK) {
+		// Rock keeps its shape: moved back toward its place in the shape
+		// of the rock around it (the same rock, out to two cells), as
+		// that's turned (shape matching); and it moves as one with it.
+		// Their mass, and (about p, and where p was in its shape) their
+		// centre and its in their shape, momentum, angular momentum and
+		// moment of inertia, and how they're placed against their shape.
+		vec2 rest = restOf(c, p);
+		float total = p.M;
+		vec2 centre = vec2(0.0), shaped = vec2(0.0), momentum = p.M * p.V;
+		float spin = 0.0, inertia = 0.0;
+		mat2 placed = mat2(0.0);
+		for (int j = -2; j <= 2; ++j) {
+			for (int i = -2; i <= 2; ++i) {
+				ivec2 n = c + ivec2(i, j);
+				if (n == c || !inside(n, grid, floorRow)) {
+					continue;
+				}
+				Particle q = load(iChannel0, n);
+				if (q.mat != ROCK) {
+					continue;
+				}
+				vec2 r = restOf(n, q) - rest;
+				if (dot(r, r) > ROCK_BODY * ROCK_BODY) {
+					continue;
+				}
+				vec2 d = q.X - p.X;
+				total += q.M;
+				centre += q.M * d;
+				shaped += q.M * r;
+				momentum += q.M * q.V;
+				spin += q.M * (d.x * q.V.y - d.y * q.V.x);
+				inertia += q.M * dot(d, d);
+				placed += q.M * outerProduct(d, r);
+			}
+		}
+		if (total > p.M) {
+			centre /= total;
+			shaped /= total;
+			vec2 v = momentum / total;
+			// (About their centres, and their rotation from their shape.)
+			placed -= total * outerProduct(centre, shaped);
+			float a = atan(placed[0][1] - placed[1][0], placed[0][0] + placed[1][1]);
+			vec2 back = centre - mat2(cos(a), sin(a), -sin(a), cos(a)) * shaped;
+			// (Its turning slowed a little, so it doesn't roll on and on.)
+			float omega = (1.0 - ROCK_SPIN) * (spin - total * (centre.x * v.y - centre.y * v.x))
+					/ max(inertia - total * dot(centre, centre), 0.5);
+			p.V = mix(p.V, v + omega * vec2(centre.y, -centre.x) + SHAPE * back, RIGID);
+			// Hardly bouncing back up off what it lands on, as it takes back
+			// its shape (what's on it doesn't spring back up off it); nor
+			// rolling on and on; and, slow, it stops on it.
+			ivec2 n = c - ivec2(0, 1);
+			Particle q = at(n, grid, floorRow);
+			if (holds(q) && (q.mat != ROCK || !sameRock(c, p, n, q))) {
+				p.V.x = mix(p.V.x, q.V.x, ROCK_DRAG);
+				if (p.V.y > q.V.y) {
+					p.V.y = mix(p.V.y, q.V.y, ROCK_THUD);
+				}
+				if (distance(p.V, q.V) < ROCK_STICK) {
+					p.V = q.V;
+				}
+			}
+			// (A sliver of it - its place in the shape's only where it's
+			// been spread to - pulled back in; and rock in something else,
+			// so it's kept out.)
+			grip += ROCK_PULL * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * centre;
+		}
 	}
 	vec2 before = p.V;
-	float weight = GRAVITY * (p.mat == SAND ? SAND_WEIGHT : 1.0);
+	float weight = GRAVITY * (p.mat == SAND ? SAND_WEIGHT : p.mat == ROCK ? ROCK_WEIGHT : 1.0);
 	p.V += push + grip + vec2(0.0, -weight);
 	if (p.mat == SAND && wateriness.x > 0.0) {
 		// Sand in water sinks through it, gently, at its own pace.
@@ -789,7 +960,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 	}
 	// (Jelly no faster than it can take a knock without flying apart.)
-	float most = p.mat == JELLY ? JELLY_VMAX : VMAX;
+	float most = p.mat == JELLY ? JELLY_VMAX : p.mat == ROCK ? ROCK_VMAX : VMAX;
 	float speed = length(p.V);
 	if (speed > most) {
 		p.V *= most / speed;
@@ -815,8 +986,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			hi.y = float(c.y + s) - reach;
 		}
 	}
-	// Nor does jelly go into the cell of something else beside it, nor
-	// anything else into jelly's, nor water into sand that's settled - but
+	// Nor does jelly or rock go into the cell of something else beside it,
+	// nor anything else into theirs, nor water into sand that's settled - but
 	// as far as that's moving away: they keep apart (each cell holds one
 	// material, so where they'd mix, bits of jelly would be scattered
 	// through the rest, and settled sand would keep turning to water and
@@ -831,7 +1002,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 		Particle q = load(iChannel0, n);
 		bool settled = p.mat == WATER && q.mat == SAND && length(q.V) < SETTLED;
-		if (q.mat == EMPTY || q.mat == WALL || q.M < KEEP_OUT || (q.mat == JELLY) == (p.mat == JELLY) && !settled) {
+		if (q.mat == EMPTY || q.mat == WALL || q.M < KEEP_OUT || q.mat == p.mat
+				|| !firm(p.mat) && !firm(q.mat) && !settled) {
 			continue;
 		}
 		if (k == 0) {
@@ -888,7 +1060,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	int hit = 0;
 	// Each material's share of what lands, and how much of its own sand
 	// stays.
-	vec3 share = vec3(0.0);
+	vec4 share = vec4(0.0);
 	float stays = 0.0;
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
@@ -920,7 +1092,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	// likely as its share of the mass - so each material keeps its mass
 	// on average.
 	float r = hash12(vec2(c) + fract(float(iFrame) * vec2(0.6180, 0.7548)) * 997.0) * m;
-	int k = r < share.x ? 0 : r < share.x + share.y ? 1 : 2;
+	// (Never one with none landing - rounded, r can come out as much as all
+	// of it, past the last share's end: water would turn to jelly.)
+	int k = r < share.x || share.y + share.z + share.w <= 0.0 ? 0
+			: r < share.x + share.y || share.z + share.w <= 0.0 ? 1
+			: r < share.x + share.y + share.z || share.w <= 0.0 ? 2 : 3;
 	p.mat = SAND + k;
 	// Sand that mostly stays keeps its tint; sand that's moved takes a new
 	// one. (Taking one from what lands, even at random, has a patch of one
@@ -950,12 +1126,14 @@ uniform sampler2D iChannel2; ///buf:C;
 
 // What a blob carries besides its texel: the jelly's deformation gradient
 // F, carried along as B carries the blobs and turned by the local velocity
-// gradient; sand's wetness (x, NOT_JELLY in z and w, as anything else's),
+// gradient; where rock was in its shape, and how far it's turned, carried
+// along the same way; sand's wetness (x, NOT_JELLY in z and w, as anything
+// else's),
 // carried along too, and soaked up from the water beside it; and, along the
 // top row, the palette's state.
 
-// The velocity gradient around jelly p at c (least squares, over the
-// jelly next to it; a little less than that, where there's little).
+// The velocity gradient around jelly (or rock) p at c (least squares, over
+// the same next to it; a little less than that, where there's little).
 mat2 velocityGradient(ivec2 c, Particle p, ivec2 grid, int floorRow) {
 	mat2 dvdx = mat2(0.0), dxdx = mat2(0.2);
 	for (int j = -1; j <= 1; ++j) {
@@ -965,7 +1143,7 @@ mat2 velocityGradient(ivec2 c, Particle p, ivec2 grid, int floorRow) {
 				continue;
 			}
 			Particle q = load(iChannel1, n);
-			if (q.mat != JELLY) {
+			if (q.mat != p.mat) {
 				continue;
 			}
 			vec2 dx = q.X - p.X;
@@ -992,14 +1170,14 @@ float weightOn(ivec2 c, Particle p, ivec2 grid, int floorRow) {
 
 // How far sand at c is from what holds it up (see support()): down a
 // column of sand (looking four cells down a step, so it's known soon after
-// it lands, or falls) to a wall or still jelly; or, damp, out sideways
-// from sand beside it that's held up, as far as it reaches.
+// it lands, or falls) to a wall or still jelly or rock; or, damp, out
+// sideways from sand beside it that's held up, as far as it reaches.
 float supportOf(ivec2 c, ivec2 grid, int floorRow, float wet, bool started) {
 	float held = UNSUPPORTED;
 	for (int k = 1; k <= 4; ++k) {
 		ivec2 n = c - ivec2(0, k);
 		Particle q = inside(n, grid, floorRow) ? load(iChannel1, n) : wallAt(n);
-		if (q.mat == WALL || q.mat == JELLY && q.M > 0.5 && length(q.V) < SETTLED) {
+		if (q.mat == WALL || firm(q.mat) && q.M > 0.5 && length(q.V) < SETTLED) {
 			held = 0.0;
 			break;
 		}
@@ -1068,16 +1246,79 @@ vec4 sand(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
 	return vec4(supportOf(c, grid, floorRow, wet, started), 0.0, weightOn(c, p, grid, floorRow), NOT_JELLY + wet);
 }
 
+// Where rock q at n (in A) was in its shape, and how far it's turned since
+// (rock just painted has no shape yet: it's as it is).
+vec4 shapeOf(ivec2 n, Particle q, bool started) {
+	vec4 s = texelFetch(iChannel2, n, 0);
+	return !started || notJelly(s) ? vec4(q.X, 0.0, 0.0) : s;
+}
+
+// Where rock at c was in its shape, and how far it's turned since: each
+// part of the rock landing on it where it was in its shape (from where it
+// was, turned back as far as it's turned), and turned as the rock around it
+// turns. (Only the rock most of it's from: where two rocks meet, their
+// places in their shapes, averaged, would be nowhere in either.)
+vec4 rock(ivec2 c, Particle p, ivec2 grid, int floorRow, bool started) {
+	float most = 0.0;
+	vec2 whose = p.X;
+	for (int j = -2; j <= 2; ++j) {
+		for (int i = -2; i <= 2; ++i) {
+			ivec2 n = c + ivec2(i, j);
+			if (!inside(n, grid, floorRow)) {
+				continue;
+			}
+			Particle q = load(iChannel0, n);
+			float w = q.mat == ROCK ? q.M * landing(q, vec2(c), vec2(c) + 1.0).z : 0.0;
+			if (w > most) {
+				most = w;
+				whose = shapeOf(n, q, started).xy;
+			}
+		}
+	}
+	vec2 rest = vec2(0.0), turned = vec2(0.0);
+	float total = 0.0;
+	for (int j = -2; j <= 2; ++j) {
+		for (int i = -2; i <= 2; ++i) {
+			ivec2 n = c + ivec2(i, j);
+			if (!inside(n, grid, floorRow)) {
+				continue;
+			}
+			Particle q = load(iChannel0, n);
+			if (q.mat != ROCK) {
+				continue;
+			}
+			vec3 part = landing(q, vec2(c), vec2(c) + 1.0);
+			float w = q.M * part.z;
+			vec4 s = shapeOf(n, q, started);
+			if (w <= 0.0 || distance(s.xy, whose) > ROCK_BODY) {
+				continue;
+			}
+			vec2 d = part.xy - (q.X + q.V);
+			rest += w * (s.xy + mat2(cos(s.z), -sin(s.z), sin(s.z), cos(s.z)) * d);
+			turned += w * vec2(cos(s.z), sin(s.z));
+			total += w;
+		}
+	}
+	if (total <= 0.0) {
+		return vec4(p.X, 0.0, 0.0);
+	}
+	mat2 L = velocityGradient(c, p, grid, floorRow);
+	return vec4(rest / total, atan(turned.y, turned.x) + 0.5 * (L[0][1] - L[1][0]), 0.0);
+}
+
 vec4 palette(ivec2 c, vec2 res) {
 	int top = int(res.y) - 1;
 	vec4 ui = texelFetch(iChannel2, ivec2(UI_TEXEL, top), 0);
 	vec4 touch = texelFetch(iChannel2, ivec2(TOUCH_TEXEL, top), 0);
 	vec4 sizing = texelFetch(iChannel2, ivec2(SIZE_TEXEL, top), 0);
+	vec4 rock = texelFetch(iChannel2, ivec2(ROCK_TEXEL, top), 0);
 	if (ui.z != INIT) {
 		ui = vec4(float(SAND), BRUSH, INIT, 0.0);
 		touch = vec4(0.0, 0.0, -1.0, 0.0);
 		sizing = vec4(0.0);
+		rock = vec4(0.0);
 	}
+	bool fixedRock = rock.x > 0.5;
 	if (pointerCount > 0 && touch.x < 0.5) {
 		// A new touch: on the palette, it picks a tool (or the brush).
 		vec2 at = pointers[0].xy;
@@ -1087,9 +1328,10 @@ vec4 palette(ivec2 c, vec2 res) {
 			int b = int(at.x / (res.x / float(TOOLS + 1)));
 			touch.z = float(b);
 			if (b < TOOLS) {
-				ui.x = float(toolAt(b));
+				ui.x = float(toolAt(b, fixedRock));
 			}
 			sizing = vec4(at, 0.0, 0.0);
+			rock.y = 0.0;
 			ui.w = 1.0;
 		} else {
 			ui.w = 0.0;
@@ -1109,16 +1351,21 @@ vec4 palette(ivec2 c, vec2 res) {
 			ui.y = ui.y < 3.0 ? 5.0 : ui.y < 6.0 ? 10.0 : ui.y < 11.0 ? 20.0 : 2.0;
 		}
 	}
+	// Rock held: swapped between moving and fixed (once a touch).
+	int held = pointerCount > 0 && touch.z >= 0.0 && int(touch.z) < TOOLS ? toolAt(int(touch.z), fixedRock) : EMPTY;
+	if ((held == ROCK || held == WALL) && rock.y < 0.5 && iTime - touch.y > SWAP_HOLD) {
+		rock = vec4(fixedRock ? 0.0 : 1.0, 1.0, 0.0, 0.0);
+		ui.x = float(toolAt(int(touch.z), !fixedRock));
+	}
 	if (pointerCount == 0) {
 		ui.w = 0.0;
 		touch.z = -1.0;
 		sizing.z = 0.0;
 	}
 	// Erase held: clear everything.
-	touch.w = pointerCount > 0 && touch.z >= 0.0 && int(touch.z) < TOOLS && toolAt(int(touch.z)) == ERASE
-			&& iTime - touch.y > CLEAR_HOLD ? 1.0 : 0.0;
+	touch.w = held == ERASE && iTime - touch.y > CLEAR_HOLD ? 1.0 : 0.0;
 	touch.x = float(pointerCount);
-	return c.x == UI_TEXEL ? ui : c.x == TOUCH_TEXEL ? touch : c.x == SIZE_TEXEL ? sizing : vec4(0.0);
+	return c.x == UI_TEXEL ? ui : c.x == TOUCH_TEXEL ? touch : c.x == SIZE_TEXEL ? sizing : c.x == ROCK_TEXEL ? rock : vec4(0.0);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -1145,6 +1392,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		fragColor = vec4(0.0, 0.0, weightOn(c, p, grid, floorRow), NOT_JELLY);
 		return;
 	}
+	if (p.mat == ROCK) {
+		fragColor = rock(c, p, grid, floorRow, started);
+		return;
+	}
 	if (p.mat != JELLY) {
 		fragColor = none;
 		return;
@@ -1159,7 +1410,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				continue;
 			}
 			Particle q = load(iChannel0, n);
-			if (q.mat != JELLY) {
+			if (q.mat != p.mat) {
 				continue;
 			}
 			float w = q.M * landing(q, vec2(c), vec2(c) + 1.0).z;
@@ -1264,6 +1515,17 @@ vec2 mainSound(int s, float t) {
 					wave += 0.6 * sin(TAU * b * since * (1.0 + 1.5 * since * GRAIN_RATE)) * exp(-since * 25.0);
 				}
 				loud = speed * 1.6 + hit * 0.4;
+			} else if (p.mat == ROCK) {
+				// Rock: a knock as it's hit (a short, low, woody note, and a
+				// click), and a grinding rumble as it slides.
+				// (The knock struck mid-grain, where its window's open.)
+				float f = 160.0 + 140.0 * seed;
+				float k = since - 0.5 / GRAIN_RATE;
+				float knock = k < 0.0 ? 0.0 : (sin(TAU * f * k) + 0.5 * sin(TAU * 2.7 * f * k)) * exp(-k * 40.0)
+						+ 0.6 * smoothNoise(k * 2000.0, seed * 11.0) * exp(-k * 150.0);
+				wave = knock * min(hit * 3.0, 1.0)
+						+ 0.5 * smoothNoise(since * 90.0, seed * 71.0) * sin(TAU * 0.5 * f * since) * min(speed * 8.0, 1.0);
+				loud = hit * 0.9 + speed * 1.5;
 			} else {
 				// Jelly: a low note (with its overtones, for small
 				// speakers), wobbling in and out and a little in pitch.
