@@ -41,7 +41,10 @@ import enk.danwills.android.enkishadereditor.project.MultipassSource;
 // A `pack` extra instead names a shader pack file in files/import/
 // (tools/phone/add_pack.sh), installed as Get Shader Pack -> Install from
 // File would; it adds shaders without touching the open one, so it needn't
-// ask.
+// ask. With `replace`, the pack's installed shaders go first (Update
+// Version's swap), so a pack sent again and again (vticurate.py's) doesn't
+// pile up. Either way it logs the pack's shader ids ("Shader ids: ..."),
+// newest last, for add_pack.sh --open.
 public class ShaderImportReceiver extends BroadcastReceiver {
 	private static final String TAG = "ShaderImport";
 
@@ -57,7 +60,8 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 				return;
 			}
 			PendingResult pending = goAsync();
-			installPackAsync(context.getApplicationContext(), pack, pending::finish);
+			installPackAsync(context.getApplicationContext(), pack,
+					intent.getBooleanExtra("replace", false), pending::finish);
 			return;
 		}
 		String name = intent.getStringExtra("name");
@@ -101,12 +105,21 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 	}
 
 	private static void installPackAsync(@NonNull Context app, @NonNull String file,
-			@NonNull Runnable done) {
+			boolean replace, @NonNull Runnable done) {
 		new Thread(() -> {
 			File pack = importFile(app, file);
-			var result = ShaderPackInstaller.install(app, pack);
+			var info = replace ? ShaderPackInstaller.readPackInfo(pack) : null;
+			var result = info != null
+					? ShaderPackInstaller.replace(app, info.packId(), android.net.Uri.fromFile(pack))
+					: ShaderPackInstaller.install(app, pack);
 			//noinspection ResultOfMethodCallIgnored
 			pack.delete();
+			if (result.pack() != null) {
+				var ids = Database.getInstance(app).getDataSource().pack
+						.getShaderIds(result.pack().packId());
+				ids.sort(null);
+				Log.i(TAG, "Shader ids: " + android.text.TextUtils.join(",", ids));
+			}
 			Log.i(TAG, result.message());
 			new Handler(Looper.getMainLooper()).post(() -> {
 				Toast.makeText(app, result.message(), Toast.LENGTH_LONG).show();
