@@ -207,7 +207,7 @@ precision highp int;
 // Pressure a unit of over-packing makes, per material.
 #define WATER_STIFFNESS 0.5
 #define SAND_STIFFNESS 0.6
-#define JELLY_STIFFNESS 0.3
+#define JELLY_STIFFNESS 0.5
 // Settled sand rolls off what it rests on, down to the side, where it's
 // open: this fast (cells a step), and as likely a step - dry, damp (it
 // stands up in clumps) and soaked (it slumps).
@@ -217,6 +217,12 @@ precision highp int;
 // How much flowing sand takes on the velocity of the sand (and walls) it
 // rubs against, a step: so it pours, and doesn't splash.
 #define SAND_GRIP 0.15
+// How fast settled sand eases to the middle of its cell, a step.
+#define CENTRE 0.2
+// How hard water drags sand in it along, and how fast sand sinks
+// through it (cells a step).
+#define SAND_DRAG 0.25
+#define SINK 0.02
 // How slow what sand's on moves for it to settle on it (cells a step).
 #define SETTLED 0.02
 // How hard damp sand holds together, stretched or sheared: it holds
@@ -230,14 +236,18 @@ precision highp int;
 // (it wobbles, rather than bouncing apart), and anything else's.
 #define JELLY_GRIP 0.45
 // How hard thinned-out jelly pulls itself back together.
-#define JELLY_COHESION 0.3
+#define JELLY_COHESION 0.8
 #define MAX_GRIP 0.12
 #define WATER_VISCOSITY 0.05
 // The jelly's stiffness against shear, and how far it stretches (or
 // squashes) before it gives.
-#define JELLY_SHEAR 0.15
-#define JELLY_SQUASH 0.6
-#define JELLY_STRETCH 1.6
+#define JELLY_SHEAR 0.45
+#define JELLY_SQUASH 0.4
+#define JELLY_STRETCH 2.5
+// How hard jelly's pulled to the jelly around it.
+#define JELLY_PULL 0.045
+// How much there has to be in a cell to keep the others out of it.
+#define KEEP_OUT 0.5
 // Pressure between different materials, so they keep apart.
 #define APART 0.1
 // How much bigger than a cell a blob's box is as it moves.
@@ -298,7 +308,7 @@ float wetness(vec4 c) {
 // How hard damp sand holds together: not dry sand, most when damp, less
 // again when it's saturated.
 float cohesion(float wet) {
-	return DAMP_COHESION * smoothstep(0.05, 0.35, wet) * (1.0 - 0.7 * smoothstep(0.8, 1.0, wet));
+	return DAMP_COHESION * smoothstep(0.05, 0.35, wet) * (1.0 - smoothstep(0.8, 1.0, wet));
 }
 
 // The pressure in sand from its packing (pulling, when it's damp).
@@ -367,8 +377,9 @@ vec4 pack(Particle p, ivec2 c) {
 
 Particle unpack(vec4 d, ivec2 c) {
 	Particle p;
-	int a = int(d.x + 0.5);
-	int b = int(d.w + 0.5);
+	// (Exact already: past 2^23 adding 0.5 would round odd ones up.)
+	int a = int(d.x);
+	int b = int(d.w);
 	p.X = vec2(c) + vec2(float(a & 4095), float(a >> 12)) / 4095.0;
 	p.V = d.yz;
 	p.mat = (b >> 14) & 15;
@@ -446,12 +457,14 @@ mat2 stress(Particle p, ivec2 c) {
 	} else if (p.mat == SAND) {
 		return mat2(sandPressure(p.M, wetAt(c)));
 	}
+	// (Only F's shape, its volume taken out: averaged as it moves, F
+	// shrinks a little, and would push the jelly ever bigger.)
 	mat2 F = loadF(c);
-	float J = max(determinant(F), 0.2);
+	F /= sqrt(max(determinant(F), 0.04));
 	// R, F's rotation (its polar decomposition, in 2D).
 	float a = atan(F[0][1] - F[1][0], F[0][0] + F[1][1]);
 	mat2 R = mat2(cos(a), sin(a), -sin(a), cos(a));
-	mat2 cauchy = 2.0 * JELLY_SHEAR * (F - R) * transpose(F) / J;
+	mat2 cauchy = 2.0 * JELLY_SHEAR * (F - R) * transpose(F);
 	return -cauchy + mat2(JELLY_STIFFNESS * max(p.M - 1.0, -JELLY_COHESION));
 }
 
@@ -543,10 +556,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 grip = vec2(0.0);
 	// For sand: how much of what's around it is water.
 	vec2 wateriness = vec2(0.0);
+	// And how the water around it moves.
+	vec2 waterV = vec2(0.0);
 	// For water: how much the sand beside it soaks up, and whether there's
 	// sand or jelly beside it.
 	float soaked = 0.0;
 	bool beside = false;
+	// For jelly: whether there's water or sand beside it.
+	bool amid = false;
 	// How many neighbours it has.
 	int around = 0;
 	mat2 own = stress(p, c);
@@ -582,7 +599,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			if (p.mat == SAND) {
 				wateriness += vec2(q.mat == WATER ? w : 0.0, w);
 				// Grains rubbing on grains (and walls) as it flows.
-				if (q.mat != WATER) {
+				if (q.mat == WATER) {
+					waterV += w * q.V;
+				} else {
 					grip += w * share * SAND_GRIP * dv;
 				}
 			} else {
@@ -597,6 +616,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				if (p.mat == WATER && (q.mat == SAND || q.mat == JELLY) || p.mat == JELLY && q.mat != JELLY) {
 					beside = true;
 				}
+				if (p.mat == JELLY && (q.mat == WATER || q.mat == SAND)) {
+					amid = true;
+				}
 			}
 			// Artificial bulk viscosity: pairs closing in on each other
 			// are slowed, damping pressure waves (not the flow).
@@ -606,9 +628,36 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			}
 		}
 	}
+	if (p.mat == JELLY) {
+		// Jelly that's thinned out, or in water or sand, is pulled to the
+		// jelly around it, out to two cells: bits knocked off back in, gaps
+		// closed, the rest kept out. (Not packed jelly in the open, which it
+		// would only squash.)
+		vec3 around2 = vec3(0.0);
+		for (int j = -2; j <= 2; ++j) {
+			for (int i = -2; i <= 2; ++i) {
+				ivec2 n = c + ivec2(i, j);
+				if (n == c || !inside(n, grid, floorRow)) {
+					continue;
+				}
+				Particle q = load(iChannel0, n);
+				if (q.mat == JELLY) {
+					around2 += vec3(q.M * (q.X - p.X), q.M);
+				}
+			}
+		}
+		if (around2.z > 0.0) {
+			grip += JELLY_PULL * (amid ? 1.0 : smoothstep(1.0, 0.6, p.M)) * around2.xy / max(around2.z, 4.0);
+		}
+	}
 	vec2 before = p.V;
 	float weight = GRAVITY * (p.mat == SAND ? SAND_WEIGHT : 1.0);
 	p.V += push + grip + vec2(0.0, -weight);
+	if (p.mat == SAND && wateriness.x > 0.0) {
+		// Sand in water sinks through it, gently, at its own pace.
+		float among = wateriness.x / wateriness.y;
+		p.V = mix(p.V, waterV / wateriness.x + vec2(0.0, -SINK), SAND_DRAG * among);
+	}
 	// Water the sand beside it soaks up.
 	p.M *= 1.0 - min(soaked, 0.5);
 	if (p.mat == WATER || p.mat == JELLY) {
@@ -637,7 +686,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				bool right = open(at(c + ivec2(1, -1), grid, floorRow)) && open(at(c + ivec2(1, 0), grid, floorRow));
 				float h = hash12(vec2(c) + fract(float(iFrame) * vec2(0.4142, 0.7321)) * 1013.0);
 				float chance = mix(mix(1.0, DAMP_ROLL, smoothstep(0.05, 0.4, wet)), SOAKED_ROLL, smoothstep(0.8, 1.0, wet));
-				p.V = below.V;
+				// (Eased to its cell's middle: a box off it leaks slivers into
+				// the cells beside it, where water's would turn to sand and
+				// back.)
+				p.V = below.V + CENTRE * (vec2(c) + 0.5 - p.X);
 				if ((left || right) && h < chance) {
 					float side = left && right ? (fract(h * 17.0) < 0.5 ? -1.0 : 1.0) : left ? -1.0 : 1.0;
 					p.V.x += side * ROLL;
@@ -689,7 +741,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 		Particle q = load(iChannel0, n);
 		bool settled = p.mat == WATER && q.mat == SAND && length(q.V) < SETTLED;
-		if (q.mat == EMPTY || q.mat == WALL || q.M < 0.5 || (q.mat == JELLY) == (p.mat == JELLY) && !settled) {
+		if (q.mat == EMPTY || q.mat == WALL || q.M < KEEP_OUT || (q.mat == JELLY) == (p.mat == JELLY) && !settled) {
 			continue;
 		}
 		if (k == 0) {
@@ -742,9 +794,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 X = vec2(0.0), V = vec2(0.0);
 	Particle p = emptyAt(c);
 	int hit = 0;
-	// Each material's share of what lands, and its biggest part's tint.
-	vec3 share = vec3(0.0), biggest = vec3(0.0);
-	ivec3 tints = ivec3(0);
+	// Each material's share of what lands, and how much of its own sand
+	// stays.
+	vec3 share = vec3(0.0);
+	float stays = 0.0;
 	for (int j = -2; j <= 2; ++j) {
 		for (int i = -2; i <= 2; ++i) {
 			ivec2 n = c + ivec2(i, j);
@@ -766,9 +819,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			hit = max(hit, q.imp);
 			int k = q.mat - SAND;
 			share[k] += w;
-			if (w > biggest[k]) {
-				biggest[k] = w;
-				tints[k] = q.tint;
+			if (n == c && k == 0) {
+				stays = w;
 			}
 		}
 	}
@@ -778,7 +830,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float r = hash12(vec2(c) + fract(float(iFrame) * vec2(0.6180, 0.7548)) * 997.0) * m;
 	int k = r < share.x ? 0 : r < share.x + share.y ? 1 : 2;
 	p.mat = SAND + k;
-	p.tint = tints[k];
+	// Sand that mostly stays keeps its tint; sand that's moved takes a new
+	// one. (Taking one from what lands, even at random, has a patch of one
+	// tint grow, drawn out into stripes as sand flows.)
+	if (k == 0 && self.mat == SAND && stays > 0.5 * share.x) {
+		p.tint = self.tint;
+	} else {
+		p.tint = int(hash12(vec2(c) * 0.93 + fract(float(iFrame) * vec2(0.2207, 0.8812)) * 877.0) * 8.0);
+	}
 	if (m < 0.5 / 2048.0) {
 		fragColor = pack(emptyAt(c), c);
 		return;
