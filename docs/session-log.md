@@ -489,3 +489,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - Dan: the 3D terrain was a "how well would it work?" experiment, nearly explored enough - he'll
   try this version, then back to honing the 2D one. (Phone not connected over adb yet, so the new
   terrain isn't in the debug library.)
+- "Keep the heightfield version there and not overwrite it, but put the new one on the phone":
+  added as FuseWorms Terrain 2 (debug id 1032, 1/8 res), old 1031 untouched. Fixed
+  `status.sh again` exiting 1 when the last line had no "took" time (which stopped
+  add_shader.sh); same fix in the phone-kit and skill copies.

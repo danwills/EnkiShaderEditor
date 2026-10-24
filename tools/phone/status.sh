@@ -165,7 +165,9 @@ again)
 		tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r kind text eta start t; do
 			[ "$eta" = - ] && eta=
 			say "--es text $(quote "$text") --es kind $(quote "$kind") --es eta $(quote "$eta")"
-			[ -n "$t" ] && say "--es took $(quote "$t")"
+			if [ -n "$t" ]; then
+				say "--es took $(quote "$t")"
+			fi
 		done
 	fi
 	;;
