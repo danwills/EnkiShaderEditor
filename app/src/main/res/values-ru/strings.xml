@@ -689,6 +689,7 @@
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Шейдеры с внеэкранными буферами пока можно снимать только в режиме «Как в приложении» (без суперсэмплинга)</string>
 	<string name="not_a_shader_pack">Это не набор шейдеров</string>
+	<string name="shader_pack_too_new">Для этого набора шейдеров нужна более новая версия приложения</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s установлен: %2$d шейдер</item>
 		<item quantity="few">%1$s установлен: %2$d шейдера</item>

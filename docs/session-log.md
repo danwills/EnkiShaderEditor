@@ -538,3 +538,11 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   behaved (scrub back matched the stopped look exactly, no rewind when stopped). Dan's Hang on
   stepped aside 30 s and came back as designed. Phone handed back (DoorDash), stay-awake and
   appear-on-top off.
+- **"A special shared 'headers' section in packs so they don't repeat the same code? Starting res
+  1/8 in general, adjustable in the curation. A little web app for curation, with thumbnails of
+  the starting state and after some warmup, and a button to push a shader into Enki on my phone."**
+  Pack format 2: blocks of code shared between a pack's passes (measured: ~86% of the text) are
+  stored once in `pack_snippets` and referred to as `///snippet:ID` blocks; ShaderPackInstaller
+  expands them on install (and refuses packs newer than it reads, new string in all locales).
+  Packs start at 1/8 (vtishader.QUALITY), with `quality` per pack and `qualities` per path in
+  packs.json (`--quality` for `pack`). Round trip checked exactly on an 11-shader pack.

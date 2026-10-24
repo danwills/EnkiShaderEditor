@@ -100,8 +100,25 @@ public final class DatabaseContract {
 		// older packs apart.
 		String FORMAT = "format";
 		int CURRENT_FORMAT = 1;
+		// The newest this app can install: 2 adds pack_snippets (see
+		// PackSnippetColumns), code shared by the pack's shaders, stored once.
+		int NEWEST_READABLE_FORMAT = 2;
 		// See PackColumns.SHOW - not in packs written before it.
 		String SHOW = "show";
+	}
+
+	/**
+	 * Defines a shader pack file's 'pack_snippets' table (format 2): blocks
+	 * of code its shaders share, each stored once. A shader's source (each
+	 * pass's) is blocks separated by blank lines, and a block that's just
+	 * REFERENCE + an id stands for that snippet's text - put back when the
+	 * pack's installed (ShaderPackInstaller), so the library never sees them.
+	 */
+	public interface PackSnippetColumns {
+		String TABLE_NAME = "pack_snippets";
+		String ID = "id";
+		String TEXT = "text";
+		String REFERENCE = "///snippet:";
 	}
 
 	/**

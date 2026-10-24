@@ -29,8 +29,14 @@ import vtistate
 SEED_TILE = 128
 THUMBNAIL_SIZE = 144
 # The resolution a pack's shaders start at (the app's quality, a fraction
-# of the screen's): 1/4, as these run slowly at full size on a phone.
-QUALITY = 0.25
+# of the screen's), unless packs.json says otherwise: 1/8, as these run
+# slowly at full size on a phone.
+QUALITY = 0.125
+# Code the shaders in a pack share is stored once (pack format 2): a block
+# (text between blank lines) at least this long that's in two or more
+# passes becomes a snippet - see the app's DatabaseContract.PackSnippetColumns.
+SNIPPET_LEAST = 120
+SNIPPET_REFERENCE = "///snippet:"
 WHAT = {
 	"synthetic": "noise fitted to the saved state's statistics",
 	"patch": "copies of a typical window of the saved state",
@@ -59,6 +65,7 @@ CREATE TABLE pack_info (pack_id TEXT NOT NULL,title TEXT NOT NULL,description TE
 	version INTEGER,created DATETIME,format INTEGER);
 CREATE TABLE pack_media (_id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,
 	shader_created TEXT,image BLOB,caption TEXT);
+CREATE TABLE pack_snippets (id TEXT PRIMARY KEY,text TEXT NOT NULL);
 PRAGMA user_version = 13;
 '''
 
@@ -213,28 +220,53 @@ def split_passes(text):
 	return parts[0], buffers
 
 
+def snippets(sources):
+	"""(ids by block, the sources with shared blocks referred to): every
+	block (text between blank lines) of SNIPPET_LEAST or more found in two
+	or more of the sources, stored once."""
+	count = {}
+	for s in sources:
+		for block in s.split("\n\n"):
+			if len(block) >= SNIPPET_LEAST:
+				count[block] = count.get(block, 0) + 1
+	ids = {}
+	for block, n in count.items():
+		if n >= 2:
+			ids[block] = "s%d" % len(ids)
+	out = ["\n\n".join(SNIPPET_REFERENCE + ids[b] if b in ids else b for b in s.split("\n\n"))
+			for s in sources]
+	return ids, out
+
+
 def write_pack(path, pack, shaders, now=None):
 	"""A pack file at path: pack = {id, title, description, author,
-	version}; shaders = [(name, glsl, {texture: PNG}, thumb)]."""
+	version}; shaders = [(name, glsl, {texture: PNG}, thumb, quality)],
+	quality None for QUALITY. Code they share goes in pack_snippets."""
 	if os.path.exists(path):
 		os.remove(path)
 	db = sqlite3.connect(path)
 	db.executescript(SCHEMA)
 	now = now or datetime.datetime.now().replace(microsecond=0)
-	db.execute("INSERT INTO pack_info VALUES (?, ?, ?, ?, ?, ?, 1)",
+	db.execute("INSERT INTO pack_info VALUES (?, ?, ?, ?, ?, ?, 2)",
 			(pack["id"], pack["title"], pack.get("description", ""), pack.get("author", ""),
 			pack.get("version", 1), now.strftime("%Y-%m-%d %H:%M:%S")))
+	passes = [split_passes(glsl) for _, glsl, _, _, _ in shaders]
+	flat = [p for image, buffers in passes for p in [image] + [s for _, s in sorted(buffers.items())]]
+	ids, flat = snippets(flat)
+	for block, sid in ids.items():
+		db.execute("INSERT INTO pack_snippets (id, text) VALUES (?, ?)", (sid, block))
+	flat = iter(flat)
 	seen = set()
-	for k, (name, glsl, textures, thumb) in enumerate(shaders):
+	for k, (name, glsl, textures, thumb, quality) in enumerate(shaders):
 		# Distinct dates: the installer tells a pack's shaders apart by them.
 		created = (now - datetime.timedelta(seconds=len(shaders) - k)).strftime("%Y-%m-%d %H:%M:%S")
-		image, buffers = split_passes(glsl)
+		image, buffers = passes[k]
 		sid = db.execute("INSERT INTO shaders (shader, thumb, name, created, modified, quality, "
 				"source_modified) VALUES (?, ?, ?, ?, ?, ?, ?)",
-				(image, thumb, name, created, created, QUALITY, created)).lastrowid
-		for b, source in sorted(buffers.items()):
+				(next(flat), thumb, name, created, created, quality or QUALITY, created)).lastrowid
+		for b, _ in sorted(buffers.items()):
 			db.execute("INSERT INTO shader_buffers (shader_id, buffer, source) VALUES (?, ?, ?)",
-					(sid, b, source))
+					(sid, b, next(flat)))
 		for tname, png in textures.items():
 			if tname in seen:
 				continue

@@ -653,6 +653,7 @@
 	<string name="channel_wrap_repeat">重复</string>
 	<string name="buffers_capture_unsupported">带离屏缓冲区的着色器目前只能以“匹配应用分辨率”（不超采样）捕获</string>
 	<string name="not_a_shader_pack">这不是着色器包</string>
+	<string name="shader_pack_too_new">此着色器包需要更新版本的应用</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="other">已安装 %1$s：%2$d 个着色器</item>
 	</plurals>

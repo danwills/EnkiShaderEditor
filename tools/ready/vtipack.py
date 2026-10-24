@@ -379,7 +379,9 @@ def plan(out, most):
 	several), then by the words their names start with. Groups too small to
 	stand alone are pooled into the folder's Miscellany. Written to
 	OUT/packs.json as [{id, title, description, rule, paths}], for editing
-	before packs runs."""
+	before packs runs (or with vticurate.py) - and optionally quality, the
+	resolution its shaders start at (vtishader.QUALITY if not), and
+	qualities, {path: quality} for any that differ."""
 	idx = json.load(open(os.path.join(out, "index.json")))
 	rule = {x["path"]: (f["names"] or ["?"])[0] for f, x in _files(idx)}
 	folders = {}
@@ -437,7 +439,8 @@ def packs(out, dest, only, src):
 		ns = argparse.Namespace(out=out, src=src, dest=os.path.join(dest, x["id"] + "-v%d.sqlite" % x.get("version", 1)),
 				paths=x["paths"], match=None, id=x["id"], title=x["title"],
 				description=x.get("description") or _description(x), author=x.get("author", "Dan Wills"),
-				version=x.get("version", 1), quiet=True)
+				version=x.get("version", 1), quality=x.get("quality"), qualities=x.get("qualities", {}),
+				quiet=True)
 		pack(ns)
 
 
@@ -455,8 +458,8 @@ def pack(args):
 		paths += [p for p in sorted(c.files) if re.search(args.match, p) and p not in paths]
 	quiet = getattr(args, "quiet", False)
 	shaders, names = [], set()
-	for path in paths:
-		path = c.idx["duplicates"].get(path, path)
+	for asked in paths:
+		path = c.idx["duplicates"].get(asked, asked)
 		try:
 			glsl, textures, thumb = c.shader(path)
 		except (KeyError, ValueError, vtishader.vti2enki.Unsupported) as e:
@@ -467,7 +470,8 @@ def pack(args):
 		while name in names:
 			name += "_"
 		names.add(name)
-		shaders.append((name, glsl, textures, thumb))
+		quality = (getattr(args, "qualities", None) or {}).get(asked) or getattr(args, "quality", None)
+		shaders.append((name, glsl, textures, thumb, quality))
 		if not quiet:
 			print("%s: %s" % (path, c.info(path)["kind"]))
 	if not shaders:
@@ -521,6 +525,7 @@ def main():
 	a.add_argument("--description", default="")
 	a.add_argument("--author", default="Dan Wills")
 	a.add_argument("--version", type=int, default=1)
+	a.add_argument("--quality", type=float, help="the resolution its shaders start at (default 1/8)")
 	a.add_argument("--src", help="the source folder, for thumbnails (default: the index's)")
 	args = ap.parse_args()
 	if args.cmd == "index":

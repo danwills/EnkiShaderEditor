@@ -693,6 +693,7 @@
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Шейдери з позаекранними буферами поки можна знімати лише в режимі «Як у застосунку» (без суперсемплінгу)</string>
 	<string name="not_a_shader_pack">Це не набір шейдерів</string>
+	<string name="shader_pack_too_new">Для цього набору шейдерів потрібна новіша версія застосунку</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s встановлено: %2$d шейдер</item>
 		<item quantity="few">%1$s встановлено: %2$d шейдери</item>
