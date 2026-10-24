@@ -173,8 +173,9 @@ class Collection:
 		p = os.path.join(self.out, "states", self.files[path][1]["md5"] + ".json")
 		return json.load(open(p)) if os.path.exists(p) else None
 
-	def shader(self, path, title=None):
-		"""(glsl, {texture: PNG}, thumbnail JPEG or None) for the file at path."""
+	def convert(self, path, title=None):
+		"""(glsl, {texture: PNG}, vti2enki's pattern, seed kind, seed record)
+		for the file at path."""
 		f, x = self.files[path]
 		info = self.info(path)
 		if info is None:
@@ -193,6 +194,13 @@ class Collection:
 			vtistate.write(vti, self.headers[md5].encode(), {}, (h, w))
 			glsl, p = vti2enki.convert(vti, start=start,
 					title=title or os.path.splitext(os.path.basename(path))[0])
+		return glsl, textures, p, kind, rec
+
+	def shader(self, path, title=None):
+		"""(glsl, {texture: PNG}, thumbnail JPEG or None) for the file at path."""
+		glsl, textures, p, kind, rec = self.convert(path, title)
+		w, h = self.info(path)["grid"]
+		start = kind != "none"
 		thumb = None
 		try:
 			_, _, _, arrays = vtistate.read(os.path.join(self.src, path))

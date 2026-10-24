@@ -546,3 +546,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   expands them on install (and refuses packs newer than it reads, new string in all locales).
   Packs start at 1/8 (vtishader.QUALITY), with `quality` per pack and `qualities` per path in
   packs.json (`--quality` for `pack`). Round trip checked exactly on an 11-shader pack.
+- **"A special shared 'headers'-kind of section in packs ... make the starting res 1/8 in general, but make it possible to adjust this in the curation ... a little web app to make the curation easier ... thumbnails of starting state and after some warmup ... a button on the web UI and have it push the shader into Enki on my phone."**
+  - Pack format 2 (committed earlier): code shared by a pack's passes is stored once (`pack_snippets`) and put back on install. Packs start at 1/8; `packs.json` can set `quality` per pack, or `qualities` per shader.
+  - New `tools/ready/vticurate.py` (+ `.html`) at http://127.0.0.1:8770/. Packs are shown as cards: drag them between packs (shift-click picks several), retitle, describe, set the resolution, and search every pack. It saves as you go, first backing up to `packs.json.bak`.
+  - Each card has start and warmed-up thumbnails from the real shader with its start textures (1,200 runs on the desktop GPU), cached in `vtipack/thumbs/`.
+  - 📱 Send builds a one-shader "VTI Curation" pack and runs `add_pack.sh --replace --open`. The debug receiver can now replace a pack and logs its shader ids, so the newest one opens.
+  - Tested locally (headless Chrome); the phone side isn't tried yet.
