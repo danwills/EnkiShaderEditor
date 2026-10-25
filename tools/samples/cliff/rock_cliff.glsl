@@ -64,8 +64,10 @@ uniform int pointerCount;
 // The joints' grooves: how deep, and the bevel along every edge.
 #define CRACK_DEPTH 0.16
 #define BEVEL 0.045
+// How far (in cliff units, on average) facets' meetings are rounded off.
+#define ROUNDING 0.012
 // The grass: blades' spacing, and the soil lip under them.
-#define BLADE 0.0022
+#define BLADE 0.0013
 #define SOIL 0.014
 // Conifers along the top: one every so far, at most.
 #define TREES 0.22
@@ -118,6 +120,32 @@ vec2 hash22(ivec2 a) {
 	vec3 p3 = fract(vec3(vec2(a).xyx) * vec3(0.1031, 0.103, 0.0973));
 	p3 += dot(p3, p3.yzx + 33.33);
 	return fract((p3.xx + p3.yz) * p3.zy);
+}
+
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	ivec2 k = ivec2(i);
+	return mix(mix(hash2(k), hash2(k + ivec2(1, 0)), f.x),
+			mix(hash2(k + ivec2(0, 1)), hash2(k + ivec2(1, 1)), f.x), f.y);
+}
+
+// Octaves stop where they'd be finer than a pixel (ps).
+float fbm(vec2 p, float ps, int octaves) {
+	float sum = 0.0;
+	float amp = 0.5;
+	float freq = 1.0;
+	for (int i = 0; i < octaves; i++) {
+		if (freq * ps > 0.6) {
+			sum += amp * 0.5;
+		} else {
+			sum += amp * noise(p * freq + float(i) * 17.3);
+		}
+		freq *= 2.03;
+		amp *= 0.5;
+	}
+	return sum;
 }
 
 //// Buffer A
@@ -220,32 +248,6 @@ uniform sampler2D iChannel1; ///buf:B;
 // 2 sky). Its top row keeps the view it was made for: while the view's the
 // same, every texel's kept as it was.
 
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	ivec2 k = ivec2(i);
-	return mix(mix(hash2(k), hash2(k + ivec2(1, 0)), f.x),
-			mix(hash2(k + ivec2(0, 1)), hash2(k + ivec2(1, 1)), f.x), f.y);
-}
-
-// Octaves stop where they'd be finer than a pixel (ps).
-float fbm(vec2 p, float ps, int octaves) {
-	float sum = 0.0;
-	float amp = 0.5;
-	float freq = 1.0;
-	for (int i = 0; i < octaves; i++) {
-		if (freq * ps > 0.6) {
-			sum += amp * 0.5;
-		} else {
-			sum += amp * noise(p * freq + float(i) * 17.3);
-		}
-		freq *= 2.03;
-		amp *= 0.5;
-	}
-	return sum;
-}
-
 float packColour(vec3 c) {
 	vec3 b = floor(clamp(c, 0.0, 1.0) * 255.0 + 0.5);
 	return b.r + 256.0 * b.g + 65536.0 * b.b;
@@ -265,8 +267,54 @@ float masterEdge(int m) {
 	return float(m) * MASTER + (hash1(m * 11 + 3) - 0.5) * 0.5 * MASTER;
 }
 
+// Grass: a fuzz of thin blades rooted along the ground - the cliff's top
+// edge (top) or a ledge's line at y = ground - growing up only, leaning a
+// little, in clumps as thick as `thick` says where they're rooted (top:
+// clumps along the top; ledge: patches along it, as the moss).
+bool blades(vec2 q, bool top, float ground, float tallest, float seed, out vec3 colour) {
+	colour = vec3(0.0);
+	int i0 = int(floor(q.x / BLADE));
+	for (int n = -8; n <= 8; n++) {
+		int i = i0 + n;
+		float r1 = hash2(ivec2(i, int(seed)));
+		float r2 = hash2(ivec2(i + 7, int(seed) + 3));
+		float r3 = hash2(ivec2(i + 13, int(seed) + 5));
+		float root = (float(i) + r1) * BLADE;
+		float thick = top ? smoothstep(0.2, 0.7, noise(vec2(root * 6.0, 1.7)))
+				: smoothstep(0.4, 0.65, noise(vec2(root * 9.0, ground * 4.0) + 8.0));
+		if (r3 > 0.15 + 0.85 * thick) {
+			continue;
+		}
+		float base = top ? topEdge(root) - 0.6 * SOIL : ground - 0.004;
+		float len = tallest * (0.15 + 0.85 * r2 * r2) * (0.3 + 0.7 * thick);
+		float t = (q.y - base) / len;
+		if (t < 0.0 || t > 1.0) {
+			continue;
+		}
+		float lean = (hash2(ivec2(i + 3, int(seed) + 9)) - 0.5) * 1.2;
+		float x = root + lean * len * t * t;
+		float halfWidth = 0.0016 * (1.0 - 0.8 * t);
+		if (abs(q.x - x) < halfWidth) {
+			vec3 dry = vec3(0.7, 0.66, 0.36);
+			vec3 green = vec3(0.4, 0.48, 0.15);
+			float tone = hash2(ivec2(i + 21, int(seed)));
+			colour = mix(green, dry, tone * tone) * (0.45 + 0.55 * t) * (0.8 + 0.4 * r1);
+			return true;
+		}
+	}
+	return false;
+}
+
+// One facet's plane (cell id, centre o), at p.
+float facetPlane(vec2 p, vec2 o, ivec2 id, float size, float slope, int seed) {
+	vec2 g = (hash22(id + ivec2(seed * 7 + 5, 1)) - 0.5) * 2.0 * slope;
+	return dot(p - o, g) * size + (hash2(id + ivec2(seed, 9)) - 0.5) * 0.02 * size;
+}
+
 // Facets: the cell of a Voronoi diagram q's in, each cell a plane of its
-// own (slope up to `slope`), so facets meet in sharp steps. edge: how far
+// own (slope up to `slope`), so facets meet in steps and creases -
+// rounded off over a little way (ROUNDING of a cell, varying), the
+// rounding's edge wobbling, so no corner's knife-sharp. edge: how far
 // from the cell's border.
 float facets(vec2 q, float size, float slope, int seed, out float edge) {
 	vec2 p = q / size;
@@ -274,7 +322,9 @@ float facets(vec2 q, float size, float slope, int seed, out float edge) {
 	float best = 1e9;
 	float second = 1e9;
 	vec2 centre = vec2(0.0);
+	vec2 centre2 = vec2(0.0);
 	ivec2 id = ivec2(0);
+	ivec2 id2 = ivec2(0);
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			ivec2 k = ip + ivec2(x, y);
@@ -282,17 +332,24 @@ float facets(vec2 q, float size, float slope, int seed, out float edge) {
 			float d = dot(p - o, p - o);
 			if (d < best) {
 				second = best;
+				centre2 = centre;
+				id2 = id;
 				best = d;
 				centre = o;
 				id = k;
 			} else if (d < second) {
 				second = d;
+				centre2 = o;
+				id2 = k;
 			}
 		}
 	}
-	edge = (sqrt(second) - sqrt(best)) * 0.5 * size;
-	vec2 g = (hash22(id + ivec2(seed * 7 + 5, 1)) - 0.5) * 2.0 * slope;
-	return dot(p - centre, g) * size + (hash2(id + ivec2(seed, 9)) - 0.5) * 0.02 * size;
+	float e = (sqrt(second) - sqrt(best)) * 0.5;
+	edge = e * size;
+	float wobble = noise(q * (12.0 / size) + float(seed));
+	float round = ROUNDING / size * (0.4 + 1.2 * noise(q * (3.0 / size) + float(seed) * 1.7));
+	float w = 0.5 + 0.5 * smoothstep(0.0, round, e + (wobble - 0.5) * round);
+	return mix(facetPlane(p, centre2, id2, size, slope, seed), facetPlane(p, centre, id, size, slope, seed), w);
 }
 
 // The rock: its height, colour and crackedness at q.
@@ -309,7 +366,8 @@ float rowStick(int k) {
 	return mix(below, own, max(rowStrength(k), 0.15));
 }
 
-float rock(vec2 q, float ps, out vec3 colour, out float crack) {
+float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) {
+	plant = 0.0;
 	// Everything's warped a little, so no edge runs straight.
 	vec2 warp = vec2(noise(q * 2.2 + 3.0), noise(q * 2.2 + 11.0)) - 0.5;
 	warp += 0.35 * (vec2(noise(q * 9.0 + 5.0), noise(q * 9.0 + 19.0)) - 0.5);
@@ -379,9 +437,12 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack) {
 	float grooveWidth = mix(0.006, 0.02, hash2(block + 9));
 	crack = 1.0 - smoothstep(0.0, grooveWidth, edge);
 	h -= CRACK_DEPTH * crack;
-	// A chamfer, flat, along every edge (the tops' more).
-	float chamfer = max(0.05 - edge, 0.0);
-	h -= BEVEL * 12.0 * chamfer * (hi - yw < 0.06 ? 1.6 : 1.0);
+	// Every edge rounded over (the tops' more), by a varying amount, and
+	// chipped: the edge wobbles.
+	float roundOver = 0.06 * (0.6 + 0.8 * noise(q * 7.0 + 13.0));
+	float chipped = edge + 0.012 * (noise(q * 45.0 + 3.0) - 0.5);
+	float over = 1.0 - smoothstep(0.0, roundOver, chipped);
+	h -= BEVEL * 1.4 * over * over * (hi - yw < 0.06 ? 1.6 : 1.0);
 
 	// Big angular faces, crossing the blocks, and a few hairline
 	// fractures along them; then chipped, ridged roughness, and grit.
@@ -420,49 +481,24 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack) {
 	base *= 0.92 + 0.16 * grit;
 	// Moss and grass on a ledge: where this row sticks out past the next.
 	float ledge = smoothstep(0.02, 0.06, stick - aboveStick) * (1.0 - smoothstep(0.0, 0.05, hi - yw));
-	float moss = ledge * smoothstep(0.45, 0.65, noise(q * vec2(9.0, 4.0) + 8.0));
+	float moss = ledge * smoothstep(0.4, 0.65, noise(vec2(q.x * 9.0, hi * 4.0) + 8.0));
 	base = mix(base, mix(vec3(0.5, 0.55, 0.22), vec3(0.68, 0.66, 0.3), noise(q * 90.0)), moss);
 	h += 0.02 * moss;
 	base *= 1.0 - 0.6 * crack;
 	colour = base;
+	// Grass growing up from the ledge below, where the row below sticks
+	// out past this one (in the moss's patches), standing in front.
+	float below = rowStick(k - 1);
+	float ledgeBelow = smoothstep(0.02, 0.06, below - stick) * step(0.01, rowStrength(k));
+	vec3 blade;
+	if (ledgeBelow > 0.0 && yw - lo < 0.09
+			&& blades(vec2(q.x, yw), false, lo, 0.085 * ledgeBelow, float(k), blade)) {
+		colour = blade;
+		crack = 0.0;
+		plant = 1.0;
+		h += below - stick;
+	}
 	return h;
-}
-
-// Grass along the top: blades in clumps, rooted along the edge, leaning
-// and tapering - and over the edge, some hanging down.
-bool grass(vec2 q, float edge, out vec3 colour) {
-	colour = vec3(0.0);
-	if (q.y < edge - 0.13 || q.y > edge + 0.11) {
-		return false;
-	}
-	float u = q.x / BLADE;
-	int i0 = int(floor(u));
-	for (int n = -9; n <= 9; n++) {
-		int i = i0 + n;
-		float r1 = hash1(i * 5 + 1);
-		float r2 = hash1(i * 5 + 2);
-		float r3 = hash1(i * 5 + 3);
-		float root = (float(i) + r1) * BLADE;
-		float clump = smoothstep(0.25, 0.75, noise(vec2(root * 6.0, 1.7)));
-		float hang = smoothstep(0.55, 0.8, noise(vec2(root * 4.0, 4.2)));
-		float baseY = topEdge(root) - 0.6 * SOIL;
-		bool down = r3 < 0.5 * hang;
-		float len = (down ? -1.0 : 1.0) * (0.01 + 0.075 * r2 * r2) * (0.35 + clump);
-		float t = (q.y - baseY) / len;
-		if (t < 0.0 || t > 1.0) {
-			continue;
-		}
-		float lean = (r3 - 0.5) * 0.9 + (down ? 0.3 : 0.0);
-		float x = root + lean * abs(len) * t * t;
-		float halfWidth = 0.0028 * (1.0 - 0.85 * t);
-		if (abs(q.x - x) < halfWidth) {
-			vec3 dry = vec3(0.72, 0.68, 0.36);
-			vec3 green = vec3(0.45, 0.52, 0.17);
-			colour = mix(green, dry, hash1(i * 5 + 4)) * (0.55 + 0.45 * t);
-			return true;
-		}
-	}
-	return false;
 }
 
 // Conifers standing back from the edge, in tiers, lit from the left.
@@ -482,22 +518,25 @@ bool conifer(vec2 q, out vec3 colour) {
 		}
 		float dx = q.x - x0;
 		// Tiers of branches, drooping toward their tips.
-		float layers = 7.0 + 6.0 * hash1(t * 9 + 4);
-		float v = u + 1.4 * abs(dx) / tall;
+		float layers = 8.0 + 6.0 * hash1(t * 9 + 4);
+		float v = u + 1.2 * abs(dx) / tall;
 		float tier = fract(v * layers + hash1(t));
-		float halfWidth = tall * 0.2 * pow(1.0 - max(u, 0.0), 0.85) * (0.45 + 0.55 * tier);
-		halfWidth *= 0.55 + 0.9 * noise(q * vec2(260.0, 120.0) + float(t) * 13.0);
+		float halfWidth = tall * 0.17 * pow(1.0 - max(u, 0.0), 0.9) * (0.7 + 0.3 * tier);
+		// Fuzzy, needly edges.
+		halfWidth *= 0.6 + 0.6 * noise(q * vec2(300.0, 160.0) + float(t) * 13.0)
+				+ 0.25 * (noise(q * 900.0) - 0.5);
 		bool trunk = abs(dx) < 0.0035 * tall / 0.3 && u < 0.25;
 		if (abs(dx) < halfWidth && u > 0.05 || trunk) {
 			float lit = 0.5 + 0.5 * clamp(-dx / max(halfWidth, 1e-4), -1.0, 1.0);
+			// Dark, near a silhouette: a little lighter at the sunny edge.
 			float needles = noise(q * 380.0 + float(t) * 7.0);
-			colour = mix(vec3(0.17, 0.23, 0.09), vec3(0.56, 0.6, 0.29),
-					lit * (0.35 + 0.65 * needles) * (0.6 + 0.4 * tier));
+			colour = mix(vec3(0.05, 0.08, 0.05), vec3(0.2, 0.25, 0.13),
+					lit * lit * (0.4 + 0.6 * needles));
 			if (abs(dx) >= halfWidth || u <= 0.05) {
-				colour = vec3(0.28, 0.23, 0.18);
+				colour = vec3(0.12, 0.1, 0.08);
 			}
-			// Hazy with distance: the further back, the paler.
-			colour = mix(colour, vec3(0.85, 0.87, 0.84), 0.25 * hash1(t * 13 + 6));
+			// A touch hazy, the further back the more.
+			colour = mix(colour, vec3(0.8, 0.82, 0.8), 0.12 * hash1(t * 13 + 6));
 			return true;
 		}
 	}
@@ -527,7 +566,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float h = -10.0;
 	float what = 2.0;
 	vec3 blade;
-	if (grass(q, edge, blade)) {
+	if (q.y > edge - 0.6 * SOIL - 0.01 && q.y < edge + 0.12 && blades(q, true, 0.0, 0.085, 1.0, blade)) {
 		what = 1.0;
 		colour = blade;
 		h = 0.2;
@@ -545,8 +584,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		colour = mix(vec3(0.2, 0.17, 0.12), vec3(0.36, 0.3, 0.2), noise(q * 150.0));
 		h = 0.12;
 	} else {
-		what = 0.0;
-		h = rock(q, ps, colour, crack);
+		h = rock(q, ps, colour, crack, what);
 		// Soil washed down the top of the face.
 		float wash = smoothstep(0.25, 0.0, edge - q.y) * noise(vec2(q.x * 30.0, q.y * 3.0));
 		colour = mix(colour, vec3(0.42, 0.34, 0.25), 0.5 * wash);
@@ -643,6 +681,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		ao *= 1.0 - CRACK_DARK * here.z;
 		ao = clamp(ao, 0.0, 1.0);
 
+		// Moss on whatever faces up, in patches.
+		if (here.w < 0.5) {
+			float up = (rot(-view.w) * n.xy).y;
+			vec2 q = toCliff(fragCoord, view);
+			float moss = smoothstep(0.5, 0.8, up) * smoothstep(0.5, 0.72, noise(q * 11.0 + 5.0));
+			albedo = mix(albedo, mix(vec3(0.42, 0.5, 0.17), vec3(0.62, 0.62, 0.28), noise(q * 120.0)), 0.85 * moss);
+		}
 		vec3 a = pow(albedo, vec3(2.2));
 		float diffuse = max(dot(n, l), 0.0);
 		float skyLight = 0.55 + 0.45 * n.y * 0.5 + 0.25 * n.z;
