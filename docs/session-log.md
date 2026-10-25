@@ -643,4 +643,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   users through the app, and Enki's files stay on the device (Share goes out through other apps; no
   INTERNET permission). It would apply only to in-app sharing such as a gallery or server.
 - Dan may later let people share packs by saving, sending and loading them, outside the app.
-  Agreed that's still not UGC, but the pack's content has to follow Play's rules.
+  Agreed that's still not UGC: Install from File already works that way, like any app that opens files.
