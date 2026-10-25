@@ -617,3 +617,12 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - **Plants:** dark pine silhouettes, and fuzzy grass that grows only upward, along the top and up from every ledge.
   - **Moss:** on any rock that faces up.
   - **On the phone:** renders at 92 fps when still.
+- **"drop the res to 1/4 maybe.. this whole crevice went black ... ditch [the trees] ... Go on with your other plans ... fix that open-enki-with-new-shader bug"**, and mid-way: **"a very fine/subtle stone like noise on the rock"**. Rock Cliff v3 (id 1048, at 1/4 quality).
+  - **Rock:**
+    - Crevices keep a little light.
+    - Less regular strata and fewer hairline fractures.
+    - Stronger stains.
+    - A shelf along the top, and fine mineral grain.
+  - **Trees:** removed.
+  - **Shadows:** grainy soft edges fixed by smoothing them in a new pass.
+  - **Open-shader bug:** fixed. The launch intent's open request is now honoured on a cold start, and `add_shader.sh --open` uses it. Tested on the phone: v3 opened straight from a cold start.
