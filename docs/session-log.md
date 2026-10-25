@@ -607,3 +607,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - **Stop carried over:** the retest was stopped at once by the old run's leftover Stop. `ask` now starts each run afresh.
   - **Status:** the new build is on the phone, but the retest was cut short at Dan's request and is still to do.
   - **Skill copy:** the skill's own copy in `~/.claude/skills` needs these changes carried over.
+- **"I have wanted to attempt a rocky cliff face shader for some time ... deep cracks with occlusion shading, faithful rock-coloring and angular features, and a hint of vegetation at the top ... pick up the pointer handling from the PointerDiagnosticsXformTracking shader"** Rock Cliff v1 (`tools/samples/cliff/rock_cliff.glsl`, id 1046 in Enki debug).
+  - **Gestures:** XformTracking's drag, fling, pinch and turn, anchored at the fingers.
+  - **The cliff:** a height field of strata, joints and angular facets, with stains and moss. Grass and conifers along the top.
+  - **Lighting:** soft marched shadows and ambient occlusion. The cliff and its lighting are recomputed only when the view moves.
+  - **On the phone:** checked by screenshot that it renders right. It runs at 90 fps when still and about 11 fps while moving.
