@@ -85,6 +85,9 @@ uniform int pointerCount;
 #define SHADOW_REACH 0.6
 #define AO_STRENGTH 1.15
 #define CRACK_DARK 0.45
+// The share of pixel-sized crystals that glint, and how bright.
+#define GLINT_DENSITY 0.04
+#define GLINT 3.0
 // The darkest ambient occlusion gets: deep crevices still show a little.
 #define AO_FLOOR 0.28
 #define EXPOSURE 1.25
@@ -127,13 +130,82 @@ vec2 hash22(ivec2 a) {
 	return fract((p3.xx + p3.yz) * p3.zy);
 }
 
-float noise(vec2 p) {
+vec2 gradientAt(ivec2 k) {
+	float a = TAU * hash2(k);
+	return vec2(cos(a), sin(a));
+}
+
+// Gradient (Perlin) noise, about -0.7 to 0.7: no grid showing through,
+// as value noise's can.
+float gnoise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
+	vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
 	ivec2 k = ivec2(i);
-	return mix(mix(hash2(k), hash2(k + ivec2(1, 0)), f.x),
-			mix(hash2(k + ivec2(0, 1)), hash2(k + ivec2(1, 1)), f.x), f.y);
+	float a = dot(gradientAt(k), f);
+	float b = dot(gradientAt(k + ivec2(1, 0)), f - vec2(1.0, 0.0));
+	float c = dot(gradientAt(k + ivec2(0, 1)), f - vec2(0.0, 1.0));
+	float d = dot(gradientAt(k + ivec2(1, 1)), f - vec2(1.0, 1.0));
+	return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// The same, 0 to 1.
+float noise(vec2 p) {
+	return clamp(0.5 + 0.75 * gnoise(p), 0.0, 1.0);
+}
+
+// Mineral grain: gradient noise in octaves fixed on the rock, but only
+// those near a pixel's size blended in (ps: cliff units a pixel - q's
+// derivative across the screen), so it's always a fine speckle, never
+// blobs however far in the view's zoomed. -0.7 to 0.7 or so.
+float pixelGrain(vec2 q, float ps) {
+	float k0 = floor(log2(0.2 / ps));
+	float sum = 0.0;
+	float weights = 0.0;
+	for (int i = 0; i < 4; i++) {
+		float k = k0 + float(i);
+		float f = exp2(k);
+		float cycles = f * ps;
+		float w = smoothstep(0.2, 0.4, cycles) * (1.0 - smoothstep(0.75, 1.1, cycles));
+		sum += w * gnoise(q * f + vec2(17.3, 5.1) * mod(k, 16.0));
+		weights += w;
+	}
+	return sum / max(weights, 1e-4);
+}
+
+// Glints: here and there a crystal (a cell about a pixel across, on
+// the rock) with a facet of its own, flashing where it turns the sun
+// toward the eye. Two sizes of cell, blended as the zoom goes between
+// them, so it's always pixel-sized.
+float glints(vec2 q, float ps, vec3 n, vec3 l) {
+	float level = -log2(ps);
+	float k0 = floor(level);
+	vec3 halfway = normalize(l + vec3(0.0, 0.0, 1.0));
+	float sum = 0.0;
+	for (int i = 0; i < 2; i++) {
+		float k = k0 + float(i);
+		ivec2 cell = ivec2(floor(q * exp2(k)));
+		ivec2 seed = cell + ivec2(int(k) * 7919, int(k) * 104);
+		vec2 r = hash22(seed);
+		if (r.x < GLINT_DENSITY) {
+			vec2 tip = hash22(seed + 31) - 0.5;
+			vec3 facet = normalize(n + vec3(tip * 1.4, 0.0));
+			float flash = pow(max(dot(facet, halfway), 0.0), 120.0) * (0.4 + 0.6 * r.y / GLINT_DENSITY);
+			sum += (i == 0 ? 1.0 - fract(level) : fract(level)) * flash;
+		}
+	}
+	return sum;
+}
+
+// Broad variation across the cliff, so from afar it doesn't repeat:
+// slow noise steering how things are made, never where (so straight
+// lines stay straight). x: relief - how far rows and overhangs stick
+// out; y: tone, cool to warm; z: weathering - rust, stains, moss and
+// grass; w: blockiness - how many joints and strata go through.
+// (Stretched to fill 0 to 1: gradient noise keeps mostly to the middle.)
+vec4 region(vec2 q) {
+	vec4 n = vec4(noise(q * 0.3 + 3.1), noise(q * 0.22 + 7.7), noise(q * 0.27 + 13.9), noise(q * 0.35 + 21.3));
+	return smoothstep(0.28, 0.72, n);
 }
 
 // Octaves stop where they'd be finer than a pixel (ps).
@@ -276,7 +348,8 @@ float masterEdge(int m) {
 // edge (top) or a ledge's line at y = ground - growing up only, leaning a
 // little, in clumps as thick as `thick` says where they're rooted (top:
 // clumps along the top; ledge: patches along it, as the moss).
-bool blades(vec2 q, bool top, float ground, float tallest, float seed, out vec3 colour) {
+// (wet: the region's shift to the ledge patches' threshold, as the moss's.)
+bool blades(vec2 q, bool top, float ground, float tallest, float seed, float wet, out vec3 colour) {
 	colour = vec3(0.0);
 	int i0 = int(floor(q.x / BLADE));
 	for (int n = -8; n <= 8; n++) {
@@ -286,7 +359,7 @@ bool blades(vec2 q, bool top, float ground, float tallest, float seed, out vec3 
 		float r3 = hash2(ivec2(i + 13, int(seed) + 5));
 		float root = (float(i) + r1) * BLADE;
 		float thick = top ? smoothstep(0.2, 0.7, noise(vec2(root * 6.0, 1.7)))
-				: smoothstep(0.4, 0.65, noise(vec2(root * 9.0, ground * 4.0) + 8.0));
+				: smoothstep(0.4 + wet, 0.65 + wet, noise(vec2(root * 9.0, ground * 4.0) + 8.0));
 		if (r3 > 0.15 + 0.85 * thick) {
 			continue;
 		}
@@ -360,15 +433,19 @@ float facets(vec2 q, float size, float slope, int seed, out float edge) {
 // The rock: its height, colour and crackedness at q.
 // How much row k sticks out: its boundary with the row below is strong
 // (a step and a crack), weak (a step) or gone (one taller block).
-float rowStrength(int k) {
+// (blocky: the region's blockiness - more boundaries go through.)
+float rowStrength(int k, float blocky) {
 	float s = hash1(k * 23 + 9);
-	return s < 0.4 ? 1.0 : s < 0.65 ? 0.45 : 0.0;
+	float strong = mix(0.2, 0.6, blocky);
+	return s < strong ? 1.0 : s < strong + 0.25 ? 0.45 : 0.0;
 }
 
-float rowStick(int k) {
-	float own = (hash1(k * 31 + 7) - 0.5) * 0.3;
-	float below = (hash1((k - 1) * 31 + 7) - 0.5) * 0.3;
-	return mix(below, own, max(rowStrength(k), 0.15));
+// (relief: the region's - how far rows stick out.)
+float rowStick(int k, float relief, float blocky) {
+	float amount = 0.3 * mix(0.4, 1.7, relief);
+	float own = (hash1(k * 31 + 7) - 0.5) * amount;
+	float below = (hash1((k - 1) * 31 + 7) - 0.5) * amount;
+	return mix(below, own, max(rowStrength(k, blocky), 0.15));
 }
 
 float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) {
@@ -378,6 +455,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	warp += 0.35 * (vec2(noise(q * 9.0 + 5.0), noise(q * 9.0 + 19.0)) - 0.5);
 	vec2 qw = q + 0.07 * warp;
 	q = qw;
+	vec4 r = region(q);
 	// Strata, wavy and dipping.
 	float yw = q.y + 0.08 * (noise(vec2(q.x * 0.7, 1.3)) - 0.5) + 0.18 * (noise(vec2(q.x * 0.25, 9.1)) - 0.5) + 0.05 * q.x;
 	int k = int(floor(yw / ROW));
@@ -388,8 +466,8 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	}
 	float lo = rowEdge(k);
 	float hi = rowEdge(k + 1);
-	float stick = rowStick(k);
-	float aboveStick = rowStick(k + 1);
+	float stick = rowStick(k, r.x, r.w);
+	float aboveStick = rowStick(k + 1, r.x, r.w);
 
 	// Long vertical joints, wandering a little, through most rows.
 	float xm = q.x + 0.05 * (noise(vec2(3.7, q.y * 1.6)) - 0.5);
@@ -414,27 +492,28 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	float jr = (float(j + 1) + 0.3 * (hash2(ivec2(k, j + 1)) - 0.5)) * width;
 	float jointDist = min(xs - jl, jr - xs) / sqrt(1.0 + slant * slant);
 	// Some of a row's joints don't go through: wider blocks.
-	bool openL = hash2(ivec2(k, j) + 77) > 0.55;
-	bool openR = hash2(ivec2(k, j + 1) + 77) > 0.55;
+	float through = mix(0.8, 0.35, r.w);
+	bool openL = hash2(ivec2(k, j) + 77) > through;
+	bool openR = hash2(ivec2(k, j + 1) + 77) > through;
 	if (!openL && xs - jl < jr - xs || !openR && jr - xs <= xs - jl) {
 		jointDist = 1.0;
 	}
-	bool masterHere = hash2(ivec2(k, m) + 33) > 0.15;
+	bool masterHere = hash2(ivec2(k, m) + 33) > mix(0.4, 0.05, r.w);
 	// A boundary's crack is as strong as the boundary, and opens and
 	// closes along its length; so do the joints'.
 	float open = smoothstep(0.25, 0.6, noise(q * vec2(5.0, 3.0) + 31.0));
 	// (And a boundary fades in and out along the row.)
 	float alongLo = smoothstep(0.25, 0.5, noise(vec2(q.x * 1.4, float(k) * 3.7)));
 	float alongHi = smoothstep(0.25, 0.5, noise(vec2(q.x * 1.4, float(k + 1) * 3.7)));
-	float rowDist = min((yw - lo) / max(rowStrength(k) * open * alongLo, 1e-3),
-			(hi - yw) / max(rowStrength(k + 1) * open * alongHi, 1e-3));
+	float rowDist = min((yw - lo) / max(rowStrength(k, r.w) * open * alongLo, 1e-3),
+			(hi - yw) / max(rowStrength(k + 1, r.w) * open * alongHi, 1e-3));
 	float jointOpen = 0.3 + 0.7 * smoothstep(0.2, 0.55, noise(q * vec2(2.0, 6.0) + 47.0));
 	float edge = min(rowDist, min(jointDist, masterHere ? masterDist : 1.0) / jointOpen);
 
 	// The block: sticking out by its row's and its own amounts, leaning
 	// so its top overhangs.
 	ivec2 block = ivec2(k * 64 + m, j);
-	vec2 tilt = vec2((hash2(block + 5) - 0.5) * 0.6, 0.12 + 0.5 * hash2(block + 6));
+	vec2 tilt = vec2((hash2(block + 5) - 0.5) * 0.6, (0.12 + 0.5 * hash2(block + 6)) * mix(0.45, 1.6, r.x));
 	float h = stick + (hash2(block) - 0.5) * 0.12
 			+ tilt.x * (xs - 0.5 * (jl + jr)) + tilt.y * (yw - 0.5 * (lo + hi));
 
@@ -454,7 +533,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	// Big masses first: whole stretches of the face set forward or back,
 	// in steps, their faces turned this way and that.
 	float eBig;
-	h += 1.6 * facets(q * vec2(1.0, 0.7), 0.55, 0.4, 77, eBig);
+	h += 1.6 * mix(0.55, 1.45, r.x) * facets(q * vec2(1.0, 0.7), 0.55, 0.4, 77, eBig);
 	float massCrack = (1.0 - smoothstep(0.0, 0.012, eBig)) * smoothstep(0.3, 0.6, noise(q * 3.0 + 61.0));
 	h -= 0.1 * massCrack;
 	crack = max(crack, massCrack);
@@ -464,14 +543,16 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	h -= 0.02 * hair;
 	crack = max(crack, 0.5 * hair);
 	h += 0.08 * (fbm(q * 1.3, ps * 1.3, 3) - 0.5);
-	float chips = 1.0 - abs(2.0 * fbm(q * 9.0 + 3.0, ps * 9.0, 4) - 1.0);
-	h += 0.03 * chips * chips;
+	// Chips: small angular faces, as the big ones.
+	float e2;
+	h += 0.6 * facets(q, 0.06, 0.3, 19, e2);
+	h += 0.01 * (fbm(q * 9.0 + 3.0, ps * 9.0, 4) - 0.5);
 	float grit = fbm(q * 70.0, ps * 70.0, 4);
 	h += 0.006 * (grit - 0.5);
-	// Fine stone: mineral grains, faint, in the relief and the colour
-	// (no finer than a pixel, so it doesn't sparkle as the view moves).
-	float grain = fbm(q * 260.0, ps * 260.0, 3);
-	h += 0.0015 * (grain - 0.5);
+	// Fine stone: mineral grain, faint, in the relief and the colour -
+	// always about a pixel across (see pixelGrain()).
+	float grain = pixelGrain(q, ps);
+	h += 0.12 * ps * grain;
 
 	// Colour: warm and cool greys by block, mottled; pale patches; rust
 	// streaks down some stretches; dark water stains running down from
@@ -479,32 +560,44 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	float tone = hash2(block + 13);
 	vec3 base = tone < 0.4 ? vec3(0.66, 0.64, 0.6) : tone < 0.75 ? vec3(0.7, 0.62, 0.52) : vec3(0.55, 0.53, 0.5);
 	base *= 0.85 + 0.3 * fbm(q * 3.0 + 5.0, ps * 3.0, 4);
+	// The region's tone, cool grey to warm, and broad light and dark
+	// zones, at two scales - what shows from far off.
+	base *= mix(vec3(0.9, 0.96, 1.06), vec3(1.1, 0.97, 0.82), r.y);
+	base *= mix(0.78, 1.25, smoothstep(0.25, 0.75, noise(q * 0.12 + 40.0)))
+			* mix(0.88, 1.12, smoothstep(0.25, 0.75, noise(q * 0.45 + 52.0)));
 	float pale = smoothstep(0.55, 0.75, fbm(q * vec2(7.0, 4.0) + 21.0, ps * 7.0, 4));
 	base = mix(base, vec3(0.86, 0.85, 0.81), 0.55 * pale);
-	float rustBand = smoothstep(0.42, 0.7, noise(vec2(q.x * 1.6, 2.9)));
+	float rustBand = smoothstep(0.62 - 0.4 * r.z, 0.88 - 0.4 * r.z, noise(vec2(q.x * 1.6, 2.9)));
 	float rust = rustBand * smoothstep(0.3, 0.7, fbm(vec2(q.x * 14.0, q.y * 1.2) + 41.0, ps * 14.0, 4));
 	base = mix(base, vec3(0.58, 0.39, 0.26), 0.7 * rust);
 	float stainLength = 0.08 + 0.25 * hash2(block + 17);
 	float stain = exp(-(hi - yw) / stainLength) * smoothstep(0.4, 0.75, fbm(vec2(q.x * 22.0, q.y * 1.2), ps * 22.0, 4));
-	base = mix(base, vec3(0.24, 0.22, 0.2), 0.85 * stain);
+	base = mix(base, vec3(0.24, 0.22, 0.2), min(0.85 * stain * mix(0.35, 1.3, r.z), 0.9));
+	// Long dark streaks, where water's run down the face for ages, across
+	// many rows - in the weathered regions.
+	float streak = smoothstep(0.55, 0.8, noise(vec2(q.x * 1.1, q.y * 0.06) + 71.0))
+			* smoothstep(0.3, 0.7, noise(vec2(q.x * 5.0, q.y * 0.3) + 83.0));
+	base = mix(base, vec3(0.22, 0.2, 0.18), 0.55 * streak * smoothstep(0.3, 0.8, r.z));
 	base *= 0.92 + 0.16 * grit;
-	base *= 0.9 + 0.2 * grain;
-	float fleck = smoothstep(0.72, 0.8, noise(q * 420.0 + 77.0)) * step(ps * 420.0, 0.8);
-	base = mix(base, vec3(0.2, 0.19, 0.18), 0.35 * fleck);
+	base *= 1.0 + 0.2 * grain;
+	// Dark mineral grains, pixel-sized too.
+	float fleck = smoothstep(0.4, 0.6, pixelGrain(q * 1.37 + 9.0, ps));
+	base = mix(base, vec3(0.2, 0.19, 0.18), 0.3 * fleck);
 	// Moss and grass on a ledge: where this row sticks out past the next.
 	float ledge = smoothstep(0.02, 0.06, stick - aboveStick) * (1.0 - smoothstep(0.0, 0.05, hi - yw));
-	float moss = ledge * smoothstep(0.4, 0.65, noise(vec2(q.x * 9.0, hi * 4.0) + 8.0));
+	float wet = 0.6 * (0.5 - r.z);
+	float moss = ledge * smoothstep(0.4 + wet, 0.65 + wet, noise(vec2(q.x * 9.0, hi * 4.0) + 8.0));
 	base = mix(base, mix(vec3(0.5, 0.55, 0.22), vec3(0.68, 0.66, 0.3), noise(q * 90.0)), moss);
 	h += 0.02 * moss;
 	base *= 1.0 - 0.35 * crack;
 	colour = base;
 	// Grass growing up from the ledge below, where the row below sticks
 	// out past this one (in the moss's patches), standing in front.
-	float below = rowStick(k - 1);
-	float ledgeBelow = smoothstep(0.02, 0.06, below - stick) * step(0.01, rowStrength(k));
+	float below = rowStick(k - 1, r.x, r.w);
+	float ledgeBelow = smoothstep(0.02, 0.06, below - stick) * step(0.01, rowStrength(k, r.w));
 	vec3 blade;
 	if (ledgeBelow > 0.0 && yw - lo < 0.09
-			&& blades(vec2(q.x, yw), false, lo, 0.085 * ledgeBelow, float(k), blade)) {
+			&& blades(vec2(q.x, yw), false, lo, 0.085 * ledgeBelow, float(k), wet, blade)) {
 		colour = blade;
 		crack = 0.0;
 		plant = 1.0;
@@ -536,7 +629,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float h = -10.0;
 	float what = 2.0;
 	vec3 blade;
-	if (q.y > edge - 0.6 * SOIL - 0.01 && q.y < edge + 0.12 && blades(q, true, 0.0, 0.085, 1.0, blade)) {
+	if (q.y > edge - 0.6 * SOIL - 0.01 && q.y < edge + 0.12 && blades(q, true, 0.0, 0.085, 1.0, 0.0, blade)) {
 		what = 1.0;
 		colour = blade;
 		h = 0.2 + SHELF_OUT;
@@ -718,6 +811,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		vec3 lit = SUN_COLOUR * diffuse * shadow + SKY_COLOUR * skyLight * ao
 				+ BOUNCE_COLOUR * (0.5 - 0.5 * n.y) * ao;
 		col = a * lit;
+		if (here.w < 0.5) {
+			col += GLINT * SUN_COLOUR * shadow * glints(toCliff(fragCoord, view), ps, n, l);
+		}
 		if (here.w > 0.5) {
 			// Plants: no hard sun, just soft and a little translucent.
 			col = a * (SUN_COLOUR * (0.35 + 0.4 * shadow) + SKY_COLOUR * 0.7 * ao);
