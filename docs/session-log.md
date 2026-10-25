@@ -612,3 +612,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - **The cliff:** a height field of strata, joints and angular facets, with stains and moss. Grass and conifers along the top.
   - **Lighting:** soft marched shadows and ambient occlusion. The cliff and its lighting are recomputed only when the view moves.
   - **On the phone:** checked by screenshot that it renders right. It runs at 90 fps when still and about 11 fps while moving.
+- **"corners look too sharp ... smoothing them slightly and adding a bit of noise ... trees darker like pine trees, more of a silhouette, and the grass a bit more of a noisy fuzz ... only grow upwards ... grass could grow on green upper surfaces everywhere including halfway down the cliff"** Rock Cliff v2 (id 1047).
+  - **Edges:** rounded slightly, with noise.
+  - **Plants:** dark pine silhouettes, and fuzzy grass that grows only upward, along the top and up from every ledge.
+  - **Moss:** on any rock that faces up.
+  - **On the phone:** renders at 92 fps when still.
