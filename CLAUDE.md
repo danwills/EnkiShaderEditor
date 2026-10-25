@@ -80,12 +80,15 @@ When driving Dan's phone over adb (only when he's said it's free):
   the backticks. For a screenshot use `status.sh shot file.png [why]`: it says it's hiding,
   hides the panel, takes the screenshot and comes back saying it's looking at it (`hide` alone
   just says so and hides; the next post brings it back, lines and all); `status.sh again`
-  replays the run's last lines. Run `status.sh check` between steps: it waits while Dan has the
-  panel's ⏸ on; if it fails, he swiped the notification away or tapped ⏹ to interrupt - finish
-  the step in hand (don't leave a dialog half-done), note where the test got to so it can be
-  picked up later, and stop. When unsure whether something looks right, ask him:
-  `status.sh rate 'Does the preview look right?' [seconds]` shows 👍/👎 by the panel and prints
-  up, down or none.
+  replays the run's last lines. Dan can message you (💬), pause or stop from the panel, and every
+  status.sh command but ask and done heeds that: read each command's stderr for
+  `💬 Dan says: ...` and act on it; ⏸ makes the next command wait until ▶; a command exiting 3
+  means ⏹ - finish the step in hand (don't leave a dialog half-done), note where the test got
+  to so it can be picked up later, put the phone back, and stop. Use
+  `status.sh wait SECONDS 'why'` instead of `sleep`, and `status.sh check` between steps (it
+  also fails if the notification was swiped away). When unsure whether something looks right,
+  ask him: `status.sh rate 'Does the preview look right?' [seconds]` shows 👍/👎 and Clarify by
+  the panel and prints up, down, none, or `clarify: <text>` - his real answer, so act on it.
 - To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the
   Paste dialog: it replaces a shader of that name in place, or adds one. With Enki debug in the
   background that needs no UI; with it on screen, the phone asks Replace/Ignore over whatever's

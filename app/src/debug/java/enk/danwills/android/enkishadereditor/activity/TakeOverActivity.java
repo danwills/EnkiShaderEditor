@@ -1,9 +1,12 @@
 package enk.danwills.android.enkishadereditor.activity;
 
+import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -14,12 +17,8 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -36,6 +35,8 @@ import java.nio.charset.StandardCharsets;
 // for when it's nearly OK but Dan needs a moment to finish what he's
 // doing - and then status.sh brings it back (an app in the background
 // can't bring itself forward), counting down again.
+// Only the platform dialog and AndroidX Core, so it drops into any app,
+// Compose-only ones without AppCompat or Material Components included.
 // A tap outside doesn't close it;
 // left unanswered (another app opened over it, say), it posts a
 // notification with the same answers, which also brings it back. The
@@ -43,7 +44,7 @@ import java.nio.charset.StandardCharsets;
 // app's storage, which status.sh reads with run-as; a hold writes
 // "hold:<holds so far>:<seconds away>" there first, so status.sh knows
 // when to bring it back.
-public class TakeOverActivity extends AppCompatActivity {
+public class TakeOverActivity extends Activity {
 	private static final String TAG = "TakeOver";
 	private static final String CHANNEL = "claude_takeover";
 	private static final int NOTIFICATION = 7301;
@@ -86,7 +87,10 @@ public class TakeOverActivity extends AppCompatActivity {
 				: "Claude would like to drive the phone for a test.";
 		int wait = getIntent().getIntExtra("wait", 15);
 		countdown = getIntent().getIntExtra("countdown", 15);
-		dialog = new MaterialAlertDialogBuilder(this)
+		boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+				== Configuration.UI_MODE_NIGHT_YES;
+		dialog = new AlertDialog.Builder(this, night ? android.R.style.Theme_DeviceDefault_Dialog_Alert
+				: android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
 				.setTitle("🤖 Can Claude use your phone?")
 				.setMessage(message)
 				.setPositiveButton("Go ahead", (d, w) -> answer(id, "yes"))

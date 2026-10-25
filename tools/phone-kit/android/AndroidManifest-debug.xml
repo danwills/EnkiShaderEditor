@@ -21,5 +21,14 @@
 			android:taskAffinity=".takeover"
 			android:theme="@style/PhoneKitDialogTheme"
 			tools:ignore="ExportedActivity"/>
+		<!-- Opened by StatusOverlay's 💬 buttons (not by adb, so not exported). -->
+		<activity
+			android:name="com.example.phonekit.SayActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".say"
+			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+			android:theme="@style/PhoneKitDialogTheme"/>
 	</application>
 </manifest>

@@ -25,10 +25,12 @@ owner might be holding it. It covers four things:
    phone", is posted for the run. Swiping it away is the stop signal:
    `status.sh check` fails, and Claude finishes the step in hand and
    stops. The panel has buttons too, in a small corner window of their
-   own (the only part that takes touches): ⏸/▶ pauses Claude after the
-   step in hand until Continue (`check` waits), ⏹ stops it like the
-   swipe, and 👍/👎 appear while Claude asks whether something looks
-   right (`status.sh rate`).
+   own (the only part that takes touches): 💬 sends Claude a message
+   (typed, or dictated with the keyboard's mic), ⏸/▶ pauses it until
+   Continue, ⏹ stops it like the swipe, and 👍/👎/Clarify appear while
+   Claude asks whether something looks right (`status.sh rate`). Every
+   status.sh command heeds the buttons, so they get through whatever
+   Claude is doing.
 4. **Hand back.** At the end Claude puts the phone back as it found it,
    the panel goes at once, and a "Claude is all finished" notification is
    left up with the summary and the log's last 8 lines, so it's clear
@@ -54,8 +56,16 @@ owner might be holding it. It covers four things:
     straight after one.
   - `status.sh check` fails if the run notification was swiped away or
     ⏹ tapped; while ⏸ is on it waits, saying so, until ▶.
-  - `status.sh rate 'Does it look right?' [SECONDS]` shows 👍/👎 until
-    one's tapped (or SECONDS, default 30) and prints up, down or none.
+  - Every command but `ask` and `done` heeds the panel's buttons first:
+    💬 messages print on stderr (`💬 Dan says: ...`), ⏸ waits until ▶,
+    and ⏹ exits 3 with a note, once (then commands work again, for
+    narrating the wrap-up, but `check` keeps failing).
+  - `status.sh wait SECONDS ['why' [KIND]]` waits like `sleep`, but
+    heeds the buttons while it does. Use it instead of `sleep`.
+  - `status.sh rate 'Does it look right?' [SECONDS]` shows 👍/👎 and
+    Clarify until one's tapped (or SECONDS, default 30) and prints up,
+    down, none, or `clarify: <text>`. Clarify opens a text box
+    (SayActivity), and the wait stretches by 5 minutes while it's open.
   - `status.sh shot file.png [why]` says it's hiding, hides the panel,
     takes a screenshot and comes back saying it's looking at it.
   - `status.sh hide` says so and takes the panel out of sight; the next
@@ -78,13 +88,19 @@ overlay permission.
 
 ## Setting it up
 
+`install.sh APP_MODULE_DIR DEBUG_APPLICATION_ID [JAVA_PACKAGE]` does steps
+1, 2 and 4 below (the host script as `tools/phone/status.sh`, a wrapper
+around this kit's). By hand:
+
 1. Copy `android/java/com/example/phonekit/` into `app/src/debug/java/`.
    Rename the package if you like, and set `PHONE_KIT_CLASSES` to match.
 2. Merge `AndroidManifest-debug.xml` into `app/src/debug/AndroidManifest.xml`.
-3. Copy `phone_kit_styles.xml` into `app/src/debug/res/values/`. Its
-   parent theme must be a Material Components or Material3 one, because
-   the prompt uses `MaterialAlertDialogBuilder`. Its dependencies are
-   AndroidX AppCompat and Core, and Material Components.
+3. Copy `phone_kit_styles.xml` into `app/src/debug/res/values/`. The
+   prompt is a platform `AlertDialog` in the device's own style, so the
+   only dependency is AndroidX Core (`NotificationCompat`): it works in
+   Compose-only apps that have no AppCompat or Material Components. The
+   Java sticks to Java 11 (no switch expressions or `instanceof`
+   patterns), which some projects still compile with.
 4. Put `status.sh` somewhere in the repo and export
    `PHONE_KIT_APP=com.your.app.debug`.
 5. Add the instructions below to the project's `CLAUDE.md` (or AGENTS.md).
@@ -120,9 +136,15 @@ When driving the phone over adb:
 - After anything that stops the app (force-stop, install, a restart),
   run `status.sh again` straight away: the panel went with the process,
   and this replays its lines.
-- Run `status.sh check` between steps: if it fails, the owner swiped the
-  notification away to interrupt - finish the step in hand (don't leave a
-  dialog half-done), note where you got to, and stop.
+- The owner can message you (💬), pause or stop from the panel, and
+  every status.sh command heeds that: read each command's stderr for
+  `💬 Dan says: ...` and act on it. A command exiting 3 means ⏹: finish
+  the step in hand (don't leave a dialog half-done), note where you got
+  to, put the phone back, and stop. Use `status.sh wait SECONDS 'why'`
+  instead of `sleep`. `status.sh check` between steps also fails if the
+  notification was swiped away.
+- `status.sh rate` can answer `clarify: <text>`: that's the real
+  answer, so act on what it says.
 - Finish by putting the phone back: reopen the app that was showing
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`)
   or go home, turn stay-awake off, restore any setting changed. Then

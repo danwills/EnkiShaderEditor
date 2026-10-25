@@ -37,5 +37,15 @@
 			android:taskAffinity=".takeover"
 			android:theme="@style/DebugImportTheme"
 			tools:ignore="ExportedActivity"/>
+		<!-- Dan typing a note to Claude, from the status panel's 💬 and
+		     Clarify buttons (opened in-app, so not exported). -->
+		<activity
+			android:name=".receiver.SayActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".say"
+			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+			android:theme="@style/DebugImportTheme"/>
 	</application>
 </manifest>

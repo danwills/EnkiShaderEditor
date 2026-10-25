@@ -49,10 +49,11 @@ import java.util.regex.Pattern;
 // likely to take, if Claude said (`?` when it can't tell) - and, once
 // the next line comes, how long it actually took (amendLast()).
 // Beside the pill, in a small window of their own (the one part that
-// takes touches): Pause/Continue and Stop, which Claude reads back
-// between steps (files/claude-control: "paused" or "stopped"), and - only
-// while Claude's asking whether something looks right (askRating()) -
-// thumbs up and down (files/claude-rate-<id>: "up" or "down").
+// takes touches): 💬 to tell Claude something (SayActivity), and
+// Pause/Continue and Stop, which every status.sh command reads back
+// (files/claude-control: "paused" or "stopped"), and - only while Claude's
+// asking whether something looks right (askRating()) - thumbs up and down
+// (files/claude-rate-<id>: "up" or "down") and Clarify, to say more instead.
 // If Claude goes quiet for QUIET_MS (the connection dropped, say) the
 // panel takes itself away, so it's never left over everything: an
 // overlay can stop taps getting through to some of Settings' screens.
@@ -165,6 +166,12 @@ final class StatusOverlay {
 		}
 		lines.addView(line);
 		waitQuietly();
+	}
+
+	// The panel goes after QUIET_MS more with no new line.
+	private void waitQuietly() {
+		handler.removeCallbacks(quiet);
+		handler.postDelayed(quiet, QUIET_MS);
 		context.getSystemService(android.app.NotificationManager.class).cancel(QUIET_NOTIFICATION);
 	}
 
@@ -194,20 +201,16 @@ final class StatusOverlay {
 		}
 	}
 
-	// The panel goes after QUIET_MS more with no new line.
-	private void waitQuietly() {
-		handler.removeCallbacks(quiet);
-		handler.postDelayed(quiet, QUIET_MS);
-	}
-
 	// Claude's newest line, with how long its step actually took.
 	void amendLast(@NonNull String took) {
 		if (panel == null) {
 			return;
 		}
 		for (int i = panel.getChildCount() - 1; i >= 0; --i) {
-			if (panel.getChildAt(i) instanceof TextView line && line.getTag() instanceof String[] parts) {
-				line.setText(styled(parts[0], parts[1], parts[2], took));
+			View child = panel.getChildAt(i);
+			if (child instanceof TextView && child.getTag() instanceof String[]) {
+				String[] parts = (String[]) child.getTag();
+				((TextView) child).setText(styled(parts[0], parts[1], parts[2], took));
 				return;
 			}
 		}
@@ -226,7 +229,7 @@ final class StatusOverlay {
 
 	// Claude asking whether what it's looking at is right: thumbs up and
 	// down until one's tapped (or clearRating()).
-	void askRating(@NonNull String id) {
+	void askRating(@NonNull String id, @Nullable String question) {
 		LinearLayout bar = controls();
 		if (thumbs != null) {
 			bar.removeView(thumbs);
@@ -234,7 +237,36 @@ final class StatusOverlay {
 		thumbs = new LinearLayout(context);
 		thumbs.addView(button("👍", v -> rate(id, "up")));
 		thumbs.addView(button("👎", v -> rate(id, "down")));
+		thumbs.addView(button("Clarify", v -> {
+			clearRating();
+			say(id, question);
+		}));
+		// A gap before Claude's own buttons, so the thumbs don't read as one row with them.
+		var gap = new View(context);
+		gap.setLayoutParams(new LinearLayout.LayoutParams(dp(14), 1));
+		thumbs.addView(gap);
 		bar.addView(thumbs, 0);
+	}
+
+	// SayActivity: a message (rate null), or a clarification of question `rate`.
+	private void say(@Nullable String rate, @Nullable String question) {
+		var intent = new android.content.Intent(context, SayActivity.class)
+				.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+		if (rate != null) {
+			intent.putExtra("rate", rate).putExtra("question", question);
+		}
+		try {
+			context.startActivity(intent);
+		} catch (RuntimeException e) {
+			android.util.Log.w("StatusOverlay", "Couldn't open SayActivity", e);
+		}
+	}
+
+	// What Dan sent from SayActivity, on the panel so he sees it went.
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
+	void said(@NonNull String text, boolean clarifying) {
+		add((clarifying ? "You clarified: " : "You said: ") + text, "💬", null, false);
 	}
 
 	void clearRating() {
@@ -261,14 +293,14 @@ final class StatusOverlay {
 		if (pauseButton != null) {
 			pauseButton.setImageDrawable(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE));
 		}
-		add(paused ? "Pause asked - Claude will wait after this step (▶ to carry on)"
+		add(paused ? "Pause asked - Claude will wait at its next step (▶ to carry on)"
 				: "Carrying on", paused ? "⏸" : "▶", null, false);
 	}
 
 	private void stop() {
 		paused = false;
 		write(CONTROL, "stopped");
-		add("Stop asked - Claude will finish this step, put things back and stop", "⏹", null, false);
+		add("Stop asked - Claude will stop at its next step and put things back", "⏹", null, false);
 	}
 
 	@Nullable
@@ -313,23 +345,25 @@ final class StatusOverlay {
 			float cy = b.exactCenterY();
 			float h = size * 0.5f;
 			switch (kind) {
-				case PAUSE -> {
+				case PAUSE: {
 					float bar = h * 0.34f;
 					float gap = h * 0.3f;
 					canvas.drawRoundRect(cx - gap / 2 - bar, cy - h / 2, cx - gap / 2, cy + h / 2,
 							bar * 0.2f, bar * 0.2f, paint);
 					canvas.drawRoundRect(cx + gap / 2, cy - h / 2, cx + gap / 2 + bar, cy + h / 2,
 							bar * 0.2f, bar * 0.2f, paint);
+					break;
 				}
-				case PLAY -> {
+				case PLAY: {
 					var path = new Path();
 					path.moveTo(cx - h * 0.38f, cy - h / 2);
 					path.lineTo(cx + h * 0.5f, cy);
 					path.lineTo(cx - h * 0.38f, cy + h / 2);
 					path.close();
 					canvas.drawPath(path, paint);
+					break;
 				}
-				default -> {
+				default: {
 					float half = h * 0.42f;
 					canvas.drawRoundRect(cx - half, cy - half, cx + half, cy + half,
 							half * 0.2f, half * 0.2f, paint);
@@ -398,11 +432,12 @@ final class StatusOverlay {
 			controls.setVisibility(View.VISIBLE);
 			return controls;
 		}
+		var bar = new LinearLayout(context);
+		bar.setOrientation(LinearLayout.HORIZONTAL);
 		// As files/claude-control has it: the app may have restarted (an
 		// install) while paused, and Claude's still waiting for Continue.
 		paused = "paused".equals(read(CONTROL));
-		var bar = new LinearLayout(context);
-		bar.setOrientation(LinearLayout.HORIZONTAL);
+		bar.addView(button("💬", v -> say(null, null)));
 		pauseButton = iconButton(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE), v -> togglePause());
 		bar.addView(pauseButton);
 		bar.addView(iconButton(new Glyph(Glyph.STOP), v -> stop()));
@@ -544,25 +579,25 @@ final class StatusOverlay {
 		if (kind == null || kind.isEmpty()) {
 			return "🔧";
 		}
-		return switch (kind) {
-			case "info" -> "💬";
-			case "step" -> "🔧";
-			case "look" -> "👀";
-			case "tap" -> "👆";
-			case "type" -> "⌨️";
-			case "wait" -> "⏳";
-			case "build" -> "🛠️";
-			case "install" -> "📲";
-			case "load" -> "📥";
-			case "think" -> "🤔";
-			case "good" -> "✅";
-			case "bad" -> "❌";
-			case "warn" -> "⚠️";
-			case "happy" -> "😊";
-			case "sad" -> "😢";
-			case "party" -> "🎉";
-			default -> kind;
-		};
+		switch (kind) {
+			case "info": return "💬";
+			case "step": return "🔧";
+			case "look": return "👀";
+			case "tap": return "👆";
+			case "type": return "⌨️";
+			case "wait": return "⏳";
+			case "build": return "🛠️";
+			case "install": return "📲";
+			case "load": return "📥";
+			case "think": return "🤔";
+			case "good": return "✅";
+			case "bad": return "❌";
+			case "warn": return "⚠️";
+			case "happy": return "😊";
+			case "sad": return "😢";
+			case "party": return "🎉";
+			default: return kind;
+		}
 	}
 
 	@Nullable
@@ -570,12 +605,12 @@ final class StatusOverlay {
 		if (kind == null) {
 			return null;
 		}
-		return switch (kind) {
-			case "good", "happy", "party" -> Color.rgb(120, 230, 140);
-			case "bad", "sad" -> Color.rgb(255, 110, 110);
-			case "warn" -> Color.rgb(255, 190, 90);
-			default -> null;
-		};
+		switch (kind) {
+			case "good": case "happy": case "party": return Color.rgb(120, 230, 140);
+			case "bad": case "sad": return Color.rgb(255, 110, 110);
+			case "warn": return Color.rgb(255, 190, 90);
+			default: return null;
+		}
 	}
 
 	private int dp(float value) {

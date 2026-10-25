@@ -37,10 +37,23 @@
 #   status.sh check   exit 1 if the notification was swiped away, or the
 #                     panel's Stop tapped; while its Pause is on, waits
 #                     (saying so) until Continue
+#   status.sh wait SECONDS [TEXT [KIND]]
+#                     use instead of sleep: TEXT posted first (if given),
+#                     then waits, heeding the panel's buttons as it goes
+#
+# Every command (but ask and done) heeds the panel's buttons first, so
+# they get through whatever Claude's doing:
+#   - messages from its 💬 come out on stderr: "💬 Dan says: ..."
+#   - Pause waits there (saying so) until Continue
+#   - Stop exits 3 with a note on stderr - once: after that commands run
+#     as normal, so Claude can narrate putting things back - but check
+#     keeps failing
 #   status.sh rate "Does the preview look right?" [SECONDS]
-#                     the line, with thumbs up/down beside the panel until
-#                     one's tapped or SECONDS (default 30) pass; prints up,
-#                     down or none
+#                     the line, with thumbs up/down and Clarify
+#                     beside the panel until one's tapped or SECONDS
+#                     (default 30) pass; prints up, down, clarify: TEXT, or
+#                     none. While Dan's typing a clarification it waits up
+#                     to 5 minutes more
 #   status.sh hide    the panel out of sight (a clean screenshot), saying so
 #                     first; the next post brings it back, lines and all
 #   status.sh shot FILE [WHY]
@@ -145,6 +158,44 @@ remove() {
 	fi
 }
 
+# The panel's buttons, from files in the app's storage (see the header).
+# Messages from the panel's 💬, printed for Claude: moved aside before
+# reading, so one sent meanwhile isn't lost.
+messages() {
+	msgs=$(adb shell "run-as $PKG sh -c 'mv files/claude-messages files/claude-messages.read 2>/dev/null && cat files/claude-messages.read && rm -f files/claude-messages.read'" </dev/null 2>/dev/null | tr -d '\r')
+	if [ -n "$msgs" ]; then
+		printf '%s\n' "$msgs" | while IFS= read -r m; do
+			[ -n "$m" ] && echo "💬 Dan says: $m" >&2
+		done
+	fi
+}
+
+heed() {
+	messages
+	said=
+	while :; do
+		control=$(adb shell "run-as $PKG cat files/claude-control 2>/dev/null" </dev/null | tr -d '\r')
+		case "$control" in
+		stopped)
+			# Told once; after that Claude's putting things back.
+			adb shell "run-as $PKG sh -c 'echo stopping > files/claude-control'" </dev/null >/dev/null 2>&1
+			echo "⏹ Dan tapped Stop: finish the step in hand, put the phone back, run done, and stop." >&2
+			exit 3
+			;;
+		paused)
+			if [ -z "$said" ]; then
+				line "Paused - waiting for ▶" "⏸" "?"
+				echo "⏸ Dan paused: waiting for Continue" >&2
+				said=1
+			fi
+			sleep 2
+			messages
+			;;
+		*) return 0 ;;
+		esac
+	done
+}
+
 case "$1" in
 post)
 	# Posted once a run (each post makes its sound again), after taking
@@ -156,7 +207,18 @@ post)
 		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
+	heed
 	line "${2:-Testing...}" "${3:-step}" "${4:-}"
+	;;
+wait)
+	[ -n "$2" ] || { echo "usage: $0 wait SECONDS [TEXT [KIND]]" >&2; exit 2; }
+	heed
+	[ -n "${3:-}" ] && line "$3" "${4:-wait}" "~$2 s"
+	end=$(($(date +%s) + $2))
+	while [ "$(date +%s)" -lt "$end" ]; do
+		sleep 1
+		heed
+	done
 	;;
 again)
 	# Only mid-run: the panel's back, with the pill and the run's last lines.
@@ -222,38 +284,43 @@ ask)
 	;;
 check)
 	[ -n "$(key "$(tag)")" ] || exit 1
-	# The panel's buttons: Stop, or Pause until Continue.
-	said=
-	while :; do
-		control=$(adb shell "run-as $PKG cat files/claude-control 2>/dev/null" | tr -d '\r')
-		case "$control" in
-		stopped) exit 1 ;;
-		paused)
-			if [ -z "$said" ]; then
-				line "Paused - waiting for ▶" "⏸" "?"
-				said=1
-			fi
-			[ -n "$(key "$(tag)")" ] || exit 1
-			sleep 2
-			;;
-		*) exit 0 ;;
-		esac
-	done
+	control=$(adb shell "run-as $PKG cat files/claude-control 2>/dev/null" | tr -d '\r')
+	[ "$control" = stopping ] && exit 1
+	heed || exit 1
 	;;
 rate)
+	heed
 	id="rate$(date +%s)"
 	wait="${3:-30}"
-	say "--es rate $id"
-	line "${2:-Does this look right?}" "🤔" "~${wait} s"
+	question="${2:-Does this look right?}"
+	say "--es rate $id --es question $(quote "$question")"
+	line "$question" "🤔" "~${wait} s"
 	waited=0
 	answer=none
+	extended=
 	while [ "$waited" -lt "$wait" ]; do
 		got=$(adb shell "run-as $PKG cat files/claude-rate-$id 2>/dev/null" | tr -d '\r')
-		if [ -n "$got" ]; then
+		case "$got" in
+		'') ;;
+		typing)
+			# Dan's writing a clarification: give him time, once.
+			if [ -z "$extended" ]; then
+				extended=1
+				wait=$((waited + 300))
+			fi
+			;;
+		clarify:*)
+			answer="clarify: ${got#clarify:}"
+			adb shell "run-as $PKG rm -f files/claude-rate-$id"
+			break
+			;;
+		*)
 			answer="$got"
 			adb shell "run-as $PKG rm -f files/claude-rate-$id"
 			break
-		fi
+			;;
+		esac
+		[ $((waited % 3)) -eq 2 ] && heed
 		sleep 1
 		waited=$((waited + 1))
 	done
@@ -261,12 +328,14 @@ rate)
 	echo "$answer"
 	;;
 hide)
+	heed
 	line "Hiding the panel for a moment - taking a screenshot" "📸"
 	sleep 0.5
 	say "--ez hide true"
 	;;
 shot)
 	[ -n "$2" ] || { echo "usage: $0 shot FILE [WHY]" >&2; exit 2; }
+	heed
 	line "Hiding the panel for a moment - taking a screenshot" "📸" "~2 s"
 	sleep 0.5
 	say "--ez hide true"
@@ -305,7 +374,7 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 	adb shell appops set $PKG SYSTEM_ALERT_WINDOW default >/dev/null 2>&1
 	;;
 *)
-	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | rate TEXT [SECONDS] | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2
+	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | wait SECONDS [TEXT [KIND]] | rate TEXT [SECONDS] | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2
 	exit 2
 	;;
 esac

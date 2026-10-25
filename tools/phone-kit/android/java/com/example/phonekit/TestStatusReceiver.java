@@ -13,7 +13,8 @@ import android.widget.Toast;
 // `eta` - how long its step's likely to take ("?" for no estimate);
 // `took` - how long the newest line's step actually took (on its own,
 // amending that line); `rate` - an id: thumbs up/down shown for it, its
-// answer written to files/claude-rate-<id>; `rate_clear` - thumbs gone;
+// answer written to files/claude-rate-<id> (`question`: the question, for
+// the clarify box); `rate_clear` - thumbs gone;
 // `hide` - the panel out of sight, for a clean screenshot; `done` - the
 // run's over, the panel gone at once (the notification has the log's end). Shown in StatusOverlay
 // over whatever's on screen, or - without the overlay permission, which
@@ -40,7 +41,7 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		}
 		String rate = intent.getStringExtra("rate");
 		if (rate != null && rate.matches("[0-9A-Za-z_-]{1,64}")) {
-			overlay.askRating(rate);
+			overlay.askRating(rate, intent.getStringExtra("question"));
 		}
 		String took = intent.getStringExtra("took");
 		if (took != null && !took.isEmpty()) {
