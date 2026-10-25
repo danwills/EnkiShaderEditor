@@ -2672,8 +2672,14 @@ public class MainActivity extends AppCompatActivity {
 		if (result.getResultCode() != RESULT_OK || result.getData() == null) {
 			return;
 		}
+		// The application's manager, not this Activity's: a MediaProjection
+		// keeps the Context of the manager that made it, and its internal
+		// callback binder is held from native code until system_server
+		// lets go of it - which can be well after stop(), so with this
+		// Activity's Context every guard against a missed stop() still
+		// left LeakCanary finding a destroyed MainActivity behind it.
 		MediaProjectionManager projectionManager =
-				getSystemService(MediaProjectionManager.class);
+				getApplicationContext().getSystemService(MediaProjectionManager.class);
 		if (projectionManager == null) {
 			return;
 		}
