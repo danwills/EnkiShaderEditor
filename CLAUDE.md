@@ -90,7 +90,8 @@ When driving Dan's phone over adb (only when he's said it's free):
   ask him: `status.sh rate 'Does the preview look right?' [seconds]` shows 👍/👎 and Clarify by
   the panel and prints up, down, none, or `clarify: <text>` - his real answer, so act on it.
 - To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the
-  Paste dialog: it replaces a shader of that name in place, or adds one. With Enki debug in the
+  Paste dialog: it replaces a shader of that name in place, or adds one (`--open` first: then
+  opens it in Enki debug, which works from a cold start too). With Enki debug in the
   background that needs no UI; with it on screen, the phone asks Replace/Ignore over whatever's
   showing (Replace is at (1082,1764)), and replacing the open shader reloads it.
 - A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).

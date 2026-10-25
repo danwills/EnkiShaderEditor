@@ -262,6 +262,9 @@ public class MainActivity extends AppCompatActivity {
 	private NavigationManager navigationManager;
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
+	// Debug builds only: EXTRA_OPEN_SHADER on the intent that started the
+	// app, opened by the first load in place of the last-opened shader.
+	private long launchShaderId = 0;
 	// Recreated (rotated, say) and onRestoreInstanceState() hasn't run
 	// yet: the editor's restored text arrives first, before the shader's
 	// session is rebuilt, so it mustn't be run as it is - see there.
@@ -566,6 +569,10 @@ public class MainActivity extends AppCompatActivity {
 			// background) the system hands back the same launch intent,
 			// which was already dealt with.
 			Intent launchIntent = getIntent();
+			if (BuildConfig.DEBUG && launchIntent != null && launchIntent.hasExtra(EXTRA_OPEN_SHADER)) {
+				launchShaderId = launchIntent.getLongExtra(EXTRA_OPEN_SHADER, 0);
+				launchIntent.removeExtra(EXTRA_OPEN_SHADER);
+			}
 			getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 		}
 
@@ -1539,7 +1546,9 @@ public class MainActivity extends AppCompatActivity {
 					// Try to load the last opened shader.
 					// NOTE: This assumes a method like `getLastOpenedShader()` exists
 					// in your SharedPreferences helper class.
-					long lastOpenedId = ShaderEditorApp.preferences.getLastOpenedShader();
+					long lastOpenedId = launchShaderId > 0 ? launchShaderId
+							: ShaderEditorApp.preferences.getLastOpenedShader();
+					launchShaderId = 0;
 					long idToLoad = 0;
 
 					// Check if the last opened shader still exists in the list.
