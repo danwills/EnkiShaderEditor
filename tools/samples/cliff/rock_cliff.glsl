@@ -88,9 +88,9 @@ uniform int pointerCount;
 // The share of pixel-sized crystals that glint, and how bright; their
 // flares: a soft halo (halation) and thin spikes, in pixels.
 #define GLINT_DENSITY 0.04
-#define GLINT 1.4
-#define HALO 0.035
-#define SPIKES 0.03
+#define GLINT 0.6
+#define HALO 0.02
+#define SPIKES 0.018
 #define SPIKE_LENGTH 20
 // The darkest ambient occlusion gets: deep crevices still show a little.
 #define AO_FLOOR 0.28
@@ -98,6 +98,20 @@ uniform int pointerCount;
 
 mat2 rot(float a) {
 	return mat2(cos(a), sin(a), -sin(a), cos(a));
+}
+
+// Every setting above, boiled down: B, C and D keep it (in their top-left
+// texel but one) beside the view they were made for, so a define changed in
+// Adjust Defines' Edit Live (a uniform then) gets them worked out afresh.
+vec4 settings() {
+	return vec4(
+		VIEW + 1.3 * START.x + 1.7 * START.y + 1.9 * TOP + 2.3 * ROW + 2.9 * MASTER + 3.1 * CRACK_DEPTH
+			+ 3.7 * BEVEL + 4.1 * SHELF + 4.3 * SHELF_OUT + 4.7 * ROUNDING + 5.3 * BLADE + 5.9 * SOIL,
+		dot(SUN, vec3(1.0, 1.3, 1.7)) + dot(SUN_COLOUR, vec3(1.9, 2.3, 2.9))
+			+ dot(SKY_COLOUR, vec3(3.1, 3.7, 4.1)) + dot(BOUNCE_COLOUR, vec3(4.3, 4.7, 5.3)),
+		float(SHADOW_STEPS) + 1.3 * SHADOW_REACH + 1.7 * AO_STRENGTH + 1.9 * CRACK_DARK + 2.3 * AO_FLOOR
+			+ 2.9 * EXPOSURE,
+		GLINT_DENSITY + 1.3 * GLINT + 1.7 * HALO + 1.9 * SPIKES + 2.3 * float(SPIKE_LENGTH));
 }
 
 // The view: offset (pixels), zoom, angle - from Buffer A's top row.
@@ -699,12 +713,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 view = viewState(iChannel0);
 	// Its view: the same as last time, everything's kept.
 	vec4 made = texelFetch(iChannel1, ivec2(0, top), 0);
-	if (iFrame > 2 && made == view) {
+	if (iFrame > 2 && made == view && texelFetch(iChannel1, ivec2(1, top), 0) == settings()) {
 		fragColor = texelFetch(iChannel1, c, 0);
 		return;
 	}
 	if (c == ivec2(0, top)) {
 		fragColor = view;
+		return;
+	}
+	if (c == ivec2(1, top)) {
+		fragColor = settings();
 		return;
 	}
 	float ps = VIEW / (view.z * iResolution.y);
@@ -761,12 +779,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 view = viewState(iChannel0);
 	ivec2 top = ivec2(0, int(res.y) - 1);
 	// Lit for this view already: kept.
-	if (iFrame > 2 && texelFetch(iChannel2, top, 0) == view) {
+	if (iFrame > 2 && texelFetch(iChannel2, top, 0) == view && texelFetch(iChannel2, top + ivec2(1, 0), 0) == settings()) {
 		fragColor = texelFetch(iChannel2, ivec2(fragCoord), 0);
 		return;
 	}
 	if (ivec2(fragCoord) == top) {
 		fragColor = view;
+		return;
+	}
+	if (ivec2(fragCoord) == top + ivec2(1, 0)) {
+		fragColor = settings();
 		return;
 	}
 	float ps = VIEW / (view.z * res.y);
@@ -871,12 +893,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 res = iResolution.xy;
 	vec4 view = viewState(iChannel0);
 	ivec2 top = ivec2(0, int(res.y) - 1);
-	if (iFrame > 2 && texelFetch(iChannel3, top, 0) == view) {
+	if (iFrame > 2 && texelFetch(iChannel3, top, 0) == view && texelFetch(iChannel3, top + ivec2(1, 0), 0) == settings()) {
 		fragColor = texelFetch(iChannel3, ivec2(fragCoord), 0);
 		return;
 	}
 	if (ivec2(fragCoord) == top) {
 		fragColor = view;
+		return;
+	}
+	if (ivec2(fragCoord) == top + ivec2(1, 0)) {
+		fragColor = settings();
 		return;
 	}
 	float ps = VIEW / (view.z * res.y);
