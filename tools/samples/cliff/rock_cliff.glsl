@@ -89,9 +89,9 @@ uniform int pointerCount;
 // flares: a soft halo (halation) and thin spikes, in pixels.
 #define GLINT_DENSITY 0.04
 #define GLINT 1.4
-#define HALO 0.1
-#define SPIKES 0.08
-#define SPIKE_LENGTH 14
+#define HALO 0.035
+#define SPIKES 0.03
+#define SPIKE_LENGTH 20
 // The darkest ambient occlusion gets: deep crevices still show a little.
 #define AO_FLOOR 0.28
 #define EXPOSURE 1.25
@@ -211,7 +211,7 @@ vec2 glints(vec2 q, float ps, vec3 n, vec3 l) {
 // A thin film's colour (as on oil, or a mineral's tarnish) at a phase:
 // soft bands of colour round the hues, half white.
 vec3 filmColour(float phase) {
-	return mix(vec3(1.0), 0.5 + 0.5 * cos(TAU * (phase + vec3(0.0, 0.33, 0.67))), 0.55);
+	return mix(vec3(1.0), 0.5 + 0.5 * cos(TAU * (phase + vec3(0.0, 0.33, 0.67))), 0.8);
 }
 
 // Broad variation across the cliff, so from afar it doesn't repeat:
@@ -225,19 +225,45 @@ vec4 region(vec2 q) {
 	return smoothstep(0.28, 0.72, n);
 }
 
-// Octaves stop where they'd be finer than a pixel (ps).
+// At least `octaves` octaves, and more as the view zooms in, down to a
+// pixel's size (ps), so it never runs out; each fading out as it nears
+// a pixel.
 float fbm(vec2 p, float ps, int octaves) {
 	float sum = 0.0;
 	float amp = 0.5;
 	float freq = 1.0;
-	for (int i = 0; i < octaves; i++) {
-		if (freq * ps > 0.6) {
-			sum += amp * 0.5;
-		} else {
-			sum += amp * noise(p * freq + float(i) * 17.3);
+	for (int i = 0; i < 12; i++) {
+		float fine = freq * ps;
+		if (i >= octaves && fine > 0.5) {
+			break;
 		}
+		float fade = 1.0 - smoothstep(0.3, 0.6, fine);
+		sum += amp * mix(0.5, noise(p * freq + float(i) * 17.3), fade);
 		freq *= 2.03;
 		amp *= 0.5;
+	}
+	return sum;
+}
+
+// Rough relief, about -1 to 1 (times amplitude at frequency f0): octaves
+// of gradient noise, half of each creased (folded at its zero, as broken
+// stone), from f0 down to a pixel's size however far the view's zoomed
+// in, the finer ones only a little smaller (roughness), so close up it's
+// still rough, never smooth lumps.
+float rough(vec2 q, float ps, float f0) {
+	float sum = 0.0;
+	float amp = 1.0;
+	float freq = f0;
+	for (int i = 0; i < 16; i++) {
+		float fine = freq * ps;
+		if (fine > 0.6) {
+			break;
+		}
+		float n = gnoise(q * freq + vec2(float(i) * 17.3, float(i) * 5.9));
+		n = mix(n, 0.45 - 1.3 * abs(n), 0.5);
+		sum += amp * (1.0 - smoothstep(0.3, 0.6, fine)) * n;
+		freq *= 2.03;
+		amp *= 0.6;
 	}
 	return sum;
 }
@@ -397,8 +423,8 @@ bool blades(vec2 q, bool top, float ground, float tallest, float seed, float wet
 		float x = root + lean * len * t * t;
 		float halfWidth = 0.0016 * (1.0 - 0.8 * t);
 		if (abs(q.x - x) < halfWidth) {
-			vec3 dry = vec3(0.7, 0.66, 0.36);
-			vec3 green = vec3(0.4, 0.48, 0.15);
+			vec3 dry = vec3(0.56, 0.52, 0.28);
+			vec3 green = vec3(0.28, 0.35, 0.1);
 			float tone = hash2(ivec2(i + 21, int(seed)));
 			colour = mix(green, dry, tone * tone) * (0.45 + 0.55 * t) * (0.8 + 0.4 * r1);
 			return true;
@@ -607,9 +633,8 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	// Chips: small angular faces, as the big ones.
 	float e2;
 	h += 0.6 * facets(q, 0.06, 0.3, 19, e2);
-	h += 0.01 * (fbm(q * 9.0 + 3.0, ps * 9.0, 4) - 0.5);
-	float grit = fbm(q * 70.0, ps * 70.0, 4);
-	h += 0.006 * (grit - 0.5);
+	float grit = rough(q, ps, 9.0);
+	h += 0.012 * grit;
 	// Fine stone: mineral grain, faint, in the relief and the colour -
 	// always about a pixel across (see pixelGrain()).
 	float grain = pixelGrain(q, ps);
@@ -640,7 +665,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	float streak = smoothstep(0.55, 0.8, noise(vec2(q.x * 1.1, q.y * 0.06) + 71.0))
 			* smoothstep(0.3, 0.7, noise(vec2(q.x * 5.0, q.y * 0.3) + 83.0));
 	base = mix(base, vec3(0.22, 0.2, 0.18), 0.55 * streak * smoothstep(0.3, 0.8, r.z));
-	base *= 0.92 + 0.16 * grit;
+	base *= 1.0 + 0.12 * clamp(grit, -1.0, 1.0);
 	base *= 1.0 + 0.2 * grain;
 	// Dark mineral grains, pixel-sized too.
 	float fleck = smoothstep(0.4, 0.6, pixelGrain(q * 1.37 + 9.0, ps));
@@ -649,7 +674,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	float ledge = smoothstep(0.02, 0.06, stick - aboveStick) * (1.0 - smoothstep(0.0, 0.05, hi - yw));
 	float wet = 0.6 * (0.5 - r.z);
 	float moss = ledge * smoothstep(0.4 + wet, 0.65 + wet, noise(vec2(q.x * 9.0, hi * 4.0) + 8.0));
-	base = mix(base, mix(vec3(0.5, 0.55, 0.22), vec3(0.68, 0.66, 0.3), noise(q * 90.0)), moss);
+	base = mix(base, mix(vec3(0.3, 0.35, 0.12), vec3(0.44, 0.44, 0.19), noise(q * 90.0)), moss);
 	h += 0.02 * moss;
 	base *= 1.0 - 0.35 * crack;
 	colour = base;
@@ -884,7 +909,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			float up = (rot(-view.w) * n.xy).y;
 			vec2 q = toCliff(fragCoord, view);
 			float moss = smoothstep(0.5, 0.8, up) * smoothstep(0.5, 0.72, noise(q * 11.0 + 5.0));
-			albedo = mix(albedo, mix(vec3(0.42, 0.5, 0.17), vec3(0.62, 0.62, 0.28), noise(q * 120.0)), 0.85 * moss);
+			albedo = mix(albedo, mix(vec3(0.27, 0.32, 0.1), vec3(0.41, 0.41, 0.18), noise(q * 120.0)), 0.85 * moss);
 		}
 		vec3 a = pow(albedo, vec3(2.2));
 		float diffuse = max(dot(n, l), 0.0);
@@ -901,35 +926,33 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		col = 1.0 - exp(-col * EXPOSURE);
 		col = pow(col, vec3(1.0 / 2.2));
 	}
-	// The glints' flares, as through a lens and lashes: a soft halo,
-	// warm at its edge (halation), and thin spikes of uneven length
-	// fanning mostly up and down, gathered from the glints round about.
-	// On sky and plants too: it's in the eye, not on the rock.
+	// The glints' flares: a broad soft halo, going warm at its edge
+	// (halation), and eight thin spikes alike all round, both going
+	// through the colours outward (dispersion), gathered from the glints
+	// round about. On sky and plants too: it's in the eye, not the rock.
 	vec3 flare = vec3(0.0);
-	for (int y = -3; y <= 3; y++) {
-		for (int x = -3; x <= 3; x++) {
-			vec4 g = glintAt(c + ivec2(x, y));
+	for (int y = -5; y <= 5; y++) {
+		for (int x = -5; x <= 5; x++) {
 			float r2 = float(x * x + y * y);
-			if (g.z > 0.0 && r2 > 0.0) {
-				flare += HALO * g.z * exp(-r2 / 3.0) * mix(filmColour(g.w), vec3(1.0, 0.55, 0.35), smoothstep(1.0, 6.0, r2));
+			if (r2 > 0.0 && r2 <= 25.0) {
+				vec4 g = glintAt(c + ivec2(x, y));
+				if (g.z > 0.0) {
+					vec3 tint = mix(filmColour(g.w + 0.06 * r2), vec3(1.0, 0.5, 0.3), smoothstep(4.0, 25.0, r2));
+					flare += HALO * g.z * exp(-r2 / 8.0) * tint;
+				}
 			}
 		}
 	}
-	for (int i = 0; i < 6; i++) {
-		// Angles (from up), lengths and strengths of the spikes.
-		float a = i == 0 ? 0.0 : i == 1 ? 0.21 : i == 2 ? -0.33 : i == 3 ? 0.52 : i == 4 ? -0.9 : 1.45;
-		float len = float(SPIKE_LENGTH) * (i == 0 ? 1.0 : i == 1 ? 0.7 : i == 2 ? 0.8 : i == 3 ? 0.5 : i == 4 ? 0.45 : 0.35);
-		float strength = i == 0 ? 1.0 : i == 1 ? 0.6 : i == 2 ? 0.7 : i == 3 ? 0.4 : i == 4 ? 0.35 : 0.3;
-		vec2 dir = vec2(sin(a), cos(a));
+	for (int i = 0; i < 4; i++) {
+		// Four lines through the glint: eight spikes, 45 degrees apart.
+		float a = float(i) * TAU / 8.0;
+		vec2 dir = vec2(cos(a), sin(a));
 		for (int s = 1; s <= SPIKE_LENGTH; s++) {
 			float t = float(s);
-			if (t > len) {
-				break;
-			}
-			float fade = SPIKES * strength * pow(1.0 - t / len, 2.0);
+			float fade = SPIKES * pow(1.0 - t / float(SPIKE_LENGTH + 1), 2.0);
 			vec4 g1 = glintAt(c + ivec2(round(dir * t)));
 			vec4 g2 = glintAt(c - ivec2(round(dir * t)));
-			flare += fade * (g1.z * filmColour(g1.w + 0.02 * t) + g2.z * filmColour(g2.w + 0.02 * t));
+			flare += fade * (g1.z * filmColour(g1.w + 0.05 * t) + g2.z * filmColour(g2.w + 0.05 * t));
 		}
 	}
 	flare *= SUN_COLOUR;
