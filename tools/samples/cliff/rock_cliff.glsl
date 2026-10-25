@@ -85,9 +85,13 @@ uniform int pointerCount;
 #define SHADOW_REACH 0.6
 #define AO_STRENGTH 1.15
 #define CRACK_DARK 0.45
-// The share of pixel-sized crystals that glint, and how bright.
+// The share of pixel-sized crystals that glint, and how bright; their
+// flares: a soft halo (halation) and thin spikes, in pixels.
 #define GLINT_DENSITY 0.04
-#define GLINT 3.0
+#define GLINT 1.4
+#define HALO 0.1
+#define SPIKES 0.08
+#define SPIKE_LENGTH 14
 // The darkest ambient occlusion gets: deep crevices still show a little.
 #define AO_FLOOR 0.28
 #define EXPOSURE 1.25
@@ -176,12 +180,15 @@ float pixelGrain(vec2 q, float ps) {
 // Glints: here and there a crystal (a cell about a pixel across, on
 // the rock) with a facet of its own, flashing where it turns the sun
 // toward the eye. Two sizes of cell, blended as the zoom goes between
-// them, so it's always pixel-sized.
-float glints(vec2 q, float ps, vec3 n, vec3 l) {
+// them, so it's always pixel-sized; fading as the view zooms far out
+// (a crystal's then much smaller than a pixel). x: how bright; y: its
+// thin-film phase (see filmColour()), from the crystal and its tilt.
+vec2 glints(vec2 q, float ps, vec3 n, vec3 l) {
 	float level = -log2(ps);
 	float k0 = floor(level);
 	vec3 halfway = normalize(l + vec3(0.0, 0.0, 1.0));
 	float sum = 0.0;
+	float phase = 0.0;
 	for (int i = 0; i < 2; i++) {
 		float k = k0 + float(i);
 		ivec2 cell = ivec2(floor(q * exp2(k)));
@@ -191,10 +198,20 @@ float glints(vec2 q, float ps, vec3 n, vec3 l) {
 			vec2 tip = hash22(seed + 31) - 0.5;
 			vec3 facet = normalize(n + vec3(tip * 1.4, 0.0));
 			float flash = pow(max(dot(facet, halfway), 0.0), 120.0) * (0.4 + 0.6 * r.y / GLINT_DENSITY);
-			sum += (i == 0 ? 1.0 - fract(level) : fract(level)) * flash;
+			flash *= i == 0 ? 1.0 - fract(level) : fract(level);
+			if (flash > sum) {
+				phase = hash2(seed + 57) + 2.5 * length(tip);
+			}
+			sum = max(sum, flash);
 		}
 	}
-	return sum;
+	return vec2(sum * (1.0 - 0.85 * smoothstep(0.004, 0.02, ps)), phase);
+}
+
+// A thin film's colour (as on oil, or a mineral's tarnish) at a phase:
+// soft bands of colour round the hues, half white.
+vec3 filmColour(float phase) {
+	return mix(vec3(1.0), 0.5 + 0.5 * cos(TAU * (phase + vec3(0.0, 0.33, 0.67))), 0.55);
 }
 
 // Broad variation across the cliff, so from afar it doesn't repeat:
@@ -336,6 +353,13 @@ float topEdge(float x) {
 }
 
 // A row of strata's bottom edge (row k runs from rowEdge(k) to rowEdge(k + 1)).
+// Rows are found in a stretched height, so they're taller up some
+// stretches of the cliff and thinner up others; it only stretches (it
+// always rises), so rows stay as straight as they were.
+float rowSpace(float y) {
+	return y + 1.6 * (noise(vec2(y * 0.3, 4.4)) - 0.5);
+}
+
 float rowEdge(int k) {
 	return float(k) * ROW + (hash1(k * 7 + 1) - 0.5) * 0.8 * ROW;
 }
@@ -396,38 +420,42 @@ float facetPlane(vec2 p, vec2 o, ivec2 id, float size, float slope, int seed) {
 // from the cell's border.
 float facets(vec2 q, float size, float slope, int seed, out float edge) {
 	vec2 p = q / size;
-	ivec2 ip = ivec2(floor(p));
+	float round = ROUNDING / size * (0.4 + 1.2 * noise(q * (3.0 / size) + float(seed) * 1.7));
+	// The edges wobble: the cells are found about a point moved a little.
+	vec2 wobble = vec2(noise(q * (12.0 / size) + float(seed)), noise(q * (12.0 / size) + float(seed) + 5.3)) - 0.5;
+	vec2 pc = p + 2.0 * round * wobble;
+	ivec2 ip = ivec2(floor(pc));
+	float r[9];
+	vec2 o[9];
 	float best = 1e9;
 	float second = 1e9;
-	vec2 centre = vec2(0.0);
-	vec2 centre2 = vec2(0.0);
-	ivec2 id = ivec2(0);
-	ivec2 id2 = ivec2(0);
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			ivec2 k = ip + ivec2(x, y);
-			vec2 o = vec2(k) + 0.1 + 0.8 * hash22(k + ivec2(seed, seed * 3));
-			float d = dot(p - o, p - o);
-			if (d < best) {
-				second = best;
-				centre2 = centre;
-				id2 = id;
-				best = d;
-				centre = o;
-				id = k;
-			} else if (d < second) {
-				second = d;
-				centre2 = o;
-				id2 = k;
-			}
+	for (int i = 0; i < 9; i++) {
+		ivec2 k = ip + ivec2(i % 3 - 1, i / 3 - 1);
+		o[i] = vec2(k) + 0.1 + 0.8 * hash22(k + ivec2(seed, seed * 3));
+		r[i] = length(pc - o[i]);
+		if (r[i] < best) {
+			second = best;
+			best = r[i];
+		} else if (r[i] < second) {
+			second = r[i];
 		}
 	}
-	float e = (sqrt(second) - sqrt(best)) * 0.5;
+	float e = (second - best) * 0.5;
 	edge = e * size;
-	float wobble = noise(q * (12.0 / size) + float(seed));
-	float round = ROUNDING / size * (0.4 + 1.2 * noise(q * (3.0 / size) + float(seed) * 1.7));
-	float w = 0.5 + 0.5 * smoothstep(0.0, round, e + (wobble - 0.5) * round);
-	return mix(facetPlane(p, centre2, id2, size, slope, seed), facetPlane(p, centre, id, size, slope, seed), w);
+	// Every cell's plane, weighted by how near the cell's edge is: all
+	// near a corner, where three meet (only the nearest two left a step
+	// where the second nearest changed - a crease a pixel wide close up).
+	float sum = 0.0;
+	float weights = 0.0;
+	for (int i = 0; i < 9; i++) {
+		ivec2 k = ip + ivec2(i % 3 - 1, i / 3 - 1);
+		float w = 1.0 - smoothstep(0.0, round, (r[i] - best) * 0.5);
+		if (w > 0.0) {
+			sum += w * facetPlane(p, o[i], k, size, slope, seed);
+			weights += w;
+		}
+	}
+	return sum / weights;
 }
 
 // The rock: its height, colour and crackedness at q.
@@ -448,6 +476,13 @@ float rowStick(int k, float relief, float blocky) {
 	return mix(below, own, max(rowStrength(k, blocky), 0.15));
 }
 
+// A distance to a boundary of a strength (0 to 1): a weaker one's
+// groove is narrower; one too faint isn't there at all (one a few
+// millionths wide still caught whole rows of pixels when zoomed in).
+float faded(float d, float strength) {
+	return strength < 0.03 ? 1.0 : d / strength;
+}
+
 float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) {
 	plant = 0.0;
 	// Everything's warped a little, so no edge runs straight.
@@ -458,14 +493,25 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	vec4 r = region(q);
 	// Strata, wavy and dipping.
 	float yw = q.y + 0.08 * (noise(vec2(q.x * 0.7, 1.3)) - 0.5) + 0.18 * (noise(vec2(q.x * 0.25, 9.1)) - 0.5) + 0.05 * q.x;
-	int k = int(floor(yw / ROW));
-	if (yw < rowEdge(k)) {
+	float ys = rowSpace(yw);
+	int k = int(floor(ys / ROW));
+	if (ys < rowEdge(k)) {
 		k--;
-	} else if (yw >= rowEdge(k + 1)) {
+	} else if (ys >= rowEdge(k + 1)) {
 		k++;
 	}
-	float lo = rowEdge(k);
-	float hi = rowEdge(k + 1);
+	// The row's bounds, back in the cliff's height.
+	float stretch = (rowSpace(yw + 0.005) - rowSpace(yw - 0.005)) / 0.01;
+	float lo = yw - (ys - rowEdge(k)) / stretch;
+	float hi = yw + (rowEdge(k + 1) - ys) / stretch;
+	// How tall the row is, the same all along it (worked out at its
+	// middle), so its joints can be spaced to match.
+	float ysMid = 0.5 * (rowEdge(k) + rowEdge(k + 1));
+	float yMid = ysMid - 1.6 * (noise(vec2(ysMid * 0.3, 4.4)) - 0.5);
+	float rowHeight = (rowEdge(k + 1) - rowEdge(k))
+			/ ((rowSpace(yMid + 0.005) - rowSpace(yMid - 0.005)) / 0.01);
+	// Where blocks are split again, in halves - and where they're big.
+	float fine = smoothstep(0.35, 0.75, noise(q * 0.2 + 91.0));
 	float stick = rowStick(k, r.x, r.w);
 	float aboveStick = rowStick(k + 1, r.x, r.w);
 
@@ -481,7 +527,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 
 	// The row's own joints, slanting.
 	float slant = (hash1(k * 13 + 5) - 0.5) * 0.7;
-	float width = mix(0.2, 0.6, pow(hash1(k * 17 + 3), 1.4));
+	float width = mix(0.2, 0.6, pow(hash1(k * 17 + 3), 1.4)) * pow(clamp(rowHeight / ROW, 0.4, 2.5), 0.8);
 	float xs = q.x - slant * (yw - lo) + hash1(k * 19 + 2) * width;
 	int j = int(floor(xs / width));
 	float jl = (float(j) + 0.3 * (hash2(ivec2(k, j)) - 0.5)) * width;
@@ -492,7 +538,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	float jr = (float(j + 1) + 0.3 * (hash2(ivec2(k, j + 1)) - 0.5)) * width;
 	float jointDist = min(xs - jl, jr - xs) / sqrt(1.0 + slant * slant);
 	// Some of a row's joints don't go through: wider blocks.
-	float through = mix(0.8, 0.35, r.w);
+	float through = clamp(mix(0.8, 0.35, r.w) + 0.35 * (0.5 - fine), 0.2, 0.95);
 	bool openL = hash2(ivec2(k, j) + 77) > through;
 	bool openR = hash2(ivec2(k, j + 1) + 77) > through;
 	if (!openL && xs - jl < jr - xs || !openR && jr - xs <= xs - jl) {
@@ -505,8 +551,19 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	// (And a boundary fades in and out along the row.)
 	float alongLo = smoothstep(0.25, 0.5, noise(vec2(q.x * 1.4, float(k) * 3.7)));
 	float alongHi = smoothstep(0.25, 0.5, noise(vec2(q.x * 1.4, float(k + 1) * 3.7)));
-	float rowDist = min((yw - lo) / max(rowStrength(k, r.w) * open * alongLo, 1e-3),
-			(hi - yw) / max(rowStrength(k + 1, r.w) * open * alongHi, 1e-3));
+	float rowDist = min(faded(yw - lo, rowStrength(k, r.w) * open * alongLo),
+			faded(hi - yw, rowStrength(k + 1, r.w) * open * alongHi));
+	// Split in halves where it's fine: a straight line across the row's
+	// middle, and one down the middle of the block, each fading in and
+	// out with how fine it is there.
+	float mid = 0.5 * (lo + hi) + (hash1(k * 37 + 4) - 0.5) * 0.2 * (hi - lo);
+	// (Switching on over a short way: a faint split would be a hairline
+	// all along it.)
+	float splitRow = smoothstep(0.42, 0.5, fine) * step(0.17, rowHeight);
+	rowDist = min(rowDist, faded(abs(yw - mid), splitRow * open));
+	float jm = 0.5 * (jl + jr) + (hash2(ivec2(k, j) + 91) - 0.5) * 0.2 * (jr - jl);
+	float splitJoint = smoothstep(0.62, 0.7, fine) * step(0.18, jr - jl);
+	jointDist = min(jointDist, faded(abs(xs - jm) / sqrt(1.0 + slant * slant), splitJoint));
 	float jointOpen = 0.3 + 0.7 * smoothstep(0.2, 0.55, noise(q * vec2(2.0, 6.0) + 47.0));
 	float edge = min(rowDist, min(jointDist, masterHere ? masterDist : 1.0) / jointOpen);
 
@@ -516,6 +573,10 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	vec2 tilt = vec2((hash2(block + 5) - 0.5) * 0.6, (0.12 + 0.5 * hash2(block + 6)) * mix(0.45, 1.6, r.x));
 	float h = stick + (hash2(block) - 0.5) * 0.12
 			+ tilt.x * (xs - 0.5 * (jl + jr)) + tilt.y * (yw - 0.5 * (lo + hi));
+	// The halves stand out by their own amounts.
+	ivec2 halves = ivec2(xs > jm ? 1 : 0, yw > mid ? 1 : 0);
+	h += splitRow * (hash2(block * 2 + ivec2(0, halves.y) + 101) - 0.5) * 0.08
+			+ splitJoint * (hash2(block * 2 + ivec2(halves.x, 0) + 103) - 0.5) * 0.08;
 
 	// Grooves along the joints, and bevelled edges.
 	float grooveWidth = mix(0.006, 0.02, hash2(block + 9));
@@ -558,8 +619,9 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	// streaks down some stretches; dark water stains running down from
 	// the tops of rows; dark in the cracks.
 	float tone = hash2(block + 13);
+	float halfTone = 1.0 + 0.14 * (hash2(block * 2 + halves + 107) - 0.5) * max(splitRow, splitJoint);
 	vec3 base = tone < 0.4 ? vec3(0.66, 0.64, 0.6) : tone < 0.75 ? vec3(0.7, 0.62, 0.52) : vec3(0.55, 0.53, 0.5);
-	base *= 0.85 + 0.3 * fbm(q * 3.0 + 5.0, ps * 3.0, 4);
+	base *= (0.85 + 0.3 * fbm(q * 3.0 + 5.0, ps * 3.0, 4)) * halfTone;
 	// The region's tone, cool grey to warm, and broad light and dark
 	// zones, at two scales - what shows from far off.
 	base *= mix(vec3(0.9, 0.96, 1.06), vec3(1.1, 0.97, 0.82), r.y);
@@ -658,7 +720,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 //// Buffer C
 ///float32
 // The sun's shadow (x) and ambient occlusion (y) on the cliff (see the
-// top): worked out only for a new view; its top row keeps the view.
+// top), and glints (z, how bright; w, their colour's phase): worked out
+// only for a new view; its top row keeps the view.
 uniform sampler2D iChannel0; ///buf:A;
 uniform sampler2D iChannel1; ///buf:B;
 uniform sampler2D iChannel2; ///buf:C;
@@ -686,6 +749,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 here = cliffAt(c);
 	float shadow = 1.0;
 	float ao = 1.0;
+	vec2 glint = vec2(0.0);
 	if (here.w < 1.5) {
 		vec3 sun = normalize(SUN);
 		vec2 sunXY = rot(view.w) * sun.xy;
@@ -732,8 +796,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		ao *= 1.0 - CRACK_DARK * here.z;
 		ao = clamp(ao, AO_FLOOR, 1.0);
 
+		// Glints, on rock in the sun.
+		if (here.w < 0.5) {
+			float dx = (cliffAt(c + ivec2(1, 0)).x - cliffAt(c - ivec2(1, 0)).x) / (2.0 * ps);
+			float dy = (cliffAt(c + ivec2(0, 1)).x - cliffAt(c - ivec2(0, 1)).x) / (2.0 * ps);
+			vec3 n = normalize(vec3(-clamp(dx, -6.0, 6.0), -clamp(dy, -6.0, 6.0), 1.0));
+			glint = glints(toCliff(fragCoord, view), ps, n, vec3(sunXY, sun.z));
+			glint.x *= shadow;
+		}
 	}
-	fragColor = vec4(shadow, ao, 0.0, 1.0);
+	fragColor = vec4(shadow, ao, glint);
 }
 
 //// Buffer D
@@ -755,6 +827,15 @@ vec4 cliffAt(ivec2 c) {
 vec4 shadeAt(ivec2 c) {
 	ivec2 size = ivec2(iResolution.xy);
 	return texelFetch(iChannel2, clamp(c, ivec2(0), size - ivec2(1, 2)), 0);
+}
+
+// C's glints (z, w), none off the edge.
+vec4 glintAt(ivec2 c) {
+	ivec2 size = ivec2(iResolution.xy);
+	if (any(lessThan(c, ivec2(0))) || any(greaterThan(c, size - ivec2(1, 2)))) {
+		return vec4(0.0);
+	}
+	return texelFetch(iChannel2, c, 0);
 }
 
 vec3 unpackColour(float v) {
@@ -811,9 +892,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		vec3 lit = SUN_COLOUR * diffuse * shadow + SKY_COLOUR * skyLight * ao
 				+ BOUNCE_COLOUR * (0.5 - 0.5 * n.y) * ao;
 		col = a * lit;
-		if (here.w < 0.5) {
-			col += GLINT * SUN_COLOUR * shadow * glints(toCliff(fragCoord, view), ps, n, l);
-		}
+		vec4 g = shadeAt(c);
+		col += GLINT * SUN_COLOUR * g.z * filmColour(g.w);
 		if (here.w > 0.5) {
 			// Plants: no hard sun, just soft and a little translucent.
 			col = a * (SUN_COLOUR * (0.35 + 0.4 * shadow) + SKY_COLOUR * 0.7 * ao);
@@ -821,5 +901,38 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		col = 1.0 - exp(-col * EXPOSURE);
 		col = pow(col, vec3(1.0 / 2.2));
 	}
+	// The glints' flares, as through a lens and lashes: a soft halo,
+	// warm at its edge (halation), and thin spikes of uneven length
+	// fanning mostly up and down, gathered from the glints round about.
+	// On sky and plants too: it's in the eye, not on the rock.
+	vec3 flare = vec3(0.0);
+	for (int y = -3; y <= 3; y++) {
+		for (int x = -3; x <= 3; x++) {
+			vec4 g = glintAt(c + ivec2(x, y));
+			float r2 = float(x * x + y * y);
+			if (g.z > 0.0 && r2 > 0.0) {
+				flare += HALO * g.z * exp(-r2 / 3.0) * mix(filmColour(g.w), vec3(1.0, 0.55, 0.35), smoothstep(1.0, 6.0, r2));
+			}
+		}
+	}
+	for (int i = 0; i < 6; i++) {
+		// Angles (from up), lengths and strengths of the spikes.
+		float a = i == 0 ? 0.0 : i == 1 ? 0.21 : i == 2 ? -0.33 : i == 3 ? 0.52 : i == 4 ? -0.9 : 1.45;
+		float len = float(SPIKE_LENGTH) * (i == 0 ? 1.0 : i == 1 ? 0.7 : i == 2 ? 0.8 : i == 3 ? 0.5 : i == 4 ? 0.45 : 0.35);
+		float strength = i == 0 ? 1.0 : i == 1 ? 0.6 : i == 2 ? 0.7 : i == 3 ? 0.4 : i == 4 ? 0.35 : 0.3;
+		vec2 dir = vec2(sin(a), cos(a));
+		for (int s = 1; s <= SPIKE_LENGTH; s++) {
+			float t = float(s);
+			if (t > len) {
+				break;
+			}
+			float fade = SPIKES * strength * pow(1.0 - t / len, 2.0);
+			vec4 g1 = glintAt(c + ivec2(round(dir * t)));
+			vec4 g2 = glintAt(c - ivec2(round(dir * t)));
+			flare += fade * (g1.z * filmColour(g1.w + 0.02 * t) + g2.z * filmColour(g2.w + 0.02 * t));
+		}
+	}
+	flare *= SUN_COLOUR;
+	col = 1.0 - (1.0 - col) * exp(-flare);
 	fragColor = vec4(col, 1.0);
 }
