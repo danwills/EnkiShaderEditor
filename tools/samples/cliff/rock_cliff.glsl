@@ -1,6 +1,7 @@
 // Rock Cliff - a weathered cliff face: blocky strata split by deep joints,
-// angular chipped facets, rust and water stains, moss on the ledges, and
-// grass and a few conifers along the top against a pale sky.
+// angular chipped facets, rust and water stains, moss and grass on the
+// ledges, and a shelf of rock along the top under its grass, against a
+// pale sky.
 //
 // One finger drags the view (and flings it); two fingers pinch to zoom and
 // turn it, about the point between them (after the gesture handling of
@@ -13,20 +14,21 @@
 //              cliff units), its colour, how deep in a crack it is, and
 //              whether it's rock, plant or sky. Worked out only when the
 //              view has moved: while it's still, the last frame's is kept.
-//   Buffer C - lighting from those heights: a normal from the neighbours,
-//              a soft sun shadow marched across the height field, and
-//              ambient occlusion from the heights round about - again only
-//              when the view's moved.
-//   Image    - Buffer C, dithered: a still cliff costs next to nothing.
+//   Buffer C - a soft sun shadow marched across those heights, and
+//              ambient occlusion from the heights round about.
+//   Buffer D - lighting: a normal from the neighbours' heights, the
+//              shadow smoothed a little, moss on what faces up.
+//              C and D too are worked out only when the view's moved.
+//   Image    - Buffer D, dithered: a still cliff costs next to nothing.
 //
 // The cliff is a height field: rows of strata (each sticking out more or
 // less, its blocks leaning so their tops overhang), split into blocks by
-// slanting joints and long vertical ones, every edge bevelled and every
-// joint a narrow, deep groove; within a block, two scales of flat facets
+// slanting joints and long vertical ones, every edge rounded over and
+// every joint a narrow, deep groove; big masses and block-sized faces
 // (each cell of a Voronoi diagram a plane of its own, so neighbouring
-// facets meet in sharp steps) and fine grit.
+// faces meet in steps and creases, slightly rounded), chips and grit.
 
-uniform sampler2D iChannel0; ///buf:C;
+uniform sampler2D iChannel0; ///buf:D;
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	ivec2 size = ivec2(iResolution.xy);
@@ -64,13 +66,14 @@ uniform int pointerCount;
 // The joints' grooves: how deep, and the bevel along every edge.
 #define CRACK_DEPTH 0.16
 #define BEVEL 0.045
+// The shelf along the top: how thick (on average) and how far it sticks out.
+#define SHELF 0.1
+#define SHELF_OUT 0.2
 // How far (in cliff units, on average) facets' meetings are rounded off.
 #define ROUNDING 0.012
 // The grass: blades' spacing, and the soil lip under them.
 #define BLADE 0.0013
 #define SOIL 0.014
-// Conifers along the top: one every so far, at most.
-#define TREES 0.22
 
 // ---- Lighting (Image).
 #define SUN vec3(-0.55, 0.62, 0.6)
@@ -81,7 +84,9 @@ uniform int pointerCount;
 // The farthest a shadow's cast from, in cliff units.
 #define SHADOW_REACH 0.6
 #define AO_STRENGTH 1.15
-#define CRACK_DARK 0.75
+#define CRACK_DARK 0.45
+// The darkest ambient occlusion gets: deep crevices still show a little.
+#define AO_FLOOR 0.28
 #define EXPOSURE 1.25
 
 mat2 rot(float a) {
@@ -260,7 +265,7 @@ float topEdge(float x) {
 
 // A row of strata's bottom edge (row k runs from rowEdge(k) to rowEdge(k + 1)).
 float rowEdge(int k) {
-	return float(k) * ROW + (hash1(k * 7 + 1) - 0.5) * 0.55 * ROW;
+	return float(k) * ROW + (hash1(k * 7 + 1) - 0.5) * 0.8 * ROW;
 }
 
 float masterEdge(int m) {
@@ -357,7 +362,7 @@ float facets(vec2 q, float size, float slope, int seed, out float edge) {
 // (a step and a crack), weak (a step) or gone (one taller block).
 float rowStrength(int k) {
 	float s = hash1(k * 23 + 9);
-	return s < 0.45 ? 1.0 : s < 0.75 ? 0.45 : 0.0;
+	return s < 0.4 ? 1.0 : s < 0.65 ? 0.45 : 0.0;
 }
 
 float rowStick(int k) {
@@ -374,7 +379,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	vec2 qw = q + 0.07 * warp;
 	q = qw;
 	// Strata, wavy and dipping.
-	float yw = q.y + 0.08 * (noise(vec2(q.x * 0.7, 1.3)) - 0.5) + 0.05 * q.x;
+	float yw = q.y + 0.08 * (noise(vec2(q.x * 0.7, 1.3)) - 0.5) + 0.18 * (noise(vec2(q.x * 0.25, 9.1)) - 0.5) + 0.05 * q.x;
 	int k = int(floor(yw / ROW));
 	if (yw < rowEdge(k)) {
 		k--;
@@ -455,7 +460,7 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	crack = max(crack, massCrack);
 	float e1;
 	h += facets(q + vec2(block) * 3.1, 0.2, 0.55, k + 3, e1);
-	float hair = (1.0 - smoothstep(0.0, 0.003, e1)) * step(0.7, noise(q * 4.0));
+	float hair = (1.0 - smoothstep(0.0, 0.003, e1)) * step(0.82, noise(q * 4.0));
 	h -= 0.02 * hair;
 	crack = max(crack, 0.5 * hair);
 	h += 0.08 * (fbm(q * 1.3, ps * 1.3, 3) - 0.5);
@@ -463,6 +468,10 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	h += 0.03 * chips * chips;
 	float grit = fbm(q * 70.0, ps * 70.0, 4);
 	h += 0.006 * (grit - 0.5);
+	// Fine stone: mineral grains, faint, in the relief and the colour
+	// (no finer than a pixel, so it doesn't sparkle as the view moves).
+	float grain = fbm(q * 260.0, ps * 260.0, 3);
+	h += 0.0015 * (grain - 0.5);
 
 	// Colour: warm and cool greys by block, mottled; pale patches; rust
 	// streaks down some stretches; dark water stains running down from
@@ -472,19 +481,22 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 	base *= 0.85 + 0.3 * fbm(q * 3.0 + 5.0, ps * 3.0, 4);
 	float pale = smoothstep(0.55, 0.75, fbm(q * vec2(7.0, 4.0) + 21.0, ps * 7.0, 4));
 	base = mix(base, vec3(0.86, 0.85, 0.81), 0.55 * pale);
-	float rustBand = smoothstep(0.5, 0.75, noise(vec2(q.x * 1.6, 2.9)));
-	float rust = rustBand * smoothstep(0.35, 0.8, fbm(vec2(q.x * 14.0, q.y * 1.8) + 41.0, ps * 14.0, 4));
-	base = mix(base, vec3(0.62, 0.39, 0.24), 0.75 * rust);
+	float rustBand = smoothstep(0.42, 0.7, noise(vec2(q.x * 1.6, 2.9)));
+	float rust = rustBand * smoothstep(0.3, 0.7, fbm(vec2(q.x * 14.0, q.y * 1.2) + 41.0, ps * 14.0, 4));
+	base = mix(base, vec3(0.58, 0.39, 0.26), 0.7 * rust);
 	float stainLength = 0.08 + 0.25 * hash2(block + 17);
-	float stain = exp(-(hi - yw) / stainLength) * smoothstep(0.45, 0.8, fbm(vec2(q.x * 22.0, q.y * 2.0), ps * 22.0, 4));
-	base = mix(base, vec3(0.26, 0.24, 0.22), 0.7 * stain);
+	float stain = exp(-(hi - yw) / stainLength) * smoothstep(0.4, 0.75, fbm(vec2(q.x * 22.0, q.y * 1.2), ps * 22.0, 4));
+	base = mix(base, vec3(0.24, 0.22, 0.2), 0.85 * stain);
 	base *= 0.92 + 0.16 * grit;
+	base *= 0.9 + 0.2 * grain;
+	float fleck = smoothstep(0.72, 0.8, noise(q * 420.0 + 77.0)) * step(ps * 420.0, 0.8);
+	base = mix(base, vec3(0.2, 0.19, 0.18), 0.35 * fleck);
 	// Moss and grass on a ledge: where this row sticks out past the next.
 	float ledge = smoothstep(0.02, 0.06, stick - aboveStick) * (1.0 - smoothstep(0.0, 0.05, hi - yw));
 	float moss = ledge * smoothstep(0.4, 0.65, noise(vec2(q.x * 9.0, hi * 4.0) + 8.0));
 	base = mix(base, mix(vec3(0.5, 0.55, 0.22), vec3(0.68, 0.66, 0.3), noise(q * 90.0)), moss);
 	h += 0.02 * moss;
-	base *= 1.0 - 0.6 * crack;
+	base *= 1.0 - 0.35 * crack;
 	colour = base;
 	// Grass growing up from the ledge below, where the row below sticks
 	// out past this one (in the moss's patches), standing in front.
@@ -499,48 +511,6 @@ float rock(vec2 q, float ps, out vec3 colour, out float crack, out float plant) 
 		h += below - stick;
 	}
 	return h;
-}
-
-// Conifers standing back from the edge, in tiers, lit from the left.
-bool conifer(vec2 q, out vec3 colour) {
-	int i0 = int(floor(q.x / TREES));
-	for (int n = -1; n <= 1; n++) {
-		int t = i0 + n;
-		if (hash1(t * 3 + 1) > 0.6) {
-			continue;
-		}
-		float x0 = (float(t) + 0.2 + 0.6 * hash1(t * 5 + 2)) * TREES;
-		float tall = 0.12 + 0.45 * pow(hash1(t * 7 + 3), 1.3);
-		float base = topEdge(x0) + 0.01 + 0.03 * hash1(t * 11 + 5);
-		float u = (q.y - base) / tall;
-		if (u < -0.1 || u > 1.0) {
-			continue;
-		}
-		float dx = q.x - x0;
-		// Tiers of branches, drooping toward their tips.
-		float layers = 8.0 + 6.0 * hash1(t * 9 + 4);
-		float v = u + 1.2 * abs(dx) / tall;
-		float tier = fract(v * layers + hash1(t));
-		float halfWidth = tall * 0.17 * pow(1.0 - max(u, 0.0), 0.9) * (0.7 + 0.3 * tier);
-		// Fuzzy, needly edges.
-		halfWidth *= 0.6 + 0.6 * noise(q * vec2(300.0, 160.0) + float(t) * 13.0)
-				+ 0.25 * (noise(q * 900.0) - 0.5);
-		bool trunk = abs(dx) < 0.0035 * tall / 0.3 && u < 0.25;
-		if (abs(dx) < halfWidth && u > 0.05 || trunk) {
-			float lit = 0.5 + 0.5 * clamp(-dx / max(halfWidth, 1e-4), -1.0, 1.0);
-			// Dark, near a silhouette: a little lighter at the sunny edge.
-			float needles = noise(q * 380.0 + float(t) * 7.0);
-			colour = mix(vec3(0.05, 0.08, 0.05), vec3(0.2, 0.25, 0.13),
-					lit * lit * (0.4 + 0.6 * needles));
-			if (abs(dx) >= halfWidth || u <= 0.05) {
-				colour = vec3(0.12, 0.1, 0.08);
-			}
-			// A touch hazy, the further back the more.
-			colour = mix(colour, vec3(0.8, 0.82, 0.8), 0.12 * hash1(t * 13 + 6));
-			return true;
-		}
-	}
-	return false;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -569,22 +539,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	if (q.y > edge - 0.6 * SOIL - 0.01 && q.y < edge + 0.12 && blades(q, true, 0.0, 0.085, 1.0, blade)) {
 		what = 1.0;
 		colour = blade;
-		h = 0.2;
+		h = 0.2 + SHELF_OUT;
 	} else if (q.y > edge) {
-		// Sky, and conifers standing back from the edge.
 		colour = mix(vec3(0.9, 0.9, 0.86), vec3(0.97, 0.97, 0.95), smoothstep(0.0, 0.6, q.y - edge));
-		vec3 tree;
-		if (conifer(q, tree)) {
-			what = 1.0;
-			colour = tree;
-		}
 	} else if (q.y > edge - SOIL) {
 		// The soil lip the grass grows from.
 		what = 1.0;
 		colour = mix(vec3(0.2, 0.17, 0.12), vec3(0.36, 0.3, 0.2), noise(q * 150.0));
-		h = 0.12;
+		h = 0.12 + SHELF_OUT;
 	} else {
 		h = rock(q, ps, colour, crack, what);
+		// The shelf along the top, sticking out over an undercut.
+		float below = edge - q.y;
+		float thick = SHELF * (0.6 + 0.8 * noise(vec2(q.x * 3.0, 5.5)));
+		h += SHELF_OUT * (1.0 - smoothstep(thick - 0.015, thick, below));
+		h -= 0.1 * smoothstep(thick, thick + 0.03, below) * (1.0 - smoothstep(thick + 0.05, thick + 0.2, below));
+		crack = max(crack, 0.5 * (1.0 - smoothstep(0.0, 0.012, abs(below - thick - 0.006))));
 		// Soil washed down the top of the face.
 		float wash = smoothstep(0.25, 0.0, edge - q.y) * noise(vec2(q.x * 30.0, q.y * 3.0));
 		colour = mix(colour, vec3(0.42, 0.34, 0.25), 0.5 * wash);
@@ -594,8 +564,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 //// Buffer C
 ///float32
-// The cliff lit (see the top): worked out only when Buffer B's been, for
-// a new view; its top row keeps the view it was lit for.
+// The sun's shadow (x) and ambient occlusion (y) on the cliff (see the
+// top): worked out only for a new view; its top row keeps the view.
 uniform sampler2D iChannel0; ///buf:A;
 uniform sampler2D iChannel1; ///buf:B;
 uniform sampler2D iChannel2; ///buf:C;
@@ -603,10 +573,6 @@ uniform sampler2D iChannel2; ///buf:C;
 vec4 cliffAt(ivec2 c) {
 	ivec2 size = ivec2(iResolution.xy);
 	return texelFetch(iChannel1, clamp(c, ivec2(0), size - ivec2(1, 2)), 0);
-}
-
-vec3 unpackColour(float v) {
-	return vec3(mod(v, 256.0), mod(floor(v / 256.0), 256.0), floor(v / 65536.0)) / 255.0;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -625,30 +591,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float ps = VIEW / (view.z * res.y);
 	ivec2 c = ivec2(fragCoord);
 	vec4 here = cliffAt(c);
-	vec3 albedo = unpackColour(here.y);
-	vec3 col;
-	if (here.w > 1.5) {
-		col = albedo;
-	} else {
-		// The light, in screen space (the view may be turned).
+	float shadow = 1.0;
+	float ao = 1.0;
+	if (here.w < 1.5) {
 		vec3 sun = normalize(SUN);
 		vec2 sunXY = rot(view.w) * sun.xy;
 		float h0 = here.x;
-		float dx = (cliffAt(c + ivec2(1, 0)).x - cliffAt(c - ivec2(1, 0)).x) / (2.0 * ps);
-		float dy = (cliffAt(c + ivec2(0, 1)).x - cliffAt(c - ivec2(0, 1)).x) / (2.0 * ps);
-		// Sky beside it isn't a cliff to slope down to.
-		dx = clamp(dx, -6.0, 6.0);
-		dy = clamp(dy, -6.0, 6.0);
-		vec3 n = normalize(vec3(-dx, -dy, 1.0));
-		vec3 l = vec3(sunXY, sun.z);
 
 		// Soft shadow: march toward the sun, the ray rising as it goes.
-		float shadow = 1.0;
 		vec2 dir = normalize(sunXY);
 		float rise = sun.z / length(sun.xy);
 		// (Each pixel's steps start at a different point, else a shadow's
-		// edge came out in sawteeth.)
-		float t = (1.0 + 1.5 * hash2(c + ivec2(0, 7))) * ps;
+		// edge came out in sawteeth - by interleaved gradient noise, which
+		// spreads neighbours' starts evenly: white noise left the soft
+		// edges grainy.)
+		float ign = fract(52.9829189 * fract(dot(fragCoord, vec2(0.06711056, 0.00583715))));
+		float t = (1.0 + 1.5 * ign) * ps;
 		for (int i = 0; i < SHADOW_STEPS; i++) {
 			vec2 at = fragCoord + dir * (t / ps);
 			if (at.x < 0.0 || at.y < 0.0 || at.x >= res.x || at.y >= res.y - 1.0) {
@@ -664,7 +622,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 
 		// Ambient occlusion: how much rises above it, round about.
-		float ao = 0.0;
+		ao = 0.0;
 		float weight = 0.0;
 		for (int ring = 0; ring < 3; ring++) {
 			float r = ring == 0 ? 0.012 : ring == 1 ? 0.04 : 0.12;
@@ -679,7 +637,73 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		}
 		ao = 1.0 - AO_STRENGTH * ao / weight;
 		ao *= 1.0 - CRACK_DARK * here.z;
-		ao = clamp(ao, 0.0, 1.0);
+		ao = clamp(ao, AO_FLOOR, 1.0);
+
+	}
+	fragColor = vec4(shadow, ao, 0.0, 1.0);
+}
+
+//// Buffer D
+///float32
+// The cliff lit (see the top), from B's heights and colours and C's
+// shadow - smoothed over 3x3 pixels, as the marched shadow's soft edges
+// come out grainy - and ambient occlusion; worked out only for a new
+// view, its top row keeping the view.
+uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D iChannel1; ///buf:B;
+uniform sampler2D iChannel2; ///buf:C;
+uniform sampler2D iChannel3; ///buf:D;
+
+vec4 cliffAt(ivec2 c) {
+	ivec2 size = ivec2(iResolution.xy);
+	return texelFetch(iChannel1, clamp(c, ivec2(0), size - ivec2(1, 2)), 0);
+}
+
+vec4 shadeAt(ivec2 c) {
+	ivec2 size = ivec2(iResolution.xy);
+	return texelFetch(iChannel2, clamp(c, ivec2(0), size - ivec2(1, 2)), 0);
+}
+
+vec3 unpackColour(float v) {
+	return vec3(mod(v, 256.0), mod(floor(v / 256.0), 256.0), floor(v / 65536.0)) / 255.0;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+	vec2 res = iResolution.xy;
+	vec4 view = viewState(iChannel0);
+	ivec2 top = ivec2(0, int(res.y) - 1);
+	if (iFrame > 2 && texelFetch(iChannel3, top, 0) == view) {
+		fragColor = texelFetch(iChannel3, ivec2(fragCoord), 0);
+		return;
+	}
+	if (ivec2(fragCoord) == top) {
+		fragColor = view;
+		return;
+	}
+	float ps = VIEW / (view.z * res.y);
+	ivec2 c = ivec2(fragCoord);
+	vec4 here = cliffAt(c);
+	vec3 albedo = unpackColour(here.y);
+	vec3 col;
+	if (here.w > 1.5) {
+		col = albedo;
+	} else {
+		vec3 sun = normalize(SUN);
+		vec3 l = vec3(rot(view.w) * sun.xy, sun.z);
+		float dx = (cliffAt(c + ivec2(1, 0)).x - cliffAt(c - ivec2(1, 0)).x) / (2.0 * ps);
+		float dy = (cliffAt(c + ivec2(0, 1)).x - cliffAt(c - ivec2(0, 1)).x) / (2.0 * ps);
+		// Sky beside it isn't a cliff to slope down to.
+		dx = clamp(dx, -6.0, 6.0);
+		dy = clamp(dy, -6.0, 6.0);
+		vec3 n = normalize(vec3(-dx, -dy, 1.0));
+		float shadow = 0.0;
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				shadow += shadeAt(c + ivec2(x, y)).x * (x == 0 && y == 0 ? 4.0 : x == 0 || y == 0 ? 2.0 : 1.0);
+			}
+		}
+		shadow /= 16.0;
+		float ao = shadeAt(c).y;
 
 		// Moss on whatever faces up, in patches.
 		if (here.w < 0.5) {
