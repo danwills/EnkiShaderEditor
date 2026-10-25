@@ -350,6 +350,9 @@ final class StatusOverlay {
 	@SuppressLint("SetTextI18n")
 	void said(@NonNull String text, boolean clarifying) {
 		add((clarifying ? "You clarified: " : "You said: ") + text, "💬", null, false);
+		// Claude only reads it at its next status.sh command, which can be
+		// a while if it's mid-build or thinking.
+		add("Claude reads this at its next step, so a reply may take a little while", "⏳", null, false);
 	}
 
 	void clearRating() {

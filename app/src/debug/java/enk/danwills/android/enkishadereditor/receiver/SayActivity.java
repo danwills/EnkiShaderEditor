@@ -189,6 +189,9 @@ public class SayActivity extends Activity {
 	@Override
 	protected void onResume() {
 		super.onResume();
+		// While the box is up, every status.sh command waits, so Claude's
+		// taps can't land on it.
+		write("claude-typing", "", false);
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 			StatusOverlay.get(getApplicationContext()).typing(true, false);
 		}
@@ -200,6 +203,7 @@ public class SayActivity extends Activity {
 		if (isChangingConfigurations()) {
 			return;
 		}
+		new File(getFilesDir(), "claude-typing").delete();
 		// Left (Home, another app) with the box still up: closed, the
 		// words kept, and the thumbs back if Claude's still asking.
 		if (!sent) {

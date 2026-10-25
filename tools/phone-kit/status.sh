@@ -176,8 +176,25 @@ messages() {
 heed() {
 	messages
 	said=
+	typing=
 	while :; do
-		control=$(adb shell "run-as $PKG cat files/claude-control 2>/dev/null" </dev/null | tr -d '\r')
+		# The control state, then (if Dan has the message box open) how
+		# many seconds ago it opened.
+		state=$(adb shell "run-as $PKG sh -c 'cat files/claude-control 2>/dev/null; echo; [ -f files/claude-typing ] && echo \$((\$(date +%s) - \$(stat -c %Y files/claude-typing)))'" </dev/null | tr -d '\r')
+		control=$(printf '%s\n' "$state" | sed -n 1p)
+		typed=$(printf '%s\n' "$state" | sed -n 2p)
+		# Dan's typing: wait, or a tap meant for the app lands on his box
+		# (once one hit Send mid-sentence). Ignored after 5 minutes, in
+		# case the box's process died without tidying up.
+		if [ -n "$typed" ] && [ "$typed" -lt 300 ] 2>/dev/null; then
+			if [ -z "$typing" ]; then
+				echo "✍ Dan's typing a message: waiting until it's sent" >&2
+				typing=1
+			fi
+			sleep 2
+			continue
+		fi
+		[ -n "$typing" ] && { typing=; messages; }
 		case "$control" in
 		stopped)
 			# Told once; after that Claude's putting things back.

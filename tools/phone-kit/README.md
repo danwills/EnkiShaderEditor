@@ -161,6 +161,10 @@ When driving the phone over adb:
 
 ## Lessons learned
 
+- **Wait while the owner types.** An adb tap made while the 💬 box was
+  open landed on it and hit Send mid-sentence. SayActivity keeps
+  `files/claude-typing` while it's showing, and every command waits on it
+  (`✍ ... typing` on stderr), ignoring one older than 5 minutes.
 - **Don't leave an overlay up.** Some Settings screens (Developer options,
   Wireless debugging) ignore taps while another app's overlay covers them,
   so a panel left up after a run that never finished (the phone dropped
