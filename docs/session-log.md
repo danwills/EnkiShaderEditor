@@ -596,3 +596,14 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 ## 2026-10-25
 
 - **"let's wrap up for today and close any processes, and summarise where we are at"** Stopped the VTI curation server (its picks are saved as they're made, in `vtipack/packs.json`) and the Gradle and Kotlin daemons. Moved the Powder test scripts out of /tmp to `~/dev/shaderEditor/powder-tests/`. The phone is as found, with the Claude app on screen and stay-awake off. Powder MPM v8 (id 1044) is on the phone and still to be tried there; the next one is v9.
+- **"Can you start the curation server again and let me know the url for phone?"** Restarted vticurate (with the thumbnail prefill) at http://10.1.1.61:8770/.
+- **"can we do a new debug build and test the new phone-testing skill? ... is it possible for the user to ever lose what they have typed into the 'clarify' subwindow"**
+  - **Lost text:** yes, in several ways: a tap outside the box, Back or Cancel, the box being recreated, a clarification sent after `rate` stopped waiting, and messages sent at the end of a run. All fixed: what's typed is kept as a draft until it's sent.
+  - **From Dan's notes during the test:**
+    - The panel steps out of the box's way while it's open.
+    - A box left by going Home is kept, and the panel's 💬 button shows ✏️ until it's finished.
+    - A dim "thinking" line ticks when the panel's quiet.
+  - **Panel stuck on screen:** the phone dropped off adb mid-test and the panel stayed up. It now has ✕ to close it, and it takes itself away after 2 quiet minutes instead of 5.
+  - **Stop carried over:** the retest was stopped at once by the old run's leftover Stop. `ask` now starts each run afresh.
+  - **Status:** the new build is on the phone, but the retest was cut short at Dan's request and is still to do.
+  - **Skill copy:** the skill's own copy in `~/.claude/skills` needs these changes carried over.
