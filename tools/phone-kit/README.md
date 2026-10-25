@@ -27,10 +27,17 @@ owner might be holding it. It covers four things:
    stops. The panel has buttons too, in a small corner window of their
    own (the only part that takes touches): 💬 sends Claude a message
    (typed, or dictated with the keyboard's mic), ⏸/▶ pauses it until
-   Continue, ⏹ stops it like the swipe, and 👍/👎/Clarify appear while
-   Claude asks whether something looks right (`status.sh rate`). Every
-   status.sh command heeds the buttons, so they get through whatever
-   Claude is doing.
+   Continue, ⏹ stops it like the swipe, ✕ closes the panel there and
+   then (Claude's next line brings it back), and 👍/👎/Clarify appear
+   while Claude asks whether something looks right (`status.sh rate`).
+   Every status.sh command heeds the buttons, so they get through
+   whatever Claude is doing. What's typed to Claude is never lost: it's
+   kept as a draft until sent (Cancel, Back, leaving the box or the app
+   being killed all keep it, and 💬 shows ✏️ while one's waiting), the
+   panel steps out of the box's way while it's up, and a clarification
+   sent after Claude stopped waiting arrives as a message. When the
+   panel's had no new line for a few seconds, a dim last line ticks,
+   saying whether Claude's thinking or waiting, and for how long.
 4. **Hand back.** At the end Claude puts the phone back as it found it,
    the panel goes at once, and a "Claude is all finished" notification is
    left up with the summary and the log's last 8 lines, so it's clear
@@ -158,7 +165,8 @@ When driving the phone over adb:
   Wireless debugging) ignore taps while another app's overlay covers them,
   so a panel left up after a run that never finished (the phone dropped
   off wifi) kept the user out of the very screen needed to reconnect. The
-  panel now goes by itself after 5 quiet minutes, and `done` turns
+  panel now goes by itself after 2 quiet minutes (not while the user is
+  answering or typing), has ✕ to close it at once, and `done` turns
   "appear on top" back off.
 - **Touches through an overlay.** Since Android 12 a non-touchable overlay
   from another app only lets touches through at an opacity of 0.8 or

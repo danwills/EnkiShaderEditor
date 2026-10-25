@@ -51,9 +51,17 @@ import java.util.regex.Pattern;
 // Beside the pill, in a small window of their own (the one part that
 // takes touches): 💬 to tell Claude something (SayActivity), and
 // Pause/Continue and Stop, which every status.sh command reads back
-// (files/claude-control: "paused" or "stopped"), and - only while Claude's
+// (files/claude-control: "paused" or "stopped"), ✕ to close the panel
+// there and then (Dan got stuck with it up when the connection dropped;
+// Claude's next line brings it back), and - only while Claude's
 // asking whether something looks right (askRating()) - thumbs up and down
 // (files/claude-rate-<id>: "up" or "down") and Clarify, to say more instead.
+// While Dan's typing to Claude (SayActivity in front) the panel's out of
+// the box's way (typing()), and if he leaves the box with words in it the
+// 💬 button says so (✏️) - they're kept, for when he opens it again.
+// When nothing new has come for IDLE_MS, a dim last line ticks, saying
+// what's going on (Claude thinking, waiting, or waiting for Dan's
+// answer) and for how long, so a quiet panel never looks stuck.
 // If Claude goes quiet for QUIET_MS (the connection dropped, say) the
 // panel takes itself away, so it's never left over everything: an
 // overlay can stop taps getting through to some of Settings' screens.
@@ -64,8 +72,12 @@ final class StatusOverlay {
 	// through to another app (Android 12's touch occlusion rules).
 	private static final float OPACITY = 0.8f;
 	// How long the panel stays with no new line before it goes by itself
-	// (not while paused).
-	private static final long QUIET_MS = 5 * 60 * 1000;
+	// (not while paused, or while Dan's answering or typing): short, as
+	// it's in the way (5 minutes was too long to be stuck with it); a
+	// later line brings it back.
+	private static final long QUIET_MS = 2 * 60 * 1000;
+	// How long the panel's still before its last line ticks (see above).
+	private static final long IDLE_MS = 6000;
 	private static final String QUIET_CHANNEL = "claude_status";
 	private static final int QUIET_NOTIFICATION = 7302;
 
@@ -97,10 +109,21 @@ final class StatusOverlay {
 	private ImageView pauseButton;
 	@Nullable
 	private LinearLayout thumbs;
+	@Nullable
+	private TextView sayButton;
+	// The ticking last line (see the class comment), and since when.
+	@Nullable
+	private TextView idle;
+	private long lastLine;
+	@Nullable
+	private String lastKind;
 	private boolean paused;
+	private boolean typing;
+	private boolean hidden;
 	private final Handler handler = new Handler(Looper.getMainLooper());
+	private final Runnable tick = this::tick;
 	private final Runnable quiet = () -> {
-		if (paused) {
+		if (paused || typing || thumbs != null) {
 			waitQuietly();
 		} else {
 			clear();
@@ -138,7 +161,12 @@ final class StatusOverlay {
 	private void add(@NonNull String text, @Nullable String kind, @Nullable String eta,
 			boolean own) {
 		LinearLayout lines = panel();
-		lines.setVisibility(View.VISIBLE);
+		hidden = false;
+		lines.setVisibility(typing ? View.GONE : View.VISIBLE);
+		if (idle != null) {
+			lines.removeView(idle);
+			idle = null;
+		}
 		if (badge == null) {
 			badge = new TextView(context);
 			badge.setText("🤖 Claude is " + VERBS[(int) (System.nanoTime() / 1000 % VERBS.length)] +
@@ -154,7 +182,7 @@ final class StatusOverlay {
 		while (lines.getChildCount() - (badge != null ? 1 : 0) >= MAX_LINES) {
 			lines.removeViewAt(badge != null ? 1 : 0);
 		}
-		controls();
+		controls().setVisibility(typing ? View.GONE : View.VISIBLE);
 		var line = new TextView(context);
 		line.setTextColor(Color.rgb(235, 235, 240));
 		line.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f);
@@ -165,7 +193,61 @@ final class StatusOverlay {
 			line.setTag(new String[]{text, kind, eta});
 		}
 		lines.addView(line);
+		if (own) {
+			lastLine = android.os.SystemClock.uptimeMillis();
+			lastKind = kind;
+		}
+		handler.removeCallbacks(tick);
+		handler.postDelayed(tick, IDLE_MS);
 		waitQuietly();
+	}
+
+	// The ticking last line: what's going on, and for how long.
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
+	private void tick() {
+		if (panel == null) {
+			return;
+		}
+		long since = (android.os.SystemClock.uptimeMillis() - lastLine) / 1000;
+		String what;
+		if (paused) {
+			what = "⏸ Paused - ▶ to carry on";
+		} else if (thumbs != null) {
+			what = "🤔 Waiting for your answer";
+		} else if ("wait".equals(lastKind) || "⏳".equals(lastKind)) {
+			what = "⏳ Waiting";
+		} else {
+			what = "💭 Claude's thinking - may take a moment";
+		}
+		if (idle == null) {
+			idle = new TextView(context);
+			idle.setTextColor(Color.rgb(150, 155, 170));
+			idle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+			idle.setPadding(0, dp(3), 0, dp(1));
+			panel.addView(idle);
+		}
+		idle.setText(what + "… " + (since < 60 ? since + " s" : since / 60 + " min " + since % 60 + " s"));
+		handler.postDelayed(tick, 1000);
+	}
+
+	// Dan typing to Claude (SayActivity in front): the panel out of the
+	// box's way till he's done. kept: he left with words in the box.
+	// Debug-only tooling, in English like the rest of it.
+	@SuppressLint("SetTextI18n")
+	void typing(boolean typing, boolean kept) {
+		this.typing = typing;
+		if (sayButton != null) {
+			sayButton.setText(kept ? "💬✏️" : "💬");
+		}
+		if (panel != null && !hidden) {
+			panel.setVisibility(typing ? View.GONE : View.VISIBLE);
+		}
+		if (controls != null && !hidden) {
+			controls.setVisibility(typing ? View.GONE : View.VISIBLE);
+		}		if (kept && !typing && panel != null) {
+			add("Your words are kept - tap 💬✏️ to finish them", "✏️", null, false);
+		}
 	}
 
 	// The panel goes after QUIET_MS more with no new line.
@@ -219,6 +301,7 @@ final class StatusOverlay {
 	// Out of sight for a moment (a clean screenshot): the next line
 	// brings it back, with the lines it had.
 	void hide() {
+		hidden = true;
 		if (panel != null) {
 			panel.setVisibility(View.GONE);
 		}
@@ -329,6 +412,7 @@ final class StatusOverlay {
 		static final int PAUSE = 0;
 		static final int PLAY = 1;
 		static final int STOP = 2;
+		static final int CLOSE = 3;
 		private final int kind;
 		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -361,6 +445,16 @@ final class StatusOverlay {
 					path.lineTo(cx - h * 0.38f, cy + h / 2);
 					path.close();
 					canvas.drawPath(path, paint);
+					break;
+				}
+				case CLOSE: {
+					float half = h * 0.4f;
+					paint.setStyle(Paint.Style.STROKE);
+					paint.setStrokeWidth(h * 0.16f);
+					paint.setStrokeCap(Paint.Cap.ROUND);
+					canvas.drawLine(cx - half, cy - half, cx + half, cy + half, paint);
+					canvas.drawLine(cx - half, cy + half, cx + half, cy - half, paint);
+					paint.setStyle(Paint.Style.FILL);
 					break;
 				}
 				default: {
@@ -429,7 +523,9 @@ final class StatusOverlay {
 	@NonNull
 	private LinearLayout controls() {
 		if (controls != null) {
-			controls.setVisibility(View.VISIBLE);
+			if (!typing) {
+				controls.setVisibility(View.VISIBLE);
+			}
 			return controls;
 		}
 		var bar = new LinearLayout(context);
@@ -437,10 +533,12 @@ final class StatusOverlay {
 		// As files/claude-control has it: the app may have restarted (an
 		// install) while paused, and Claude's still waiting for Continue.
 		paused = "paused".equals(read(CONTROL));
-		bar.addView(button("💬", v -> say(null, null)));
+		sayButton = button("💬", v -> say(null, null));
+		bar.addView(sayButton);
 		pauseButton = iconButton(new Glyph(paused ? Glyph.PLAY : Glyph.PAUSE), v -> togglePause());
 		bar.addView(pauseButton);
 		bar.addView(iconButton(new Glyph(Glyph.STOP), v -> stop()));
+		bar.addView(iconButton(new Glyph(Glyph.CLOSE), v -> clear()));
 		var params = new WindowManager.LayoutParams(
 				WindowManager.LayoutParams.WRAP_CONTENT,
 				WindowManager.LayoutParams.WRAP_CONTENT,
@@ -460,6 +558,10 @@ final class StatusOverlay {
 	// The run's over: gone at once, lines and all.
 	void clear() {
 		handler.removeCallbacks(quiet);
+		handler.removeCallbacks(tick);
+		idle = null;
+		sayButton = null;
+		hidden = false;
 		if (panel != null) {
 			windows.removeView(panel);
 			panel = null;

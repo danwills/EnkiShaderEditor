@@ -53,7 +53,8 @@
 #                     beside the panel until one's tapped or SECONDS
 #                     (default 30) pass; prints up, down, clarify: TEXT, or
 #                     none. While Dan's typing a clarification it waits up
-#                     to 5 minutes more
+#                     to 5 minutes more; one sent after that comes as a
+#                     message ("💬 Dan says: (about "...") ...")
 #   status.sh hide    the panel out of sight (a clean screenshot), saying so
 #                     first; the next post brings it back, lines and all
 #   status.sh shot FILE [WHY]
@@ -240,6 +241,14 @@ ask)
 		echo "no phone connected" >&2
 		exit 2
 	fi
+	# A new run: one that never finished (the connection dropped before
+	# done) is forgotten, its Stop or Pause with it - else the new run
+	# met them at its first command. Unread messages are kept.
+	if [ -s "$STATE" ]; then
+		remove "$(cat "$STATE")"
+		rm -f "$STATE" "$LOG" "$LAST"
+	fi
+	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 	id="ask$(date +%s)"
 	wait="${3:-15}"
 	start="am start -n $PKG/$CLS.TakeOverActivity --es id $id --es text $(quote "${2:-}") --ei wait $wait --ei countdown 15"
@@ -326,7 +335,11 @@ rate)
 		sleep 1
 		waited=$((waited + 1))
 	done
-	[ "$answer" = none ] && say "--ez rate_clear true"
+	if [ "$answer" = none ]; then
+		# Gone, so a clarification sent after this comes as a message instead.
+		adb shell "run-as $PKG rm -f files/claude-rate-$id"
+		say "--ez rate_clear true"
+	fi
 	echo "$answer"
 	;;
 hide)
@@ -347,6 +360,8 @@ shot)
 	;;
 done)
 	took
+	# Any last messages, so none's left unread till the next run.
+	messages
 	t=$(tag)
 	if [ "$3" = sad ]; then
 		title="😢 Claude has stopped"

@@ -28,6 +28,7 @@
 			android:excludeFromRecents="true"
 			android:launchMode="singleTask"
 			android:taskAffinity=".say"
+			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
 			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
 			android:theme="@style/PhoneKitDialogTheme"/>
 	</application>
