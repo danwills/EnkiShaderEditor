@@ -638,3 +638,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   their top row next to the view, so a define changed in Edit Live (a uniform then) recooks them.
   Glints turned down (GLINT 1.4 to 0.6, HALO 0.035 to 0.02, SPIKES 0.03 to 0.018). Added to Enki
   debug as "Rock Cliff v7" (1052).
+- Asked whether Play's user-generated content policy means Enki needs moderation now it renders
+  image and video files. Answered (not legal advice): no - Play's UGC is content visible to other
+  users through the app, and Enki's files stay on the device (Share goes out through other apps; no
+  INTERNET permission). It would apply only to in-app sharing such as a gallery or server.
+- Dan may later let people share packs by saving, sending and loading them, outside the app.
+  Agreed that's still not UGC, but the pack's content has to follow Play's rules.
