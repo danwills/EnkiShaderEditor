@@ -632,3 +632,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"There were some leaks detected on that last run, can you look into that?"** (a LeakCanary trace). It wasn't from that run: the trace is analysis 11 in the debug build's leaks.db, from 2026-10-16 02:24; all 18 there are the same MediaProjection -> destroyed MainActivity chain (Oct 14-18), none since. One came after the earlier stop() guards, so the projection is now made from the application context's MediaProjectionManager, leaving it nothing that reaches an Activity.
 - A heightfield/mesh-resolution request turned out to be meant for another Claude session; nothing done.
 - **"some noises that are a bit too lumpy and can also run out of octaves.. would be good if they always looked rough. The moss/grass is a little too luminous ... sparkles ... I'd prefer they were isotropic ... a bit broader but much lighter intensity.. slightly more chromatic"**. Rock Cliff v6 (id 1051): new rough() relief (creased gradient noise down to pixel size at any zoom), fbm() adds octaves as the view zooms in; darker moss and grass; eight even flare spikes, a broader fainter halo, stronger thin-film colour shifting outward. Added in the background, not opened: Ultra Iterator's screen-capture dialog was up.
+- "The glints are still too strong.. this shader doesn't automatically recook the result when the
+  parameter values change.. can we maybe make it detect changes there and trigger a recook?" -
+  Rock Cliff v7: B, C and D now keep a `settings()` key (every define boiled down to a vec4) in
+  their top row next to the view, so a define changed in Edit Live (a uniform then) recooks them.
+  Glints turned down (GLINT 1.4 to 0.6, HALO 0.035 to 0.02, SPIKES 0.03 to 0.018). Added to Enki
+  debug as "Rock Cliff v7" (1052).
