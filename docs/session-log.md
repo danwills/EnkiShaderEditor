@@ -655,3 +655,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - "yes copy it to the skill, and do stay-awake too" - `ask` now also saves stay-awake
   (`stay_on_while_plugged_in`) and `done` restores it; copied status.sh and README into the
   phone-testing skill repo (with Dan's OK) and updated its SKILL.md hand-back rules.
+- "phone's free, test the rotation and stay-awake restore" - Tested on the phone (found locked
+  portrait, stay-awake off: `0 0 0`):
+  - Changed to `1 1 15`; `done` put back `0 0 0`.
+  - Preset `1 0 3`, changed it, then a second `ask` as if the first run had dropped; the saved
+    values were kept and `done` restored `1 0 3`.
+  - Settings put back to `0 0 0` and Settings reopened. `settings put global` works from adb shell.
