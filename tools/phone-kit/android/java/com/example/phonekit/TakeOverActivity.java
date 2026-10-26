@@ -51,6 +51,10 @@ public class TakeOverActivity extends Activity {
 	private static final String ANSWER = "answer";
 	private static final String HOLD = "hold";
 	private static final int HOLD_SECONDS = 30;
+	// Buttons ignore taps this long after the dialog appears, so a tap
+	// meant for the app underneath (it can pop up mid-typing) doesn't
+	// answer it.
+	private static final long ARM_MS = 1500;
 	private boolean answered;
 	@Nullable
 	private String id;
@@ -107,8 +111,33 @@ public class TakeOverActivity extends Activity {
 		dialog.show();
 		// Set after show() so it doesn't close the dialog.
 		dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> hold());
+		arm();
 		String shown = message;
 		handler.postDelayed(() -> count(id, shown, countdown), wait * 1000L);
+	}
+
+	// Greys the buttons (and ignores Back) for ARM_MS: see ARM_MS.
+	private final Runnable armed = () -> enable(true);
+
+	private void arm() {
+		enable(false);
+		handler.removeCallbacks(armed);
+		handler.postDelayed(armed, ARM_MS);
+	}
+
+	private void enable(boolean on) {
+		if (dialog == null) {
+			return;
+		}
+		dialog.setCancelable(on);
+		dialog.setCanceledOnTouchOutside(false);
+		for (int which : new int[] {AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE,
+				AlertDialog.BUTTON_NEUTRAL}) {
+			var button = dialog.getButton(which);
+			if (button != null) {
+				button.setEnabled(on);
+			}
+		}
 	}
 
 	// Hang on a sec: out of the way for HOLD_SECONDS more, however far it
@@ -200,6 +229,11 @@ public class TakeOverActivity extends Activity {
 		super.onStart();
 		started = true;
 		getSystemService(NotificationManager.class).cancel(NOTIFICATION);
+		// Back on screen (after a hold, or from the notification): it's
+		// popped up again, so it waits again before taking taps.
+		if (!answered && dialog != null) {
+			arm();
+		}
 		if (due && !answered && id != null && message != null) {
 			due = false;
 			count(id, message, countdown);
