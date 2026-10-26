@@ -61,7 +61,8 @@
 #                     says it's hiding, hides, screenshots the phone to FILE
 #                     (PNG), and is back saying it's looking at it (at WHY)
 #   status.sh done "Back to Materialistic" [sad]
-#                     the panel gone at once, and the notification left
+#                     the panel gone at once, rotation put back as ask
+#                     found it, and the notification left
 #                     saying Claude's finished (or stopped), with the summary
 #                     and the log's last lines
 #
@@ -75,6 +76,9 @@ FINISHED="${TMPDIR:-/tmp}/enki-phone-status-finished"
 LAST="${TMPDIR:-/tmp}/enki-phone-status-last"
 # The run's lines, KIND<tab>TEXT, for `again` and `done`.
 LOG="${TMPDIR:-/tmp}/enki-phone-status-log"
+# The phone's rotation settings as the run found them (auto-rotate, then
+# the locked rotation), put back by `done`.
+ROTATION="${TMPDIR:-/tmp}/enki-phone-status-rotation"
 # How many of them the panel shows (StatusOverlay.MAX_LINES), and the
 # notification at the end.
 TAIL=8
@@ -262,6 +266,13 @@ ask)
 	if [ -s "$STATE" ]; then
 		remove "$(cat "$STATE")"
 		rm -f "$STATE" "$LOG" "$LAST"
+	else
+		# Rotation as found, for done to put back whatever a test does
+		# to it (putting "auto-rotate on" back by hand left phones found
+		# locked turning). An unfinished run's is kept: it's the one that
+		# run found.
+		printf '%s %s\n' "$(adb shell settings get system accelerometer_rotation | tr -d '\r')" \
+				"$(adb shell settings get system user_rotation | tr -d '\r')" > "$ROTATION"
 	fi
 	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 	id="ask$(date +%s)"
@@ -404,6 +415,13 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 	# get in the way after the run.
 	say "--ez done true"
 	adb shell appops set $PKG SYSTEM_ALERT_WINDOW default >/dev/null 2>&1
+	# Rotation as the run found it.
+	if [ -s "$ROTATION" ]; then
+		read -r auto user < "$ROTATION"
+		case "$user" in [0-3]) adb shell settings put system user_rotation "$user" ;; esac
+		case "$auto" in [01]) adb shell settings put system accelerometer_rotation "$auto" ;; esac
+		rm -f "$ROTATION"
+	fi
 	;;
 *)
 	echo "usage: $0 post TEXT [KIND] [ESTIMATE] | again | ask TEXT [SECONDS] | check | wait SECONDS [TEXT [KIND]] | rate TEXT [SECONDS] | hide | shot FILE [WHY] | done [TEXT] [sad]" >&2

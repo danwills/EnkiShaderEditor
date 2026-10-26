@@ -644,3 +644,11 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   INTERNET permission). It would apply only to in-app sharing such as a gallery or server.
 - Dan may later let people share packs by saving, sending and loading them, outside the app.
   Agreed that's still not UGC: Install from File already works that way, like any app that opens files.
+
+## 2026-10-26
+
+- "phone-testing tends to leave my phone in autorotate mode.. can you see the code that might be
+  doing that?" - No script did it: rotation tests put it back with hand-typed
+  `settings put system accelerometer_rotation 1` (auto-rotate on), whatever it had been. Now
+  `status.sh ask` saves both rotation settings and `done` restores them (Enki's copy and
+  `tools/phone-kit`); CLAUDE.md says not to restore them by hand.

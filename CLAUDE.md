@@ -97,7 +97,10 @@ When driving Dan's phone over adb (only when he's said it's free):
 - A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
-  stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`
+  stay-awake off; restore any other setting changed. Rotation is `done`'s job: `ask` saves
+  auto-rotate and the locked rotation as found and `done` puts them back, so never put them
+  back by hand (hard-coding "auto-rotate on" left Dan's phone turning). Then
+  `tools/phone/status.sh done "..."`
   (`... sad` if it went badly): the panel goes at once, and the notification is left saying
   Claude's finished, with the summary and the log's last 8 lines to look back over.
 
