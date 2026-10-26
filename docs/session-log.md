@@ -652,3 +652,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   `settings put system accelerometer_rotation 1` (auto-rotate on), whatever it had been. Now
   `status.sh ask` saves both rotation settings and `done` restores them (Enki's copy and
   `tools/phone-kit`); CLAUDE.md says not to restore them by hand.
+- "yes copy it to the skill, and do stay-awake too" - `ask` now also saves stay-awake
+  (`stay_on_while_plugged_in`) and `done` restores it; copied status.sh and README into the
+  phone-testing skill repo (with Dan's OK) and updated its SKILL.md hand-back rules.

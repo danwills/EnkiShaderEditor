@@ -96,9 +96,9 @@ When driving Dan's phone over adb (only when he's said it's free):
   showing (Replace is at (1082,1764)), and replacing the open shader reloads it.
 - A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
 - Either way, finish by putting the phone back: reopen the previous app
-  (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
-  stay-awake off; restore any other setting changed. Rotation is `done`'s job: `ask` saves
-  auto-rotate and the locked rotation as found and `done` puts them back, so never put them
+  (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; restore
+  any other setting changed. Rotation and stay-awake are `done`'s job: `ask` saves auto-rotate,
+  the locked rotation and stay-awake as found and `done` puts them back, so never put them
   back by hand (hard-coding "auto-rotate on" left Dan's phone turning). Then
   `tools/phone/status.sh done "..."`
   (`... sad` if it went badly): the panel goes at once, and the notification is left saying

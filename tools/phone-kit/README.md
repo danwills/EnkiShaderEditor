@@ -154,7 +154,8 @@ When driving the phone over adb:
   answer, so act on what it says.
 - Finish by putting the phone back: reopen the app that was showing
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`)
-  or go home, turn stay-awake off, restore any setting changed. Then
+  or go home, and restore any setting changed but rotation and stay-awake:
+  `ask` saves those as found and `done` puts them back, so leave them to it. Then
   `status.sh done "..."` (`... sad` if it went badly): the panel goes,
   and the notification keeps the log's last lines.
 ```
@@ -188,8 +189,10 @@ When driving the phone over adb:
   detection. `input swipe x y x y 120` holds a tap for 120 ms.
 - **`adb shell` reads stdin.** In a `while read` loop it eats the rest of
   the input; give it `</dev/null`.
-- **Keep the screen on** while testing (`adb shell svc power stayon true`),
-  and turn it off again at the end.
+- **Keep the screen on** while testing (`adb shell svc power stayon true`);
+  `done` puts stay-awake back as `ask` found it. Putting settings back by
+  hand with fixed values (stay-awake off, auto-rotate on) changed phones
+  that had been set otherwise.
 - **Look before acting.** Screenshots (`adb exec-out screencap -p`) are
   the agent's eyes, and the panel and prompt show up in them, so clear
   them first when the result matters.
