@@ -671,3 +671,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   the real ones, so they'll be pulled from there first. Advice given: separate diffusion from decay
   (every step is a full 3x3 blur), slower decay with lower deposit, sensor and turn angle ratios,
   `///steps`, more agents per pixel, several species, settings as defines for Edit Live.
+- "that does sound bloody cool!" (phone free, 10.1.1.198:46075) - Read Enki debug's library
+  (the release build isn't readable): its newest Slime Cartographer is "Restore Test" (904). Built
+  v2 from it:
+  - partial diffusion (DIFFUSE 0.1);
+  - slower fade (0.03);
+  - brightness scaled by the fade;
+  - `///steps:3`;
+  - a fresh colony's settings as defines, after a desktop sweep (sensor distance 0.007, turn 0.8).
+  Fixed `run_powder.py` missing `;///buf:` channels. Added to Enki debug as "Slime Cartographer
+  v2" (1053): 23 fps at 1/4 quality. Saved as `tools/samples/physarum/slime_cartographer.glsl`.
