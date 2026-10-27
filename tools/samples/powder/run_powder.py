@@ -40,7 +40,7 @@ class Run:
 		self.steps = int(m.group(1)) if m else 1
 		self.passes, self.image, self.sound = [], None, None
 		for name, src in check_shader.passes(text):
-			reads = re.findall(r"uniform sampler2D (iChannel\d); ///buf:([A-D]);", src)
+			reads = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D])", src)
 			prog = rdheadless.compile_program(check_shader.wrap(src, common))
 			if re.search(r"\bvec2\s+mainSound\s*\(", src):
 				self.sound = (prog, reads)
