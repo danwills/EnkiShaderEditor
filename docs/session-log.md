@@ -661,3 +661,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Preset `1 0 3`, changed it, then a second `ask` as if the first run had dropped; the saved
     values were kept and `done` restored `1 0 3`.
   - Settings put back to `0 0 0` and Settings reopened. `settings put global` works from adb shell.
+
+## 2026-10-27
+
+- "Do we have any outstanding threads to pull on? I'm keen to get back to that physarum shader ...
+  making the pheromones dissipate more slowly ... any advice?" - Listed the open threads. Rebuilt
+  the 19 Oct physarum and Slime Cartographer sources from the session transcript into
+  `~/dev/shaderEditor/physarum/`, since the scratchpad copies were gone; the phone's copies are
+  the real ones, so they'll be pulled from there first. Advice given: separate diffusion from decay
+  (every step is a full 3x3 blur), slower decay with lower deposit, sensor and turn angle ratios,
+  `///steps`, more agents per pixel, several species, settings as defines for Edit Live.
