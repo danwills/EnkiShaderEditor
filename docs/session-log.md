@@ -681,3 +681,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - a fresh colony's settings as defines, after a desktop sweep (sensor distance 0.007, turn 0.8).
   Fixed `run_powder.py` missing `;///buf:` channels. Added to Enki debug as "Slime Cartographer
   v2" (1053): 23 fps at 1/4 quality. Saved as `tools/samples/physarum/slime_cartographer.glsl`.
+- "let's wrap up and keep it for tomorrow" - Wrapped up. Next time: Slime Cartographer v3 with two or three
+  species (each follows its own trail channel, avoids the others').
