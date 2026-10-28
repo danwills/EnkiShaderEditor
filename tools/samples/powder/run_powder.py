@@ -39,9 +39,15 @@ class Run:
 		m = re.search(r"^///steps:(\d+)", text, re.M)
 		self.steps = int(m.group(1)) if m else 1
 		self.passes, self.image, self.sound = [], None, None
+		self.modes = {}
 		for name, src in check_shader.passes(text):
-			reads = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D])", src)
+			found = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D]);?([^\n]*)", src)
+			reads = [(ch, b) for ch, b, _ in found]
 			prog = rdheadless.compile_program(check_shader.wrap(src, common))
+			# Filtering and wrapping as the app sets them: linear unless
+			# min:n, clamped unless s:r.
+			for ch, b, params in found:
+				self.modes[(prog, ch)] = ("min:n" in params, "s:r" in params)
 			if re.search(r"\bvec2\s+mainSound\s*\(", src):
 				self.sound = (prog, reads)
 			elif name == "Image":
@@ -78,6 +84,13 @@ class Run:
 			gl.glActiveTexture(gl.GL_TEXTURE0 + unit)
 			gl.glBindTexture(gl.GL_TEXTURE_2D, self.tex[src][self.cur[src]])
 			gl.glUniform1i(gl.glGetUniformLocation(prog, ch), unit)
+			nearest, repeat = self.modes.get((prog, ch), (True, False))
+			f = gl.GL_NEAREST if nearest else gl.GL_LINEAR
+			w = gl.GL_REPEAT if repeat else gl.GL_CLAMP_TO_EDGE
+			for p in (gl.GL_TEXTURE_MIN_FILTER, gl.GL_TEXTURE_MAG_FILTER):
+				gl.glTexParameteri(gl.GL_TEXTURE_2D, p, f)
+			for p in (gl.GL_TEXTURE_WRAP_S, gl.GL_TEXTURE_WRAP_T):
+				gl.glTexParameteri(gl.GL_TEXTURE_2D, p, w)
 
 		def put(name, setter, *val):
 			loc = gl.glGetUniformLocation(prog, name)
