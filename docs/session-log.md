@@ -700,3 +700,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - **Fixed:** `run_powder.py` now filters and wraps channels as the app does.
   - **Not done yet:** the post's three-species colour pictures. Not on the phone yet: Dan hasn't
     said it's free.
+- "wrap up and keep your notes ... the scratch area is cleared when I reboot" - Wrapped up. All
+  physarum search data, renders and Softology's pictures are already under
+  `~/dev/shaderEditor/physarum/`; the scratchpad held only an early v3 draft. Next time: v3 on
+  the phone, then species.
