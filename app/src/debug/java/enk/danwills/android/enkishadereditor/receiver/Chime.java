@@ -23,6 +23,31 @@ public final class Chime {
 	public static void asking() { play(new double[] {C4, G4}, 0.12, 0.6, 0.35); }
 
 	/**
+	 * A thumbs up/down question: a short low chirp rising from C to G, like
+	 * a questioning "eh?".
+	 */
+	public static void wondering() {
+		new Thread(() -> {
+			final int rate = 44100;
+			final double len = 0.2;
+			int n = (int) (rate * len);
+			short[] pcm = new short[n];
+			double phase = 0;
+			for (int i = 0; i < n; i++) {
+				double t = i / (double) rate;
+				double rise = Math.max(0, Math.min(1, (t - 0.02) / 0.12));
+				rise = rise * rise * (3 - 2 * rise);
+				double f = C4 * Math.pow(G4 / C4, rise);
+				phase += 2 * Math.PI * f / rate;
+				double env = Math.min(1, t / 0.015) * Math.min(1, (len - t) / 0.06);
+				double v = env * (Math.sin(phase) + 0.4 * Math.sin(2 * phase) + 0.15 * Math.sin(3 * phase));
+				pcm[i] = (short) (v * 0.3 * 32767);
+			}
+			pcmPlay(pcm, rate);
+		}).start();
+	}
+
+	/**
 	 * Go ahead tapped: a car starting. The starter cranks (a motor's whine,
 	 * chugging ~9 times a second), the engine catches, revs twice ("broom
 	 * broom") and settles to idle. The engine's firing is low (30-80 Hz, more

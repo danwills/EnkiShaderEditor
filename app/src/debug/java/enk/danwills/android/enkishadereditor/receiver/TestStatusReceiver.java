@@ -44,6 +44,7 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		String rate = intent.getStringExtra("rate");
 		if (rate != null && rate.matches("[0-9A-Za-z_-]{1,64}")) {
 			overlay.askRating(rate, intent.getStringExtra("question"));
+			Chime.wondering();   // easy to miss otherwise
 		}
 		String took = intent.getStringExtra("took");
 		if (took != null && !took.isEmpty()) {

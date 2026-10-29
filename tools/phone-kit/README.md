@@ -219,5 +219,6 @@ When driving the phone over adb:
   G4 falling to C4 when finished, E♭4 to C4 when stopped; ToneGenerator's beeps were too harsh, and
   bare low sines too quiet on a phone speaker, so they carry some overtones).
   `ask`'s dialog plays a quick C up to G as it opens, to catch an ear. Tapping its Go ahead plays a car starting
-  (`Chime.starting`: the starter cranks, the engine catches and revs twice). Redraw the icons with any 96 px white-on-transparent PNG
+  (`Chime.starting`: the starter cranks, the engine catches and revs twice). A `rate` question plays
+  a questioning chirp (`Chime.wondering`: a short low tone rising from C to G), as it's easy to miss. Redraw the icons with any 96 px white-on-transparent PNG
   plus a `-large` one.
