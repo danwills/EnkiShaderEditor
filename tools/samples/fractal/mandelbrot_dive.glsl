@@ -5,6 +5,8 @@
 //   drag              pan (and fling) - steer while it zooms
 //   pinch             zoom about the fingers, and twist to turn
 //   tap               start or stop zooming in, on the middle of the screen
+//                     (drifting to the nearest edge of the set, so it never
+//                     dives into flat colour or black)
 //   two-finger tap    start or stop zooming out
 //   three-finger tap  back to the start
 //   long press        the Julia set of the point under the finger; another
@@ -146,6 +148,15 @@ uniform int pointerCount;
 #define HOLD_TIME 0.5
 // Two fingers turn the view as well as zoom it (0: they don't).
 #define TWIST 1
+// While it zooms in, the middle drifts (EDGE_SEEK of the way a frame, on the
+// screen) to the nearest edge of the set, from last frame's distances to it
+// (on a grid of EDGE_GRID either way of the middle), so it never dives into
+// a flat bit: far outside, or inside. Within EDGE_NEAR of the screen of an
+// edge, it's left be; with no edge on the screen (all inside), it backs out
+// till there is one. (0: no drift.)
+#define EDGE_SEEK 0.03
+#define EDGE_GRID 7
+#define EDGE_NEAR 0.02
 
 // FOR EVER: on the way down into the Mandelbrot set, it looks for the
 // minibrot (a small copy of the whole set) the view's in the domain of, the
@@ -217,7 +228,7 @@ uniform int pointerCount;
 //   S_FLING      fling velocity (pixels a frame), where the touch started
 //   S_MODE       Julia (1) or not, its c, whether this touch has long-pressed
 //   S_SAVED_VIEW the Mandelbrot set's octaves and angle while on a Julia
-//                set
+//                set, the drift to the edge (pixels a frame)
 //   S_WHERE      the middle, and the middle less the reference point, as
 //                floats
 //   S_ANGLE      the view's turn, whether last frame's colours can be
@@ -547,6 +558,53 @@ void fromParts(float x, float xFine, float y, float yFine, out uint re[LIMBS], o
 	fxAdd(im, t, im);
 }
 
+// Where the nearest edge is, from the middle in last frame's pixels, by its
+// results (Buffer B) on a grid across the screen: the escaped one with the
+// least distance to the edge plus a tenth of its way from the middle (so
+// the nearest edge, not the nearest point a long way nearer it: the
+// distances can be half what they are, which a half would cancel), or the
+// middle
+// when that's near enough already; and whether any were escaped, and any
+// inside.
+vec4 edgeward(vec2 res) {
+	// The middle's on an edge if it's escaped near it, or inside with an
+	// escaped pixel near.
+	float near = EDGE_NEAR * min(res.x, res.y);
+	vec4 b = texelFetch(iChannel1, ivec2(0.5 * res), 0);
+	if (b.x > 0.0 && edgeDistance(b.w) < near) {
+		return vec4(0.0, 0.0, 1.0, 0.0);
+	}
+	if (b.x < 0.0) {
+		for (int k = 0; k < 8; k++) {
+			float a = TAU * float(k) / 8.0;
+			if (texelFetch(iChannel1, ivec2(0.5 * res + near * vec2(cos(a), sin(a))), 0).x > 0.0) {
+				return vec4(0.0, 0.0, 1.0, 0.0);
+			}
+		}
+	}
+	vec2 best = vec2(0.0);
+	float least = 1e30;
+	float insides = 0.0;
+	for (int j = -EDGE_GRID; j <= EDGE_GRID; j++) {
+		for (int i = -EDGE_GRID; i <= EDGE_GRID; i++) {
+			vec2 s = vec2(i, j) / float(EDGE_GRID) * 0.45 * res;
+			b = texelFetch(iChannel1, ivec2(0.5 * res + s), 0);
+			if (b.x <= 0.0) {
+				// Not worked out, or inside.
+				insides += b.x < 0.0 ? 1.0 : 0.0;
+				continue;
+			}
+			float edge = edgeDistance(b.w);
+			float score = edge + 0.1 * length(s);
+			if (score < least) {
+				least = score;
+				best = s;
+			}
+		}
+	}
+	return vec4(best, least < 1e29 ? 1.0 : 0.0, insides);
+}
+
 // The tour: Misiurewicz points (where the set's the same however deep, with
 // ever smaller minibrots round them, each half as deep as it's small, so
 // the dive meets one on its way down) and the start.
@@ -839,6 +897,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 savedView = stateAt(iChannel0, S_SAVED_VIEW);
 	float savedOctaves = savedView.x;
 	float savedAngle = savedView.y;
+	vec2 seek = savedView.zw;
 	vec4 prevView = stateAt(iChannel0, S_PREV_VIEW);
 	float generation = fresh ? 0.0 : prevView.x;
 	vec4 mini = stateAt(iChannel0, S_MINI);
@@ -957,7 +1016,21 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			move(mr, mi, rot(t.xz, miniSize.y) * exp2(miniSize.x));
 			// (STEER of the way in pixels: as the pixels shrink too.)
 			move(cr, ci, difference(mr, mi, cr, ci) * (1.0 - (1.0 - STEER) * scale / lastScale));
+			seek = vec2(0.0);
+		} else if (EDGE_SEEK > 0.0 && length(velocity) <= 0.05) {
+			// Drift to the edge (eased, as the nearest grid point jumps),
+			// EDGE_SEEK of the way in pixels.
+			vec4 e = edgeward(res);
+			seek = mix(seek, e.xy, 0.2);
+			move(cr, ci, rot(seek, lastAngle) * lastScale * (1.0 - (1.0 - EDGE_SEEK) * scale / lastScale));
+			if (e.z < 0.5 && e.w > 0.0 && octaves > -2.0) {
+				// All inside: back out instead.
+				octaves = max(octaves - 2.0 * AUTO_ZOOM * dt, -2.0);
+				scale = pixelScale(octaves);
+			}
 		}
+	} else {
+		seek = vec2(0.0);
 	}
 
 	if (zooming > 0.5 && !jump && !reset) {
@@ -1065,7 +1138,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	else if (c.x == S_POINTS) o = vec4(last0, last1);
 	else if (c.x == S_FLING) o = vec4(velocity, origin);
 	else if (c.x == S_MODE) o = mode;
-	else if (c.x == S_SAVED_VIEW) o = vec4(savedOctaves, savedAngle, 0.0, 0.0);
+	else if (c.x == S_SAVED_VIEW) o = vec4(savedOctaves, savedAngle, jump || reset ? vec2(0.0) : seek);
 	else if (c.x == S_WHERE) o = vec4(fxToFloat(cr), fxToFloat(ci), off);
 	else if (c.x == S_ANGLE) o = vec4(angle, sameSize ? 1.0 : 0.0, 0.0, 0.0);
 	else if (c.x < S_REF) o = fxTexel(cr, ci, c.x - S_CENTRE);
