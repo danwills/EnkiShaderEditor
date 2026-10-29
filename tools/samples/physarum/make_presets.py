@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Writes presets (presets.py: PRESETS = [(name, {setting: value}), ...])
-into the shader between its PRESET markers, and the menu's labels (from
-the "A | B | ..." line between its LABELS markers), adding any glyphs the
-names and labels need to the font.
+into the shader between its PRESET markers, and the menu's labels and
+colour scheme names (each from the "A | B | ..." line between its LABELS
+or COLOUR NAMES markers), adding any glyphs they all need to the font.
 
   make_presets.py shader.glsl presets.py
 """
@@ -22,7 +22,8 @@ FONT = {
 ORDER = ["SENSOR_ANGLE", "SENSOR_DISTANCE", "TURN", "SPEED", "FADE", "GLOW",
 		"DIFFUSE", "BLUR", "JITTER", "SPAWN"]
 NAME_COLUMNS = 11
-LABEL_COLUMNS = 21
+LABEL_COLUMNS = 15
+COLOUR_COLUMNS = 7
 
 
 def f(v):
@@ -37,7 +38,8 @@ def main():
 	chars = " " + m.group(1)
 	rows = [int(x) for x in m.group(2).replace("\n", " ").split(",")]
 	labels = re.search(r"// LABELS BEGIN\n//[^\n]*\n// ([^\n]*)\n", s).group(1).split(" | ")
-	text = "".join(name for name, _ in presets).upper() + "".join(labels)
+	colours = re.search(r"// COLOUR NAMES BEGIN\n//[^\n]*\n// ([^\n]*)\n", s).group(1).split(" | ")
+	text = "".join(name for name, _ in presets).upper() + "".join(labels) + "".join(colours)
 	for c in sorted({c for c in text if c not in chars}):
 		chars += c
 		rows += list(FONT[c])
@@ -48,10 +50,16 @@ def main():
 	s = re.sub(r"#define GLYPH_COUNT \d+", "#define GLYPH_COUNT %d" % len(chars), s)
 
 	codes = [", ".join(str(chars.index(c)) for c in label[:LABEL_COLUMNS].ljust(LABEL_COLUMNS)) for label in labels]
-	block = ("// LABELS BEGIN\n// The bars' labels, bottom row first (made by make_presets.py from this line):\n"
+	block = ("// LABELS BEGIN\n// The bars' labels, in bar order (made by make_presets.py from this line):\n"
 			"// %s\nconst int LABELS[%d * LABEL_COLUMNS] = int[](\n%s);\n// LABELS END") % (
 			" | ".join(labels), len(labels), ",\n".join("\t\t" + c for c in codes))
 	s = re.sub(r"// LABELS BEGIN.*?// LABELS END", lambda _: block, s, flags=re.S)
+
+	codes = [", ".join(str(chars.index(c)) for c in name[:COLOUR_COLUMNS].ljust(COLOUR_COLUMNS)) for name in colours]
+	block = ("// COLOUR NAMES BEGIN\n// The colour schemes' names, as palette() numbers them (made by make_presets.py from this line):\n"
+			"// %s\n#define COLOUR_COLUMNS %d\nconst int COLOUR_NAMES[%d * COLOUR_COLUMNS] = int[](\n%s);\n// COLOUR NAMES END") % (
+			" | ".join(colours), COLOUR_COLUMNS, len(colours), ",\n".join("\t\t" + c for c in codes))
+	s = re.sub(r"// COLOUR NAMES BEGIN.*?// COLOUR NAMES END", lambda _: block, s, flags=re.S)
 
 	names = []
 	for name, _ in presets:
