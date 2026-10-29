@@ -72,13 +72,30 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 			return;
 		}
 		Context app = context.getApplicationContext();
-		if (isOnScreen()) {
-			Log.i(TAG, "Asking about " + name);
-			ShaderImportActivity.start(app, name, file, quality, isEditorOnTop(app));
-			return;
-		}
+		boolean onScreen = isOnScreen();
 		PendingResult pending = goAsync();
-		importAsync(app, name, file, quality, result -> pending.finish());
+		new Thread(() -> {
+			// Only replacing a shader can disturb what's on screen: a new
+			// name is just added, without asking.
+			if (onScreen && findShader(app, name) > 0) {
+				Log.i(TAG, "Asking about " + name);
+				ShaderImportActivity.start(app, name, file, quality, isEditorOnTop(app));
+				pending.finish();
+				return;
+			}
+			importAsync(app, name, file, quality, result -> pending.finish());
+		}, "ShaderImportCheck").start();
+	}
+
+	// The library's shader called `name`, or 0.
+	private static long findShader(@NonNull Context app, @NonNull String name) {
+		for (DataRecords.ShaderInfo shader : Database.getInstance(app).getDataSource()
+				.shader.getShaders(false)) {
+			if (name.equals(shader.name())) {
+				return shader.id();
+			}
+		}
+		return 0;
 	}
 
 	public interface Done {
@@ -168,13 +185,7 @@ public class ShaderImportReceiver extends BroadcastReceiver {
 		DataSource data = Database.getInstance(context).getDataSource();
 		var parsed = MultipassSource.parse(text);
 		String source = parsed != null ? parsed.imageSource() : text;
-		long id = 0;
-		for (DataRecords.ShaderInfo shader : data.shader.getShaders(false)) {
-			if (name.equals(shader.name())) {
-				id = shader.id();
-				break;
-			}
-		}
+		long id = findShader(context, name);
 		boolean replaced = id > 0;
 		if (replaced) {
 			var old = data.shader.getShader(id);

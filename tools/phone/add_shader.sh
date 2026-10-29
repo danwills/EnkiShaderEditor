@@ -9,12 +9,12 @@
 # `//// Text name` sections), as Copy and Share make and vti2enki writes.
 # Goes through the debug build's ShaderImportReceiver (src/debug).
 #
-# If Enki debug is on screen it asks on the phone whether to replace or
-# ignore (the open shader's edits would otherwise be saved over it);
-# otherwise its process is stopped first (it saved when it left the
-# screen) and the import just happens; --open then starts Enki debug on
-# it (not when it was on screen: the phone's asking first). ANDROID_SERIAL
-# picks the phone.
+# If Enki debug is on screen and a shader of that name is there, it asks
+# on the phone whether to replace or ignore (the open shader's edits would
+# otherwise be saved over it); a new name is just added. Otherwise its
+# process is stopped first (it saved when it left the screen) and the
+# import just happens. --open then starts Enki debug on it (not when the
+# phone's asking first). ANDROID_SERIAL picks the phone.
 set -e
 PKG=enk.danwills.android.enkishadereditor.debug
 open=
@@ -29,10 +29,7 @@ if [ ! -f "$file" ]; then
 	echo "usage: $0 [--open] shader.glsl [name] [quality]" >&2
 	exit 2
 fi
-if adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q "$PKG/"; then
-	on_screen=1
-else
-	on_screen=
+if ! adb shell dumpsys activity activities | grep -m1 topResumedActivity | grep -q "$PKG/"; then
 	adb shell am force-stop "$PKG"
 	# That took the status panel with it: put it back.
 	"$(dirname "$0")/status.sh" again
@@ -45,13 +42,15 @@ adb shell "cat /data/local/tmp/enki-import.glsl | run-as $PKG sh -c 'mkdir -p fi
 adb shell rm -f /data/local/tmp/enki-import.glsl
 q=$(printf "'%s'" "$(printf %s "$name" | sed "s/'/’/g")")
 adb shell "am broadcast -n $PKG/enk.danwills.android.enkishadereditor.receiver.ShaderImportReceiver --es name $q --es file $incoming --ef quality $quality" >/dev/null
-if [ -n "$on_screen" ]; then
-	echo "Enki debug is on screen - asking on the phone."
-	exit 0
-fi
 # The receiver runs on its own thread; give it a moment, then report.
 sleep 2
 report=$(adb logcat -d -s ShaderImport:I | tail -n 1 | sed 's/^.*ShaderImport: //')
+case "$report" in
+"Asking about "*)
+	echo "Enki debug is on screen and has a shader of that name - asking on the phone."
+	exit 0
+	;;
+esac
 echo "$report"
 # "Added <name> (<id>)" or "Replaced <name> (<id>)".
 id=$(printf '%s\n' "$report" | sed -n 's/^.*(\([0-9][0-9]*\))$/\1/p')
