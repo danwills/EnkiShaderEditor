@@ -21,7 +21,8 @@
 //                      every agent is dealt a species afresh
 //   avoidance        - (more than one species) how much each shies away
 //                      from the others' trails
-//   scale            - the whole pattern, bigger or finer (1 mid-way).
+//   scale            - the whole pattern, bigger or finer, about the
+//                      middle of the screen (1 mid-way).
 //                      Above 1 the agents live on a coarser grid, as many
 //                      of them as at 1, while their trail - its sensing,
 //                      deposits and spread - stays at full resolution, so
@@ -34,7 +35,10 @@
 //   agent opacity    - how strongly the agents themselves show
 //   colours          - the colour scheme (named on the bar), one for
 //                      each species, drawn over each other in turn (the
-//                      background is the first one's)
+//                      background is the first one's). Tap for the next
+//   soften           - eases thin, just-laid trails into the trail round
+//                      them, leaving broad veins and the gaps sharp (only
+//                      how it looks)
 //   zoom             - magnifies the colony about the middle of the
 //                      screen: it runs on a smaller patch (faster), its
 //                      trail smoothed as it's enlarged
@@ -55,6 +59,8 @@
 // Needs float buffers. Runs best at 1/4 quality or below.
 
 #define REPEL_TINT vec3(0.6, 0.05, 0.15)
+// How far round (trail pixels, at scale 1) soften compares the trail with.
+#define SOFTEN_RADIUS 1.5
 // The trail fade a fresh colony starts with (keep in step with Buffer A).
 #define FADE 0.03
 
@@ -185,8 +191,8 @@ const int GLYPHS[GLYPH_COUNT * 5] = int[](
 // FONT END
 // LABELS BEGIN
 // The bars' labels, in bar order (made by make_presets.py from this line):
-// SCALE | TRAIL LIFE | SPEED | TURNING | SENSOR DISTANCE | SENSOR ANGLE | ZOOM | COLOURS | AGENT OPACITY | TRAIL OPACITY | GAMMA | GLOW | SPECIES | AVOIDANCE | COLOURS 2 | COLOURS 3 | COLOURS 1
-const int LABELS[17 * LABEL_COLUMNS] = int[](
+// SCALE | TRAIL LIFE | SPEED | TURNING | SENSOR DISTANCE | SENSOR ANGLE | ZOOM | COLOURS | AGENT OPACITY | TRAIL OPACITY | GAMMA | GLOW | SPECIES | AVOIDANCE | COLOURS 2 | COLOURS 3 | SOFTEN | COLOURS 1
+const int LABELS[18 * LABEL_COLUMNS] = int[](
 		14, 2, 1, 9, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		15, 13, 1, 8, 9, 0, 9, 8, 5, 4, 0, 0, 0, 0, 0,
 		14, 12, 4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -203,6 +209,7 @@ const int LABELS[17 * LABEL_COLUMNS] = int[](
 		1, 17, 11, 8, 3, 1, 10, 2, 4, 0, 0, 0, 0, 0, 0,
 		2, 11, 9, 11, 16, 13, 14, 0, 19, 0, 0, 0, 0, 0, 0,
 		2, 11, 9, 11, 16, 13, 14, 0, 20, 0, 0, 0, 0, 0, 0,
+		14, 11, 5, 15, 4, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		2, 11, 9, 11, 16, 13, 14, 0, 29, 0, 0, 0, 0, 0, 0);
 // LABELS END
 
@@ -314,7 +321,7 @@ bool labelPixel(int item, int presetIndex, int colours, int species, int shown, 
 }
 
 // `touched` is the item a finger's on (-1 for none).
-vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, vec4 s9, int touched, vec3 col) {
+vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, vec4 s9, vec4 s10, int touched, vec3 col) {
 	int species = clamp(int(s9.z + 0.5), 1, MAX_SPECIES);
 	Layout m = menuLayout(species);
 	// A dark band behind it all, so it reads over a bright trail.
@@ -358,6 +365,7 @@ vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, 
 			s5.z / AVOID_MAX,
 			(float(schemes[1]) + 0.5) / float(PALETTES),
 			(float(schemes[2]) + 0.5) / float(PALETTES),
+			s10.x,
 			(float(presetIndex) + 1.0) / float(PRESETS));
 	vec3 tints[BARS + 1] = vec3[](
 			vec3(0.85),
@@ -376,6 +384,7 @@ vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, 
 			vec3(1.0, 0.6, 0.3),
 			vec3(1.0),
 			vec3(1.0),
+			vec3(0.75, 0.85, 1.0),
 			vec3(1.0));
 	bool lit = item == touched;
 	float alpha = lit ? 0.95 : 0.6;
@@ -432,11 +441,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s6 = texelFetch(iChannel1, ivec2(6, 0), 0);
 	vec4 s7 = texelFetch(iChannel1, ivec2(7, 0), 0);
 	vec4 s9 = texelFetch(iChannel1, ivec2(9, 0), 0);
+	vec4 s10 = texelFetch(iChannel1, ivec2(10, 0), 0);
 	bool written = s1.w == 2.0;
 	if (!written) {
 		s6 = vec4(1.0, 0.0, 2.0, 1.0);
 		s7 = vec4(1.0);
 		s9 = vec4(10.0, 11.0, 3.0, 3.0);
+		s10 = vec4(0.5, 1.0, 0.0, 0.0);
 	}
 	int species = clamp(int(s9.z + 0.5), 1, MAX_SPECIES);
 	int schemes[MAX_SPECIES] = int[](int(s6.z + 0.5), int(s9.x + 0.5), int(s9.y + 0.5));
@@ -451,6 +462,19 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 trail = zoom > 1.01
 			? smoothTrail(q, size)
 			: texture(iChannel0, clamp(q, vec2(0.5), size - 0.5) / iResolution.xy);
+	// Soften: where the trail stands above the trail round about - a thin
+	// ridge, just laid - bring it down toward it. Broad veins (as high as
+	// what's round them) and the gaps between (lower) are left sharp.
+	if (s10.x > 0.0) {
+		float reach = SOFTEN_RADIUS * cellPixels;
+		vec4 around = vec4(0.0);
+		for (int i = 0; i < 8; ++i) {
+			float a = float(i) * 0.785398 + 0.39;
+			vec2 at = clamp(q + vec2(cos(a), sin(a)) * reach, vec2(0.5), size - 0.5);
+			around += texture(iChannel0, at / iResolution.xy);
+		}
+		trail -= s10.x * max(trail - around / 8.0, 0.0);
+	}
 
 	// Each species' trail through its scheme, over the ones before (the
 	// first over its background, with the food in it).
@@ -489,7 +513,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	}
 
 	if (!written || s3.y > 0.5) {
-		col = menu(fragCoord, s0, s1, s3, s5, s6, s7, s9, pointerCount > 0 ? int(floor(s3.x + 0.5)) : -1, col);
+		col = menu(fragCoord, s0, s1, s3, s5, s6, s7, s9, s10, pointerCount > 0 ? int(floor(s3.x + 0.5)) : -1, col);
 	}
 	fragColor = vec4(col, 1.0);
 }
@@ -498,7 +522,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 // What every pass shares: the settings' places and ranges, the menu's
 // layout, and how the scale bar scales things.
 //
-// Pixels 0-9 of Buffer A's bottom row hold settings (w = 2 marks the
+// Pixels 0-10 of Buffer A's bottom row hold settings (w = 2 marks the
 // ones a fresh colony checks):
 //   (0,0) = sensor angle, sensor distance, turn angle, 2
 //   (1,0) = speed, trail fade, glow, 2
@@ -514,16 +538,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 //   (7,0) = scale, zoom, and the zoom and scale the agents ran at this
 //           step
 //   (8,0) = how far (in cells) this step moved the colony to keep its
-//           middle in the middle as zoom changed, and the half-cells
+//           middle in the middle as zoom or scale changed, and the half-cells
 //           that rounding left over, for next time
 //   (9,0) = the second and third species' colour schemes, how many
 //           species there are, and how many the agents ran with this step
+//   (10,0) = soften, the scale the agents ran at last step, 0, 0
 // Distances and speeds are as at REFERENCE_HEIGHT and scale 1.
 uniform vec3 pointers[10];
 uniform int pointerCount;
 
 #define PI 3.14159265
-#define SETTINGS 10
+#define SETTINGS 11
 #define MAX_SPECIES 3
 
 #define SENSOR_ANGLE_RANGE vec2(0.02, 2.5)
@@ -568,11 +593,11 @@ ivec2 gridSize(float zoom, float scale) {
 // the top. Bars are numbered up the left column, then up the right.
 #define HUD_MARGIN 0.03
 #define HUD_BOTTOM 0.05
-#define BAR_HEIGHT 0.014
-#define HUD_GAP 0.35
+// The menu's top, as a fraction of the screen's height.
+#define MENU_HEIGHT 0.75
 #define COLUMN_GAP 0.05
-#define BARS 16
-#define PRESET_ROW 16
+#define BARS 17
+#define PRESET_ROW 17
 #define SCALE_BAR 0
 #define ZOOM_BAR 6
 #define COLOURS_BAR 7
@@ -581,8 +606,9 @@ ivec2 gridSize(float zoom, float scale) {
 #define AVOID_BAR 13
 #define COLOURS2_BAR 14
 #define COLOURS3_BAR 15
+#define SOFTEN_BAR 16
 // Not a bar: the first colours bar's label when there's more than one.
-#define COLOURS1_LABEL 16
+#define COLOURS1_LABEL 17
 #define LABEL_COLUMNS 15
 #define PRESET_COLUMNS 21
 
@@ -613,11 +639,14 @@ int colourSpecies(int bar) {
 // settings on the left, the look on the right, with avoidance and a
 // colours bar for each species only when there are that many.
 int barAt(int column, int row, int species) {
-	int left[8] = int[](0, 1, 2, 3, 4, 5, AVOID_BAR, SPECIES_BAR);
-	int right[8] = int[](ZOOM_BAR, COLOURS_BAR, COLOURS2_BAR, COLOURS3_BAR, 8, 9, GAMMA_BAR, 11);
+	int left[9] = int[](0, 1, 2, 3, 4, 5, AVOID_BAR, SPECIES_BAR, -1);
+	int right[9] = int[](ZOOM_BAR, COLOURS_BAR, COLOURS2_BAR, COLOURS3_BAR, 8, 9, GAMMA_BAR, 11, SOFTEN_BAR);
 	int k = 0;
-	for (int i = 0; i < 8; ++i) {
+	for (int i = 0; i < 9; ++i) {
 		int bar = column == 0 ? left[i] : right[i];
+		if (bar < 0) {
+			break;
+		}
 		bool shown = bar == AVOID_BAR || bar == COLOURS2_BAR ? species > 1 : (bar == COLOURS3_BAR ? species > 2 : true);
 		if (shown) {
 			if (k == row) {
@@ -636,17 +665,19 @@ int barColumn(int bar) {
 Layout menuLayout(int species) {
 	Layout m;
 	m.species = species;
-	m.rows = species > 1 ? 8 : 7;
+	m.rows = max(species > 1 ? 8 : 7, 6 + species);
 	m.margin = HUD_MARGIN * iResolution.x;
 	m.width = iResolution.x - 2.0 * m.margin;
 	m.columnWidth = 0.5 * (m.width - COLUMN_GAP * iResolution.x);
-	m.barHeight = max(2.0, BAR_HEIGHT * iResolution.y);
-	m.gap = m.barHeight * HUD_GAP;
+	m.bottom = HUD_BOTTOM * iResolution.y;
+	// The rows and the preset row share the screen up to MENU_HEIGHT.
+	m.stride = (MENU_HEIGHT * iResolution.y - m.bottom) / float(m.rows + 1);
+	m.barHeight = max(2.0, 0.3 * m.stride);
 	// Letters as tall as the bars - unless the longest label wouldn't
 	// fit across a column, then as big as fits.
 	m.textHeight = min(m.barHeight, m.columnWidth / float(LABEL_COLUMNS) * 5.0 / 6.0);
-	m.stride = m.barHeight + m.gap + m.textHeight + m.gap * 2.0;
-	m.bottom = HUD_BOTTOM * iResolution.y;
+	// The rest between: bar, gap, label, two gaps.
+	m.gap = (m.stride - m.barHeight - m.textHeight) / 3.0;
 	return m;
 }
 
@@ -720,6 +751,9 @@ int menuItem(Layout m, vec2 p, out float along, out vec2 local) {
 #define COLOURS_2 10
 #define COLOURS_3 11
 #define AVOID 1.0
+// How much thin, just-laid trails are eased into the trail round them
+// (0-1, only how it looks: see Image).
+#define SOFTEN 0.5
 #define GAMMA 1.0
 #define SCALE 1.0
 #define ZOOM 1.0
@@ -873,7 +907,7 @@ float fromLevel(float level, vec2 range) {
 }
 
 // Sets `bar` (numbered as in Common) to `v` (0..1).
-void setBar(int bar, float v, inout vec4 s0, inout vec4 s1, inout vec4 s3, inout vec4 s5, inout vec4 s6, inout vec4 s7, inout vec4 s9) {
+void setBar(int bar, float v, inout vec4 s0, inout vec4 s1, inout vec4 s3, inout vec4 s5, inout vec4 s6, inout vec4 s7, inout vec4 s9, inout vec4 s10) {
 	// Scale and gamma snap to 1 near the middle.
 	bool middle = abs(v - 0.5) < 0.025;
 	if (bar == 0) {
@@ -909,6 +943,19 @@ void setBar(int bar, float v, inout vec4 s0, inout vec4 s1, inout vec4 s3, inout
 		s9.x = min(floor(v * float(PALETTES)), float(PALETTES - 1));
 	} else if (bar == COLOURS3_BAR) {
 		s9.y = min(floor(v * float(PALETTES)), float(PALETTES - 1));
+	} else if (bar == SOFTEN_BAR) {
+		s10.x = v;
+	}
+}
+
+// A tap on a colours bar: that species' next scheme.
+void nextColours(int bar, inout vec4 s6, inout vec4 s9) {
+	if (bar == COLOURS_BAR) {
+		s6.z = mod(s6.z + 1.0, float(PALETTES));
+	} else if (bar == COLOURS2_BAR) {
+		s9.x = mod(s9.x + 1.0, float(PALETTES));
+	} else if (bar == COLOURS3_BAR) {
+		s9.y = mod(s9.y + 1.0, float(PALETTES));
 	}
 }
 
@@ -924,6 +971,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s7 = texelFetch(iChannel0, ivec2(7, 0), 0);
 	vec4 s8 = texelFetch(iChannel0, ivec2(8, 0), 0);
 	vec4 s9 = texelFetch(iChannel0, ivec2(9, 0), 0);
+	vec4 s10 = texelFetch(iChannel0, ivec2(10, 0), 0);
 	// No settings marker: blank buffers (the first frame, Rewind, or a
 	// resize cleared them) - start a new colony with default settings.
 	// Not on iFrame: a run carries on whatever the frame count does.
@@ -937,6 +985,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		s7 = vec4(SCALE, ZOOM, ZOOM, SCALE);
 		s8 = vec4(0.0);
 		s9 = vec4(float(COLOURS_2), float(COLOURS_3), float(SPECIES), float(SPECIES));
+		s10 = vec4(SOFTEN, SCALE, 0.0, 0.0);
 	}
 	int species = clamp(int(s9.z + 0.5), 1, MAX_SPECIES);
 	// The species count just changed: deal every agent a species afresh.
@@ -945,11 +994,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float cellPixels = cellSize(s7.x);
 	ivec2 size = gridSize(s7.y, s7.x);
 	ivec2 before = gridSize(s7.z, s7.w);
-	// Zoom changed: this cell's agents come from `shift` cells along, half
-	// the patch's change (with what last time's halving left over).
-	ivec2 change = s7.y != s7.z ? before - size + ivec2(s8.zw) : ivec2(0);
+	// Zoom or scale changed: this cell's agents come from `shift` cells
+	// along, half the grid's change (with what last time's halving left
+	// over), so the middle stays in the middle.
+	bool regrid = s7.y != s7.z || s7.x != s7.w;
+	ivec2 change = regrid ? before - size + ivec2(s8.zw) : ivec2(0);
 	ivec2 shift = change / 2;
-	ivec2 leftOver = s7.y != s7.z ? change - shift * 2 : ivec2(s8.zw);
+	ivec2 leftOver = regrid ? change - shift * 2 : ivec2(s8.zw);
+	// The trail they sense is last step's, in its cells' pixels.
+	float lastCellPixels = cellSize(s7.w);
 
 	if (cell.y == 0 && cell.x < SETTINGS) {
 		int count = pointerCount;
@@ -958,6 +1011,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		Layout m = menuLayout(species);
 		float along;
 		vec2 local;
+		s10.y = s7.w;
 		s7.zw = vec2(s7.y, s7.x);
 		s9.w = s9.z;
 		if (count > 0 && previous == 0) {
@@ -981,15 +1035,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			if (count > 1 || length(finger - s2.xy) > TAP_MOVE * iResolution.y) {
 				s3.z = 1.0;
 			}
-			if (count == 1 && item >= 0 && item < BARS) {
-				// Along the bar it began on, wherever the finger's gone.
+			// Along the bar it began on, wherever the finger's gone - a
+			// colours bar only once it's not a tap (that's the next scheme).
+			bool tapping = s3.z < 0.5 && s2.z < TAP_STEPS;
+			if (count == 1 && item >= 0 && item < BARS && !(colourSpecies(item) >= 0 && tapping)) {
 				float left = m.margin + (barColumn(item) == 0 ? 0.0 : m.width - m.columnWidth);
-				setBar(item, clamp((finger.x - left) / m.columnWidth, 0.0, 1.0), s0, s1, s3, s5, s6, s7, s9);
+				setBar(item, clamp((finger.x - left) / m.columnWidth, 0.0, 1.0), s0, s1, s3, s5, s6, s7, s9, s10);
 			}
 		} else if (previous > 0) {
 			// Lifted: a quick tap off the menu shows or hides it.
-			if (item < 0 && s3.z < 0.5 && s2.z < TAP_STEPS) {
-				s3.y = 1.0 - s3.y;
+			if (s3.z < 0.5 && s2.z < TAP_STEPS) {
+				if (item < 0) {
+					s3.y = 1.0 - s3.y;
+				}
+				nextColours(item, s6, s9);
 			}
 			// The species count changes only now, so the menu's rows
 			// don't move under the finger.
@@ -1002,7 +1061,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		s5.y = count == 1 && item < 0 && (s3.z > 0.5 || s2.z >= TAP_STEPS) ? 1.0 : 0.0;
 		s2.w = float(count);
 		s8 = vec4(vec2(shift), vec2(leftOver));
-		vec4 all[SETTINGS] = vec4[](s0, s1, s2, s3, s4, s5, s6, s7, s8, s9);
+		vec4 all[SETTINGS] = vec4[](s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10);
 		fragColor = all[cell.x];
 		return;
 	}
@@ -1021,7 +1080,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 	// Sensing in trail pixels; scaled down, speed (in cells) shrinks too.
 	float pixels = pixelScale(s7.x);
-	vec2 trailSize = vec2(before) * cellPixels;
+	vec2 trailSize = vec2(before) * lastCellPixels;
 	float sensorAngle = s0.x;
 	float sensorDistance = s0.y * REFERENCE_HEIGHT * pixels;
 	float turnAngle = s0.z;
@@ -1047,9 +1106,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			vec2 pos = vec2(from) + agent.xy;
 			float heading = agent.z;
 			vec4 w = scent(kind, species, avoid);
-			float left = dot(w, sniff(pos * cellPixels, heading + sensorAngle, sensorDistance, trailSize));
-			float ahead = dot(w, sniff(pos * cellPixels, heading, sensorDistance, trailSize));
-			float right = dot(w, sniff(pos * cellPixels, heading - sensorAngle, sensorDistance, trailSize));
+			float left = dot(w, sniff(pos * lastCellPixels, heading + sensorAngle, sensorDistance, trailSize));
+			float ahead = dot(w, sniff(pos * lastCellPixels, heading, sensorDistance, trailSize));
+			float right = dot(w, sniff(pos * lastCellPixels, heading - sensorAngle, sensorDistance, trailSize));
 			float rnd = hash(pos * 1.37 + float(iFrame) * 0.618);
 			heading += (hash(pos * 2.71 + float(iFrame) * 0.377) - 0.5) * 2.0 * jitter;
 			if (ahead > left && ahead > right) {
@@ -1107,12 +1166,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s5 = texelFetch(iChannel0, ivec2(5, 0), 0);
 	vec4 s7 = texelFetch(iChannel0, ivec2(7, 0), 0);
 	vec4 s8 = texelFetch(iChannel0, ivec2(8, 0), 0);
+	vec4 s10 = texelFetch(iChannel0, ivec2(10, 0), 0);
 	bool written = s1.w == 2.0;
 	if (!written) {
 		s1 = vec4(1.0, 0.03, 1.2, 2.0);
 		s4 = vec4(0.1, 1.0, 0.0, 0.0);
 		s7 = vec4(1.0);
 		s8 = vec4(0.0);
+		s10 = vec4(0.5, 1.0, 0.0, 0.0);
 	}
 	// The grid this step's agents ran on (see Buffer A), and the trail's
 	// patch of the buffers, the same.
@@ -1135,12 +1196,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	radius = max(radius, sqrt(area));
 	float spread = min(1.0, area / (radius * radius));
 	vec4 trail;
-	ivec2 shift = ivec2(round(s8.xy * cellPixels));
-	if (shift != ivec2(0)) {
-		// Zoom moved the colony (see Buffer A): the trail moves with it,
-		// unspread this once. Past the old patch's edge there was none.
-		ivec2 from = cell + shift;
-		trail = any(lessThan(from, ivec2(0))) ? vec4(0.0) : texelFetch(iChannel1, from, 0) * decay;
+	if (s8.xy != vec2(0.0) || s10.y != s7.w) {
+		// Zoom or scale moved the colony (see Buffer A): the trail goes
+		// with it, resampled from last step's cells, unspread this once.
+		// Past the old patch's edge there was none.
+		vec2 from = (fragCoord / cellPixels + s8.xy) * cellSize(s10.y);
+		bool outside = any(lessThan(from, vec2(0.0))) || any(greaterThanEqual(from, iResolution.xy));
+		trail = outside ? vec4(0.0) : texture(iChannel2, from / iResolution.xy) * decay;
 	} else {
 		vec4 centre = texelFetch(iChannel1, cell, 0);
 		vec4 sum = centre;
