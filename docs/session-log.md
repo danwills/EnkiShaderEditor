@@ -729,3 +729,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   trail; 10 colour schemes incl. Grey and Paper; gamma. Yellow-out: fresh colonies no longer
   key off iFrame and B drops NaN, cause still unconfirmed. Also fixed run_powder.py losing long
   unsynced runs on the desktop GPU.
+  On the phone as Slime Cartographer v5 (1056): the two-column menu, Paper and Grey, scale 2
+  (54 fps) and smoothed zoom 2 (74 fps) all work; bars put back to defaults after.
