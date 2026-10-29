@@ -118,6 +118,12 @@ class Run:
 				gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
 				self.cur[b] = nxt
 			self.step += 1
+		# Wait for the GPU now and then: thousands of frames queued with no
+		# read-back (the desktop's NVIDIA driver, 720x1544) and the buffers
+		# came back as stale memory, the run silently lost.
+		self.frames = getattr(self, "frames", 0) + 1
+		if self.frames % 30 == 0:
+			gl.glFinish()
 
 	def picture(self):
 		prog, reads = self.image
