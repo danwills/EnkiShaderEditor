@@ -719,3 +719,13 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - "phone's here" - Slime Cartographer v4 on the phone (1055). The menu tap, touching and
   dragging bars, both opacities, and scale at 2.5 and 0.3 all work there, at 54-67 fps. Put it
   back to defaults after. Screenshots: `~/dev/shaderEditor/physarum/phone/v4/`.
+- "add the dark band behind the menu ... gaussian filter for the pheromone ... something that
+  changes the filtering domain sizes and the spacings of the sensors and the deposition ... so
+  that the sim can 'really' run at a higher res ... I also ran into the yellow-out issue ...
+  color presets ... greyscale ... a gamma slider" - Slime Cartographer v5: two-column menu over
+  a dark band; zoom (v4's scale) with B-spline smoothing; scale now a coarse agent grid under a
+  full-resolution trail (scaling every distance with one agent per pixel changed the pattern:
+  agents pack veins about one a pixel), tied to the height so higher quality gives a finer
+  trail; 10 colour schemes incl. Grey and Paper; gamma. Yellow-out: fresh colonies no longer
+  key off iFrame and B drops NaN, cause still unconfirmed. Also fixed run_powder.py losing long
+  unsynced runs on the desktop GPU.
