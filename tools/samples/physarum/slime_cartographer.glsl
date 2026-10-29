@@ -17,6 +17,9 @@
 //   turning          - how sharply they turn
 //   speed            - how far they move a step
 //   trail life       - how long trails last
+//   deposit radius   - how widely each agent lays its trail: at the
+//                      bottom a pixel (as the presets were found), up to
+//                      a soft splat two cells across each way
 //   species          - how many (1-3): it changes when you let go, and
 //                      every agent is dealt a species afresh
 //   avoidance        - (more than one species) how much each shies away
@@ -191,8 +194,8 @@ const int GLYPHS[GLYPH_COUNT * 5] = int[](
 // FONT END
 // LABELS BEGIN
 // The bars' labels, in bar order (made by make_presets.py from this line):
-// SCALE | TRAIL LIFE | SPEED | TURNING | SENSOR DISTANCE | SENSOR ANGLE | ZOOM | COLOURS | AGENT OPACITY | TRAIL OPACITY | GAMMA | GLOW | SPECIES | AVOIDANCE | COLOURS 2 | COLOURS 3 | SOFTEN | COLOURS 1
-const int LABELS[18 * LABEL_COLUMNS] = int[](
+// SCALE | TRAIL LIFE | SPEED | TURNING | SENSOR DISTANCE | SENSOR ANGLE | ZOOM | COLOURS | AGENT OPACITY | TRAIL OPACITY | GAMMA | GLOW | SPECIES | AVOIDANCE | COLOURS 2 | COLOURS 3 | SOFTEN | DEPOSIT RADIUS | COLOURS 1
+const int LABELS[19 * LABEL_COLUMNS] = int[](
 		14, 2, 1, 9, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		15, 13, 1, 8, 9, 0, 9, 8, 5, 4, 0, 0, 0, 0, 0,
 		14, 12, 4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -210,6 +213,7 @@ const int LABELS[18 * LABEL_COLUMNS] = int[](
 		2, 11, 9, 11, 16, 13, 14, 0, 19, 0, 0, 0, 0, 0, 0,
 		2, 11, 9, 11, 16, 13, 14, 0, 20, 0, 0, 0, 0, 0, 0,
 		14, 11, 5, 15, 4, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		3, 4, 12, 11, 14, 8, 15, 0, 13, 1, 3, 8, 16, 14, 0,
 		2, 11, 9, 11, 16, 13, 14, 0, 29, 0, 0, 0, 0, 0, 0);
 // LABELS END
 
@@ -366,6 +370,7 @@ vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, 
 			(float(schemes[1]) + 0.5) / float(PALETTES),
 			(float(schemes[2]) + 0.5) / float(PALETTES),
 			s10.x,
+			s10.z / DEPOSIT_RADIUS_MAX,
 			(float(presetIndex) + 1.0) / float(PRESETS));
 	vec3 tints[BARS + 1] = vec3[](
 			vec3(0.85),
@@ -385,6 +390,7 @@ vec3 menu(vec2 fragCoord, vec4 s0, vec4 s1, vec4 s3, vec4 s5, vec4 s6, vec4 s7, 
 			vec3(1.0),
 			vec3(1.0),
 			vec3(0.75, 0.85, 1.0),
+			vec3(0.55, 0.9, 0.75),
 			vec3(1.0));
 	bool lit = item == touched;
 	float alpha = lit ? 0.95 : 0.6;
@@ -542,7 +548,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 //           that rounding left over, for next time
 //   (9,0) = the second and third species' colour schemes, how many
 //           species there are, and how many the agents ran with this step
-//   (10,0) = soften, the scale the agents ran at last step, 0, 0
+//   (10,0) = soften, the scale the agents ran at last step, the deposit's
+//            radius (cells), 0
 // Distances and speeds are as at REFERENCE_HEIGHT and scale 1.
 uniform vec3 pointers[10];
 uniform int pointerCount;
@@ -561,6 +568,7 @@ uniform int pointerCount;
 #define ZOOM_RANGE vec2(1.0, 4.0)
 #define GAMMA_RANGE vec2(0.25, 4.0)
 #define AVOID_MAX 2.0
+#define DEPOSIT_RADIUS_MAX 2.0
 #define PALETTES 12
 
 // The height the presets were found at (1/4 quality on a phone 3088
@@ -596,8 +604,8 @@ ivec2 gridSize(float zoom, float scale) {
 // The menu's top, as a fraction of the screen's height.
 #define MENU_HEIGHT 0.75
 #define COLUMN_GAP 0.05
-#define BARS 17
-#define PRESET_ROW 17
+#define BARS 18
+#define PRESET_ROW 18
 #define SCALE_BAR 0
 #define ZOOM_BAR 6
 #define COLOURS_BAR 7
@@ -607,8 +615,9 @@ ivec2 gridSize(float zoom, float scale) {
 #define COLOURS2_BAR 14
 #define COLOURS3_BAR 15
 #define SOFTEN_BAR 16
+#define DEPOSIT_BAR 17
 // Not a bar: the first colours bar's label when there's more than one.
-#define COLOURS1_LABEL 17
+#define COLOURS1_LABEL 18
 #define LABEL_COLUMNS 15
 #define PRESET_COLUMNS 21
 
@@ -639,7 +648,7 @@ int colourSpecies(int bar) {
 // settings on the left, the look on the right, with avoidance and a
 // colours bar for each species only when there are that many.
 int barAt(int column, int row, int species) {
-	int left[9] = int[](0, 1, 2, 3, 4, 5, AVOID_BAR, SPECIES_BAR, -1);
+	int left[9] = int[](0, 1, 2, 3, 4, 5, DEPOSIT_BAR, AVOID_BAR, SPECIES_BAR);
 	int right[9] = int[](ZOOM_BAR, COLOURS_BAR, COLOURS2_BAR, COLOURS3_BAR, 8, 9, GAMMA_BAR, 11, SOFTEN_BAR);
 	int k = 0;
 	for (int i = 0; i < 9; ++i) {
@@ -659,13 +668,13 @@ int barAt(int column, int row, int species) {
 }
 
 int barColumn(int bar) {
-	return bar < ZOOM_BAR || bar == SPECIES_BAR || bar == AVOID_BAR ? 0 : 1;
+	return bar < ZOOM_BAR || bar == SPECIES_BAR || bar == AVOID_BAR || bar == DEPOSIT_BAR ? 0 : 1;
 }
 
 Layout menuLayout(int species) {
 	Layout m;
 	m.species = species;
-	m.rows = max(species > 1 ? 8 : 7, 6 + species);
+	m.rows = max(species > 1 ? 9 : 8, 6 + species);
 	m.margin = HUD_MARGIN * iResolution.x;
 	m.width = iResolution.x - 2.0 * m.margin;
 	m.columnWidth = 0.5 * (m.width - COLUMN_GAP * iResolution.x);
@@ -754,6 +763,9 @@ int menuItem(Layout m, vec2 p, out float along, out vec2 local) {
 // How much thin, just-laid trails are eased into the trail round them
 // (0-1, only how it looks: see Image).
 #define SOFTEN 0.5
+// How widely each agent lays its trail (cells, 0 to DEPOSIT_RADIUS_MAX):
+// below 1, at scale 1, into the one pixel it's in, as the presets were found.
+#define DEPOSIT_RADIUS 0.0
 #define GAMMA 1.0
 #define SCALE 1.0
 #define ZOOM 1.0
@@ -945,6 +957,8 @@ void setBar(int bar, float v, inout vec4 s0, inout vec4 s1, inout vec4 s3, inout
 		s9.y = min(floor(v * float(PALETTES)), float(PALETTES - 1));
 	} else if (bar == SOFTEN_BAR) {
 		s10.x = v;
+	} else if (bar == DEPOSIT_BAR) {
+		s10.z = v * DEPOSIT_RADIUS_MAX;
 	}
 }
 
@@ -985,7 +999,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		s7 = vec4(SCALE, ZOOM, ZOOM, SCALE);
 		s8 = vec4(0.0);
 		s9 = vec4(float(COLOURS_2), float(COLOURS_3), float(SPECIES), float(SPECIES));
-		s10 = vec4(SOFTEN, SCALE, 0.0, 0.0);
+		s10 = vec4(SOFTEN, SCALE, DEPOSIT_RADIUS, 0.0);
 	}
 	int species = clamp(int(s9.z + 0.5), 1, MAX_SPECIES);
 	// The species count just changed: deal every agent a species afresh.
@@ -1217,12 +1231,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 	// Deposits from the agents in this pixel's cell and the ones round it,
 	// where they are in it: into the pixel each is in on cells a pixel
-	// across (as the presets were found), or else a tent as wide as two
-	// cells, smooth however big. Either way an agent lays cellPixels^2
-	// times a pixel's deposit, so the trail's as strong.
+	// across with no deposit radius (as the presets were found), or else
+	// a tent `reach` cells each way (at least one), smooth however big.
+	// Either way an agent lays cellPixels^2 times a pixel's deposit, so
+	// the trail's as strong.
+	float reach = max(s10.z, 1.0);
+	bool onePixel = cellPixels < 1.01 && s10.z < 1.0;
+	float halfWidth = reach * cellPixels;
+	float strength = 1.0 / (reach * reach);
+	int cells = onePixel ? 1 : int(ceil(reach - 0.001));
 	vec2 home = floor(fragCoord / cellPixels);
-	for (int dy = -1; dy <= 1; ++dy) {
-		for (int dx = -1; dx <= 1; ++dx) {
+	for (int dy = -cells; dy <= cells; ++dy) {
+		for (int dx = -cells; dx <= cells; ++dx) {
 			vec2 from = home + vec2(dx, dy);
 			ivec2 q = (ivec2(from) + grid) % grid;
 			if (q.y == 0 && q.x < SETTINGS) {
@@ -1236,13 +1256,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			vec4 lay = vec4(0.0);
 			lay[min(kind, MAX_SPECIES - 1)] = DEPOSIT;
 			vec2 at = (from + agent.xy) * cellPixels;
-			if (cellPixels < 1.01) {
+			if (onePixel) {
 				if (floor(at) == floor(fragCoord)) {
 					trail += lay;
 				}
 			} else {
-				vec2 tent = max(1.0 - abs(fragCoord - at) / cellPixels, 0.0);
-				trail += lay * tent.x * tent.y;
+				vec2 tent = max(1.0 - abs(fragCoord - at) / halfWidth, 0.0);
+				trail += lay * strength * tent.x * tent.y;
 			}
 		}
 	}
