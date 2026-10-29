@@ -768,3 +768,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - "maybe pheromone deposit radius should be a thing?" - DEPOSIT RADIUS bar (left column, 0-2
   cells): agents lay a normalised tent that wide instead of one pixel; 0 is as before. Renders
   at 0/1/2 show softer fresh trails and smoother, slightly bolder veins.
+- "chuck it on the phone" - Slime Cartographer v8 on the phone (1059), next to v7, open with
+  the 3/4-height menu showing.
