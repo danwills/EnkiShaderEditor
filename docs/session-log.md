@@ -731,3 +731,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   unsynced runs on the desktop GPU.
   On the phone as Slime Cartographer v5 (1056): the two-column menu, Paper and Grey, scale 2
   (54 fps) and smoothed zoom 2 (74 fps) all work; bars put back to defaults after.
+- "can zoom zoom around the center of the screen? Also let's make the default coloring Paper
+  and turn the agent opacity to zero." - Slime Cartographer v6: a zoom change moves the
+  colony (agents and trail) by half the patch's change, so the middle stays put (checked
+  headless: the zoomed view matches the old centre, not the bottom-left); fresh colonies are
+  Paper with agent opacity 0. Not on the phone yet.
