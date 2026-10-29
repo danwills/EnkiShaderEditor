@@ -28,8 +28,9 @@
 //   trail opacity    - how strongly the trail shows
 //   agent opacity    - how strongly the agents themselves show
 //   colours          - the colour scheme (named on the bar)
-//   zoom             - magnifies the colony: it runs on a smaller patch
-//                      (faster), its trail smoothed as it's enlarged
+//   zoom             - magnifies the colony about the middle of the
+//                      screen: it runs on a smaller patch (faster), its
+//                      trail smoothed as it's enlarged
 // The colony measures itself by the screen's height, so at a higher
 // quality setting it's the same colony with a finer trail (and slower).
 // PRESETS - tap the top row (< PRESET NAME >) on its right half for the
@@ -374,7 +375,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s7 = texelFetch(iChannel1, ivec2(7, 0), 0);
 	bool written = s1.w == 2.0;
 	if (!written) {
-		s6 = vec4(1.0, 0.3, 0.0, 1.0);
+		s6 = vec4(1.0, 0.0, 2.0, 1.0);
 		s7 = vec4(1.0);
 	}
 	float glow = written ? s1.z : 1.2;
@@ -423,7 +424,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 // What every pass shares: the settings' places and ranges, the menu's
 // layout, and how the scale bar scales things.
 //
-// Pixels 0-7 of Buffer A's bottom row hold settings (w = 2 marks the
+// Pixels 0-8 of Buffer A's bottom row hold settings (w = 2 marks the
 // ones a fresh colony checks):
 //   (0,0) = sensor angle, sensor distance, turn angle, 2
 //   (1,0) = speed, trail fade, glow, 2
@@ -437,12 +438,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 //   (6,0) = trail opacity, agent opacity, colour scheme, gamma
 //   (7,0) = scale, zoom, and the zoom and scale the agents ran at this
 //           step
+//   (8,0) = how far (in cells) this step moved the colony to keep its
+//           middle in the middle as zoom changed, and the half-cells
+//           that rounding left over, for next time
 // Distances and speeds are as at REFERENCE_HEIGHT and scale 1.
 uniform vec3 pointers[10];
 uniform int pointerCount;
 
 #define PI 3.14159265
-#define SETTINGS 8
+#define SETTINGS 9
 
 #define SENSOR_ANGLE_RANGE vec2(0.02, 2.5)
 #define SENSOR_DISTANCE_RANGE vec2(0.002, 0.08)
@@ -563,7 +567,9 @@ int menuItem(Layout m, vec2 p, out float along, out vec2 local) {
 // buffers, wrapping there, and Image magnifies it. A step's agents go by
 // (7,0)'s y (and scale by its x) as last step left it, and everything
 // after them - the trail, Image, the next step's new ground - by its z and
-// w, the zoom and scale they ran at.
+// w, the zoom and scale they ran at. When zoom changes the colony moves
+// by half the change in the patch's size, so what was in the middle of
+// the screen stays there: (8,0) says how far, for the trail too.
 #define DENSITY 0.35
 // A fresh colony's settings: sensor angle and turn (radians), sensor
 // distance (screen heights), speed (pixels a step), trail fade (a step),
@@ -583,8 +589,8 @@ int menuItem(Layout m, vec2 p, out float along, out vec2 local) {
 // What presets leave alone: the look (0-1 opacities, a colour scheme
 // from palette() in Image, gamma), scale and zoom.
 #define TRAIL_OPACITY 1.0
-#define AGENT_OPACITY 0.3
-#define COLOURS 0
+#define AGENT_OPACITY 0.0
+#define COLOURS 2
 #define GAMMA 1.0
 #define SCALE 1.0
 #define ZOOM 1.0
@@ -766,6 +772,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s5 = texelFetch(iChannel0, ivec2(5, 0), 0);
 	vec4 s6 = texelFetch(iChannel0, ivec2(6, 0), 0);
 	vec4 s7 = texelFetch(iChannel0, ivec2(7, 0), 0);
+	vec4 s8 = texelFetch(iChannel0, ivec2(8, 0), 0);
 	// No settings marker: blank buffers (the first frame, Rewind, or a
 	// resize cleared them) - start a new colony with default settings.
 	// Not on iFrame: a run carries on whatever the frame count does.
@@ -777,11 +784,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		s5 = vec4(float(PRESET), 0.0, 0.0, 2.0);
 		s6 = vec4(TRAIL_OPACITY, AGENT_OPACITY, float(COLOURS), GAMMA);
 		s7 = vec4(SCALE, ZOOM, ZOOM, SCALE);
+		s8 = vec4(0.0);
 	}
 	// The grid this step runs on, and the last step's.
 	float cellPixels = cellSize(s7.x);
 	ivec2 size = gridSize(s7.y, s7.x);
 	ivec2 before = gridSize(s7.z, s7.w);
+	// Zoom changed: this cell's agents come from `shift` cells along, half
+	// the patch's change (with what last time's halving left over).
+	ivec2 change = s7.y != s7.z ? before - size + ivec2(s8.zw) : ivec2(0);
+	ivec2 shift = change / 2;
+	ivec2 leftOver = s7.y != s7.z ? change - shift * 2 : ivec2(s8.zw);
 
 	if (cell.y == 0 && cell.x < SETTINGS) {
 		int count = pointerCount;
@@ -827,7 +840,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		// Food from one finger on the colony, once it's not a tap.
 		s5.y = count == 1 && item < 0 && (s3.z > 0.5 || s2.z >= TAP_STEPS) ? 1.0 : 0.0;
 		s2.w = float(count);
-		vec4 all[SETTINGS] = vec4[](s0, s1, s2, s3, s4, s5, s6, s7);
+		s8 = vec4(vec2(shift), vec2(leftOver));
+		vec4 all[SETTINGS] = vec4[](s0, s1, s2, s3, s4, s5, s6, s7, s8);
 		fragColor = all[cell.x];
 		return;
 	}
@@ -838,14 +852,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		fragColor = vec4(0.0);
 		return;
 	}
-	if (fresh || cell.x >= before.x || cell.y >= before.y) {
+	ivec2 source = cell + shift;
+	if (fresh || any(lessThan(source, ivec2(0))) || any(greaterThanEqual(source, before))) {
 		fragColor = hash(fragCoord + 0.7 + fract(iTime)) < DENSITY ? randomAgent(fragCoord + iTime) : vec4(0.0);
 		return;
 	}
 
 	// Sensing in trail pixels; scaled down, speed (in cells) shrinks too.
 	float pixels = pixelScale(s7.x);
-	vec2 trailSize = vec2(size) * cellPixels;
+	vec2 trailSize = vec2(before) * cellPixels;
 	float sensorAngle = s0.x;
 	float sensorDistance = s0.y * REFERENCE_HEIGHT * pixels;
 	float turnAngle = s0.z;
@@ -856,8 +871,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float bestKey = -1.0;
 	for (int dy = -1; dy <= 1; ++dy) {
 		for (int dx = -1; dx <= 1; ++dx) {
-			ivec2 from = cell + ivec2(dx, dy);
-			ivec2 q = (from + size) % size;
+			ivec2 from = source + ivec2(dx, dy);
+			ivec2 q = (from + before) % before;
 			if (q.y == 0 && q.x < SETTINGS) {
 				continue;
 			}
@@ -883,7 +898,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 				heading -= turnAngle;
 			}
 			vec2 next = pos + vec2(cos(heading), sin(heading)) * speed;
-			if (floor(next) == vec2(cell) && rnd > bestKey) {
+			if (floor(next) == vec2(source) && rnd > bestKey) {
 				bestKey = rnd;
 				result = vec4(fract(next), mod(heading, 2.0 * PI), 1.0);
 			}
@@ -923,11 +938,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
 	vec4 s5 = texelFetch(iChannel0, ivec2(5, 0), 0);
 	vec4 s7 = texelFetch(iChannel0, ivec2(7, 0), 0);
+	vec4 s8 = texelFetch(iChannel0, ivec2(8, 0), 0);
 	bool written = s1.w == 2.0;
 	if (!written) {
 		s1 = vec4(1.0, 0.03, 1.2, 2.0);
 		s4 = vec4(0.1, 1.0, 0.0, 0.0);
 		s7 = vec4(1.0);
+		s8 = vec4(0.0);
 	}
 	// The grid this step's agents ran on (see Buffer A), and the trail's
 	// patch of the buffers, the same.
@@ -949,15 +966,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float radius = clamp(s4.y * pixels, min(s4.y, 1.0), 6.0);
 	radius = max(radius, sqrt(area));
 	float spread = min(1.0, area / (radius * radius));
-	float centre = texelFetch(iChannel1, cell, 0).r;
-	float sum = centre;
-	for (int i = 0; i < 8; ++i) {
-		float a = float(i) * 0.785398;
-		vec2 d = vec2(cos(a), sin(a)) * radius;
-		sum += texture(iChannel2, mod(fragCoord + d, size) / iResolution.xy).r;
-		sum += texture(iChannel2, mod(fragCoord + 0.5 * d, size) / iResolution.xy).r;
+	float trail;
+	ivec2 shift = ivec2(round(s8.xy * cellPixels));
+	if (shift != ivec2(0)) {
+		// Zoom moved the colony (see Buffer A): the trail moves with it,
+		// unspread this once. Past the old patch's edge there was none.
+		ivec2 from = cell + shift;
+		trail = any(lessThan(from, ivec2(0))) ? 0.0 : texelFetch(iChannel1, from, 0).r * decay;
+	} else {
+		float centre = texelFetch(iChannel1, cell, 0).r;
+		float sum = centre;
+		for (int i = 0; i < 8; ++i) {
+			float a = float(i) * 0.785398;
+			vec2 d = vec2(cos(a), sin(a)) * radius;
+			sum += texture(iChannel2, mod(fragCoord + d, size) / iResolution.xy).r;
+			sum += texture(iChannel2, mod(fragCoord + 0.5 * d, size) / iResolution.xy).r;
+		}
+		trail = mix(centre, sum / 17.0, spread) * decay;
 	}
-	float trail = mix(centre, sum / 17.0, spread) * decay;
 
 	// Deposits from the agents in this pixel's cell and the ones round it,
 	// where they are in it: into the pixel each is in on cells a pixel
