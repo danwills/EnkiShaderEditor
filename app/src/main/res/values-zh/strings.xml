@@ -17,6 +17,10 @@
 	<string name="paste_over_shader">粘贴覆盖当前着色器</string>
 	<string name="select_quality">渲染质量</string>
 	<string name="paste_shader_title">粘贴着色器</string>
+	<string name="paste_shader_name_exists_title">“%1$s”已存在</string>
+	<string name="paste_shader_name_exists_message">替换同名的着色器，还是给这个着色器换个名字？</string>
+	<string name="paste_shader_replace">替换</string>
+	<string name="paste_shader_rename">重命名</string>
 	<string name="paste_add_as_child">作为子项…</string>
 	<string name="paste_shader_name_hint">着色器名称（可选）</string>
 	<string name="clipboard_empty">剪贴板为空</string>
@@ -73,7 +77,6 @@
 	<string name="auto_detect_tile_size_whole_frame_label">整帧</string>
 	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d（%5$d×）</string>
 	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d（%5$d×）· 分块：%6$s</string>
-	<string name="progress_tile_whole_frame">整帧（不分块）</string>
 	<string name="progress_tile_named">%1$s（%2$dpx）</string>
 	<string name="bucket_size_max_label">%1$s（尽可能大）</string>
 	<string name="interrupt_save_partial_button">停止并保存已渲染部分</string>
@@ -218,6 +221,11 @@
 	<string name="sort_by_similarity">按代码相似度排序</string>
 	<string name="name_group_prefix_label">新名称将以此开头：%1$s</string>
 	<string name="name_group_postfix_hint">后缀</string>
+	<string name="save_as_new_next_number">下一个编号：%1$s</string>
+	<string name="save_as_new_variation">%1$s 的变体</string>
+	<string name="save_as_new_variation_hint">一个词，例如 Warm</string>
+	<string name="save_as_new_preview">新名称：%1$s</string>
+	<string name="save_as_new_unnamed">无名称：未命名的副本</string>
 	<string name="name_already_exists">已存在名为\"%1$s\"的着色器。仍要重命名吗？</string>
 	<string name="sure_reparent_named_shader">此着色器已命名为\"%1$s\"。更改父级将把它重命名为\"%2$s\"。是否继续？</string>
 	<string name="renamed_shader_to">已重命名为 %1$s</string>
@@ -371,6 +379,8 @@
 	<string name="date_time">年、月、日和当前秒数</string>
 	<string name="daytime">时、分、秒</string>
 	<string name="font_atlas">内置字形图集（16×16 格，字符编码 0–255，有符号距离场：边缘为 0.5，内部更高）</string>
+	<string name="colormaps_atlas">颜色映射表（Ready 的，然后是 CET 的），每行一个</string>
+	<string name="colormap_count">颜色映射表数量</string>
 	<string name="keyboard_texture">按住、按下和切换的按键，与 ShaderToy 的 256×3 键盘纹理相同（JavaScript 键码；第 0 行按住，第 1 行本帧按下，第 2 行切换）</string>
 	<string name="typed_char">本帧输入的字符，或 0（8 退格，9 Tab，10 回车，127 删除）</string>
 	<string name="source_text">此通道自身的源代码：每个字符一个纹素，第 n 行纹素即第 n 行代码。R = 字符编码，G×256+B = 按阅读顺序的序号，A = 1 表示字符</string>
@@ -492,9 +502,10 @@
 	<string name="adjust_defines_no_matches">没有匹配的 define</string>
 	<string name="adjust_defines_treat_as_color">视为颜色</string>
 	<string name="adjust_defines_edit_live">实时编辑</string>
+	<string name="adjust_defines_select_all">全选</string>
+	<string name="adjust_defines_select_none">全不选</string>
 	<string name="adjust_defines_go_live">开始实时</string>
 	<string name="adjust_defines_back">返回</string>
-	<string name="adjust_defines_live_checking">正在检查…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">请至少勾选一个 define 进行实时调整</string>
 	<string name="adjust_defines_live_conditional">被 #if 或 #ifdef 使用，必须保持为 #define</string>
@@ -505,6 +516,8 @@
 	<string name="live_defines_expand">显示滑块</string>
 	<string name="live_defines_discard">放弃</string>
 	<string name="live_defines_reset">重置</string>
+	<string name="live_defines_filter_hint">筛选</string>
+	<string name="live_defines_preparing">正在准备实时编辑…</string>
 	<string name="live_defines_brightness">亮度</string>
 	<string name="live_defines_done">完成</string>
 	<string name="live_defines_discard_title">放弃实时修改？</string>
@@ -551,6 +564,8 @@
 	<string name="sample_soundboard_rationale">可演奏的打击垫：鼓和五种调好音的乐器（A 小调五声音阶）。按住并上下拖动可弯音。</string>
 	<string name="sample_tracker_name">音轨编辑器</string>
 	<string name="sample_tracker_rationale">演示场景风格的音序器：点按添加音符，按住编辑，点按两次删除。使用音效板的乐器演奏。</string>
+	<string name="sample_life_viewer_name">生命游戏查看器</string>
+	<string name="sample_life_viewer_rationale">在离屏缓冲区中运行康威生命游戏，并通过可移动的视图显示：拖动滚动，双指缩放，三指重新随机播种。</string>
 	<string name="sample_module_viewer_name">模块查看器</string>
 	<string name="sample_module_viewer_rationale">播放音轨模块（MOD、S3M、XM），并像老式音轨器那样显示：示波器、频谱和滚动的乐谱。</string>
 	<string name="sample_demo_writer_name">演示滚动字幕</string>
@@ -603,6 +618,10 @@
 	<string name="offscreen_buffers_remove_message">这将删除 %1$s 中的代码。</string>
 	<string name="offscreen_buffers_remove">删除</string>
 	<string name="pass_tab_sound">声音</string>
+	<string name="pass_tab_common">公共</string>
+	<string name="common_add">添加公共代码</string>
+	<string name="common_remove">删除公共代码</string>
+	<string name="common_remove_message">这会删除每个通道开头共用的公共代码。</string>
 	<string name="pass_tab_image">图像</string>
 	<string name="pass_tab_text">文本 %1$s</string>
 	<string name="shader_texts_button">文本…</string>
@@ -634,6 +653,7 @@
 	<string name="channel_wrap_repeat">重复</string>
 	<string name="buffers_capture_unsupported">带离屏缓冲区的着色器目前只能以“匹配应用分辨率”（不超采样）捕获</string>
 	<string name="not_a_shader_pack">这不是着色器包</string>
+	<string name="shader_pack_too_new">此着色器包需要更新版本的应用</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="other">已安装 %1$s：%2$d 个着色器</item>
 	</plurals>
@@ -746,4 +766,37 @@
 	<plurals name="batch_list_summary">
 		<item quantity="other">按此列表重命名 %d 个着色器？日期保持不变。</item>
 	</plurals>
+	<string name="upscaling_menu">放大方式…</string>
+	<string name="upscaling">放大方式</string>
+	<string name="upscale_default">默认（按 backbuffer 的过滤）</string>
+	<string name="upscale_nearest">最近邻</string>
+	<string name="upscale_sharp">锐利像素</string>
+	<string name="upscale_linear">双线性</string>
+	<string name="upscale_bspline">平滑（B 样条）</string>
+	<string name="upscale_catmull">清晰三次（Catmull-Rom）</string>
+	<string name="upscale_sinc">Sinc（Lanczos）</string>
+	<string name="upscale_defocus">失焦</string>
+	<string name="upscale_gaussian">高斯（柔和）</string>
+	<string name="upscale_points">累积点（最后一个缓冲区）</string>
+	<string name="upscale_splats">2D 高斯泼溅（最后一个缓冲区）</string>
+	<string name="upscale_exposure">曝光</string>
+	<string name="upscale_adjust_xform">调整泼溅变换…</string>
+	<string name="splats_xform_adjusting">泼溅变换：拖动、捏合、旋转</string>
+	<string name="splats_xform_reset">重置</string>
+	<string name="splats_xform_done">完成</string>
+	<string name="upscale_bokeh">花式失焦（散景）</string>
+	<string name="upscale_crt">CRT 显像管</string>
+	<string name="upscale_edges">画面边缘之外</string>
+	<string name="upscale_edge_clamp">延伸边缘</string>
+	<string name="upscale_edge_periodic">周期</string>
+	<string name="upscale_edge_mirror">镜像</string>
+	<string name="upscale_edge_black">黑色</string>
+	<string name="upscale_radius">半径（画面像素）</string>
+	<string name="upscale_strength">强度</string>
+	<string name="upscale_hint">仅在屏幕上、质量低于 1/1 时生效。应用打开期间保持；启动时用的在设置中选择。</string>
+	<string name="upscale_lobes">瓣数</string>
+	<string name="default_upscaling">默认放大方式</string>
+	<string name="upscale_default_hint">每次打开应用时视图使用的放大方式。</string>
+	<string name="higher_res_include_upscaling_label">包含放大效果</string>
+	<string name="higher_res_include_upscaling">包含放大效果 - 仅在“匹配应用分辨率”时：截取的画面与屏幕显示一致，按屏幕尺寸经当前放大方式（质量菜单中的“放大方式…”）输出，因此视频缩放为 1</string>
 </resources>

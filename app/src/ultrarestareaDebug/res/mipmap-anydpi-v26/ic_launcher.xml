@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ultra Rest Area's icon: metaballs merging, as on its menu (rendered by
+     the same field, ura_icon_background); a plain silhouette for themed
+     icons. Also in src/ultrarestareaDebug, which the debug build's own icon
+     (src/debug) would otherwise win over. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+	<background android:drawable="@drawable/ura_icon_background"/>
+	<foreground android:drawable="@android:color/transparent"/>
+	<monochrome android:drawable="@drawable/ura_icon_monochrome"/>
+</adaptive-icon>

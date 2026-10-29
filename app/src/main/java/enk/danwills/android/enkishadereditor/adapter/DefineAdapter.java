@@ -101,6 +101,8 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 	private final List<Integer> visibleIndices = new ArrayList<>();
 	@Nullable
 	private OnEmptyChanged onEmptyChanged;
+	@Nullable
+	private Runnable onLiveChanged;
 
 	@FunctionalInterface
 	public interface OnEmptyChanged {
@@ -147,6 +149,35 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		return liveSetup;
 	}
 
+	// Run whenever a live setup tickbox changes, by tap or by
+	// setAllShownLive() - so Select All's label can follow.
+	public void setOnLiveChanged(@Nullable Runnable onLiveChanged) {
+		this.onLiveChanged = onLiveChanged;
+	}
+
+	// Whether every define the live setup list is showing (as filtered)
+	// is ticked - false when it's showing none.
+	public boolean allShownLive() {
+		for (int i : visibleIndices) {
+			if (!defines.get(i).live) {
+				return false;
+			}
+		}
+		return !visibleIndices.isEmpty();
+	}
+
+	// Select All / Select None: ticks or unticks every define shown,
+	// leaving any the filter hides as they were.
+	public void setAllShownLive(boolean live) {
+		for (int i : visibleIndices) {
+			defines.get(i).live = live;
+		}
+		refreshAll();
+		if (onLiveChanged != null) {
+			onLiveChanged.run();
+		}
+	}
+
 	// After live mode's compile check marked some defines - see
 	// ShaderDefine.liveError.
 	public void refreshAll() {
@@ -158,6 +189,9 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 		notifyDataSetChanged();
 		if (onEmptyChanged != null) {
 			onEmptyChanged.onEmptyChanged(visibleIndices.isEmpty());
+		}
+		if (onLiveChanged != null) {
+			onLiveChanged.run();
 		}
 	}
 
@@ -191,7 +225,11 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 	public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
 		ShaderDefine define = defines.get(visibleIndices.get(position));
 		if (liveSetup) {
-			holder.bindLiveSetup(define);
+			holder.bindLiveSetup(define, () -> {
+				if (onLiveChanged != null) {
+					onLiveChanged.run();
+				}
+			});
 			return;
 		}
 		holder.bind(define, dragListener, colorPickerRequested, () -> notifyItemChanged(position));
@@ -276,7 +314,7 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			}});
 		}
 
-		void bindLiveSetup(@NonNull ShaderDefine define) {
+		void bindLiveSetup(@NonNull ShaderDefine define, @NonNull Runnable onLiveChanged) {
 			dragHandle.setVisibility(View.GONE);
 			boolValue.setVisibility(View.GONE);
 			sliderRow.setVisibility(View.GONE);
@@ -302,7 +340,10 @@ public class DefineAdapter extends RecyclerView.Adapter<DefineAdapter.ViewHolder
 			liveCheck.setVisibility(View.VISIBLE);
 			liveCheck.setOnCheckedChangeListener(null);
 			liveCheck.setChecked(define.live);
-			liveCheck.setOnCheckedChangeListener((button, checked) -> define.live = checked);
+			liveCheck.setOnCheckedChangeListener((button, checked) -> {
+				define.live = checked;
+				onLiveChanged.run();
+			});
 			itemView.setOnClickListener(v -> liveCheck.toggle());
 		}
 

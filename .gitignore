@@ -7,3 +7,6 @@
 build
 infer-out
 local.properties
+
+# Python bytecode
+__pycache__/

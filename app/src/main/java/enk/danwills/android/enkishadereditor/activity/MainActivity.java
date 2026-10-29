@@ -35,6 +35,7 @@ import android.text.style.ForegroundColorSpan;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.Choreographer;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -113,6 +114,7 @@ import java.util.regex.Pattern;
 
 import enk.danwills.android.enkishadereditor.fragment.AbstractSamplerPropertiesFragment;
 import enk.danwills.android.enkishadereditor.graphics.BitmapEditor;
+import enk.danwills.android.enkishadereditor.BuildConfig;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.activity.managers.ExtraKeysManager;
 import enk.danwills.android.enkishadereditor.activity.managers.MainMenuManager;
@@ -157,6 +159,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
@@ -174,9 +177,22 @@ import enk.danwills.android.enkishadereditor.widget.GetShaderPackDialog;
 import enk.danwills.android.enkishadereditor.widget.ProgressiveSpinnerView;
 import enk.danwills.android.enkishadereditor.widget.ShaderPackBuilderDialog;
 import enk.danwills.android.enkishadereditor.widget.UpdatePackDialog;
+import enk.danwills.android.enkishadereditor.widget.UpscaleDialog;
+import enk.danwills.android.enkishadereditor.widget.ShaderView;
+import enk.danwills.android.enkishadereditor.widget.SplatsXformAdjuster;
 
 public class MainActivity extends AppCompatActivity {
+	// See reloadReplacedShader().
+	public static final String EXTRA_RELOAD_SHADER = "reload_shader";
+	// Debug builds only: the shader to open, from the test tooling
+	// (`am start ... --el open_shader <id>`).
+	public static final String EXTRA_OPEN_SHADER = "open_shader";
 	private static final String CODE_VISIBLE = "code_visible";
+	// Fullscreen and the hidden toolbar, kept through a rotation (which
+	// recreates the activity), with whether fullscreen unpaused it.
+	private static final String FULLSCREEN = "fullscreen";
+	private static final String PAUSED_BEFORE_FULLSCREEN = "paused_before_fullscreen";
+	private static final String TOOLBAR_HIDDEN = "toolbar_hidden";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
 	private static final String CRASH_RECOVERY_COMMENT = """
 			// Shader Editor disabled this shader because it caused a crash while loading.
@@ -246,6 +262,9 @@ public class MainActivity extends AppCompatActivity {
 	private NavigationManager navigationManager;
 	private DataSource dataSource;
 	private boolean isInitialLoad = false;
+	// Debug builds only: EXTRA_OPEN_SHADER on the intent that started the
+	// app, opened by the first load in place of the last-opened shader.
+	private long launchShaderId = 0;
 	// Recreated (rotated, say) and onRestoreInstanceState() hasn't run
 	// yet: the editor's restored text arrives first, before the shader's
 	// session is rebuilt, so it mustn't be run as it is - see there.
@@ -513,6 +532,12 @@ public class MainActivity extends AppCompatActivity {
 				v -> restartShader(),
 				v -> setFullscreen(!uiManager.isFullscreen()));
 		uiManager.setupScreenshotButton(v -> takeScreenshot());
+		uiManager.setupLiveDefinesButton(v -> goLiveFromToolbar(), v -> {
+			if (liveDefinesState == null && !goingLive) {
+				showAdjustDefinesDialog(true, null);
+			}
+			return true;
+		});
 		uiManager.setupAudioNavRow(v -> shaderViewManager.reacquireSystemAudio());
 
 		// updateUiToPreferences() itself also runs every onResume() (to
@@ -544,6 +569,10 @@ public class MainActivity extends AppCompatActivity {
 			// background) the system hands back the same launch intent,
 			// which was already dealt with.
 			Intent launchIntent = getIntent();
+			if (BuildConfig.DEBUG && launchIntent != null && launchIntent.hasExtra(EXTRA_OPEN_SHADER)) {
+				launchShaderId = launchIntent.getLongExtra(EXTRA_OPEN_SHADER, 0);
+				launchIntent.removeExtra(EXTRA_OPEN_SHADER);
+			}
 			getWindow().getDecorView().post(() -> offerSharedText(launchIntent));
 		}
 
@@ -681,6 +710,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final Set<String> BUILT_IN_SAMPLERS = Set.of(
 			ShaderRenderer.UNIFORM_BACKBUFFER, ShaderRenderer.UNIFORM_SOURCE_TEXT,
 			ShaderRenderer.UNIFORM_SOURCE_TEXT_COLOR, ShaderRenderer.UNIFORM_FONT,
+			ShaderRenderer.UNIFORM_COLORMAPS,
 			ShaderRenderer.UNIFORM_KEYBOARD, ShaderRenderer.UNIFORM_AUDIO_SPECTRUM,
 			ShaderRenderer.UNIFORM_CAMERA_BACK, ShaderRenderer.UNIFORM_CAMERA_FRONT);
 	private static final Pattern SAMPLER_DECLARATION = Pattern.compile(
@@ -741,6 +771,9 @@ public class MainActivity extends AppCompatActivity {
 	private String suggestTextureName(@NonNull ShaderProjectSession session, int buffer) {
 		List<String> sources = new ArrayList<>();
 		sources.add(session.getEntryPointSource());
+		if (session.getProject().getCommonSource() != null) {
+			sources.add(session.getProject().getCommonSource());
+		}
 		for (String source : session.getProject().getBufferSources()) {
 			if (source != null) {
 				sources.add(source);
@@ -1283,12 +1316,30 @@ public class MainActivity extends AppCompatActivity {
 		if (!state.getBoolean(CODE_VISIBLE, true)) {
 			uiManager.toggleCodeVisibility();
 		}
+		// After the views have settled from being made again - fullscreen
+		// hides the system bars, which needs the window attached.
+		boolean fullscreen = state.getBoolean(FULLSCREEN, false);
+		boolean pausedBefore = state.getBoolean(PAUSED_BEFORE_FULLSCREEN, false);
+		boolean toolbarHidden = state.getBoolean(TOOLBAR_HIDDEN, false);
+		getWindow().getDecorView().post(() -> {
+			if (fullscreen && !uiManager.isFullscreen()) {
+				setFullscreen(true);
+				// It was paused before going fullscreen in the old one:
+				// leaving fullscreen pauses it again, as there.
+				pausedBeforeFullscreen = pausedBefore;
+			} else if (toolbarHidden && !uiManager.isToolbarHidden()) {
+				setToolbarHidden(true);
+			}
+		});
 	}
 
 	@Override
 	protected void onSaveInstanceState(@NonNull Bundle state) {
 		shaderManager.saveState(state);
 		state.putBoolean(CODE_VISIBLE, editorFragment.isCodeVisible());
+		state.putBoolean(FULLSCREEN, uiManager.isFullscreen());
+		state.putBoolean(PAUSED_BEFORE_FULLSCREEN, pausedBeforeFullscreen);
+		state.putBoolean(TOOLBAR_HIDDEN, uiManager.isToolbarHidden());
 		super.onSaveInstanceState(state);
 	}
 
@@ -1377,7 +1428,38 @@ public class MainActivity extends AppCompatActivity {
 	@Override
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
+		if (reloadReplacedShader(intent)) {
+			return;
+		}
 		offerSharedText(intent);
+	}
+
+	// Debug builds only: the test tooling replaced a shader in the database
+	// while this was open (see ShaderImportReceiver in src/debug) - if it's
+	// the open one, reload it, dropping the version in memory rather than
+	// saving it over the new one.
+	private boolean reloadReplacedShader(@Nullable Intent intent) {
+		if (!BuildConfig.DEBUG || intent == null) {
+			return false;
+		}
+		if (intent.hasExtra(EXTRA_OPEN_SHADER)) {
+			long id = intent.getLongExtra(EXTRA_OPEN_SHADER, 0);
+			intent.removeExtra(EXTRA_OPEN_SHADER);
+			if (id > 0) {
+				selectShader(id);
+			}
+			return true;
+		}
+		if (!intent.hasExtra(EXTRA_RELOAD_SHADER)) {
+			return false;
+		}
+		long id = intent.getLongExtra(EXTRA_RELOAD_SHADER, 0);
+		if (id > 0 && id == shaderManager.getSelectedShaderId()) {
+			shaderManager.setModified(false);
+			shaderManager.selectShader(id);
+		}
+		shaderListManager.loadShadersAsync();
+		return true;
 	}
 
 	@Override
@@ -1464,7 +1546,9 @@ public class MainActivity extends AppCompatActivity {
 					// Try to load the last opened shader.
 					// NOTE: This assumes a method like `getLastOpenedShader()` exists
 					// in your SharedPreferences helper class.
-					long lastOpenedId = ShaderEditorApp.preferences.getLastOpenedShader();
+					long lastOpenedId = launchShaderId > 0 ? launchShaderId
+							: ShaderEditorApp.preferences.getLastOpenedShader();
+					launchShaderId = 0;
 					long idToLoad = 0;
 
 					// Check if the last opened shader still exists in the list.
@@ -1594,6 +1678,11 @@ public class MainActivity extends AppCompatActivity {
 			}
 
 			@Override
+			public void onUpscalingRequested() {
+				showUpscaleDialog();
+			}
+
+			@Override
 			public void onFullscreenExitGesture() {
 				setFullscreen(false);
 			}
@@ -1707,23 +1796,9 @@ public class MainActivity extends AppCompatActivity {
 					shaderManager.saveShader();
 				}
 				long id = shaderManager.getSelectedShaderId();
-				String name = null;
-				for (var shader : shaderListManager.getAllShaders()) {
-					if (shader.id() == id) {
-						name = shader.name();
-						// The copy isn't in the pack: drop "<Pack Title>: ".
-						int separator = name != null && shader.isFromPack()
-								? name.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR)
-								: -1;
-						if (separator >= 0) {
-							name = name.substring(separator +
-									DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
-						}
-						break;
-					}
-				}
-				if (name != null && !name.trim().isEmpty()) {
-					showSaveAsNewShaderDialog(id, name.trim());
+				String name = copyBaseName(id);
+				if (name != null) {
+					showSaveAsNewShaderDialog(id, name);
 				} else {
 					duplicateShader(id);
 				}
@@ -1747,7 +1822,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onShareShader() {
-				navigationManager.shareShader(getWholeShaderSource());
+				navigationManager.shareShader(getNamedShaderSource());
 			}
 
 			@Override
@@ -1871,14 +1946,119 @@ public class MainActivity extends AppCompatActivity {
 		}
 	}
 
+	// What a copy of shader `id` is named after: its name without any
+	// "<Pack Title>: " (the copy isn't in the pack), or null if it has
+	// none.
+	@Nullable
+	private String copyBaseName(long id) {
+		for (var shader : shaderListManager.getAllShaders()) {
+			if (shader.id() != id) {
+				continue;
+			}
+			String name = shader.name();
+			int separator = name != null && shader.isFromPack()
+					? name.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR)
+					: -1;
+			if (separator >= 0) {
+				name = name.substring(separator +
+						DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
+			}
+			return name != null && !name.trim().isEmpty() ? name.trim() : null;
+		}
+		return null;
+	}
+
 	// Save as New Shader for a named shader: the copy's name is that name
 	// plus a postfix, as the sidebar's name-group dialog does (an empty
 	// postfix leaves the copy unnamed, as for an unnamed shader).
 	private void showSaveAsNewShaderDialog(long id, @NonNull String name) {
-		View view = getLayoutInflater().inflate(R.layout.dialog_name_group_postfix, null);
+		askNewShaderName(name, newName -> {
+			if (newName == null) {
+				duplicateShader(id);
+				return;
+			}
+			long newId = shaderManager.duplicateShader(id);
+			if (newId > 0) {
+				shaderManager.selectShader(newId);
+				shaderListManager.loadShadersAsync();
+				checkConflictAndRename(newId, newName);
+			}
+		});
+	}
+
+	// A name's trailing number and what comes before it: thingYo2 ->
+	// thingYo, 2.
+	private static final Pattern TRAILING_NUMBER = Pattern.compile("(.*\\D)(\\d{1,9})");
+
+	// Asks for the postfix of a new shader's name after `name`, offering
+	// the first number not taken yet (name2, name3...), with the whole
+	// name shown as it'll be. For a name that already ends with a number
+	// (thingYo2) it asks which: the next number along (thingYo3, the
+	// default), or a variation of it (thingYo2 and a word). onName gets
+	// the whole name, or null for an empty postfix (an unnamed shader).
+	private void askNewShaderName(@NonNull String name, @NonNull Consumer<String> onName) {
+		View view = getLayoutInflater().inflate(R.layout.dialog_save_as_new_name, null);
 		TextView prefixLabel = view.findViewById(R.id.prefix_label);
 		EditText postfixView = view.findViewById(R.id.postfix);
-		prefixLabel.setText(getString(R.string.name_group_prefix_label, name));
+		TextView preview = view.findViewById(R.id.name_preview);
+		RadioGroup kind = view.findViewById(R.id.name_kind);
+		RadioButton nextNumber = view.findViewById(R.id.name_next_number);
+		RadioButton variation = view.findViewById(R.id.name_variation);
+
+		Matcher numbered = TRAILING_NUMBER.matcher(name);
+		String base;
+		String next;
+		if (numbered.matches()) {
+			base = numbered.group(1);
+			next = String.valueOf(nextFreeNumber(base, Integer.parseInt(numbered.group(2)) + 1));
+		} else {
+			base = name;
+			next = String.valueOf(nextFreeNumber(name, 2));
+		}
+		String[] prefix = {base};
+		Runnable showPreview = () -> {
+			String postfix = postfixView.getText().toString().trim();
+			preview.setText(postfix.isEmpty()
+					? getString(R.string.save_as_new_unnamed)
+					: getString(R.string.save_as_new_preview, prefix[0] + postfix));
+		};
+		Runnable showPrefix = () -> prefixLabel.setText(
+				getString(R.string.name_group_prefix_label, prefix[0]));
+		if (numbered.matches()) {
+			kind.setVisibility(View.VISIBLE);
+			nextNumber.setText(getString(R.string.save_as_new_next_number, base + next));
+			variation.setText(getString(R.string.save_as_new_variation, name));
+			nextNumber.setChecked(true);
+			kind.setOnCheckedChangeListener((group, checkedId) -> {
+				boolean varied = checkedId == R.id.name_variation;
+				prefix[0] = varied ? name : base;
+				postfixView.setHint(varied
+						? R.string.save_as_new_variation_hint
+						: R.string.name_group_postfix_hint);
+				postfixView.setText(varied ? "" : next);
+				postfixView.selectAll();
+				showPrefix.run();
+				showPreview.run();
+			});
+		}
+		showPrefix.run();
+		postfixView.setText(next);
+		postfixView.selectAll();
+		showPreview.run();
+		postfixView.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence text, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable text) {
+				showPreview.run();
+			}
+		});
 
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.duplicate_shader)
@@ -1886,22 +2066,33 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(android.R.string.ok, (dialog, which) -> {
 					String postfix = postfixView.getText().toString().trim();
 					if (postfix.isEmpty()) {
-						duplicateShader(id);
+						onName.accept(null);
 						return;
 					}
-					shaderListManager.checkNamePrefixAndThen(postfix, fixedPostfix -> {
-						long newId = shaderManager.duplicateShader(id);
-						if (newId > 0) {
-							shaderManager.selectShader(newId);
-							shaderListManager.loadShadersAsync();
-							checkConflictAndRename(newId, name + fixedPostfix);
-						}
-					});
+					String start = prefix[0];
+					shaderListManager.checkNamePrefixAndThen(postfix,
+							fixedPostfix -> onName.accept(start + fixedPostfix));
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.setOnDismissListener(d -> SoftKeyboard.hide(this, postfixView))
 				.show();
 		postfixView.requestFocus();
+	}
+
+	// The first n from `from` with no shader named name + n.
+	private int nextFreeNumber(@NonNull String name, int from) {
+		Set<String> taken = new HashSet<>();
+		for (var shader : shaderListManager.getAllShaders()) {
+			String title = shader.getTitle();
+			if (title != null) {
+				taken.add(title.toLowerCase(Locale.ROOT));
+			}
+		}
+		int n = from;
+		while (taken.contains((name + n).toLowerCase(Locale.ROOT))) {
+			n++;
+		}
+		return n;
 	}
 
 	private void updateWallpaper() {
@@ -1942,7 +2133,8 @@ public class MainActivity extends AppCompatActivity {
 			Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		showQualityPickerDialog(text.toString());
+		var named = MultipassSource.takeName(text.toString());
+		showQualityPickerDialog(named.text(), named.name());
 	}
 
 	private void pasteOverCurrentShader() {
@@ -1955,7 +2147,8 @@ public class MainActivity extends AppCompatActivity {
 			Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		String pastedSource = text.toString();
+		// Pasted over, the shader keeps its own name.
+		String pastedSource = MultipassSource.takeName(text.toString()).text();
 		boolean wasPaused = shaderViewManager.isPaused();
 		setShaderPaused(true);
 		new MaterialAlertDialogBuilder(this)
@@ -1970,6 +2163,7 @@ public class MainActivity extends AppCompatActivity {
 					var parsed = MultipassSource.parse(pastedSource);
 					if (parsed != null) {
 						shaderManager.setBufferSources(parsed.bufferSources());
+						shaderManager.setCommonSource(parsed.commonSource());
 						shaderManager.setTexts(parsed.texts());
 					}
 					editorFragment.setText(parsed != null ? parsed.imageSource() : pastedSource);
@@ -2148,6 +2342,41 @@ public class MainActivity extends AppCompatActivity {
 			name = "mod_" + name;
 		}
 		return name.length() > 40 ? name.substring(0, 40) : name;
+	}
+
+	// Upscaling… in the quality menu: tried out live, then kept for the
+	// session - the view's, not the shader's, so nothing's recompiled.
+	// Settings picks the one each session starts with.
+	private void showUpscaleDialog() {
+		UpscaleDialog.show(this, shaderViewManager.getShownUpscale(), new UpscaleDialog.Host() {
+			@Override
+			public void preview(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.previewUpscale(upscale);
+			}
+
+			@Override
+			public void apply(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.setUpscale(upscale);
+			}
+
+			@Override
+			public void adjustXform(@NonNull Upscaling.Upscale upscale) {
+				shaderViewManager.setUpscale(upscale);
+				ShaderView view = shaderViewManager.getShaderView();
+				new SplatsXformAdjuster(MainActivity.this, view, new SplatsXformAdjuster.Host() {
+					@Override
+					public void setTouchInterceptor(@Nullable View.OnTouchListener interceptor) {
+						view.setTouchInterceptor(interceptor);
+					}
+
+					@Override
+					public void setXform(float x, float y, float zoom, float angle) {
+						view.getRenderer().setSplatsXform(x, y, zoom, angle);
+						view.requestRender();
+					}
+				}, view.getRenderer().getSplatsXform()).start();
+			}
+		}, false);
 	}
 
 	// Makes `name` the shader's soundtrack: a `///mod:` line at the top of
@@ -2345,7 +2574,6 @@ public class MainActivity extends AppCompatActivity {
 							nameView.setSelection(nameView.length());
 						})));
 		view.findViewById(R.id.paste_shader_ok).setOnClickListener(v -> {
-			dialog.dismiss();
 			int selectedIndex = qualityGroup.indexOfChild(
 					qualityGroup.findViewById(qualityGroup.getCheckedRadioButtonId()));
 			float quality = Float.parseFloat(qualityValues[Math.max(0, selectedIndex)]);
@@ -2354,20 +2582,75 @@ public class MainActivity extends AppCompatActivity {
 			// DataRecords.ShaderInfo.getTitle()), rather than
 			// saving an empty-string name.
 			String name = nameView.getText().toString().trim();
-			var parsed = MultipassSource.parse(shaderSource);
-			long newId = dataSource.shader.insertShader(
-					parsed != null ? parsed.imageSource() : shaderSource,
-					name.isEmpty() ? null : name, null, quality);
-			if (parsed != null && newId > 0) {
-				dataSource.buffer.setBufferSources(newId, parsed.bufferSources());
-				dataSource.text.setTexts(newId, parsed.texts());
+			long existingId = name.isEmpty() ? 0 : findShaderIdByName(name);
+			if (existingId < 1) {
+				dialog.dismiss();
+				addPastedShader(shaderSource, name.isEmpty() ? null : name, quality, 0);
+				return;
 			}
-			// Don't let the start-up load (if it's still pending -
-			// see isInitialLoad) switch away from it afterwards.
-			isInitialLoad = false;
-			shaderManager.selectShader(newId);
-			shaderManager.saveShader(true);
+			// That name's taken: replace that shader, or back to the name.
+			new MaterialAlertDialogBuilder(this)
+					.setTitle(getString(R.string.paste_shader_name_exists_title, name))
+					.setMessage(R.string.paste_shader_name_exists_message)
+					.setPositiveButton(R.string.paste_shader_replace, (d, w) -> {
+						dialog.dismiss();
+						addPastedShader(shaderSource, name, quality, existingId);
+					})
+					.setNegativeButton(R.string.paste_shader_rename, (d, w) -> {
+						nameView.requestFocus();
+						nameView.selectAll();
+						SoftKeyboard.show(this, nameView);
+					})
+					.setNeutralButton(android.R.string.cancel, null)
+					.show();
 		});
+	}
+
+	// The id of the shader called exactly `name`, or 0 for none.
+	private long findShaderIdByName(@NonNull String name) {
+		for (DataRecords.ShaderInfo shader : dataSource.shader.getShaders(false)) {
+			if (name.equals(shader.name())) {
+				return shader.id();
+			}
+		}
+		return 0;
+	}
+
+	// Adds a pasted or opened shader (multipass text - see
+	// MultipassSource), or puts it in place of shader replaceId (its
+	// buffers and texts too), then opens it.
+	private void addPastedShader(@NonNull String shaderSource, @Nullable String name,
+			float quality, long replaceId) {
+		var parsed = MultipassSource.parse(shaderSource);
+		String source = parsed != null ? parsed.imageSource() : shaderSource;
+		long id = replaceId;
+		if (replaceId > 0) {
+			// The open shader's own unsaved edits mustn't be saved over it.
+			if (replaceId == shaderManager.getSelectedShaderId()) {
+				shaderManager.setModified(false);
+			}
+			dataSource.shader.updateShader(replaceId, source, null, quality);
+			dataSource.buffer.setBufferSources(replaceId,
+					parsed != null ? parsed.bufferSources() : new String[0]);
+			dataSource.buffer.setCommonSource(replaceId,
+					parsed != null ? parsed.commonSource() : null);
+			dataSource.text.setTexts(replaceId, parsed != null ? parsed.texts() : Map.of());
+		} else {
+			id = dataSource.shader.insertShader(source, name, null, quality);
+			if (parsed != null && id > 0) {
+				dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+				dataSource.buffer.setCommonSource(id, parsed.commonSource());
+				dataSource.text.setTexts(id, parsed.texts());
+			}
+		}
+		// Don't let the start-up load (if it's still pending -
+		// see isInitialLoad) switch away from it afterwards.
+		isInitialLoad = false;
+		shaderManager.selectShader(id);
+		shaderManager.saveShader(true);
+		if (replaceId > 0) {
+			shaderListManager.loadShadersAsync();
+		}
 	}
 
 	private void requestAudioCapture() {
@@ -2389,8 +2672,14 @@ public class MainActivity extends AppCompatActivity {
 		if (result.getResultCode() != RESULT_OK || result.getData() == null) {
 			return;
 		}
+		// The application's manager, not this Activity's: a MediaProjection
+		// keeps the Context of the manager that made it, and its internal
+		// callback binder is held from native code until system_server
+		// lets go of it - which can be well after stop(), so with this
+		// Activity's Context every guard against a missed stop() still
+		// left LeakCanary finding a destroyed MainActivity behind it.
 		MediaProjectionManager projectionManager =
-				getSystemService(MediaProjectionManager.class);
+				getApplicationContext().getSystemService(MediaProjectionManager.class);
 		if (projectionManager == null) {
 			return;
 		}
@@ -2622,7 +2911,17 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		clipboard.setPrimaryClip(ClipData.newPlainText(
-				getString(R.string.app_name), getWholeShaderSource()));
+				getString(R.string.app_name), getNamedShaderSource()));
+	}
+
+	// getWholeShaderSource() with the shader's name in front (see
+	// MultipassSource.withName()), so pasting or opening it elsewhere
+	// brings the name along.
+	@NonNull
+	private String getNamedShaderSource() {
+		var shader = dataSource.shader.getShader(shaderManager.getSelectedShaderId());
+		return MultipassSource.withName(getWholeShaderSource(),
+				shader != null ? shader.name() : null);
 	}
 
 	// Every pass of the shader as one piece of text, whichever pass's tab
@@ -2633,7 +2932,8 @@ public class MainActivity extends AppCompatActivity {
 	private String getWholeShaderSource() {
 		var session = shaderManager.getEditedProjectSession();
 		return MultipassSource.join(session.getEntryPointSource(),
-				session.getProject().getBufferSources(), session.getProject().getTexts());
+				session.getProject().getBufferSources(), session.getProject().getTexts(),
+				session.getProject().getCommonSource());
 	}
 
 	// Offscreen buffers (ShaderToy-style multipass) - see EditorFragment's
@@ -2651,6 +2951,17 @@ public class MainActivity extends AppCompatActivity {
 						? smoothstep(40.0, 0.0, length(fragCoord - iMouse.xy))
 						: 0.0;
 				fragColor = vec4(max(previous * 0.98, vec3(paint)), 1.0);
+			}
+			""";
+	// A new Common section - see ShaderSourcePreparer.prepare().
+	private static final String COMMON_TEMPLATE = """
+			// Common: every pass starts with this code, as if it were at the top
+			// of each - so functions and #defines here are everyone's. Its own
+			// uniforms need declaring here; a pass's (iChannel0...) aren't seen.
+			#define TAU 6.28318530718
+
+			vec3 palette(float t) {
+				return 0.5 + 0.5 * cos(TAU * (t + vec3(0.0, 0.33, 0.67)));
 			}
 			""";
 
@@ -2696,7 +3007,8 @@ public class MainActivity extends AppCompatActivity {
 			present[i] = buffers[i] != null;
 			sound[i] = ShaderSourcePreparer.isSoundSource(buffers[i]);
 		}
-		editorFragment.setPassTabs(present, sound, getTextNames());
+		editorFragment.setPassTabs(present, sound, getTextNames(),
+				shaderManager.getEditedProjectSession().getProject().getCommonSource() != null);
 		shownSoundTabs = sound;
 		// Back to the Image pass if the shown buffer has gone, or another
 		// shader was loaded - see EditorFragment.getDisplayedPass().
@@ -2712,6 +3024,9 @@ public class MainActivity extends AppCompatActivity {
 
 	// A file's pass: its buffer, its text's tab, or the Image pass.
 	private int passForPath(@NonNull String path) {
+		if (ShaderProjectPaths.COMMON_PATH.equals(ShaderProjectPaths.normalize(path))) {
+			return ShaderError.COMMON_PASS;
+		}
 		String text = ShaderProjectPaths.getTextName(path);
 		if (text != null) {
 			int index = getTextNames().indexOf(text);
@@ -2724,6 +3039,11 @@ public class MainActivity extends AppCompatActivity {
 		String path;
 		if (pass == ShaderError.IMAGE_PASS) {
 			path = shaderManager.getEntryFilePath();
+		} else if (pass == ShaderError.COMMON_PASS) {
+			if (shaderManager.getEditedProjectSession().getProject().getCommonSource() == null) {
+				return;
+			}
+			path = ShaderProjectPaths.COMMON_PATH;
 		} else if (EditorFragment.isTextPass(pass)) {
 			List<String> names = getTextNames();
 			int index = pass - EditorFragment.TEXT_PASS_BASE;
@@ -2741,6 +3061,9 @@ public class MainActivity extends AppCompatActivity {
 	private void cyclePass(int direction) {
 		var passes = new ArrayList<Integer>();
 		passes.add(ShaderError.IMAGE_PASS);
+		if (shaderManager.getEditedProjectSession().getProject().getCommonSource() != null) {
+			passes.add(ShaderError.COMMON_PASS);
+		}
 		String[] buffers = shaderManager.getEditedProjectSession().getProject().getBufferSources();
 		for (int i = 0; i < buffers.length; ++i) {
 			if (buffers[i] != null) {
@@ -2784,6 +3107,38 @@ public class MainActivity extends AppCompatActivity {
 				})
 				.setNeutralButton(R.string.shader_texts_button, (dialog, which) ->
 						showShaderTextsDialog())
+				.setPositiveButton(shaderManager.getEditedProjectSession().getProject()
+								.getCommonSource() != null
+								? R.string.common_remove
+								: R.string.common_add,
+						(dialog, which) -> toggleCommon())
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	// Adds a Common section (code every pass starts with) and opens it, or
+	// - after asking - removes the one there is.
+	private void toggleCommon() {
+		if (shaderManager.getEditedProjectSession(editorFragment.getText()).getProject()
+				.getCommonSource() == null) {
+			shaderManager.setCommonSource(COMMON_TEMPLATE);
+			refreshPassTabs();
+			shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+			switchToPass(ShaderError.COMMON_PASS);
+			return;
+		}
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.common_remove)
+				.setMessage(R.string.common_remove_message)
+				.setPositiveButton(R.string.offscreen_buffers_remove, (dialog, which) -> {
+					if (editorFragment.getActivePass() == ShaderError.COMMON_PASS) {
+						// Off its tab first, so the edit is committed before it goes.
+						switchToPass(ShaderError.IMAGE_PASS);
+					}
+					shaderManager.setCommonSource(null);
+					refreshPassTabs();
+					shaderViewManager.setProjectSession(shaderManager.getEditedProjectSession());
+				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
 	}
@@ -3074,6 +3429,35 @@ public class MainActivity extends AppCompatActivity {
 	// process death - deliberately session-scoped, not persisted.
 	private static final Set<String> recentlyEditedDefineNames = new LinkedHashSet<>();
 
+	// Every define Adjust Defines lists for the open shader: the open
+	// pass's used defines, then the other passes' that it hasn't got - a
+	// define shared by several passes (a converted Ready pattern's
+	// parameters, say) is one entry, applied to them all. Null, with a
+	// toast, when there are none.
+	@Nullable
+	private List<ShaderDefine> adjustableDefines(@NonNull String source) {
+		List<ShaderDefine> originalOrder = usedDefines(shaderManager.getEditedProjectSession(source),
+				shaderManager.getActiveFilePath(), source);
+		Set<String> listed = new HashSet<>();
+		for (ShaderDefine define : originalOrder) {
+			listed.add(define.name);
+		}
+		for (var entry : otherPassSources(shaderManager.getEditedProjectSession(source)).entrySet()) {
+			for (ShaderDefine define : usedDefines(shaderManager.getEditedProjectSession(source),
+					entry.getKey(), entry.getValue())) {
+				if (listed.add(define.name)) {
+					define.passPath = entry.getKey();
+					originalOrder.add(define);
+				}
+			}
+		}
+		if (originalOrder.isEmpty()) {
+			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
+			return null;
+		}
+		return originalOrder;
+	}
+
 	// Opens the "Adjust Defines" tool (More Options menu) - a
 	// scrollable, reorderable list of every #define in the current
 	// shader that's actually referenced elsewhere in it (see
@@ -3086,25 +3470,16 @@ public class MainActivity extends AppCompatActivity {
 	// workingOrder is the same ShaderDefine instances, live-edited and
 	// freely reordered by the dialog's own drag handles.
 	private void showAdjustDefinesDialog() {
+		showAdjustDefinesDialog(false, null);
+	}
+
+	// liveSetup opens it on live mode's setup list (the toolbar's live
+	// button - see goLiveFromToolbar()), with liveErrors (by define name)
+	// marking any that just failed to go live.
+	private void showAdjustDefinesDialog(boolean liveSetup, @Nullable Map<String, String> liveErrors) {
 		String source = editorFragment.getText();
-		List<ShaderDefine> originalOrder = ShaderDefineParser.parseUsedDefines(source);
-		// Then the other passes' that the open one hasn't got - a define
-		// shared by several passes (a converted Ready pattern's
-		// parameters, say) is one entry, applied to them all.
-		Set<String> listed = new HashSet<>();
-		for (ShaderDefine define : originalOrder) {
-			listed.add(define.name);
-		}
-		for (var entry : otherPassSources(shaderManager.getEditedProjectSession(source)).entrySet()) {
-			for (ShaderDefine define : ShaderDefineParser.parseUsedDefines(entry.getValue())) {
-				if (listed.add(define.name)) {
-					define.passPath = entry.getKey();
-					originalOrder.add(define);
-				}
-			}
-		}
-		if (originalOrder.isEmpty()) {
-			Toast.makeText(this, R.string.no_defines_found, Toast.LENGTH_SHORT).show();
+		List<ShaderDefine> originalOrder = adjustableDefines(source);
+		if (originalOrder == null) {
 			return;
 		}
 		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
@@ -3113,6 +3488,14 @@ public class MainActivity extends AppCompatActivity {
 		if (liveNames != null) {
 			for (ShaderDefine define : workingOrder) {
 				define.live = liveNames.contains(define.name);
+			}
+		}
+		if (liveErrors != null) {
+			for (ShaderDefine define : workingOrder) {
+				define.liveError = liveErrors.get(define.name);
+				if (define.liveError != null) {
+					define.live = false;
+				}
 			}
 		}
 
@@ -3230,8 +3613,13 @@ public class MainActivity extends AppCompatActivity {
 			boolean setup = adapter.isLiveSetup();
 			positive.setText(setup ? R.string.adjust_defines_go_live : R.string.adjust_defines_make_edits);
 			negative.setText(setup ? R.string.adjust_defines_back : android.R.string.cancel);
-			neutral.setVisibility(setup ? View.GONE : View.VISIBLE);
+			// In live mode's setup, Select All (or None, once they're all
+			// ticked) over whatever the filter shows.
+			neutral.setText(!setup ? R.string.adjust_defines_edit_live
+					: adapter.allShownLive() ? R.string.adjust_defines_select_none
+					: R.string.adjust_defines_select_all);
 		};
+		adapter.setOnLiveChanged(updateButtons);
 		positive.setOnClickListener(v -> {
 			if (adapter.isLiveSetup()) {
 				checkLiveDefines(dialog, adapter, source, originalOrder, workingOrder, wasPaused,
@@ -3252,10 +3640,19 @@ public class MainActivity extends AppCompatActivity {
 			}
 		});
 		neutral.setOnClickListener(v -> {
+			if (adapter.isLiveSetup()) {
+				adapter.setAllShownLive(!adapter.allShownLive());
+				return;
+			}
 			SoftKeyboard.hide(this, filterView);
 			adapter.setLiveSetup(true);
 			updateButtons.run();
 		});
+		if (liveSetup) {
+			adapter.setLiveSetup(true);
+			updateButtons.run();
+			return;
+		}
 		// So typing a filter can start immediately, same rationale/pattern
 		// as the Find Shader dialog's query field above.
 		filterView.requestFocus();
@@ -3302,6 +3699,49 @@ public class MainActivity extends AppCompatActivity {
 			}
 			dialog.dismiss();
 		});
+		// A new shader with the changes, named after this one; this one
+		// stays as it was. The dialog waits for the name, so cancelling
+		// that comes back here.
+		view.findViewById(R.id.adjust_defines_confirm_save_as_new).setOnClickListener(v -> {
+			long id = shaderManager.getSelectedShaderId();
+			String name = copyBaseName(id);
+			Consumer<String> save = newName -> {
+				if (!dialog.isShowing()) {
+					return;
+				}
+				ShaderProjectSession edited = withDefines(originalSource, originalOrder,
+						workingOrder, null);
+				long newId = shaderManager.insertShader(edited);
+				if (newId <= 0) {
+					return;
+				}
+				for (ShaderDefine define : workingOrder) {
+					if (define.isValueChanged() || define.isCommentChanged()) {
+						recentlyEditedDefineNames.add(define.name);
+					}
+				}
+				// So the live button carries on with the same defines there.
+				Set<String> liveNames = liveDefineNames.get(id);
+				if (liveNames != null) {
+					liveDefineNames.put(newId, new HashSet<>(liveNames));
+				}
+				applied[0] = true;
+				if (onApplied != null) {
+					onApplied.run();
+				}
+				dialog.dismiss();
+				shaderManager.selectShader(newId);
+				shaderListManager.loadShadersAsync();
+				if (newName != null) {
+					checkConflictAndRename(newId, newName);
+				}
+			};
+			if (name != null) {
+				askNewShaderName(name, save);
+			} else {
+				save.accept(null);
+			}
+		});
 	}
 
 	// Defines ticked for live mode, per shader id, this app session -
@@ -3320,30 +3760,94 @@ public class MainActivity extends AppCompatActivity {
 	private LiveDefinesState liveDefinesState;
 	private LiveDefinesPanel liveDefinesPanel;
 
-	// Live mode's Go Live: makes sure every ticked define can be a
-	// uniform before going live. A define tested by #if/#ifdef can't (and
-	// wouldn't fail to compile, just quietly change what's compiled), so
-	// that's checked first; then the converted shader is test-compiled,
-	// and if it fails, each define on its own, to find the ones at fault.
-	// Those are unticked and shown in red with the reason, and the
-	// dialog stays open - so the next Go Live runs with the rest.
+	// Live mode's Go Live, from the dialog: checks the ticked defines (see
+	// checkLiveDefines() below). Any that can't be live are unticked and
+	// shown in red with the reason, and the dialog stays open - so the
+	// next Go Live runs with the rest.
 	private void checkLiveDefines(@NonNull AlertDialog dialog, @NonNull DefineAdapter adapter,
 			@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
 			@NonNull List<ShaderDefine> workingOrder, boolean wasPaused,
 			@NonNull boolean[] proceeding) {
-		List<ShaderDefine> live = new ArrayList<>();
-		for (ShaderDefine define : workingOrder) {
-			define.liveError = null;
-			if (define.live && define.canBeLive()) {
-				live.add(define);
-			}
-		}
+		List<ShaderDefine> live = tickedLiveDefines(workingOrder);
 		if (live.isEmpty()) {
 			adapter.refreshAll();
 			Toast.makeText(this, R.string.adjust_defines_live_none, Toast.LENGTH_SHORT).show();
 			return;
 		}
-		List<ShaderDefine> failed = new ArrayList<>();
+		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+		// Greyed out, under a progress bar, until it's done - its label
+		// stays, so the dialog's buttons don't move about.
+		positive.setEnabled(false);
+		View progress = dialog.findViewById(R.id.adjust_defines_live_progress);
+		if (progress != null) {
+			progress.setVisibility(View.VISIBLE);
+		}
+		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
+			if (!dialog.isShowing()) {
+				return;
+			}
+			if (progress != null) {
+				progress.setVisibility(View.GONE);
+			}
+			positive.setEnabled(true);
+			if (!reasons.isEmpty()) {
+				for (var entry : reasons.entrySet()) {
+					entry.getKey().liveError = entry.getValue();
+				}
+				showLiveDefinesFailed(adapter, new ArrayList<>(reasons.keySet()));
+				return;
+			}
+			proceeding[0] = true;
+			dialog.dismiss();
+			startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
+					liveSession, wasPaused);
+		});
+	}
+
+	// The defines ticked for live mode that could be live at all, each
+	// with any earlier failure cleared.
+	@NonNull
+	private static List<ShaderDefine> tickedLiveDefines(@NonNull List<ShaderDefine> defines) {
+		List<ShaderDefine> live = new ArrayList<>();
+		for (ShaderDefine define : defines) {
+			define.liveError = null;
+			if (define.live && define.canBeLive()) {
+				live.add(define);
+			}
+		}
+		return live;
+	}
+
+	private interface LiveDefinesChecked {
+		// reasons: each define that can't be live, and why - empty when
+		// they all can, and liveSession is the shader with them as
+		// uniforms.
+		void onChecked(@NonNull Map<ShaderDefine, String> reasons,
+				@NonNull ShaderProjectSession liveSession);
+	}
+
+	// Makes sure every one of `live` can be a uniform before going live,
+	// telling `checked` on the UI thread. A define tested by #if/#ifdef
+	// can't (and wouldn't fail to compile, just quietly change what's
+	// compiled), so that's checked first, straight away; then the
+	// converted shader is test-compiled, and if it fails, each define on
+	// its own, to find the ones at fault.
+	private void checkLiveDefines(@NonNull String source, @NonNull List<ShaderDefine> originalOrder,
+			@NonNull List<ShaderDefine> workingOrder, @NonNull List<ShaderDefine> live,
+			@NonNull LiveDefinesChecked checked) {
+		// Building the sources below takes a moment on a big shader, so
+		// it waits for a frame: the caller's "checking" shows first.
+		Choreographer.getInstance().postFrameCallback(frame -> getWindow().getDecorView().post(
+				() -> runLiveDefinesCheck(source, originalOrder, workingOrder, live, checked)));
+	}
+
+	private void runLiveDefinesCheck(@NonNull String source,
+			@NonNull List<ShaderDefine> originalOrder, @NonNull List<ShaderDefine> workingOrder,
+			@NonNull List<ShaderDefine> live, @NonNull LiveDefinesChecked checked) {
+		// What the check needs is built here on the UI thread - the
+		// defines are the caller's, and only it changes them.
+		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
+		Map<ShaderDefine, String> conditionals = new LinkedHashMap<>();
 		Collection<String> others = otherPassSources(
 				shaderManager.getEditedProjectSession(source)).values();
 		for (ShaderDefine define : live) {
@@ -3352,62 +3856,115 @@ public class MainActivity extends AppCompatActivity {
 				conditional |= ShaderDefineParser.isUsedInConditional(other, define);
 			}
 			if (conditional) {
-				define.liveError = getString(R.string.adjust_defines_live_conditional);
-				failed.add(define);
+				conditionals.put(define, getString(R.string.adjust_defines_live_conditional));
 			}
 		}
-		if (!failed.isEmpty()) {
-			showLiveDefinesFailed(adapter, failed);
+		if (!conditionals.isEmpty()) {
+			checked.onChecked(conditionals, liveSession);
 			return;
-		}
-
-		Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-		positive.setEnabled(false);
-		positive.setText(R.string.adjust_defines_live_checking);
-		// Everything the check needs, built here on the UI thread - the
-		// defines are the dialog's, and only it changes them.
-		ShaderProjectSession liveSession = withDefines(source, originalOrder, workingOrder, live);
-		Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
-		for (ShaderDefine define : live) {
-			singles.put(define, withDefines(source, originalOrder, workingOrder, List.of(define)));
 		}
 		new Thread(() -> {
 			List<ShaderError> errors = shaderViewManager.testCompileAndWait(liveSession);
-			Map<ShaderDefine, String> reasons = new LinkedHashMap<>();
-			if (!errors.isEmpty()) {
-				for (var entry : singles.entrySet()) {
-					List<ShaderError> own = shaderViewManager.testCompileAndWait(entry.getValue());
-					if (!own.isEmpty()) {
-						reasons.put(entry.getKey(), describeLiveError(own.get(0)));
-					}
-				}
-				// Each compiles alone but not together - nothing to single
-				// out, so they all go.
-				if (reasons.isEmpty()) {
-					for (ShaderDefine define : live) {
-						reasons.put(define, describeLiveError(errors.get(0)));
-					}
-				}
+			if (errors.isEmpty()) {
+				runOnUiThread(() -> checked.onChecked(Map.of(), liveSession));
+				return;
 			}
+			// Then each on its own, to find the ones at fault - built
+			// only now, as there's one whole shader per define.
 			runOnUiThread(() -> {
-				if (!dialog.isShowing()) {
-					return;
+				Map<ShaderDefine, ShaderProjectSession> singles = new LinkedHashMap<>();
+				for (ShaderDefine define : live) {
+					singles.put(define, withDefines(source, originalOrder, workingOrder,
+							List.of(define)));
 				}
-				positive.setEnabled(true);
-				positive.setText(R.string.adjust_defines_go_live);
-				if (!reasons.isEmpty()) {
-					for (var entry : reasons.entrySet()) {
-						entry.getKey().liveError = entry.getValue();
+				new Thread(() -> {
+					Map<ShaderDefine, String> reasons = new LinkedHashMap<>();
+					for (var entry : singles.entrySet()) {
+						List<ShaderError> own = shaderViewManager.testCompileAndWait(entry.getValue());
+						if (!own.isEmpty()) {
+							reasons.put(entry.getKey(), describeLiveError(own.get(0)));
+						}
 					}
-					showLiveDefinesFailed(adapter, new ArrayList<>(reasons.keySet()));
-					return;
-				}
-				proceeding[0] = true;
-				dialog.dismiss();
-				startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
-						liveSession, wasPaused);
+					// Each compiles alone but not together - nothing to
+					// single out, so they all go.
+					if (reasons.isEmpty()) {
+						for (ShaderDefine define : live) {
+							reasons.put(define, describeLiveError(errors.get(0)));
+						}
+					}
+					runOnUiThread(() -> checked.onChecked(reasons, liveSession));
+				}, "LiveDefinesCheck").start();
 			});
 		}, "LiveDefinesCheck").start();
+	}
+
+	// Set while the toolbar's live button is checking, so a second tap
+	// doesn't start another.
+	private boolean goingLive;
+
+	private void setGoingLive(boolean checking) {
+		goingLive = checking;
+		View button = findViewById(R.id.live_defines_nav);
+		button.setEnabled(!checking);
+		button.setAlpha(checking ? 0.4f : 1f);
+		findViewById(R.id.live_defines_progress).setVisibility(checking ? View.VISIBLE : View.GONE);
+	}
+
+	// The toolbar's live button: straight into live mode with the
+	// defines last ticked for this shader (this app session - see
+	// liveDefineNames), or the setup list to tick some when there
+	// aren't any yet, or they can't all be live; long-pressing it
+	// always opens the setup list.
+	private void goLiveFromToolbar() {
+		if (liveDefinesState != null || goingLive) {
+			return;
+		}
+		String source = editorFragment.getText();
+		Set<String> names = liveDefineNames.get(
+				shaderManager.getEditedProjectSession(source).getShaderId());
+		if (names == null || names.isEmpty()) {
+			showAdjustDefinesDialog(true, null);
+			return;
+		}
+		List<ShaderDefine> originalOrder = adjustableDefines(source);
+		if (originalOrder == null) {
+			return;
+		}
+		List<ShaderDefine> workingOrder = new ArrayList<>(originalOrder);
+		for (ShaderDefine define : workingOrder) {
+			define.live = names.contains(define.name);
+		}
+		List<ShaderDefine> live = tickedLiveDefines(workingOrder);
+		if (live.isEmpty()) {
+			showAdjustDefinesDialog(true, null);
+			return;
+		}
+		// The check can take a while on a big shader: a spinner shows,
+		// and the button greys out, until it's done.
+		setGoingLive(true);
+		boolean wasPaused = shaderViewManager.isPaused();
+		checkLiveDefines(source, originalOrder, workingOrder, live, (reasons, liveSession) -> {
+			setGoingLive(false);
+			// Edited (or another shader opened) meanwhile: what was
+			// checked isn't what's open now.
+			if (isFinishing() || liveDefinesState != null
+					|| !source.equals(editorFragment.getText())) {
+				return;
+			}
+			if (!reasons.isEmpty()) {
+				Map<String, String> errors = new HashMap<>();
+				for (var entry : reasons.entrySet()) {
+					errors.put(entry.getKey().name, entry.getValue());
+				}
+				Toast.makeText(this, getResources().getQuantityString(
+						R.plurals.adjust_defines_live_failed, errors.size(), errors.size()),
+						Toast.LENGTH_LONG).show();
+				showAdjustDefinesDialog(true, errors);
+				return;
+			}
+			startLiveDefines(new LiveDefinesState(source, originalOrder, workingOrder, live),
+					liveSession, wasPaused);
+		});
 	}
 
 	@NonNull
@@ -3598,8 +4155,8 @@ public class MainActivity extends AppCompatActivity {
 				Toast.LENGTH_SHORT).show();
 	}
 
-	// Every GLSL pass but the open one, by path - the Image pass and the
-	// buffers, not texts.
+	// Every GLSL pass but the open one, by path - the Image pass, the
+	// buffers and Common, not texts.
 	@NonNull
 	private static Map<String, String> otherPassSources(@NonNull ShaderProjectSession session) {
 		Map<String, String> sources = new LinkedHashMap<>();
@@ -3607,11 +4164,31 @@ public class MainActivity extends AppCompatActivity {
 		for (var file : session.getProject().getFiles()) {
 			String path = file.path();
 			if (!path.equals(session.getActiveFilePath()) &&
-					(path.equals(entry) || ShaderProjectPaths.getBufferIndex(path) >= 0)) {
+					(path.equals(entry) || ShaderProjectPaths.getBufferIndex(path) >= 0 ||
+							path.equals(ShaderProjectPaths.COMMON_PATH))) {
 				sources.put(path, file.source());
 			}
 		}
 		return sources;
+	}
+
+	// The defines in the pass at `path` (its source as given) that are
+	// used - for Common, used by any pass.
+	@NonNull
+	private static List<ShaderDefine> usedDefines(@NonNull ShaderProjectSession session,
+			@NonNull String path, @NonNull String source) {
+		if (!ShaderProjectPaths.COMMON_PATH.equals(path)) {
+			return ShaderDefineParser.parseUsedDefines(source);
+		}
+		var passes = new StringBuilder();
+		for (var file : session.getProject().getFiles()) {
+			String other = file.path();
+			if (other.equals(session.getProject().getEntryFilePath()) ||
+					ShaderProjectPaths.getBufferIndex(other) >= 0) {
+				passes.append(file.source()).append('\n');
+			}
+		}
+		return ShaderDefineParser.parseUsedDefines(source, passes.toString());
 	}
 
 	// The shader as Adjust Defines leaves it: the open pass rebuilt from
@@ -3646,7 +4223,7 @@ public class MainActivity extends AppCompatActivity {
 			String other = entry.getValue();
 			String[] lines = other.split("\n", -1);
 			boolean changed = false;
-			for (ShaderDefine theirs : ShaderDefineParser.parseUsedDefines(other)) {
+			for (ShaderDefine theirs : usedDefines(session, entry.getKey(), other)) {
 				ShaderDefine ours = byName.get(theirs.name);
 				if (ours == null || theirs.lineIndex >= lines.length) {
 					continue;
@@ -4445,6 +5022,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PREF_CUSTOM_RES_VIDEO_QUALITY = "custom_res_video_quality";
 	private static final String PREF_CUSTOM_RES_VIDEO_SCALE = "custom_res_video_scale";
 	private static final String PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK = "custom_res_match_device_playback";
+	private static final String PREF_CUSTOM_RES_INCLUDE_UPSCALING = "custom_res_include_upscaling";
 	private static final String PREF_CUSTOM_RES_RESTART_SHADER = "custom_res_restart_shader";
 	// Stores the button's resource *name* (e.g. "screenshot_copy"), not
 	// its numeric id - those get renumbered whenever resources are added,
@@ -4571,8 +5149,11 @@ public class MainActivity extends AppCompatActivity {
 	// "render sequence" options block (initial state from the
 	// PREF_CUSTOM_RES_SEQUENCE_* prefs, visibility toggles, the live
 	// duration estimate, the quality seekbar's label).
+	// onVideoChoiceChanged runs when either box deciding whether a
+	// video gets made is toggled.
 	@NonNull
-	private SequenceOptionsViews wireSequenceOptions(@NonNull View view) {
+	private SequenceOptionsViews wireSequenceOptions(@NonNull View view,
+			@NonNull Runnable onVideoChoiceChanged) {
 		SharedPreferences prefs = dialogPrefs();
 		CheckBox sequenceBox = view.findViewById(R.id.render_sequence);
 		View sequenceOptions = view.findViewById(R.id.sequence_options);
@@ -4607,10 +5188,14 @@ public class MainActivity extends AppCompatActivity {
 		cleanupImagesBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_CLEANUP_IMAGES, true));
 		videoScaleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_VIDEO_SCALE, 1)));
 
-		sequenceBox.setOnCheckedChangeListener((button, checked) ->
-				sequenceOptions.setVisibility(checked ? View.VISIBLE : View.GONE));
-		createVideoBox.setOnCheckedChangeListener((button, checked) ->
-				videoOptionsView.setVisibility(checked ? View.VISIBLE : View.GONE));
+		sequenceBox.setOnCheckedChangeListener((button, checked) -> {
+			sequenceOptions.setVisibility(checked ? View.VISIBLE : View.GONE);
+			onVideoChoiceChanged.run();
+		});
+		createVideoBox.setOnCheckedChangeListener((button, checked) -> {
+			videoOptionsView.setVisibility(checked ? View.VISIBLE : View.GONE);
+			onVideoChoiceChanged.run();
+		});
 		qualitySeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 			@Override
 			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -4689,6 +5274,9 @@ public class MainActivity extends AppCompatActivity {
 		matchAppResBox.setChecked(
 				prefs.getBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK, false));
 		explainOnLongPress(matchAppResBox, R.string.higher_res_match_device_playback);
+		CheckBox includeUpscalingBox = view.findViewById(R.id.custom_include_upscaling);
+		includeUpscalingBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_INCLUDE_UPSCALING, false));
+		explainOnLongPress(includeUpscalingBox, R.string.higher_res_include_upscaling);
 		EditText oversampleView = view.findViewById(R.id.custom_oversample);
 		oversampleView.setText(String.valueOf(prefs.getInt(PREF_CUSTOM_RES_OVERSAMPLE, 1)));
 		explainOnLongPress(view.findViewById(R.id.custom_oversample_label), R.string.higher_res_oversample);
@@ -4713,7 +5301,12 @@ public class MainActivity extends AppCompatActivity {
 		CheckBox restartShaderBox = view.findViewById(R.id.restart_shader);
 		restartShaderBox.setChecked(prefs.getBoolean(PREF_CUSTOM_RES_RESTART_SHADER, false));
 		explainOnLongPress(restartShaderBox, R.string.higher_res_restart_shader);
-		SequenceOptionsViews sequenceViews = wireSequenceOptions(view);
+		// Set once updateMatchAppResEnablement exists, below.
+		Runnable[] videoChoiceChanged = {() -> {
+		}};
+		SequenceOptionsViews sequenceViews = wireSequenceOptions(view,
+				() -> videoChoiceChanged[0].run());
+		View videoScaleLabel = view.findViewById(R.id.sequence_video_scale_label);
 		explainOnLongPress(view.findViewById(R.id.sequence_video_scale_label),
 				R.string.higher_res_sequence_video_scale);
 
@@ -4734,8 +5327,16 @@ public class MainActivity extends AppCompatActivity {
 			heightView.setEnabled(!matching);
 			oversampleView.setEnabled(!matching);
 			bucketSizeSpinner.setEnabled(!matching);
-			sequenceViews.videoScaleView.setEnabled(!matching);
+			// Video Scale only matters when a video gets made. Its label
+			// is dimmed rather than disabled, so a long press still
+			// explains it.
+			boolean makingVideo = sequenceViews.sequenceBox.isChecked() &&
+					sequenceViews.createVideoBox.isChecked();
+			sequenceViews.videoScaleView.setEnabled(!matching && makingVideo);
+			videoScaleLabel.setAlpha(makingVideo ? 1f : 0.38f);
+			includeUpscalingBox.setEnabled(matching);
 		};
+		videoChoiceChanged[0] = updateMatchAppResEnablement;
 		// Mirrors the shader's own current live resolution exactly
 		// (reading the renderer's actual surface size directly, not
 		// re-deriving it from DisplayMetrics * quality - see
@@ -4760,8 +5361,9 @@ public class MainActivity extends AppCompatActivity {
 			heightView.setText(String.valueOf(matchHeight));
 			oversampleView.setText("1");
 			bucketSizeSpinner.setSelection(TileBucketSize.MAX.ordinal());
-			sequenceViews.videoScaleView.setText(
-					String.valueOf(Math.max(1, Math.round(1f / quality))));
+			// Included, the upscaling does the scaling.
+			sequenceViews.videoScaleView.setText(includeUpscalingBox.isChecked() ? "1"
+					: String.valueOf(Math.max(1, Math.round(1f / quality))));
 		};
 		updateMatchAppResEnablement.run();
 		if (matchAppResBox.isChecked()) {
@@ -4770,6 +5372,11 @@ public class MainActivity extends AppCompatActivity {
 		matchAppResBox.setOnCheckedChangeListener((button, checked) -> {
 			updateMatchAppResEnablement.run();
 			if (checked) {
+				applyMatchAppResSetting.run();
+			}
+		});
+		includeUpscalingBox.setOnCheckedChangeListener((button, checked) -> {
+			if (matchAppResBox.isChecked()) {
 				applyMatchAppResSetting.run();
 			}
 		});
@@ -4900,7 +5507,13 @@ public class MainActivity extends AppCompatActivity {
 					.putBoolean(PREF_CUSTOM_RES_RESTART_SHADER, restartShaderBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_MATCH_DEVICE_PLAYBACK,
 							matchAppResBox.isChecked())
+					.putBoolean(PREF_CUSTOM_RES_INCLUDE_UPSCALING, includeUpscalingBox.isChecked())
 					.putBoolean(PREF_CUSTOM_RES_SEQUENCE_ENABLED, sequenceViews.sequenceBox.isChecked());
+			// Included, the frames come out at the view's size.
+			boolean upscaled = matchAppResBox.isChecked() && includeUpscalingBox.isChecked();
+			shaderViewManager.setCaptureUpscaled(upscaled);
+			int frameWidth = upscaled ? shaderViewManager.getViewWidth() : width;
+			int frameHeight = upscaled ? shaderViewManager.getViewHeight() : height;
 			if (sequenceViews.sequenceBox.isChecked()) {
 				int frameCount = parsePositiveInt(sequenceViews.frameCountView.getText().toString());
 				float fps = parsePositiveFloat(sequenceViews.fpsView.getText().toString());
@@ -4917,13 +5530,13 @@ public class MainActivity extends AppCompatActivity {
 						parsePositiveInt(sequenceViews.videoScaleView.getText().toString()));
 				VideoFormat videoFormat = ShaderEditorApp.preferences.getVideoFormat();
 				if (sequenceViews.createVideoBox.isChecked() &&
-						!videoFormat.supportsSize(width * videoScale, height * videoScale)) {
+						!videoFormat.supportsSize(frameWidth * videoScale, frameHeight * videoScale)) {
 					// Caught now, rather than after rendering every frame.
 					new MaterialAlertDialogBuilder(this)
 							.setMessage(getString(R.string.video_format_size_unsupported,
 									getResources().getStringArray(R.array.video_format_names)[
 											videoFormat.ordinal()],
-									(width * videoScale) + " × " + (height * videoScale)))
+									(frameWidth * videoScale) + " × " + (frameHeight * videoScale)))
 							.setPositiveButton(android.R.string.ok, null)
 							.show();
 					return;
@@ -4942,7 +5555,7 @@ public class MainActivity extends AppCompatActivity {
 						wasPaused,
 						resolvedBucketSize -> {
 							restartShaderIf(restartShaderBox.isChecked());
-							runFrameSequenceCapture(width, height, oversample,
+							runFrameSequenceCapture(width, height, frameWidth, frameHeight, oversample,
 									preserveBackbufferBox.isChecked(), resolvedBucketSize, tileOrder,
 									skipFrames, frameCount, fps, sequenceViews.createVideoBox.isChecked(),
 									videoQuality, videoScale, sequenceViews.cleanupImagesBox.isChecked(),
@@ -5147,14 +5760,14 @@ public class MainActivity extends AppCompatActivity {
 						oversample, tileDescription);
 	}
 
-	// "Whole Frame (no tiling)" once singlePass is actually what the real
-	// capture will do (see HighResScreenshotCapture's own `singlePass`
-	// branch), otherwise the bucket size's own display name and pixel
-	// size - e.g. "Large (1024px)".
-	@NonNull
+	// Null - nothing said about tiles - once singlePass is actually what
+	// the real capture will do (see HighResScreenshotCapture's own
+	// `singlePass` branch), otherwise the bucket size's own display name
+	// and pixel size - e.g. "Large (1024px)".
+	@Nullable
 	private String tileDescriptionFor(@NonNull TileBucketSize bucketSize, boolean singlePass) {
 		if (singlePass) {
-			return getString(R.string.progress_tile_whole_frame);
+			return null;
 		}
 		String name = getResources().getStringArray(R.array.bucket_size_names)[bucketSize.ordinal()];
 		return getString(R.string.progress_tile_named, name, bucketSize.pixels);
@@ -5669,7 +6282,10 @@ public class MainActivity extends AppCompatActivity {
 	// that succeeded, deletes the per-frame images. No "Save and Open" at
 	// the end - opening a single image wouldn't make sense for a batch
 	// of them - just a toast summarizing what happened.
-	private void runFrameSequenceCapture(int width, int height, int oversample,
+	// frameWidth/frameHeight: the frames' size as saved - width x height,
+	// or the view's when the capture includes the upscaling.
+	private void runFrameSequenceCapture(int width, int height, int frameWidth, int frameHeight,
+			int oversample,
 			boolean preserveBackbufferEdges, @NonNull TileBucketSize bucketSize,
 			@NonNull TileRenderOrder initialTileOrder, int skipFrames,
 			int numFrames, float virtualFps, boolean createVideo, int videoQuality,
@@ -5708,7 +6324,8 @@ public class MainActivity extends AppCompatActivity {
 		AtomicReference<TileRenderOrder> liveTileOrder = new AtomicReference<>(initialTileOrder);
 		ShaderRenderer.TileOrderSupplier tileOrderSupplier = liveTileOrder::get;
 		Spinner tileOrderSpinner = progressView.findViewById(R.id.progress_tile_order);
-		tileOrderSpinner.setVisibility(View.VISIBLE);
+		// The order tiles go in means nothing without tiles.
+		tileOrderSpinner.setVisibility(singlePass ? View.GONE : View.VISIBLE);
 		tileOrderSpinner.setSelection(initialTileOrder.ordinal());
 		tileOrderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
 			@Override
@@ -5741,20 +6358,51 @@ public class MainActivity extends AppCompatActivity {
 		// they've asked for the thing to stop.
 		AtomicBoolean cancelRequested = new AtomicBoolean(false);
 		AtomicBoolean deletePartialOnCancel = new AtomicBoolean(false);
-		cancelButton.setOnClickListener(v -> new MaterialAlertDialogBuilder(this)
-				.setTitle(R.string.cancel_capture_title)
-				.setMessage(R.string.cancel_capture_message)
-				.setPositiveButton(R.string.cancel_capture_delete, (d, w) -> {
-					deletePartialOnCancel.set(true);
-					cancelRequested.set(true);
-					cancelButton.setEnabled(false);
-				})
-				.setNegativeButton(R.string.cancel_capture_keep, (d, w) -> {
-					cancelRequested.set(true);
-					cancelButton.setEnabled(false);
-				})
-				.setNeutralButton(R.string.cancel_capture_keep_rendering, null)
-				.show());
+		// While the Cancel dialog's up, the capture waits at its next frame,
+		// tile or video frame (awaitDecision()) - so it can't finish
+		// underneath the dialog and leave Delete or Keep with nothing to
+		// act on. Keep Rendering, Back or either answer lets it go on.
+		Object decisionLock = new Object();
+		boolean[] deciding = {false};
+		Runnable decided = () -> {
+			synchronized (decisionLock) {
+				deciding[0] = false;
+				decisionLock.notifyAll();
+			}
+		};
+		Runnable awaitDecision = () -> {
+			synchronized (decisionLock) {
+				while (deciding[0]) {
+					try {
+						decisionLock.wait();
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						return;
+					}
+				}
+			}
+		};
+		cancelButton.setOnClickListener(v -> {
+			synchronized (decisionLock) {
+				deciding[0] = true;
+			}
+			new MaterialAlertDialogBuilder(this)
+					.setTitle(R.string.cancel_capture_title)
+					.setMessage(R.string.cancel_capture_message)
+					.setPositiveButton(R.string.cancel_capture_delete, (d, w) -> {
+						deletePartialOnCancel.set(true);
+						cancelRequested.set(true);
+						cancelButton.setEnabled(false);
+					})
+					.setNegativeButton(R.string.cancel_capture_keep, (d, w) -> {
+						cancelRequested.set(true);
+						cancelButton.setEnabled(false);
+					})
+					.setNeutralButton(R.string.cancel_capture_keep_rendering, null)
+					// Every way out - an answer, Keep Rendering, Back.
+					.setOnDismissListener(d -> decided.run())
+					.show();
+		});
 
 		// Only offered when a video is actually being made - stopping
 		// early has nothing extra to offer Cancel otherwise. Unlike
@@ -5801,10 +6449,11 @@ public class MainActivity extends AppCompatActivity {
 		// runHighResCapture()'s own copy of these two.
 		boolean[] serviceActive = {false};
 		int[] lastNotifiedPercent = {-1};
-		// Marked by tileProgressListener at the first tile of whichever
-		// frame is currently rendering, read back by frameListener once
-		// that frame completes - the two together give one frame's
-		// actual wall-clock render time, averaged across every frame
+		// Marked as the first frame starts (sequenceProgressListener),
+		// then by frameListener as each frame completes - so each gap is
+		// one frame's actual wall-clock time, stepping the simulation
+		// included (all of it, for a buffer shader, whose capture is
+		// just reading back the frame), averaged across every frame
 		// completed so far (frameAvgTotalSeconds / framesTimed) for the
 		// Avg/ETA line, same idea as runHighResCapture()'s own
 		// per-tile version but at frame granularity.
@@ -5817,7 +6466,11 @@ public class MainActivity extends AppCompatActivity {
 			// inside the Runnable) so the preview-clear below never
 			// fires for a frame that's actually about to be refused -
 			// see the !skipping branch's own doc.
+			awaitDecision.run();
 			boolean willContinue = !cancelRequested.get() && !interruptRequested.get();
+			if (!skipping && stepIndex == 1) {
+				frameStartNanos[0] = System.nanoTime();
+			}
 			runOnUiThread(() -> {
 				if (!skipping) {
 					// Clears the whole-image preview right as the *next*
@@ -5879,9 +6532,6 @@ public class MainActivity extends AppCompatActivity {
 							: pickRandomStatus(
 									numFrames > 1 ? R.array.status_tile_sequence : R.array.status_tile_single);
 				}
-				if (tilesDone == 1) {
-					frameStartNanos[0] = System.nanoTime();
-				}
 				overallBar.setProgress(PROGRESS_COMPILE_UNITS + skipFrames +
 						currentFrameIndex[0] * tilesPerFrame[0] + tilesDone);
 				subtaskBar.setVisibility(View.VISIBLE);
@@ -5913,6 +6563,7 @@ public class MainActivity extends AppCompatActivity {
 			// already rendered. sequenceProgressListener (the only place
 			// a *new* frame or skip-step gets started) is where
 			// interruptRequested actually takes effect.
+			awaitDecision.run();
 			return !cancelRequested.get();
 		};
 
@@ -5932,7 +6583,9 @@ public class MainActivity extends AppCompatActivity {
 				frameUris.add(saved.uri());
 			}
 			currentFrameIndex[0] = frameIndex + 1;
-			double frameSeconds = (System.nanoTime() - frameStartNanos[0]) / 1e9;
+			long now = System.nanoTime();
+			double frameSeconds = (now - frameStartNanos[0]) / 1e9;
+			frameStartNanos[0] = now;
 			frameAvgTotalSeconds[0] += frameSeconds;
 			++framesTimed[0];
 			int remainingFrames = totalFrames - currentFrameIndex[0];
@@ -6061,14 +6714,16 @@ public class MainActivity extends AppCompatActivity {
 								formatEtaDuration(Math.round(avgEncodeSeconds * (totalFrames - frameIndex)))));
 						notifyCaptureProgress(serviceActive, lastNotifiedPercent, overallBar);
 					});
+					awaitDecision.run();
 					return !cancelRequested.get();
 				};
 				String videoFilename = baseShaderName + "." + proseDateString(new Date()) + "." +
 						videoFormat.extension;
 				videoUri = videoFormat == VideoFormat.GIF
-						? GifEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
-								videoFilename, videoProgress)
-						: VideoEncoder.encode(this, frameUris, width, height, videoScale, virtualFps,
+						? GifEncoder.encode(this, frameUris, frameWidth, frameHeight, videoScale,
+								virtualFps, videoFilename, videoProgress)
+						: VideoEncoder.encode(this, frameUris, frameWidth, frameHeight, videoScale,
+								virtualFps,
 								videoQuality, videoFormat, videoFilename, videoProgress);
 				if (videoUri != null && cleanupImages) {
 					runOnUiThread(() -> statusMessage.setText(R.string.status_wrapping_up));
@@ -6293,6 +6948,11 @@ public class MainActivity extends AppCompatActivity {
 				showNameGroupPostfixDialog(targetId, parentName, confirmIfAlreadyNamed));
 	}
 
+	// The picker's filter as last left, so using it again starts there -
+	// for the app session, like the other dialogs' remembered state.
+	@NonNull
+	private static String parentPickerFilter = "";
+
 	// The picker itself: hands back the chosen name prefix. targetId is
 	// the shader it's for, for Sort by similarity - 0 for one not saved
 	// yet (Paste's Add as Child), which hides that option.
@@ -6344,6 +7004,7 @@ public class MainActivity extends AppCompatActivity {
 
 			@Override
 			public void onTextChanged(CharSequence s, int start, int before, int count) {
+				parentPickerFilter = s.toString();
 				String query = s.toString().trim().toLowerCase(Locale.ROOT);
 				if (query.isEmpty()) {
 					pickerAdapter.setData(namedShaders);
@@ -6363,6 +7024,9 @@ public class MainActivity extends AppCompatActivity {
 			public void afterTextChanged(Editable s) {
 			}
 		});
+		// Selected, so typing replaces it and Delete clears it.
+		filterView.setText(parentPickerFilter);
+		filterView.selectAll();
 
 		parentListView.setOnItemClickListener((parent, v, position, id) -> {
 			// The row's path is its tokens joined with "/"; since tokens
@@ -7168,7 +7832,7 @@ public class MainActivity extends AppCompatActivity {
 			projectSession = shaderManager.getEditedProjectSession(src);
 		}
 		if (ShaderEditorApp.preferences.doesRunInBackground()) {
-			shaderViewManager.setProjectSession(projectSession);
+			shaderViewManager.rerunProjectSession(projectSession);
 		} else {
 			navigationManager.showPreview(projectSession,
 					shaderManager.previewShaderLauncher);

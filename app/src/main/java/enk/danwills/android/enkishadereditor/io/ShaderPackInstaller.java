@@ -86,6 +86,13 @@ public final class ShaderPackInstaller {
 			if (pack == null) {
 				return failure(context.getString(R.string.not_a_shader_pack));
 			}
+			if (readFormat(copy) > DatabaseContract.PackInfoColumns.NEWEST_READABLE_FORMAT) {
+				return failure(context.getString(R.string.shader_pack_too_new));
+			}
+			String expandError = expandSnippets(copy);
+			if (expandError != null) {
+				return failure(context.getString(R.string.import_failed, expandError));
+			}
 			int shaders = countShaders(copy);
 			String error = Database.getInstance(context).importDatabase(TEMP_FILE_NAME, uri,
 					pack.packId());
@@ -227,6 +234,85 @@ public final class ShaderPackInstaller {
 			// Not a database, or no pack_info table.
 			return null;
 		}
+	}
+
+	private static int readFormat(@NonNull File file) {
+		try (var db = SQLiteDatabase.openDatabase(file.getPath(), null,
+				SQLiteDatabase.OPEN_READONLY);
+				Cursor cursor = db.rawQuery("SELECT " + DatabaseContract.PackInfoColumns.FORMAT +
+						" FROM " + DatabaseContract.PackInfoColumns.TABLE_NAME, null)) {
+			return cursor.moveToFirst() ? cursor.getInt(0) : 1;
+		} catch (SQLiteException e) {
+			return 1;
+		}
+	}
+
+	// Puts a format 2 pack's snippets back into its shaders' sources (in
+	// the copy about to be imported), then drops them. Null when that went
+	// well (or there were none), else what went wrong.
+	@Nullable
+	private static String expandSnippets(@NonNull File file) {
+		try (var db = SQLiteDatabase.openDatabase(file.getPath(), null,
+				SQLiteDatabase.OPEN_READWRITE)) {
+			var snippets = new java.util.HashMap<String, String>();
+			try (Cursor cursor = db.rawQuery("SELECT " + DatabaseContract.PackSnippetColumns.ID +
+					", " + DatabaseContract.PackSnippetColumns.TEXT + " FROM " +
+					DatabaseContract.PackSnippetColumns.TABLE_NAME, null)) {
+				while (cursor.moveToNext()) {
+					snippets.put(cursor.getString(0), cursor.getString(1));
+				}
+			} catch (SQLiteException e) {
+				return null; // No snippets: an older pack.
+			}
+			db.beginTransaction();
+			try {
+				String missing = expandColumn(db, DatabaseContract.ShaderColumns.TABLE_NAME,
+						DatabaseContract.ShaderColumns.FRAGMENT_SHADER, snippets);
+				if (missing == null) {
+					missing = expandColumn(db, DatabaseContract.BufferColumns.TABLE_NAME,
+							DatabaseContract.BufferColumns.SOURCE, snippets);
+				}
+				if (missing != null) {
+					return "missing snippet " + missing;
+				}
+				db.execSQL("DROP TABLE " + DatabaseContract.PackSnippetColumns.TABLE_NAME);
+				db.setTransactionSuccessful();
+			} finally {
+				db.endTransaction();
+			}
+			return null;
+		} catch (SQLiteException e) {
+			return e.getMessage();
+		}
+	}
+
+	// expandSnippets() for one table's source column; the id of a snippet
+	// it refers to but the pack hasn't, or null.
+	@Nullable
+	private static String expandColumn(@NonNull SQLiteDatabase db, @NonNull String table,
+			@NonNull String column, @NonNull java.util.Map<String, String> snippets) {
+		String reference = DatabaseContract.PackSnippetColumns.REFERENCE;
+		try (Cursor cursor = db.rawQuery("SELECT rowid, " + column + " FROM " + table +
+				" WHERE " + column + " LIKE ?", new String[]{"%" + reference + "%"})) {
+			while (cursor.moveToNext()) {
+				// -1: keep trailing empty blocks, so it joins back exactly.
+				String[] blocks = cursor.getString(1).split("\n\n", -1);
+				for (int i = 0; i < blocks.length; ++i) {
+					if (blocks[i].startsWith(reference)) {
+						String id = blocks[i].substring(reference.length());
+						String text = snippets.get(id);
+						if (text == null) {
+							return id;
+						}
+						blocks[i] = text;
+					}
+				}
+				var values = new android.content.ContentValues();
+				values.put(column, String.join("\n\n", blocks));
+				db.update(table, values, "rowid = ?", new String[]{cursor.getString(0)});
+			}
+		}
+		return null;
 	}
 
 	private static int countShaders(@NonNull File file) {

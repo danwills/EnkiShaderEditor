@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- See-through, so TakeOverActivity's dialog shows over whatever was on
+	     screen. A platform theme, so the kit needs no AppCompat or Material
+	     Components; the dialog picks the device's own light or dark style. -->
+	<style name="PhoneKitDialogTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+		<item name="android:windowIsTranslucent">true</item>
+		<item name="android:windowBackground">@android:color/transparent</item>
+		<item name="android:windowAnimationStyle">@null</item>
+		<item name="android:backgroundDimEnabled">false</item>
+	</style>
+</resources>

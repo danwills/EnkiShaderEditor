@@ -1039,7 +1039,9 @@ public class ShaderEditor extends LineNumberEditText {
 	}
 
 	private void convertTabs(Editable e, int start, int count) {
-		clearSpans(e, start, count, TabWidthSpan.class);
+		// From start to start + count (not to count, which left a change's
+		// old spans behind to pile up).
+		clearSpans(e, start, start + count, TabWidthSpan.class);
 		if (tabWidth < 1) {
 			return;
 		}

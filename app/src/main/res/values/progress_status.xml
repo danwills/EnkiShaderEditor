@@ -19,7 +19,7 @@
 	     happening without a tile count. -->
 	<string-array name="status_tile_single_onepass">
 		<item>Rendering…</item>
-		<item>One clean pass, no tiling needed…</item>
+		<item>The whole picture in one go…</item>
 	</string-array>
 	<string-array name="status_tile_sequence">
 		<item>Frame %1$d of %2$d, tile %3$d of %4$d…</item>
@@ -31,7 +31,7 @@
 	     sequence still has even in that case. -->
 	<string-array name="status_frame_sequence_onepass">
 		<item>Frame %1$d of %2$d…</item>
-		<item>Frame %1$d of %2$d — one clean pass, no tiling needed</item>
+		<item>Frame %1$d of %2$d — the whole picture in one go</item>
 	</string-array>
 	<string-array name="status_encoding">
 		<item>Encoding frame %1$d of %2$d into the video…</item>

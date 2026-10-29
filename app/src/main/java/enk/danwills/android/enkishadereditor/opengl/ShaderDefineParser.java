@@ -48,14 +48,31 @@ public final class ShaderDefineParser {
 	 */
 	@NonNull
 	public static List<ShaderDefine> parseUsedDefines(@NonNull String source) {
+		return parseUsedDefines(source, null);
+	}
+
+	// The same, also counting a define as used if `elsewhere` names it -
+	// for a Common section, whose defines are there for the passes.
+	@NonNull
+	public static List<ShaderDefine> parseUsedDefines(@NonNull String source,
+			@Nullable String elsewhere) {
 		List<ShaderDefine> all = parseAllDefines(source);
 		List<ShaderDefine> used = new ArrayList<>();
 		for (ShaderDefine define : all) {
-			if (isReferencedElsewhere(source, define)) {
+			if (isReferencedElsewhere(source, define) ||
+					(elsewhere != null && mentions(elsewhere, define))) {
 				used.add(define);
 			}
 		}
 		return used;
+	}
+
+	private static boolean mentions(@NonNull String text, @NonNull ShaderDefine define) {
+		String bareName = define.name.contains("(")
+				? define.name.substring(0, define.name.indexOf('('))
+				: define.name;
+		return !bareName.isEmpty() &&
+				Pattern.compile("\\b" + Pattern.quote(bareName) + "\\b").matcher(text).find();
 	}
 
 	// How many #define lines parseUsedDefines() above excluded for not

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Merge into your app's src/debug/AndroidManifest.xml (debug builds only:
+     these are exported so adb's shell can reach them, which a release build
+     shouldn't be). Fix the class names if you moved the package. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools">
+	<!-- For StatusOverlay, over every app (status.sh grants it with appops). -->
+	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+	<!-- For TakeOverActivity's fallback notification (Android 13+). -->
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+	<application>
+		<receiver
+			android:name="com.example.phonekit.TestStatusReceiver"
+			android:exported="true"
+			tools:ignore="ExportedReceiver"/>
+		<activity
+			android:name="com.example.phonekit.TakeOverActivity"
+			android:exported="true"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".takeover"
+			android:theme="@style/PhoneKitDialogTheme"
+			tools:ignore="ExportedActivity"/>
+		<!-- Opened by StatusOverlay's 💬 buttons (not by adb, so not exported). -->
+		<activity
+			android:name="com.example.phonekit.SayActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".say"
+			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+			android:theme="@style/PhoneKitDialogTheme"/>
+	</application>
+</manifest>

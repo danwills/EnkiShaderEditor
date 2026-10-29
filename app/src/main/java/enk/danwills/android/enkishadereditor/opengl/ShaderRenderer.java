@@ -3,6 +3,8 @@ package enk.danwills.android.enkishadereditor.opengl;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
 import android.opengl.GLES20;
@@ -132,6 +134,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	public static final String UNIFORM_SOURCE_TEXT_VERSION = "sourceTextVersion";
 	// The built-in glyph atlas - see FontTexture.
 	public static final String UNIFORM_FONT = "font";
+	// See ColormapTexture.
+	public static final String UNIFORM_COLORMAPS = "colormaps";
+	public static final String UNIFORM_COLORMAP_COUNT = "colormapCount";
 	// Keys for shaders - see KeyboardInput.
 	public static final String UNIFORM_KEYBOARD = "keyboard";
 	public static final String UNIFORM_TYPED_CHAR = "typedChar";
@@ -226,6 +231,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private volatile ImageEncoding captureEncoding = ImageEncoding.PNG;
 	private volatile boolean blankFrameRequested;
 	// See requestRedisplay().
+	// See setUpscale().
+	private volatile boolean upscaleChosen;
+	// See setSplatsXform(): x, y, zoom, angle.
+	private final float[] splatsXform = {0f, 0f, 1f, 0f};
+	@NonNull
+	private volatile Upscaling.Upscale upscale = Upscaling.Upscale.DEFAULT;
+	// See setCaptureUpscaled().
+	private volatile boolean captureUpscaled;
 	private volatile boolean redisplayRequested;
 	// The view's size, for requestRedisplay().
 	private int viewWidth;
@@ -351,6 +364,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// See updateFontTexture() - GL thread only.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// See updateColormapTexture() - GL thread only.
+	@Nullable
+	private GlTexture2D colormapTexture;
 	// See updateKeyboard().
 	@NonNull
 	private final KeyboardInput keyboardInput = new KeyboardInput();
@@ -392,20 +408,30 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		setFragmentShader(source, bufferSources, quality, shaderId, false);
 	}
 
-	// keepState: the new source is the same shader with only some values
-	// changed (Adjust Defines' live mode swapping #defines for uniforms
-	// and back), so it carries on from where it is - the clock, buffer
-	// contents and backbuffer are all kept, not restarted.
+	// keepState: the new source is the same shader, changed (Adjust
+	// Defines' live mode swapping #defines for uniforms and back, or an
+	// edit run again - ShaderViewManager.rerunProjectSession()), so it
+	// carries on from where it is - the clock, buffer contents and
+	// backbuffer are all kept, not restarted.
 	public void setFragmentShader(String source, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
+		setFragmentShader(source, bufferSources, null, quality, shaderId, keepState);
+	}
+
+	// commonSource: the shader's Common section, which every pass starts
+	// with (see ShaderSourcePreparer.prepare()), or null for none.
+	public void setFragmentShader(String source, @Nullable String[] bufferSources,
+			@Nullable String commonSource, float quality, long shaderId, boolean keepState) {
 		if (keepState) {
 			builtinUniforms.keepClockThroughNextSurface();
 		} else {
 			builtinUniforms.setRuntimeNanos(0);
+			upscaleChosen = false;
+			setSplatsXform(0f, 0f, 1f, 0f);
 		}
 		setQuality(quality);
 		this.shaderId = shaderId;
-		programManager.setFragmentShader(source, bufferSources);
+		programManager.setFragmentShader(source, bufferSources, commonSource);
 		// Several changes before the next frame keep the state only if
 		// every one of them asked to.
 		pendingKeepState = keepState && (!pendingReload || pendingKeepState);
@@ -516,6 +542,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// be restored for free by the context recreation that always followed.
 	// With the context preserved there's no onSurfaceCreated() to do that,
 	// so the next frame re-runs just the configure step - no recompile.
+	// Called from ShaderView.onPause(), once the GL thread has paused -
+	// see BuiltinUniforms.holdClockThroughPause().
+	public void holdClockThroughPause() {
+		builtinUniforms.holdClockThroughPause();
+	}
+
 	public void onViewResumed() {
 		pendingReconfigure = true;
 		pendingFirstFrameNotify = true;
@@ -591,6 +623,62 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// exactly as it was, not one step on.
 	public void requestRedisplay() {
 		redisplayRequested = true;
+	}
+
+	// The splats xform: Upscaling's points and splats drawn offset (x, y,
+	// in frame heights), zoomed and turned about the frame's centre,
+	// without touching the shader - see PrimitivePresenter.setXform(). Back
+	// to none when another shader opens.
+	public void setSplatsXform(float x, float y, float zoom, float angle) {
+		synchronized (splatsXform) {
+			splatsXform[0] = x;
+			splatsXform[1] = y;
+			splatsXform[2] = zoom;
+			splatsXform[3] = angle;
+		}
+		redisplayRequested = true;
+	}
+
+	@NonNull
+	public float[] getSplatsXform() {
+		synchronized (splatsXform) {
+			return splatsXform.clone();
+		}
+	}
+
+	// For Upscaling's points and splats: the last drawn offscreen buffer.
+	private void setPrimitiveSource(@NonNull Upscaling.Upscale upscale) {
+		float[] xform = getSplatsXform();
+		renderPipeline.setPrimitiveXform(xform[0], xform[1], xform[2], xform[3]);
+		var passes = programManager.getBufferPasses();
+		BufferPass last = upscale.filter().isPrimitives() && !passes.isEmpty()
+				? passes.get(passes.size() - 1)
+				: null;
+		if (last == null || !last.hasTargets()) {
+			renderPipeline.setPrimitiveSource(null, null, 0);
+			return;
+		}
+		renderPipeline.setPrimitiveSource(last.getCurrentTexture(), last.getCurrentFramebuffer(),
+				last.getSwaps());
+	}
+
+	// How the frame's scaled up to the screen (see Upscaling) - the
+	// view's, kept across shaders; shown at once, even paused. Chosen
+	// while a shader with an `///upscale:` line is open, it wins over that
+	// line until another shader opens.
+	public void setUpscale(@NonNull Upscaling.Upscale upscale) {
+		this.upscale = upscale;
+		upscaleChosen = true;
+		redisplayRequested = true;
+	}
+
+	// What's shown: the shader's own `///upscale:` line's (see
+	// RendererProgramManager.getShaderUpscale()), unless one's been chosen
+	// since it opened, else the view's.
+	@NonNull
+	public Upscaling.Upscale getUpscale() {
+		Upscaling.Upscale own = programManager.getShaderUpscale();
+		return own != null && !upscaleChosen ? own : upscale;
 	}
 
 	public void resumeClock() {
@@ -710,6 +798,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		discardContextResources();
 		redoFrameStamp = -1;
 		fontTexture = null;
+		colormapTexture = null;
 		keyboardInput.discard();
 		blackTexture = device.createTexture2D();
 		device.allocateTexture2D(blackTexture, 1, 1);
@@ -748,7 +837,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			String sourceHash = null;
 			String driverSignature = null;
 			if (shaderId > 0 && programBinaryCache != null && glVersion >= 3) {
-				String sourceText = programManager.getSourceText();
+				String sourceText = programManager.getCacheText(programManager.getSourceText());
 				if (sourceText != null) {
 					sourceHash = ProgramBinaryKey.sourceHash(sourceText, glVersion);
 					driverSignature = ProgramBinaryKey.driverSignature();
@@ -797,6 +886,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				updateBufferMipmapNeeds();
 				programManager.createMainSourceText(context, device, tabWidth());
 				updateFontTexture();
+				updateColormapTexture();
 				updateKeyboard();
 				configureUniforms(programManager.getMainProgram());
 				if (builtinUniforms.consumeNeedsAudioCaptureConsent() &&
@@ -825,9 +915,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// change showed black for however long that took, which for a
 			// slow shader in progressive mode can be several seconds.
 			renderPipeline.releaseTargetsKeepingLastFrame();
-			// Buffers simply restart at the new size, as on ShaderToy.
+			// Buffers simply restart at the new size, as on ShaderToy -
+			// but for any rows a pass keeps (`///stateRow:`).
 			for (var pass : programManager.getBufferPasses()) {
-				pass.releaseTargets(device);
+				pass.keepForResize(device, glVersion >= 3, displayRotation());
 			}
 			stateRowMigrationPending = true;
 			abandonProgressiveFrame();
@@ -958,6 +1049,14 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			pendingTextReload = false;
 			programManager.reloadTexts(context, device);
 		}
+		var upscale = getUpscale();
+		var upscaleBindings = programManager.getUpscaleBindings(device, upscale);
+		var blurBindings = programManager.getBlurBindings(device, upscale);
+		renderPipeline.setUpscale(upscale,
+				upscaleBindings != null ? programManager.getUpscaleProgram() : null,
+				upscaleBindings, blurBindings != null ? programManager.getBlurProgram() : null,
+				blurBindings);
+		setPrimitiveSource(upscale);
 		if (blankFrameRequested) {
 			blankFrameRequested = false;
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
@@ -1238,6 +1337,29 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				programManager.getTextureResources());
 	}
 
+	// What buffers keep (`///stateRow:`, `///resize:tile`) read back, for
+	// the next targets made for them - when the app pauses, since a
+	// rotation then recreates the activity and with it the GL context.
+	// GL thread; ES 3 only (float readback).
+	// The display's rotation now (Surface.ROTATION_*), which a kept
+	// buffer's grid is turned to match - see BufferPass.restoreSaved().
+	private int displayRotation() {
+		DisplayManager displays = context.getSystemService(DisplayManager.class);
+		Display display = displays != null ? displays.getDisplay(Display.DEFAULT_DISPLAY) : null;
+		return display != null ? display.getRotation() : 0;
+	}
+
+	public void saveBuffers() {
+		if (glVersion < 3) {
+			return;
+		}
+		for (var pass : programManager.getBufferPasses()) {
+			if (pass.keepsState()) {
+				pass.saveForLater(device, displayRotation());
+			}
+		}
+	}
+
 	private void ensureBufferTargets() {
 		int width = renderPipeline.getTargetWidth();
 		int height = renderPipeline.getTargetHeight();
@@ -1249,6 +1371,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				}
 				pass.ensureTargets(device, width, height, halfFloatBuffers, float32Buffers,
 						errors);
+				pass.restoreSaved(device, glVersion >= 3, displayRotation());
 			}
 		}
 		if (errors != null && !errors.isEmpty()) {
@@ -1366,6 +1489,21 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			fontTexture = null;
 		}
 		builtinUniforms.setFontTexture(fontTexture);
+	}
+
+	// As updateFontTexture(), for `colormaps` (no channel form).
+	private void updateColormapTexture() {
+		boolean used = false;
+		for (var program : programManager.getPassPrograms()) {
+			used |= device.hasUniform(program, UNIFORM_COLORMAPS);
+		}
+		if (used && colormapTexture == null) {
+			colormapTexture = ColormapTexture.create(context, device);
+		} else if (!used && colormapTexture != null) {
+			device.deleteTexture(colormapTexture);
+			colormapTexture = null;
+		}
+		builtinUniforms.setColormapTexture(colormapTexture);
 	}
 
 	// Keys go to the shader only while it uses them - see KeyboardInput
@@ -1983,9 +2121,27 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// the buffer chain it reads - so a buffer shader captures the
 			// live renderer's own completed frame instead, which only
 			// exists at the live render size.
-			return oversample == 1 && isLiveRenderSize(width, height)
-					? renderPipeline.readCompletedFrame(captureEncoding)
-					: null;
+			if (oversample != 1 || !isLiveRenderSize(width, height)) {
+				return null;
+			}
+			byte[] png;
+			if (captureUpscaled) {
+				GlTexture2D frame = renderPipeline.getBackTexture();
+				png = frame != null ? readUpscaled(useDevice, frame) : null;
+			} else {
+				png = renderPipeline.readCompletedFrame(captureEncoding);
+			}
+			// One "tile", so a progress dialog still hears that the
+			// compile's over and the frame's done (it's already captured,
+			// so a cancel here is left to the caller's next step) - and
+			// sees it, the whole frame as its preview.
+			if (png != null && progressListener != null) {
+				progressListener.onProgress(1, 1);
+			}
+			if (png != null && tilePreviewListener != null) {
+				previewWholeFrame(png, tilePreviewListener);
+			}
+			return png;
 		}
 		HighResScreenshotCapture.ProgressListener innerListener = progressListener == null
 				? null
@@ -2027,7 +2183,53 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				return null;
 			}
 		}
+		if (captureUpscaled && oversample == 1 && isLiveRenderSize(width, height)) {
+			GlTexture2D frame = useDevice.createTexture2D();
+			try {
+				String error = useDevice.uploadTexture2D(frame, bitmap, true);
+				if (error != null) {
+					return null;
+				}
+				useDevice.applyTextureParameters(frame, new BackBufferParameters());
+				return readUpscaled(useDevice, frame);
+			} finally {
+				useDevice.deleteTexture(frame);
+			}
+		}
 		return captureEncoding.encode(bitmap);
+	}
+
+	// A captured frame at the live render size as the screen shows it: at
+	// the view's size, through the upscaling - see setCaptureUpscaled().
+	@Nullable
+	private byte[] readUpscaled(@NonNull GlDevice useDevice, @NonNull GlTexture2D frame) {
+		// Compiled already (it's what's on screen), so only looked up here.
+		var bindings = programManager.getUpscaleBindings(device, upscale);
+		var program = bindings != null ? programManager.getUpscaleProgram()
+				: programManager.getSurfaceProgram();
+		if (bindings == null) {
+			bindings = programManager.getSurfaceBindings();
+		}
+		if (program == null || bindings == null || viewWidth <= 0 || viewHeight <= 0) {
+			return null;
+		}
+		return renderPipeline.readUpscaled(useDevice, frame, viewWidth, viewHeight, bindings, program,
+				captureEncoding);
+	}
+
+	// Whether a capture at the live render size (Match App Res) comes out
+	// as the screen shows it - at the view's size, upscaled as it is -
+	// rather than the frame itself.
+	public void setCaptureUpscaled(boolean upscaled) {
+		captureUpscaled = upscaled;
+	}
+
+	public int getViewWidth() {
+		return viewWidth;
+	}
+
+	public int getViewHeight() {
+		return viewHeight;
 	}
 
 	// Must be called on the GL thread (e.g. via
@@ -2235,6 +2437,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		} finally {
 			renderPipeline.endSharedContext();
 		}
+	}
+
+	// A captured frame (as encoded) to tilePreviewListener as one tile
+	// covering the whole image - skipped for an encoding Android can't
+	// decode.
+	private static void previewWholeFrame(@NonNull byte[] encoded,
+			@NonNull TilePreviewListener tilePreviewListener) {
+		Bitmap bitmap = BitmapFactory.decodeByteArray(encoded, 0, encoded.length);
+		if (bitmap == null) {
+			return;
+		}
+		int w = bitmap.getWidth();
+		int h = bitmap.getHeight();
+		int[] argb = new int[w * h];
+		bitmap.getPixels(argb, 0, w, 0, 0, w, h);
+		bitmap.recycle();
+		tilePreviewListener.onTilePreview(0, 0, w, h, w, h, argb);
 	}
 
 	private void resetFps() {

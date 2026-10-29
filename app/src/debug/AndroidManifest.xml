@@ -1,14 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: lets the test tooling show a toast on the phone -
-     see TestStatusToastReceiver and tools/phone/status.sh. Exported with no
-     permission on purpose: adb's shell has to reach it, and all it can do is
-     show a toast. -->
+<!-- Debug builds only: lets the test tooling show its status on the phone
+     (TestStatusReceiver and its StatusOverlay, tools/phone/status.sh - the
+     overlay permission granted with appops) and put shaders in the
+     library (ShaderImportReceiver, tools/phone/add_shader.sh). Exported with
+     no permission on purpose: adb's shell has to reach them. The import only
+     reads files in the app's own storage, which only run-as can write. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:tools="http://schemas.android.com/tools">
+	<!-- For StatusOverlay, over every app. -->
+	<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 	<application>
 		<receiver
-			android:name=".receiver.TestStatusToastReceiver"
+			android:name=".receiver.TestStatusReceiver"
 			android:exported="true"
 			tools:ignore="ExportedReceiver"/>
+		<!-- Imports a shader the tooling wrote into the app's own files
+		     (tools/phone/add_shader.sh) - see ShaderImportReceiver. -->
+		<receiver
+			android:name=".receiver.ShaderImportReceiver"
+			android:exported="true"
+			tools:ignore="ExportedReceiver"/>
+		<!-- Asks before importing while the app's on screen. -->
+		<activity
+			android:name=".activity.ShaderImportActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:theme="@style/DebugImportTheme"/>
+		<!-- Claude asking before it drives the phone (status.sh ask) -
+		     started by adb, so exported; a task of its own, so answering
+		     leaves whatever was showing. -->
+		<activity
+			android:name=".activity.TakeOverActivity"
+			android:exported="true"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".takeover"
+			android:theme="@style/DebugImportTheme"
+			tools:ignore="ExportedActivity"/>
+		<!-- Dan typing a note to Claude, from the status panel's 💬 and
+		     Clarify buttons (opened in-app, so not exported). -->
+		<activity
+			android:name=".receiver.SayActivity"
+			android:exported="false"
+			android:excludeFromRecents="true"
+			android:launchMode="singleTask"
+			android:taskAffinity=".say"
+			android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
+			android:theme="@style/DebugImportTheme"/>
 	</application>
 </manifest>

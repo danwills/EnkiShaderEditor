@@ -92,6 +92,9 @@ public class EditorFragment extends Fragment {
 	private boolean[] soundPasses = new boolean[0];
 	@NonNull
 	private List<String> textNames = List.of();
+	// Whether the shader has a Common section (ShaderError.COMMON_PASS),
+	// with its tab after the Image pass's.
+	private boolean hasCommon;
 	// Every pass's errors - the editor itself only marks the shown pass's.
 	@NonNull
 	private List<ShaderError> allErrors = Collections.emptyList();
@@ -312,12 +315,13 @@ public class EditorFragment extends Fragment {
 	// with none, the tabs and channel row are hidden entirely.
 	// soundPasses: which of them are Sound passes, labelled as such.
 	// textNames: the shader's texts, each with its own tab after the
-	// buffers'.
+	// buffers'. hasCommon: whether it has a Common section.
 	public void setPassTabs(@NonNull boolean[] buffersPresent, @NonNull boolean[] soundPasses,
-			@NonNull List<String> textNames) {
+			@NonNull List<String> textNames, boolean hasCommon) {
 		this.buffersPresent = buffersPresent.clone();
 		this.soundPasses = soundPasses.clone();
 		this.textNames = List.copyOf(textNames);
+		this.hasCommon = hasCommon;
 		buildPassTabs();
 	}
 
@@ -400,16 +404,20 @@ public class EditorFragment extends Fragment {
 		}
 		passTabs.removeAllViews();
 		boolean multipass = hasBufferPasses();
-		boolean tabs = multipass || !textNames.isEmpty();
+		boolean tabs = multipass || hasCommon || !textNames.isEmpty();
 		passTabs.setVisibility(tabs ? View.VISIBLE : View.GONE);
-		// The iChannel row is a GLSL pass's - none for a text.
-		channelRow.setVisibility(multipass && !isTextPass(activePass)
+		// The iChannel row is a pass's - none for a text, or Common.
+		channelRow.setVisibility(multipass && !isTextPass(activePass) &&
+				activePass != ShaderError.COMMON_PASS
 				? View.VISIBLE
 				: View.GONE);
 		if (!tabs) {
 			return;
 		}
 		addPassTab(ShaderError.IMAGE_PASS, getString(R.string.pass_tab_image));
+		if (hasCommon) {
+			addPassTab(ShaderError.COMMON_PASS, getString(R.string.pass_tab_common));
+		}
 		for (int buffer = 0; buffer < buffersPresent.length; ++buffer) {
 			if (buffersPresent[buffer]) {
 				addPassTab(buffer, buffer < soundPasses.length && soundPasses[buffer]
@@ -456,6 +464,8 @@ public class EditorFragment extends Fragment {
 		tab.setPadding(size / 6, 0, size / 6, 0);
 		tab.setContentDescription(pass == ShaderError.IMAGE_PASS
 				? getString(R.string.pass_tab_image)
+				: pass == ShaderError.COMMON_PASS
+				? getString(R.string.pass_tab_common)
 				: isTextPass(pass)
 						? getString(R.string.pass_tab_text, label)
 						: getString(R.string.pass_tab_buffer, label));
@@ -465,8 +475,10 @@ public class EditorFragment extends Fragment {
 			}
 		});
 		// Toggles the preview between this buffer and the Image pass - a
-		// text has no picture to show.
-		tab.setOnLongClickListener(isTextPass(pass) ? null : v -> {
+		// text, or Common, has no picture to show.
+		tab.setOnLongClickListener(isTextPass(pass) || pass == ShaderError.COMMON_PASS
+				? null
+				: v -> {
 			displayedPass = pass == getDisplayedPass() ? ShaderError.IMAGE_PASS : pass;
 			buildPassTabs();
 			if (passDisplayedListener != null) {

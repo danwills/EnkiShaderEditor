@@ -9,7 +9,7 @@
 	</string-array>
 	<string-array name="status_tile_single_onepass">
 		<item>Рендеринг…</item>
-		<item>Один проход, без тайлов…</item>
+		<item>Вся картинка за один раз…</item>
 	</string-array>
 	<string-array name="status_tile_sequence">
 		<item>Кадр %1$d из %2$d, тайл %3$d из %4$d…</item>
@@ -17,7 +17,7 @@
 	</string-array>
 	<string-array name="status_frame_sequence_onepass">
 		<item>Кадр %1$d из %2$d…</item>
-		<item>Кадр %1$d из %2$d — один проход, без тайлов</item>
+		<item>Кадр %1$d из %2$d — вся картинка за один раз</item>
 	</string-array>
 	<string-array name="status_encoding">
 		<item>Кодирование кадра %1$d из %2$d в видео…</item>

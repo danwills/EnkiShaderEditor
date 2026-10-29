@@ -80,6 +80,9 @@ final class BuiltinUniforms {
 	// The built-in `font`, if a shader uses it - see FontTexture.
 	@Nullable
 	private GlTexture2D fontTexture;
+	// See ColormapTexture.
+	@Nullable
+	private GlTexture2D colormapTexture;
 	// Keys, if a shader uses them - see KeyboardInput.
 	@Nullable
 	private KeyboardInput keyboard;
@@ -98,6 +101,9 @@ final class BuiltinUniforms {
 	private float startRandom;
 	// See setQuality(). Set on the UI thread, consumed on the GL thread.
 	private volatile boolean keepClockOnNextSurface;
+	// The clock was stopped by holdClockThroughPause(), not by a soft
+	// pause, so the next surface starts it again.
+	private boolean clockHeldThroughPause;
 	// Set/cleared by ShaderRenderer.setBackgroundCaptureActive() for the
 	// duration of a HighResCaptureService capture running on a
 	// SharedCaptureContext - see release() below for why. Written from
@@ -284,6 +290,10 @@ final class BuiltinUniforms {
 		// precision, so everything driven by it stepped and smeared.
 		boolean keepClock = keepClockOnNextSurface && resolution[0] > 0;
 		keepClockOnNextSurface = false;
+		if (keepClock && clockHeldThroughPause) {
+			resumeClock();
+		}
+		clockHeldThroughPause = false;
 		// Otherwise (see setQuality()) time, frame and startRandom carry on.
 		if (!keepClock) {
 			pausedAtNanos = -1;
@@ -421,6 +431,10 @@ final class BuiltinUniforms {
 		if (fontTexture != null) {
 			bindings.setTexture(ShaderRenderer.UNIFORM_FONT, fontTexture);
 		}
+		if (colormapTexture != null) {
+			bindings.setTexture(ShaderRenderer.UNIFORM_COLORMAPS, colormapTexture);
+			bindings.setInt(ShaderRenderer.UNIFORM_COLORMAP_COUNT, colormapTexture.getHeight());
+		}
 		if (keyboard != null) {
 			keyboard.apply(device, bindings);
 		}
@@ -482,6 +496,10 @@ final class BuiltinUniforms {
 		this.fontTexture = fontTexture;
 	}
 
+	void setColormapTexture(@Nullable GlTexture2D colormapTexture) {
+		this.colormapTexture = colormapTexture;
+	}
+
 	void setSourceText(@Nullable SourceText sourceText) {
 		this.sourceText = sourceText;
 	}
@@ -516,6 +534,24 @@ final class BuiltinUniforms {
 	// without restarting it (see ShaderRenderer.setFragmentShader()'s
 	// keepState), which recreates the surface on the way.
 	void keepClockThroughNextSurface() {
+		keepClockOnNextSurface = true;
+	}
+
+	// For the view pausing (the app backgrounded, say): stops the clock
+	// where it is and keeps it through the surface coming back, which
+	// starts it again - so `time` carries on from where it was, leaving
+	// out the time away, instead of restarting (which a shader keeping
+	// state in its backbuffer may take as "start again"). A soft pause
+	// already stopped it, and it stays stopped.
+	void holdClockThroughPause() {
+		if (resolution[0] <= 0) {
+			return;
+		}
+		if (pausedAtNanos < 0) {
+			pausedAtNanos = System.nanoTime();
+			clockHeldThroughPause = true;
+		}
+		runtimeClock.pause();
 		keepClockOnNextSurface = true;
 	}
 

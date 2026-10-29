@@ -243,6 +243,14 @@ public class UIManager {
 		fullscreen.setOnClickListener(fullscreenClickListener);
 	}
 
+	// No tooltip: a long press opens the live setup list instead.
+	public void setupLiveDefinesButton(View.OnClickListener clickListener,
+			View.OnLongClickListener longClickListener) {
+		View live = activity.findViewById(R.id.live_defines_nav);
+		live.setOnClickListener(clickListener);
+		live.setOnLongClickListener(longClickListener);
+	}
+
 	public void setupAudioNavRow(View.OnClickListener reacquireClickListener) {
 		View reacquire = activity.findViewById(R.id.reacquire_audio);
 		ViewCompat.setTooltipText(reacquire, activity.getText(R.string.reacquire_audio));

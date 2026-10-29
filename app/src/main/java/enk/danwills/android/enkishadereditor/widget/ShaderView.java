@@ -39,15 +39,41 @@ public class ShaderView extends GLSurfaceView {
 		init(context, GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 	}
 
+	@Nullable
+	private OnTouchListener touchInterceptor;
+
 	public ShaderView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init(context, GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 	}
 
+	// Not used for swapping shaders (setFragmentShader() below calls
+	// super.onPause() itself), so the clock carries on through it.
 	@Override
 	public void onPause() {
+		saveBuffers();
 		super.onPause();
 		renderer.unregisterListeners();
+		renderer.holdClockThroughPause();
+	}
+
+	// What the buffers keep, read back on the GL thread before pausing -
+	// a pause for a rotation is followed by the GL context going with the
+	// activity (see ShaderRenderer.saveBuffers()). Waits a moment for it;
+	// never long, so a stuck GL thread can't hold up the pause.
+	private void saveBuffers() {
+		var done = new CountDownLatch(1);
+		queueEvent(() -> {
+			renderer.saveBuffers();
+			done.countDown();
+		});
+		try {
+			if (!done.await(500, TimeUnit.MILLISECONDS)) {
+				Log.w("ShaderView", "Saving buffers timed out");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	// unregisterListeners() above clears the renderer's per-program
@@ -71,10 +97,20 @@ public class ShaderView extends GLSurfaceView {
 		renderer.setContinuousRendering(renderMode == RENDERMODE_CONTINUOUSLY);
 	}
 
+	// Touches go here instead of to the shader while set - see
+	// SplatsXformAdjuster.
+	public void setTouchInterceptor(@Nullable OnTouchListener interceptor) {
+		touchInterceptor = interceptor;
+	}
+
 	// Click handling is implemented in renderer.
 	@SuppressLint("ClickableViewAccessibility")
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
+		if (touchInterceptor != null) {
+			touchInterceptor.onTouch(this, event);
+			return true;
+		}
 		renderer.touchAt(event);
 		return true;
 	}
@@ -92,10 +128,17 @@ public class ShaderView extends GLSurfaceView {
 	// keepState: see ShaderRenderer.setFragmentShader().
 	public void setFragmentShader(String src, @Nullable String[] bufferSources,
 			float quality, long shaderId, boolean keepState) {
+		setFragmentShader(src, bufferSources, null, quality, shaderId, keepState);
+	}
+
+	// commonSource: the Common section, see ShaderRenderer.setFragmentShader().
+	public void setFragmentShader(String src, @Nullable String[] bufferSources,
+			@Nullable String commonSource, float quality, long shaderId, boolean keepState) {
 		super.onPause();
 		renderer.unregisterListeners(true);
-		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources), quality,
-				shaderId, keepState);
+		renderer.setFragmentShader(removeNonAscii(src), removeNonAscii(bufferSources),
+				commonSource != null ? removeNonAscii(commonSource) : null, quality, shaderId,
+				keepState);
 		onResume();
 	}
 

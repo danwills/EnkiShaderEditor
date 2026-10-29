@@ -25,11 +25,18 @@ Two independent projects:
 ## Commands
 
 ### Android app (run from repo root)
-- `./gradlew assembleDebug` or `make debug` — build debug APK.
-- `make install` / `make start` / `make uninstall` — adb install/launch/uninstall the debug build.
-- `./gradlew assembleRelease` / `make release` — release build (minified, resource-shrunk; requires
-  `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
-- `./gradlew lintDebug` or `make lint` — Android lint.
+- Two apps, as product flavours of one module: `enki` (Enki Shader Editor) and `ultrarestarea`
+  (Ultra Rest Area, `src/ultrarestarea` - see `docs/ultra-rest-area.md`). Tasks and APK paths carry
+  the flavour: `app/build/outputs/apk/<flavour>/<type>/app-<flavour>-<type>.apk`. A plain
+  `assembleDebug`/`assembleRelease` builds both.
+- `./gradlew assembleEnkiDebug` or `make debug` — build Enki's debug APK (`make ura-debug` for
+  Ultra Rest Area's).
+- `make install` / `make start` / `make uninstall` — adb install/launch/uninstall Enki's debug
+  build (`make ura-install` / `make ura-start` for Ultra Rest Area's).
+- `./gradlew assembleEnkiRelease` / `make release` — release build (minified, resource-shrunk;
+  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
+- `./gradlew lintEnkiDebug` or `make lint` — Android lint (`lintUltrarestareaDebug` for the other
+  app; both should stay at the 50-warning baseline).
 - `make infer` — runs Facebook Infer static analysis over a clean assembleDebug.
 - `make avocado` — optimizes vector drawables under `app/src/main/res` in place.
 - `make meminfo` / `make glxinfo` — adb dumpsys helpers for memory/gfx debugging on a connected device.
@@ -46,15 +53,57 @@ Two independent projects:
 ## Testing on the phone
 
 When driving Dan's phone over adb (only when he's said it's free):
+- Ask on the phone first: `tools/phone/status.sh ask 'what for, how long'` shows a dialog over
+  whatever's on screen (debug build's TakeOverActivity). Unanswered for 15 s it counts down 15 s
+  and goes ahead (Dan's wish: never stuck waiting on a click); Hang on a sec puts the dialog
+  out of his way for 30 s (the notification's Hang on, 30 s more), then `ask` brings it back to
+  count down again. Exit 0 means go ahead; 1 is Not now - say so and wait;
+  2, no phone connected. The one exception: when Dan has just said, in the chat, to do a
+  specific thing on the phone straight away ("install it now"), that's his answer - skip
+  `ask` for that one thing (still post status lines, and note what's on screen). Anything
+  more, or later, asks on the phone as usual.
 - Note what's on screen first (`adb shell dumpsys activity activities | grep -m1 topResumedActivity`).
-- Keep a status notification (and a toast, via the debug build's TestStatusToastReceiver) up
-  with `tools/phone/status.sh post "what I'm doing"`, updated as
-  the test moves on, and run `tools/phone/status.sh check` between steps. If it fails, Dan swiped
-  the notification away to interrupt: finish the step in hand (don't leave a dialog half-done),
-  note where the test got to so it can be picked up later, and stop.
+- Keep Dan posted, in detail - he wants to hear about every step, as it happens, with a line
+  before every action or batch so the panel is never empty while you're driving. The panel lives
+  in Enki debug's process: after a force-stop, install or restart, run `status.sh again`
+  straight away (add_shader.sh does when it stops the app):
+  `tools/phone/status.sh post 'what I'"'"'m doing' [KIND]` puts a line in the debug build's status
+  overlay (TestStatusReceiver/StatusOverlay: the run's last 8 lines over whatever's on screen,
+  kept up the whole run - nothing fades), and the first post of a run also posts the
+  notification. Before a pause to think (reading a screenshot or code, working something out),
+  post a `think` line saying so - it stays up until the next. Give each line an estimate of how
+  long its step will take as a third argument (`'~30 s'`, `'~2 min'`; `'?'` when you can't
+  tell), shown dimmed at its end. KIND is
+  its icon and colour - step, look, tap, type, wait, build, install, load, think, good, bad,
+  warn, happy, sad, party, or any emoji: use good/bad for what worked or didn't. `code`,
+  numbers and good/bad words are coloured too - so quote with single quotes, or the shell runs
+  the backticks. For a screenshot use `status.sh shot file.png [why]`: it says it's hiding,
+  hides the panel, takes the screenshot and comes back saying it's looking at it (`hide` alone
+  just says so and hides; the next post brings it back, lines and all); `status.sh again`
+  replays the run's last lines. Dan can message you (💬), pause or stop from the panel, and every
+  status.sh command but ask and done heeds that: read each command's stderr for
+  `💬 Dan says: ...` and act on it; ⏸ makes the next command wait until ▶; a command exiting 3
+  means ⏹ - finish the step in hand (don't leave a dialog half-done), note where the test got
+  to so it can be picked up later, put the phone back, and stop. Use
+  `status.sh wait SECONDS 'why'` instead of `sleep`, and `status.sh check` between steps (it
+  also fails if the notification was swiped away). When unsure whether something looks right,
+  ask him: `status.sh rate 'Does the preview look right?' [seconds]` shows 👍/👎 and Clarify by
+  the panel and prints up, down, none, or `clarify: <text>` - his real answer, so act on it.
+- To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the
+  Paste dialog: it replaces a shader of that name in place, or adds one (`--open` first: then
+  opens it in Enki debug, which works from a cold start too). With Enki debug in the
+  background that needs no UI; with it on screen, a new name is just added, and an existing
+  one makes the phone ask Replace/Ignore over whatever's showing (Replace is at (1082,1764));
+  replacing the open shader reloads it.
+- A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
 - Either way, finish by putting the phone back: reopen the previous app
-  (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; turn
-  stay-awake off; restore any setting changed (rotation). Then `tools/phone/status.sh done "..."`.
+  (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; restore
+  any other setting changed. Rotation and stay-awake are `done`'s job: `ask` saves auto-rotate,
+  the locked rotation and stay-awake as found and `done` puts them back, so never put them
+  back by hand (hard-coding "auto-rotate on" left Dan's phone turning). Then
+  `tools/phone/status.sh done "..."`
+  (`... sad` if it went badly): the panel goes at once, and the notification is left saying
+  Claude's finished, with the summary and the log's last 8 lines to look back over.
 
 ## Conventions
 

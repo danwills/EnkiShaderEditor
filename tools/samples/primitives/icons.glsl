@@ -1,0 +1,475 @@
+// Symmetric Icons: Field and Golubitsky's chaotic attractors with n-fold
+// symmetry ("Symmetry in Chaos"), drawn bright on black by Upscaling's 2D
+// Gaussian Splats (picked by the ///upscale line). Each particle follows
+//
+//   z' = (lambda + alpha |z|^2 + beta Re(z^n) + i omega) z + gamma conj(z)^(n-1)
+//
+// and the splats add up with log density, coloured by how far each point
+// jumped. Drag to explore:
+//   one finger      lambda (across) and alpha (up and down)
+//   two fingers     the view: pan, pinch to zoom, twist to turn
+//   three fingers   beta (across) and gamma (up and down); twist for omega
+//   four fingers    swipe up or down to change the symmetry n (2-12)
+//   double tap      the next classic icon (and the view back to whole)
+// The numbers show while you touch, and a little after.
+///upscale:splats
+
+uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D font;
+
+#define TEXT_COLOR vec3(0.85, 0.82, 0.74)
+#define SHOW_SECONDS 3.0 // the numbers stay this long after a touch
+
+const int LABEL0[7] = int[](110, 32, 32, 32, 32, 32, 32);
+const int LABEL1[7] = int[](108, 97, 109, 98, 100, 97, 32);
+const int LABEL2[7] = int[](97, 108, 112, 104, 97, 32, 32);
+const int LABEL3[7] = int[](98, 101, 116, 97, 32, 32, 32);
+const int LABEL4[7] = int[](103, 97, 109, 109, 97, 32, 32);
+const int LABEL5[7] = int[](111, 109, 101, 103, 97, 32, 32);
+
+int labelChar(int label, int i) {
+	if (label == 0) return LABEL0[i];
+	if (label == 1) return LABEL1[i];
+	if (label == 2) return LABEL2[i];
+	if (label == 3) return LABEL3[i];
+	if (label == 4) return LABEL4[i];
+	return LABEL5[i];
+}
+
+// Character i (from the left) of v as "-12.345", right-aligned in 7.
+int numberChar(float v, int i) {
+	int a = int(floor(abs(v) * 1000.0 + 0.5));
+	int pos = 6 - i; // from the right
+	if (pos < 3) {
+		int d = a;
+		for (int k = 0; k < pos; ++k) d /= 10;
+		return 48 + d % 10;
+	}
+	if (pos == 3) return 46;
+	int whole = a / 1000;
+	int digits = whole >= 10 ? 2 : 1;
+	if (pos - 4 < digits) {
+		int d = whole;
+		for (int k = 0; k < pos - 4; ++k) d /= 10;
+		return 48 + d % 10;
+	}
+	return pos - 4 == digits && v < 0.0 ? 45 : 32;
+}
+
+// The readout's character at (line, col): a label, then its value - one
+// line each for n, lambda, alpha, beta, gamma and omega.
+int readoutChar(int line, int col, vec4 p, vec4 q) {
+	if (col < 7) {
+		return labelChar(line, col);
+	}
+	col -= 7;
+	if (line == 0) {
+		int n = int(q.y + 0.5);
+		return col == 5 ? (n >= 10 ? 48 + n / 10 : 32) : col == 6 ? 48 + n % 10 : 32;
+	}
+	float v = line == 1 ? p.x : line == 2 ? p.y : line == 3 ? p.z : line == 4 ? p.w : q.x;
+	return numberChar(v, col);
+}
+
+float glyph(int code, vec2 at) {
+	vec2 cell = vec2(float(code % 16), 15.0 - float(code / 16));
+	return texture(font, (cell + at) / 16.0).r;
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+	vec2 res = iResolution.xy;
+	vec2 q = fragCoord / res - 0.5;
+	vec3 col = vec3(0.01, 0.01, 0.014) * (1.3 - dot(q, q));
+
+	vec4 p0 = texelFetch(iChannel0, ivec2(0, 0), 0);
+	vec4 p1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	float shown = texelFetch(iChannel0, ivec2(4, 0), 0).w;
+	float fade = clamp((SHOW_SECONDS - (iTime - shown)) / 0.5, 0.0, 1.0);
+	if (fade > 0.0) {
+		// Six lines of 14 cells, bottom left, big enough to read at a low
+		// render quality; a dark halo keeps them clear of the icon.
+		float cellW = min(res.x, res.y) * 0.032;
+		vec2 cellSize = vec2(cellW, cellW * 1.9);
+		vec2 origin = vec2(res.x * 0.05, res.y * 0.07);
+		vec2 t = (fragCoord - origin) / cellSize;
+		int line = 5 - int(floor(t.y));
+		int column = int(floor(t.x));
+		if (t.y >= 0.0 && t.y < 6.0 && column >= 0 && column < 14) {
+			int code = readoutChar(line, column, p0, p1);
+			if (code > 32) {
+				vec2 at = vec2(fract(t.x) * 0.55 + 0.225, fract(t.y) * 0.9 + 0.05);
+				float d = glyph(code, at);
+				col = mix(col, vec3(0.0), smoothstep(0.3, 0.45, d) * fade * 0.8);
+				col = mix(col, TEXT_COLOR, smoothstep(0.42, 0.58, d) * fade);
+			}
+		}
+	}
+	fragColor = vec4(col, 1.0);
+}
+
+//// Buffer A
+// The parameters and the gestures that change them, in the bottom row:
+// 0 (lambda, alpha, beta, gamma); 1 (omega, n, the attractor's size, a 2
+// once set); 2 last frame's first two touches (for three or four fingers,
+// x and y are their middle); 3 (last frame's finger count, taps so far,
+// when the last tap ended, when this touch began); 4 (the preset, the
+// frame the picture last changed, the four-finger swipe so far, when the
+// numbers were last asked for); 5 the view (pan x and y in frame heights,
+// zoom, turn); 6 (last frame's angle between the first two touches).
+///float32
+
+uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D iChannel1; ///buf:B;
+uniform vec3 pointers[10];
+uniform int pointerCount;
+
+#define SPEED 2.5 // parameter change per screen height dragged
+#define N_STEP 0.08 // screen heights of four-finger swipe per step of n
+#define MIN_ZOOM 0.3
+#define MAX_ZOOM 40.0
+#define TAP_TIME 0.3
+#define TAP_GAP 0.4
+#define PRESETS 10
+
+// (lambda, alpha, beta, gamma), (omega, n) - from "Symmetry in Chaos".
+void preset(int i, out vec4 a, out vec2 b) {
+	if (i == 0) { a = vec4(-2.5, 5.0, -1.9, 1.0); b = vec2(0.188, 5.0); return; }   // sand dollar
+	if (i == 1) { a = vec4(-1.86, 2.0, 0.0, 1.0); b = vec2(0.1, 4.0); return; }     // emperor's cloak
+	if (i == 2) { a = vec4(-2.08, 1.0, -0.1, 0.167); b = vec2(0.0, 7.0); return; }  // Mayan bracelet
+	if (i == 3) { a = vec4(-1.806, 1.806, 0.0, 1.0); b = vec2(0.0, 5.0); return; }  // swirling
+	if (i == 4) { a = vec4(-2.7, 5.0, 1.5, 1.0); b = vec2(0.0, 6.0); return; }      // Halloween
+	if (i == 5) { a = vec4(1.56, -1.0, 0.1, -0.82); b = vec2(0.12, 3.0); return; }  // clam triple
+	if (i == 6) { a = vec4(2.6, -2.0, 0.0, -0.5); b = vec2(0.0, 5.0); return; }     // star
+	if (i == 7) { a = vec4(-2.05, 3.0, -16.79, 1.0); b = vec2(0.0, 9.0); return; }  // fish
+	if (i == 8) { a = vec4(1.5, -1.0, 0.1, -0.805); b = vec2(0.0, 3.0); return; }   // trampoline
+	a = vec4(-2.34, 2.0, 0.2, 0.1); b = vec2(0.0, 5.0);                             // flower
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+	ivec2 p = ivec2(fragCoord);
+	if (p.y != 0 || p.x > 6) {
+		fragColor = vec4(0.0);
+		return;
+	}
+	vec2 res = iResolution.xy;
+	vec4 s0 = texelFetch(iChannel0, ivec2(0, 0), 0);
+	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	vec4 s2 = texelFetch(iChannel0, ivec2(2, 0), 0);
+	vec4 s3 = texelFetch(iChannel0, ivec2(3, 0), 0);
+	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
+	vec4 s6 = texelFetch(iChannel0, ivec2(6, 0), 0);
+	if (s1.w != 2.0) {
+		view = vec4(0.0, 0.0, 1.0, 0.0);
+		vec2 b;
+		preset(0, s0, b);
+		s1 = vec4(b, 1.5, 2.0);
+		s2 = vec4(0.0);
+		s3 = vec4(0.0, 0.0, -10.0, 0.0);
+		s4 = vec4(0.0, float(iFrame), 0.0, -10.0);
+	}
+	vec4 before0 = s0;
+	vec2 before1 = s1.xy;
+	vec4 viewBefore = view;
+	int count = pointerCount;
+	vec2 now0 = pointers[0].xy / res.y;
+	vec2 now1 = pointers[1].xy / res.y;
+	vec2 now2 = pointers[2].xy / res.y;
+	vec2 now3 = pointers[3].xy / res.y;
+	vec2 centre = 0.5 * res / res.y;
+	float angleNow = atan(now1.y - now0.y, now1.x - now0.x);
+	if (count > 0) {
+		s4.w = iTime;
+	}
+	if (count > 0 && int(s3.x) == count) {
+		if (count == 1) {
+			s0.xy += (now0 - s2.xy) * SPEED;
+		} else if (count == 2) {
+			// The view: what was between the fingers stays between them.
+			vec2 mid0 = 0.5 * (s2.xy + s2.zw) - centre;
+			vec2 mid1 = 0.5 * (now0 + now1) - centre;
+			float len0 = max(length(s2.zw - s2.xy), 1e-3);
+			float len1 = max(length(now1 - now0), 1e-3);
+			float turn = angleNow - s6.x;
+			turn -= 6.2831853 * floor(turn / 6.2831853 + 0.5);
+			float c = cos(-view.w), sn = sin(-view.w);
+			vec2 w = mat2(c, sn, -sn, c) * (mid0 - view.xy) / view.z;
+			view.z = clamp(view.z * len1 / len0, MIN_ZOOM, MAX_ZOOM);
+			view.w += turn;
+			c = cos(view.w);
+			sn = sin(view.w);
+			view.xy = mid1 - mat2(c, sn, -sn, c) * w * view.z;
+		} else if (count == 3) {
+			vec2 mid = (now0 + now1 + now2) / 3.0;
+			s0.zw += (mid - s2.xy) * SPEED;
+			float turn = angleNow - s6.x;
+			turn -= 6.2831853 * floor(turn / 6.2831853 + 0.5);
+			s1.x += turn * 0.25;
+		} else if (count == 4) {
+			float mid = (now0.y + now1.y + now2.y + now3.y) / 4.0;
+			s4.z += mid - s2.x;
+			if (abs(s4.z) > N_STEP) {
+				s1.y = clamp(s1.y + sign(s4.z), 2.0, 12.0);
+				s4.z = 0.0;
+			}
+		}
+	}
+	if (count != int(s3.x)) {
+		s4.z = 0.0;
+	}
+	// Taps: a quick touch; two close together are a double tap.
+	if (count > 0 && s3.x == 0.0) {
+		s3.w = iTime;
+	} else if (count == 0 && s3.x > 0.0) {
+		if (iTime - s3.w < TAP_TIME) {
+			s3.y = iTime - s3.z < TAP_GAP ? s3.y + 1.0 : 1.0;
+			s3.z = iTime;
+			if (s3.y >= 2.0) {
+				s4.x = mod(s4.x + 1.0, float(PRESETS));
+				vec2 b;
+				preset(int(s4.x), s0, b);
+				s1.xy = b;
+				view = vec4(0.0, 0.0, 1.0, 0.0);
+				s3.y = 0.0;
+				s4.w = iTime;
+			}
+		} else {
+			s3.y = 0.0;
+		}
+	}
+	if (any(notEqual(s0, before0)) || any(notEqual(s1.xy, before1)) ||
+			any(notEqual(view, viewBefore))) {
+		s4.y = float(iFrame);
+	}
+	// The attractor's size, from a few particles: smoothed, so the
+	// picture doesn't jump.
+	ivec2 size = textureSize(iChannel1, 0);
+	int particles = size.x * size.y / 4;
+	float far = 0.0;
+	for (int i = 0; i < 64; ++i) {
+		int k = 2 * ((i * 7919 + iFrame * 131) % particles);
+		vec2 z = texelFetch(iChannel1, ivec2(k % size.x, k / size.x), 0).xy;
+		float r = length(z);
+		if (r < 50.0) {
+			far = max(far, r);
+		}
+	}
+	s1.z = far > 0.0 ? mix(s1.z, far, 0.1) : s1.z;
+	s2 = count == 4 ? vec4((now0.y + now1.y + now2.y + now3.y) / 4.0, 0.0, now1)
+			: count == 3 ? vec4((now0 + now1 + now2) / 3.0, now1)
+			: vec4(now0, now1);
+	s3.x = float(count);
+	s6.x = angleNow;
+	fragColor = p.x == 0 ? s0 : p.x == 1 ? s1 : p.x == 2 ? s2 : p.x == 3 ? s3 :
+			p.x == 4 ? s4 : p.x == 5 ? view : s6;
+}
+
+//// Buffer B
+// The particles, two texels each (in reading order, over the first half
+// of the buffer): 2i (z, how far its last step jumped, 2 + its age in
+// steps - a new buffer clears to 1) and 2i+1 (its last step, as a
+// vector). A new particle isn't drawn until it's had WARM steps to reach
+// the attractor. Zoomed in, most particles would land off screen and draw
+// nothing: one that has goes on as a copy of one that hasn't, nudged a
+// little - the chaos soon sets them apart - so nearly every particle
+// draws, at any zoom.
+///float32
+
+uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D iChannel1; ///buf:B;
+
+#define STEPS 6 // steps of the map a frame
+#define RESEED 0.002 // the share of particles started afresh each frame
+#define WARM 24.0 // steps before a new particle is drawn
+#define FIT 0.42 // as Buffer C's
+#define MARGIN 0.05 // how far off the frame still counts as on it
+#define NUDGE 1e-4 // a copy's nudge, as a share of the attractor's size
+
+uint state;
+
+uint pcg(uint v) {
+	uint s = v * 747796405u + 2891336453u;
+	uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+	return (w >> 22u) ^ w;
+}
+
+float rnd() {
+	state = pcg(state);
+	return float(state) / 4294967296.0;
+}
+
+vec2 cmul(vec2 a, vec2 b) {
+	return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+// Where the plane's z lands on the frame (0 to 1): fitted to the
+// attractor's size (Buffer A), then through the view.
+vec2 toFrame(vec2 z, float radius, vec4 view) {
+	float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
+	float c = cos(view.w), sn = sin(view.w);
+	vec2 q = mat2(c, sn, -sn, c) * z * (fit / max(radius, 0.05)) * view.z + view.xy;
+	return 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
+}
+
+bool onFrame(vec2 uv) {
+	return all(greaterThan(uv, vec2(-MARGIN))) && all(lessThan(uv, vec2(1.0 + MARGIN)));
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+	ivec2 size = ivec2(iResolution.xy);
+	ivec2 p = ivec2(fragCoord);
+	int index = p.y * size.x + p.x;
+	int particle = index / 2;
+	int count = size.x * size.y / 4;
+	if (particle >= count) {
+		fragColor = vec4(0.0);
+		return;
+	}
+	vec4 s0 = texelFetch(iChannel0, ivec2(0, 0), 0);
+	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
+	float lambda = s0.x, alpha = s0.y, beta = s0.z, gamma = s0.w, omega = s1.x;
+	int n = int(s1.y + 0.5);
+	float radius = s1.z;
+	// The particle's own random numbers, the same in both its texels.
+	state = pcg(uint(particle) * 9781u + pcg(uint(iFrame)));
+	int home = 2 * particle;
+	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
+	if (part.w < 2.0 || rnd() < RESEED || any(isnan(part.xy)) || dot(part.xy, part.xy) > 400.0) {
+		part = vec4((vec2(rnd(), rnd()) - 0.5) * 0.6, 0.0, 2.0);
+	} else if (!onFrame(toFrame(part.xy, radius, view))) {
+		// Off screen: go on as a nudged copy of one that's on it.
+		for (int tries = 0; tries < 3; ++tries) {
+			int j = 2 * int(rnd() * float(count));
+			vec4 other = texelFetch(iChannel1, ivec2(j % size.x, j / size.x), 0);
+			if (other.w >= 2.0 + WARM && onFrame(toFrame(other.xy, radius, view))) {
+				part.xy = other.xy + (vec2(rnd(), rnd()) - 0.5) * NUDGE * radius;
+				break;
+			}
+		}
+	}
+	vec2 z = part.xy;
+	vec2 last = z;
+	for (int step = 0; step < STEPS; ++step) {
+		// z^(n-1), then z^n and conj(z)^(n-1).
+		vec2 zn1 = vec2(1.0, 0.0);
+		for (int k = 1; k < 12; ++k) {
+			if (k < n) {
+				zn1 = cmul(zn1, z);
+			}
+		}
+		vec2 zn = cmul(zn1, z);
+		vec2 conjN1 = vec2(zn1.x, -zn1.y);
+		float a = lambda + alpha * dot(z, z) + beta * zn.x;
+		last = z;
+		z = cmul(vec2(a, omega), z) + gamma * conjN1;
+	}
+	fragColor = index % 2 == 0
+			? vec4(z, length(z - last), min(part.w + float(STEPS), 2.0 + 1000.0))
+			: vec4(z - last, 0.0, 0.0);
+}
+
+//// Buffer C
+// The splats for Upscaling's 2D Gaussian Splats: particle i is splat i, in
+// texels 2i (centre, major axis - along its last step, if STRETCH) and
+// 2i+1 (colour, minor axis). Texel (0, 0) is the control texel instead
+// (splat 0 isn't drawn): how much of the sum to keep (all while still, a
+// fading few frames while being dragged), the exposure, the size the
+// presenter keeps every splat's light to, log density.
+///float32
+
+uniform sampler2D iChannel0; ///buf:A;
+uniform sampler2D iChannel1; ///buf:B;
+
+#define FIT 0.42 // the attractor's radius, as a share of the frame's shorter side
+#define SPLAT_PX 0.6 // each splat's sigma, in frame pixels
+#define EXPOSURE 3.0
+#define HUE 70.0 // the palette's hue, in degrees (OKLCH)
+#define WARM 24.0 // as Buffer B's
+#define STRETCH 0.0 // a splat stretched along its step, as a share of it (0: round)
+#define MAX_STRETCH 0.02 // in frame heights
+
+vec3 oklabToLinear(vec3 c) {
+	float l = c.x + 0.3963377774 * c.y + 0.2158037573 * c.z;
+	float m = c.x - 0.1055613458 * c.y - 0.0638541728 * c.z;
+	float s = c.x - 0.0894841775 * c.y - 1.2914855480 * c.z;
+	l = l * l * l;
+	m = m * m * m;
+	s = s * s * s;
+	return vec3(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+			-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+			-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+}
+
+vec3 linearToSrgb(vec3 c) {
+	c = clamp(c, 0.0, 1.0);
+	return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+
+vec3 oklch(float l, float c, float hueDegrees) {
+	float h = radians(hueDegrees);
+	return vec3(l, c * cos(h), c * sin(h));
+}
+
+// Slow points warm and pale, fast ones cooler: four OKLCH stops in OKLab,
+// the hue turning with each preset.
+vec3 palette(float t, float hue) {
+	vec3 s0 = oklch(0.93, 0.05, hue + 20.0);
+	vec3 s1 = oklch(0.78, 0.12, hue);
+	vec3 s2 = oklch(0.62, 0.11, hue - 60.0);
+	vec3 s3 = oklch(0.48, 0.09, hue - 140.0);
+	t = clamp(t, 0.0, 1.0) * 3.0;
+	vec3 lab = t < 1.0 ? mix(s0, s1, t) : t < 2.0 ? mix(s1, s2, t - 1.0) : mix(s2, s3, t - 2.0);
+	return linearToSrgb(oklabToLinear(lab));
+}
+
+// Where the plane's z lands on the frame (0 to 1): fitted to the
+// attractor's size (Buffer A), then through the view.
+vec2 toFrame(vec2 z, float radius, vec4 view) {
+	float fit = FIT * min(iResolution.x, iResolution.y) / iResolution.y; // frame heights
+	float c = cos(view.w), sn = sin(view.w);
+	vec2 q = mat2(c, sn, -sn, c) * z * (fit / max(radius, 0.05)) * view.z + view.xy;
+	return 0.5 + q * vec2(iResolution.y / iResolution.x, 1.0);
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+	ivec2 size = ivec2(iResolution.xy);
+	ivec2 p = ivec2(fragCoord);
+	vec4 s1 = texelFetch(iChannel0, ivec2(1, 0), 0);
+	vec4 s4 = texelFetch(iChannel0, ivec2(4, 0), 0);
+	vec4 view = texelFetch(iChannel0, ivec2(5, 0), 0);
+	if (p == ivec2(0)) {
+		// Buffer B keeps its particles on screen, so no brighter zoomed in.
+		bool still = float(iFrame) - s4.y > 2.0;
+		fragColor = vec4(still ? 1.0 : 0.5, EXPOSURE, -1.0 - SPLAT_PX, 2.0);
+		return;
+	}
+	int index = p.y * size.x + p.x;
+	int splat = index / 2;
+	if (splat >= size.x * size.y / 4) {
+		fragColor = vec4(0.0);
+		return;
+	}
+	int home = 2 * splat;
+	vec4 part = texelFetch(iChannel1, ivec2(home % size.x, home / size.x), 0);
+	vec2 step = texelFetch(iChannel1, ivec2((home + 1) % size.x, (home + 1) / size.x), 0).xy;
+	float radius = max(s1.z, 0.05);
+	float sigma = SPLAT_PX / iResolution.y; // frame heights
+	if (part.w < 2.0 + WARM) {
+		// Still finding its way to the attractor: not drawn.
+		fragColor = vec4(0.0);
+		return;
+	}
+	vec2 uv = toFrame(part.xy, radius, view);
+	if (index % 2 == 0) {
+		// Its step on screen, in frame heights, for the stretch.
+		vec2 d = (uv - toFrame(part.xy - step, radius, view)) * vec2(iResolution.x / iResolution.y, 1.0);
+		float along = min(length(d) * STRETCH, MAX_STRETCH);
+		float major = sqrt(sigma * sigma + along * along);
+		vec2 axis = length(d) > 1e-9 ? normalize(d) : vec2(1.0, 0.0);
+		fragColor = vec4(uv, axis * major);
+	} else {
+		float t = pow(clamp(part.z / (1.6 * radius), 0.0, 1.0), 0.7);
+		fragColor = vec4(max(palette(t, HUE + 47.0 * s4.x), vec3(1e-4)), sigma);
+	}
+}

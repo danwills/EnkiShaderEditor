@@ -24,13 +24,20 @@ public final class HeadlessShaderCompiler {
 
 		@NonNull
 		String source();
+
+		// Its Common section, if any - see ShaderSourcePreparer.prepare().
+		@Nullable
+		default String common() {
+			return null;
+		}
 	}
 
 	public record Result(int compiled, int skipped, int failed, int total) {
 	}
 
 	// One shader's passes for warm(), as the renderer will be given them.
-	public record Passes(long id, @NonNull String source, @Nullable String[] buffers) {
+	public record Passes(long id, @NonNull String source, @Nullable String[] buffers,
+			@Nullable String common) {
 	}
 
 	// Matches ShaderRenderer.MAX_TEXTURES - how many samplers
@@ -73,11 +80,13 @@ public final class HeadlessShaderCompiler {
 				if (cancelled.get()) {
 					break;
 				}
-				String sourceHash = ProgramBinaryKey.sourceHash(shader.source(), egl.version);
+				String common = shader.common();
+				String sourceHash = ProgramBinaryKey.sourceHash(
+						RendererProgramManager.cacheText(shader.source(), common), egl.version);
 				if (!forceRecompile &&
 						cache.get(shader.id(), sourceHash, driverSignature) != null) {
 					++skipped;
-				} else if (compileOne(device, shader.id(), shader.source(), egl.version,
+				} else if (compileOne(device, shader.id(), shader.source(), common, egl.version,
 						sourceHash, driverSignature, cache)) {
 					++compiled;
 				} else {
@@ -108,10 +117,12 @@ public final class HeadlessShaderCompiler {
 				if (cancelled.get()) {
 					return;
 				}
-				String sourceHash = ProgramBinaryKey.sourceHash(shader.source(), egl.version);
+				String common = shader.common();
+				String sourceHash = ProgramBinaryKey.sourceHash(
+						RendererProgramManager.cacheText(shader.source(), common), egl.version);
 				if (cache.get(shader.id(), sourceHash, driverSignature) == null) {
-					compileOne(device, shader.id(), shader.source(), egl.version, sourceHash,
-							driverSignature, cache);
+					compileOne(device, shader.id(), shader.source(), common, egl.version,
+							sourceHash, driverSignature, cache);
 				}
 				String[] buffers = shader.buffers();
 				for (int buffer = 0; buffers != null && buffer < buffers.length; ++buffer) {
@@ -119,10 +130,11 @@ public final class HeadlessShaderCompiler {
 					if (text == null || cancelled.get()) {
 						continue;
 					}
-					String bufferHash = ProgramBinaryKey.sourceHash(text, egl.version);
+					String bufferHash = ProgramBinaryKey.sourceHash(
+							RendererProgramManager.cacheText(text, common), egl.version);
 					if (cache.getBuffer(shader.id(), buffer, bufferHash, driverSignature) ==
 							null) {
-						ProgramBinary binary = compile(device, text, egl.version);
+						ProgramBinary binary = compile(device, text, common, egl.version);
 						if (binary != null) {
 							cache.putBuffer(shader.id(), buffer, binary, bufferHash,
 									driverSignature);
@@ -138,8 +150,8 @@ public final class HeadlessShaderCompiler {
 	// A pass's program binary, as the renderer would build it, or null.
 	@Nullable
 	private static ProgramBinary compile(@NonNull GlDevice device, @NonNull String source,
-			int version) {
-		var prepared = ShaderSourcePreparer.prepare(source, version, MAX_TEXTURES);
+			@Nullable String common, int version) {
+		var prepared = ShaderSourcePreparer.prepare(source, common, version, MAX_TEXTURES);
 		var fragment = prepared.getFragmentShader();
 		if (fragment == null) {
 			return null;
@@ -162,10 +174,10 @@ public final class HeadlessShaderCompiler {
 	}
 
 	private boolean compileOne(@NonNull GlDevice device, long shaderId,
-			@NonNull String source, int version,
+			@NonNull String source, @Nullable String common, int version,
 			@NonNull String sourceHash, @NonNull String driverSignature,
 			@NonNull ProgramBinaryCache cache) {
-		var prepared = ShaderSourcePreparer.prepare(source, version, MAX_TEXTURES);
+		var prepared = ShaderSourcePreparer.prepare(source, common, version, MAX_TEXTURES);
 		var fragment = prepared.getFragmentShader();
 		if (fragment == null) {
 			return false;

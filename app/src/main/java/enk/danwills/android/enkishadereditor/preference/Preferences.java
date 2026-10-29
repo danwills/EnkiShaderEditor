@@ -18,6 +18,7 @@ import java.util.Map;
 import enk.danwills.android.enkishadereditor.R;
 import enk.danwills.android.enkishadereditor.io.ImageEncoding;
 import enk.danwills.android.enkishadereditor.io.VideoFormat;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 
 public class Preferences {
 	public static final String WALLPAPER_SHADER = "shader";
@@ -43,6 +44,8 @@ public class Preferences {
 	// local MP3 playback - remembered so reopening the player doesn't
 	// need to ask again every time.
 	public static final String LOCAL_PLAYBACK_DIRECTORY = "local_playback_directory";
+	// The upscaling the view starts with - an Upscaling.Upscale.spec().
+	public static final String DEFAULT_UPSCALE = "default_upscale";
 	public static final String AUDIO_SPECTRUM_SHADERTOY_COMPATIBLE =
 			"audio_spectrum_shadertoy_compatible";
 	public static final String TEXT_SIZE = "text_size";
@@ -141,6 +144,8 @@ public class Preferences {
 	}
 
 	private SharedPreferences preferences;
+	@NonNull
+	private Upscaling.Upscale defaultUpscale = Upscaling.Upscale.DEFAULT;
 	private long wallpaperShaderId = 1;
 	private boolean saveBattery = true;
 	private boolean sortByLastModification = true;
@@ -317,6 +322,18 @@ public class Preferences {
 				preferences.getString(IMAGE_FORMAT, null));
 		imageQuality = preferences.getInt(IMAGE_QUALITY, imageQuality);
 		videoFormat = VideoFormat.fromKey(preferences.getString(VIDEO_FORMAT, null));
+		defaultUpscale = Upscaling.Upscale.parse(preferences.getString(DEFAULT_UPSCALE, null));
+	}
+
+	// The upscaling the view starts each session with (see Upscaling).
+	@NonNull
+	public Upscaling.Upscale getDefaultUpscale() {
+		return defaultUpscale;
+	}
+
+	public void setDefaultUpscale(@NonNull Upscaling.Upscale upscale) {
+		defaultUpscale = upscale;
+		preferences.edit().putString(DEFAULT_UPSCALE, upscale.spec()).apply();
 	}
 
 	// What a frame sequence's video is made as.

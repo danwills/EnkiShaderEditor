@@ -17,6 +17,7 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +40,7 @@ import enk.danwills.android.enkishadereditor.opengl.ShaderRenderer;
 import enk.danwills.android.enkishadereditor.opengl.SharedCaptureContext;
 import enk.danwills.android.enkishadereditor.opengl.TileBucketSize;
 import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.project.ShaderProjectSession;
 import enk.danwills.android.enkishadereditor.widget.FullscreenExitGestureDetector;
 import enk.danwills.android.enkishadereditor.widget.ShaderView;
@@ -66,6 +68,9 @@ public class ShaderViewManager {
 		void onFullscreenExitPhaseChanged(@NonNull FullscreenExitGestureDetector.Phase phase);
 
 		void onFullscreenExitGesture();
+
+		// The quality menu's last entry, Upscaling… - see UpscaleDialog.
+		void onUpscalingRequested();
 	}
 
 	@NonNull
@@ -110,10 +115,15 @@ public class ShaderViewManager {
 	// setProjectSessionIfChanged().
 	private long appliedShaderId = -1;
 	private float appliedQuality = -1;
+	// See setUpscale() - static, so it outlives the activity.
+	@Nullable
+	private static Upscaling.Upscale sessionUpscale;
 	@Nullable
 	private String appliedSource;
 	@Nullable
 	private String[] appliedBufferSources;
+	@Nullable
+	private String appliedCommonSource;
 	// The texts last handed to the renderer - see setProjectSessionIfChanged().
 	@NonNull
 	private Map<String, String> appliedTexts = Map.of();
@@ -153,6 +163,7 @@ public class ShaderViewManager {
 		this.qualitySpinner = qualitySpinner;
 		this.dataSource = dataSource;
 		this.listener = listener;
+		shaderView.getRenderer().setUpscale(getUpscale());
 		this.fullscreenExitGestureDetector = new FullscreenExitGestureDetector(
 				new FullscreenExitGestureDetector.Listener() {
 					@Override
@@ -464,14 +475,16 @@ public class ShaderViewManager {
 			}
 			return;
 		}
-		setProjectSession(projectSession);
+		// An edit to the shader that's running carries on from where it is.
+		rerunProjectSession(projectSession);
 	}
 
 	private boolean isRunning(@NonNull ShaderProjectSession projectSession) {
 		return projectSession.getShaderId() == appliedShaderId &&
 				projectSession.getQuality() == appliedQuality &&
 				Objects.equals(projectSession.getEntryPointSource(), appliedSource) &&
-				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources);
+				Arrays.equals(projectSession.getProject().getBufferSources(), appliedBufferSources) &&
+				Objects.equals(projectSession.getProject().getCommonSource(), appliedCommonSource);
 	}
 
 	// Shows the given offscreen buffer (0 = A) instead of the Image pass,
@@ -491,6 +504,7 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedCommonSource = projectSession.getProject().getCommonSource();
 		appliedTexts = projectSession.getProject().getTexts();
 		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		// Before setQuality() below - setQuality()/applyQuality() is a
@@ -504,8 +518,24 @@ public class ShaderViewManager {
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				projectSession.getProject().getBufferSources(),
+				appliedCommonSource,
 				projectSession.getQuality(),
-				projectSession.getShaderId());
+				projectSession.getShaderId(),
+				false);
+	}
+
+	// Runs the editor's version of a shader: if it's the one running (at
+	// the same quality), carrying on from where it is - its clock and
+	// buffers kept, as ShaderToy does - so editing a simulation doesn't
+	// start it over (Restart does); otherwise as setProjectSession().
+	public void rerunProjectSession(@NonNull ShaderProjectSession projectSession) {
+		long id = projectSession.getShaderId();
+		if (!paused && id > 0 && id == appliedShaderId &&
+				projectSession.getQuality() == appliedQuality) {
+			setProjectSessionKeepingState(projectSession, false);
+		} else {
+			setProjectSession(projectSession);
+		}
 	}
 
 	// Swaps in a changed version of the running shader without
@@ -520,6 +550,7 @@ public class ShaderViewManager {
 		appliedSource = projectSession.getEntryPointSource();
 		String[] bufferSources = projectSession.getProject().getBufferSources();
 		appliedBufferSources = bufferSources != null ? bufferSources.clone() : null;
+		appliedCommonSource = projectSession.getProject().getCommonSource();
 		appliedTexts = projectSession.getProject().getTexts();
 		shaderView.getRenderer().setShaderTexts(appliedTexts, false);
 		if (paused) {
@@ -528,6 +559,7 @@ public class ShaderViewManager {
 		shaderView.setFragmentShader(
 				projectSession.getEntryPointSource(),
 				bufferSources,
+				appliedCommonSource,
 				projectSession.getQuality(),
 				live ? 0 : projectSession.getShaderId(),
 				true);
@@ -939,6 +971,19 @@ public class ShaderViewManager {
 		return shaderView.getRenderer().getRenderWidth();
 	}
 
+	// See ShaderRenderer.setCaptureUpscaled().
+	public void setCaptureUpscaled(boolean upscaled) {
+		shaderView.getRenderer().setCaptureUpscaled(upscaled);
+	}
+
+	public int getViewWidth() {
+		return shaderView.getRenderer().getViewWidth();
+	}
+
+	public int getViewHeight() {
+		return shaderView.getRenderer().getViewHeight();
+	}
+
 	public int getRenderHeight() {
 		return shaderView.getRenderer().getRenderHeight();
 	}
@@ -1105,6 +1150,38 @@ public class ShaderViewManager {
 	// different shaders" case the risky-increase check needs to stay
 	// out of, since its basis (fpsAtCurrentQuality) is only ever
 	// meaningful for a genuine live quality change, not a fresh load.
+	// The view's upscaling for the rest of the app's session (see
+	// Upscaling) - across shaders, and the activity being made again.
+	public void setUpscale(@NonNull Upscaling.Upscale upscale) {
+		sessionUpscale = upscale;
+		previewUpscale(upscale);
+	}
+
+	// Shows `upscale` without keeping it - UpscaleDialog's live preview.
+	public void previewUpscale(@NonNull Upscaling.Upscale upscale) {
+		shaderView.getRenderer().setUpscale(upscale);
+		shaderView.requestRender();
+	}
+
+	@NonNull
+	public ShaderView getShaderView() {
+		return shaderView;
+	}
+
+	// What's on screen now: a shader's own `///upscale:` line's, or the
+	// session's - see ShaderRenderer.getUpscale().
+	@NonNull
+	public Upscaling.Upscale getShownUpscale() {
+		return shaderView.getRenderer().getUpscale();
+	}
+
+	// This session's, or the one Settings says to start with.
+	@NonNull
+	public Upscaling.Upscale getUpscale() {
+		return sessionUpscale != null ? sessionUpscale
+				: ShaderEditorApp.preferences.getDefaultUpscale();
+	}
+
 	private void setQualityDirect(float quality) {
 		for (int i = 0; i < qualityValues.length; ++i) {
 			if (qualityValues[i] == quality) {
@@ -1252,10 +1329,12 @@ public class ShaderViewManager {
 			qualityValues[i] = Float.parseFloat(qualityStringValues[i]);
 		}
 
-		ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
-				activity,
-				R.array.quality_names,
-				R.layout.spinner_item_quality);
+		// The qualities, then Upscaling…, which opens its dialog rather
+		// than being selected.
+		var names = new ArrayList<CharSequence>(Arrays.asList(
+				activity.getResources().getStringArray(R.array.quality_names)));
+		names.add(activity.getString(R.string.upscaling_menu));
+		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names);
 		adapter.setDropDownViewResource(
 				android.R.layout.simple_spinner_dropdown_item);
 		qualitySpinner.setAdapter(adapter);
@@ -1263,6 +1342,11 @@ public class ShaderViewManager {
 			@Override
 			public void onItemSelected(AdapterView<?> parent, View view,
 					int position, long id) {
+				if (position >= qualityValues.length) {
+					revertSelectionToCurrentQuality();
+					listener.onUpscalingRequested();
+					return;
+				}
 				float q = qualityValues[position];
 				// The spinner's own displayed selection has already
 				// moved to `position` by the time this fires (that's

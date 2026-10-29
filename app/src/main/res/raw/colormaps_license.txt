@@ -1,0 +1,16 @@
+The built-in `colormaps` texture holds:
+
+CET Perceptually Uniform Colour Maps
+Peter Kovesi, https://colorcet.com
+Licensed under the Creative Commons Attribution 4.0 International License
+(CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+Reference: Peter Kovesi. Good Colour Maps: How to Design Them.
+arXiv:1509.03700 [cs.GR] 2015.
+The newer maps not in the CSV release (C8-C11, CBD2, CBL3-4, the CBT
+tritanopic maps) come from the colorcet package (Holoviz), which carries
+them under the same licence.
+
+Ready's colour maps (GollyGang/ready): the ColorBrewer diverging maps
+(Cynthia Brewer, Apache License 2.0, as shipped in VTK's vtkColorSeries),
+matplotlib's inferno (Nathaniel J. Smith, Stefan van der Walt - CC0), and
+Ready's terrain map.

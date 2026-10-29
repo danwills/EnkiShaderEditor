@@ -18,6 +18,10 @@
 	<string name="paste_over_shader">Paste over Current Shader</string>
 	<string name="select_quality">Render Quality</string>
 	<string name="paste_shader_title">Paste Shader</string>
+	<string name="paste_shader_name_exists_title">“%1$s” already exists</string>
+	<string name="paste_shader_name_exists_message">Replace the shader with that name, or give this one a different name?</string>
+	<string name="paste_shader_replace">Replace</string>
+	<string name="paste_shader_rename">Rename</string>
 	<string name="paste_add_as_child">Add as Child…</string>
 	<string name="paste_shader_name_hint">Shader Name (Optional)</string>
 	<string name="clipboard_empty">Clipboard is empty</string>
@@ -74,7 +78,6 @@
 	<string name="auto_detect_tile_size_whole_frame_label">Whole Frame</string>
 	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d (%5$d×)</string>
 	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d (%5$d×) · Tile: %6$s</string>
-	<string name="progress_tile_whole_frame">Whole Frame (no tiling)</string>
 	<string name="progress_tile_named">%1$s (%2$dpx)</string>
 	<string name="bucket_size_max_label">%1$s (as large as possible)</string>
 	<string name="interrupt_save_partial_button">Stop and Save What\'s Rendered</string>
@@ -221,6 +224,11 @@
 	<string name="sort_by_similarity">Sort by Code Similarity</string>
 	<string name="name_group_prefix_label">New name will start with: %1$s</string>
 	<string name="name_group_postfix_hint">Postfix</string>
+	<string name="save_as_new_next_number">Next number: %1$s</string>
+	<string name="save_as_new_variation">A variation of %1$s</string>
+	<string name="save_as_new_variation_hint">A word, e.g. Warm</string>
+	<string name="save_as_new_preview">New name: %1$s</string>
+	<string name="save_as_new_unnamed">No name: an unnamed copy</string>
 	<string name="name_already_exists">A shader is already named \"%1$s\". Rename anyway?</string>
 	<string name="sure_reparent_named_shader">This shader is already named \"%1$s\". Reparenting will rename it to \"%2$s\". Continue?</string>
 	<string name="renamed_shader_to">Renamed to %1$s</string>
@@ -379,6 +387,8 @@
 	<string name="date_time">Year, month, day and time in seconds</string>
 	<string name="daytime">Hour, minute and seconds</string>
 	<string name="font_atlas">Built-in glyph atlas (16×16 cells of character codes 0–255, as a signed distance field: 0.5 on the edge, higher inside)</string>
+	<string name="colormaps_atlas">Colour maps (Ready’s, then the CET maps), one per row</string>
+	<string name="colormap_count">Number of colour maps</string>
 	<string name="keyboard_texture">Keys held, pressed and toggled, as ShaderToy\'s 256×3 keyboard texture (JavaScript key codes; row 0 held, 1 pressed this frame, 2 toggled)</string>
 	<string name="typed_char">The character typed this frame, or 0 (8 Backspace, 9 Tab, 10 Enter, 127 Delete)</string>
 	<string name="source_text">This pass\'s own source text: one texel per character, row n is line n. R = character code, G×256+B = its index in reading order, A = 1 for a character</string>
@@ -513,9 +523,10 @@
 	<string name="adjust_defines_no_matches">No defines match</string>
 	<string name="adjust_defines_treat_as_color">Treat as Color</string>
 	<string name="adjust_defines_edit_live">Edit Live</string>
+	<string name="adjust_defines_select_all">Select All</string>
+	<string name="adjust_defines_select_none">Select None</string>
 	<string name="adjust_defines_go_live">Go Live</string>
 	<string name="adjust_defines_back">Back</string>
-	<string name="adjust_defines_live_checking">Checking…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">Tick at least one define to adjust live</string>
 	<string name="adjust_defines_live_conditional">Used by #if or #ifdef, so it has to stay a #define</string>
@@ -527,6 +538,8 @@
 	<string name="live_defines_expand">Show sliders</string>
 	<string name="live_defines_discard">Discard</string>
 	<string name="live_defines_reset">Reset</string>
+	<string name="live_defines_filter_hint">Filter</string>
+	<string name="live_defines_preparing">Getting live mode ready…</string>
 	<string name="live_defines_brightness">Brightness</string>
 	<string name="live_defines_done">Done</string>
 	<string name="live_defines_discard_title">Discard live edits?</string>
@@ -574,6 +587,8 @@
 	<string name="sample_soundboard_rationale">Pads to play: drums and five tuned instruments in A minor pentatonic. Hold and drag up or down to bend.</string>
 	<string name="sample_tracker_name">Tracker</string>
 	<string name="sample_tracker_rationale">A demoscene-style sequencer: tap to add notes, hold to edit, tap twice to delete. Plays on the Soundboard\'s instruments.</string>
+	<string name="sample_life_viewer_name">Life Viewer</string>
+	<string name="sample_life_viewer_rationale">Conway\'s Game of Life in an offscreen buffer, drawn through a view you can move: drag to scroll, pinch to zoom, three fingers for a new soup.</string>
 	<string name="sample_module_viewer_name">Module Viewer</string>
 	<string name="sample_module_viewer_rationale">Plays a tracker module (MOD, S3M, XM) and shows it like the old trackers: scopes, spectra and the pattern scrolling by.</string>
 	<string name="sample_demo_writer_name">Demo Writer</string>
@@ -632,6 +647,10 @@
 	<string name="offscreen_buffers_remove_message">This deletes the code in %1$s.</string>
 	<string name="offscreen_buffers_remove">Remove</string>
 	<string name="pass_tab_sound">Snd</string>
+	<string name="pass_tab_common">Common</string>
+	<string name="common_add">Add Common</string>
+	<string name="common_remove">Remove Common</string>
+	<string name="common_remove_message">This deletes the Common code, which every pass starts with.</string>
 	<string name="pass_tab_image">Img</string>
 	<string name="pass_tab_text">Text %1$s</string>
 	<string name="shader_texts_button">Texts…</string>
@@ -663,6 +682,7 @@
 	<string name="channel_wrap_repeat">Repeat</string>
 	<string name="buffers_capture_unsupported">Shaders with offscreen buffers can only be captured at Match App Res (no oversampling) for now</string>
 	<string name="not_a_shader_pack">This isn\'t a shader pack</string>
+	<string name="shader_pack_too_new">This shader pack needs a newer version of the app</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s installed: %2$d shader</item>
 		<item quantity="other">%1$s installed: %2$d shaders</item>
@@ -785,4 +805,37 @@
 		<item quantity="one">Rename %d shader from this list? Their dates stay as they are.</item>
 		<item quantity="other">Rename %d shaders from this list? Their dates stay as they are.</item>
 	</plurals>
+	<string name="upscaling_menu">Upscaling…</string>
+	<string name="upscaling">Upscaling</string>
+	<string name="upscale_default">Default (as the backbuffer\'s filtering)</string>
+	<string name="upscale_nearest">Nearest</string>
+	<string name="upscale_sharp">Sharp pixels</string>
+	<string name="upscale_linear">Bilinear</string>
+	<string name="upscale_bspline">Smooth (B-spline)</string>
+	<string name="upscale_catmull">Crisp cubic (Catmull-Rom)</string>
+	<string name="upscale_sinc">Sinc (Lanczos)</string>
+	<string name="upscale_defocus">Defocus</string>
+	<string name="upscale_gaussian">Gaussian (soft)</string>
+	<string name="upscale_points">Accumulate Points (last buffer)</string>
+	<string name="upscale_splats">2D Gaussian Splats (last buffer)</string>
+	<string name="upscale_exposure">Exposure</string>
+	<string name="upscale_adjust_xform">Adjust Splats Xform…</string>
+	<string name="splats_xform_adjusting">Splats xform: drag, pinch, twist</string>
+	<string name="splats_xform_reset">Reset</string>
+	<string name="splats_xform_done">Done</string>
+	<string name="upscale_bokeh">Fancy defocus (bokeh)</string>
+	<string name="upscale_crt">CRT</string>
+	<string name="upscale_edges">Past the frame\'s edges</string>
+	<string name="upscale_edge_clamp">Clamp</string>
+	<string name="upscale_edge_periodic">Periodic</string>
+	<string name="upscale_edge_mirror">Mirror</string>
+	<string name="upscale_edge_black">Black</string>
+	<string name="upscale_radius">Radius (frame pixels)</string>
+	<string name="upscale_strength">Strength</string>
+	<string name="upscale_hint">Only on screen, when the quality is below 1/1. Kept while the app is open - Settings has the one it starts with.</string>
+	<string name="upscale_lobes">Lobes</string>
+	<string name="default_upscaling">Default upscaling</string>
+	<string name="upscale_default_hint">The upscaling the view starts with each time the app opens.</string>
+	<string name="higher_res_include_upscaling_label">Include upscaling</string>
+	<string name="higher_res_include_upscaling">Include Upscaling - only with Match App Res Setting: captures come out as the screen shows them, at the screen\'s size through the current upscaling (Upscaling… in the quality menu), so Video Scale is 1</string>
 </resources>

@@ -14,11 +14,19 @@ public final class TextureReferences {
 
 	@NonNull
 	public static Set<String> find(@Nullable String imageSource, @NonNull String[] bufferSources) {
+		return find(imageSource, bufferSources, null);
+	}
+
+	// commonSource: the shader's Common section, if any.
+	@NonNull
+	public static Set<String> find(@Nullable String imageSource, @NonNull String[] bufferSources,
+			@Nullable String commonSource) {
 		var names = new TreeSet<String>();
 		ShaderSourcePreparer.collectTextureNames(imageSource, names);
 		for (String source : bufferSources) {
 			ShaderSourcePreparer.collectTextureNames(source, names);
 		}
+		ShaderSourcePreparer.collectTextureNames(commonSource, names);
 		return names;
 	}
 }

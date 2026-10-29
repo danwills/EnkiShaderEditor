@@ -54,6 +54,17 @@
 			android:checked="false"
 			android:text="@string/higher_res_match_device_playback_label" />
 
+		<!-- Only while Match App Res Setting is on: the capture comes out
+		     as the screen shows it, through the upscaling, at the view's
+		     size - Video Scale 1. See ShaderRenderer.setCaptureUpscaled(). -->
+		<CheckBox
+			android:id="@+id/custom_include_upscaling"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="24dp"
+			android:checked="false"
+			android:text="@string/higher_res_include_upscaling_label" />
+
 		<!-- Only affects what picking one of the "x Device Res" presets
 		     does - see MainActivity's own wiring; never touches
 		     anything for "Resolution" (the no-op placeholder) or a
@@ -106,9 +117,8 @@
 		     custom_match_device_playback above), rather than buried
 		     under "Render a Sequence of Frames" -> "Create Video from
 		     Frames" - it only ever does anything when a video actually
-		     gets made, but editing it doesn't depend on either being
-		     checked. Long-press for the full explanation (see
-		     higher_res_sequence_video_scale). -->
+		     gets made, so it's greyed out otherwise. Long-press for the
+		     full explanation (see higher_res_sequence_video_scale). -->
 		<TextView
 			android:id="@+id/sequence_video_scale_label"
 			android:layout_width="match_parent"

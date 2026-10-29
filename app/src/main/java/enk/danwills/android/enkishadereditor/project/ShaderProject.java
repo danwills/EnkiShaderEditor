@@ -150,6 +150,30 @@ public final class ShaderProject implements Serializable {
 		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
 	}
 
+	// The Common section (see ShaderProjectPaths.COMMON_PATH), or null if
+	// the project has none.
+	@Nullable
+	public String getCommonSource() {
+		ShaderProjectFile file = filesByPath.get(ShaderProjectPaths.COMMON_PATH);
+		return file != null ? file.source() : null;
+	}
+
+	// The project with `source` as its Common section, or none for null,
+	// keeping all other files as they are.
+	@NonNull
+	public ShaderProject withCommonSource(@Nullable String source) {
+		ArrayList<ShaderProjectFile> updatedFiles = new ArrayList<>(files.size() + 1);
+		for (ShaderProjectFile file : files) {
+			if (!ShaderProjectPaths.COMMON_PATH.equals(file.path())) {
+				updatedFiles.add(file);
+			}
+		}
+		if (source != null) {
+			updatedFiles.add(new ShaderProjectFile(ShaderProjectPaths.COMMON_PATH, source));
+		}
+		return new ShaderProject(origin, title, entryFilePath, updatedFiles);
+	}
+
 	// The project's texts (see ShaderProjectPaths.getTextPath()), name ->
 	// text, in file order.
 	@NonNull

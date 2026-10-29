@@ -15,6 +15,10 @@ public final class ShaderProjectPaths {
 	public static final int MAX_BUFFERS = 4;
 	private static final String BUFFER_DIRECTORY = "buffers/";
 	private static final String BUFFER_EXTENSION = ".glsl";
+	// The Common section - code every pass starts with, as ShaderToy's
+	// Common tab (see ShaderSourcePreparer) - lives here, beside the entry
+	// file.
+	public static final String COMMON_PATH = "common.glsl";
 	// A shader's named texts (see ShaderTextDao) live at text/<name>.txt.
 	private static final String TEXT_DIRECTORY = "text/";
 	private static final String TEXT_EXTENSION = ".txt";

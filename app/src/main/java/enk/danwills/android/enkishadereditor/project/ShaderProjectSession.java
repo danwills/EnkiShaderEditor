@@ -1,6 +1,7 @@
 package enk.danwills.android.enkishadereditor.project;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.io.Serializable;
 import java.util.Map;
@@ -97,6 +98,20 @@ public final class ShaderProjectSession implements Serializable {
 	@NonNull
 	public ShaderProjectSession withBufferSources(@NonNull String[] sources) {
 		ShaderProject updated = project.withBufferSources(sources);
+		return new ShaderProjectSession(
+				updated,
+				updated.hasFile(activeFilePath)
+						? activeFilePath
+						: updated.getEntryFilePath(),
+				quality,
+				shaderId);
+	}
+
+	// See ShaderProject.withCommonSource(). Falls back to the entry file
+	// if the active one was the Common section, now removed.
+	@NonNull
+	public ShaderProjectSession withCommonSource(@Nullable String source) {
+		ShaderProject updated = project.withCommonSource(source);
 		return new ShaderProjectSession(
 				updated,
 				updated.hasFile(activeFilePath)

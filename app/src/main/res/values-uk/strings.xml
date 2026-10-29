@@ -18,6 +18,10 @@
 	<string name="paste_over_shader">Вставити поверх поточного шейдера</string>
 	<string name="select_quality">Якість рендеру</string>
 	<string name="paste_shader_title">Вставити шейдер</string>
+	<string name="paste_shader_name_exists_title">«%1$s» уже існує</string>
+	<string name="paste_shader_name_exists_message">Замінити шейдер із цією назвою чи дати цьому шейдеру іншу назву?</string>
+	<string name="paste_shader_replace">Замінити</string>
+	<string name="paste_shader_rename">Перейменувати</string>
 	<string name="paste_add_as_child">Як дочірній…</string>
 	<string name="paste_shader_name_hint">Назва шейдера (необов’язково)</string>
 	<string name="clipboard_empty">Буфер обміну порожній</string>
@@ -74,7 +78,6 @@
 	<string name="auto_detect_tile_size_whole_frame_label">Весь кадр</string>
 	<string name="progress_resolution_only">%1$d×%2$d → %3$d×%4$d (%5$d×)</string>
 	<string name="progress_resolution_and_tile">%1$d×%2$d → %3$d×%4$d (%5$d×) · Блок: %6$s</string>
-	<string name="progress_tile_whole_frame">Весь кадр (без поділу на блоки)</string>
 	<string name="progress_tile_named">%1$s (%2$dпікс)</string>
 	<string name="bucket_size_max_label">%1$s (якомога більше)</string>
 	<string name="interrupt_save_partial_button">Зупинити й зберегти готове</string>
@@ -221,6 +224,11 @@
 	<string name="sort_by_similarity">Сортувати за схожістю коду</string>
 	<string name="name_group_prefix_label">Нова назва почнеться з: %1$s</string>
 	<string name="name_group_postfix_hint">Закінчення</string>
+	<string name="save_as_new_next_number">Наступний номер: %1$s</string>
+	<string name="save_as_new_variation">Варіант %1$s</string>
+	<string name="save_as_new_variation_hint">Слово, наприклад Warm</string>
+	<string name="save_as_new_preview">Нова назва: %1$s</string>
+	<string name="save_as_new_unnamed">Без назви: копія без назви</string>
 	<string name="name_already_exists">Шейдер з назвою \"%1$s\" вже існує. Перейменувати попри це?</string>
 	<string name="sure_reparent_named_shader">Цей шейдер вже має назву \"%1$s\". Зміна батьківського елемента перейменує його на \"%2$s\". Продовжити?</string>
 	<string name="renamed_shader_to">Перейменовано на %1$s</string>
@@ -379,6 +387,8 @@
 	<string name="date_time">Рік, місяць, день і час у секундах</string>
 	<string name="daytime">Година, хвилина і секунди</string>
 	<string name="font_atlas">Вбудований атлас гліфів (16×16 комірок із кодами символів 0–255, поле відстаней зі знаком: 0.5 на краю, більше всередині)</string>
+	<string name="colormaps_atlas">Колірні карти (Ready, потім CET), по одній у рядку</string>
+	<string name="colormap_count">Кількість колірних карт</string>
 	<string name="keyboard_texture">Утримувані, натиснуті й перемкнуті клавіші, як текстура клавіатури ShaderToy 256×3 (коди клавіш JavaScript; рядок 0 — утримання, 1 — натискання в цьому кадрі, 2 — перемикання)</string>
 	<string name="typed_char">Символ, введений у цьому кадрі, або 0 (8 — Backspace, 9 — Tab, 10 — Enter, 127 — Delete)</string>
 	<string name="source_text">Вихідний текст цього проходу: один тексель на символ, рядок n текстури — рядок n коду. R — код символу, G×256+B — його номер у порядку читання, A = 1 для символу</string>
@@ -512,9 +522,10 @@
 	<string name="adjust_defines_no_matches">Немає відповідних defines</string>
 	<string name="adjust_defines_treat_as_color">Вважати кольором</string>
 	<string name="adjust_defines_edit_live">Наживо</string>
+	<string name="adjust_defines_select_all">Вибрати всі</string>
+	<string name="adjust_defines_select_none">Зняти всі</string>
 	<string name="adjust_defines_go_live">Почати</string>
 	<string name="adjust_defines_back">Назад</string>
-	<string name="adjust_defines_live_checking">Перевірка…</string>
 	<string name="adjust_defines_live_name_format">%1$s (%2$s)</string>
 	<string name="adjust_defines_live_none">Позначте хоча б один define для живого налаштування</string>
 	<string name="adjust_defines_live_conditional">Використовується в #if або #ifdef, тому має лишитися #define</string>
@@ -528,6 +539,8 @@
 	<string name="live_defines_expand">Показати повзунки</string>
 	<string name="live_defines_discard">Скасувати</string>
 	<string name="live_defines_reset">Скинути</string>
+	<string name="live_defines_filter_hint">Фільтр</string>
+	<string name="live_defines_preparing">Підготовка живого режиму…</string>
 	<string name="live_defines_brightness">Яскравість</string>
 	<string name="live_defines_done">Готово</string>
 	<string name="live_defines_discard_title">Скасувати живі зміни?</string>
@@ -577,6 +590,8 @@
 	<string name="sample_soundboard_rationale">Педи для гри: ударні й п\'ять настроєних інструментів у пентатоніці ля мінор. Утримуйте й тягніть угору чи вниз, щоб змінити висоту.</string>
 	<string name="sample_tracker_name">Трекер</string>
 	<string name="sample_tracker_rationale">Секвенсор у стилі демосцени: торкніться, щоб додати ноту, утримуйте для редагування, торкніться двічі для видалення. Грає на інструментах Саундборда.</string>
+	<string name="sample_life_viewer_name">Перегляд «Життя»</string>
+	<string name="sample_life_viewer_rationale">Гра «Життя» Конвея в позаекранному буфері, показана через рухомий вид: перетягуйте для прокручування, зводьте пальці для масштабу, три пальці — новий випадковий посів.</string>
 	<string name="sample_module_viewer_name">Перегляд модуля</string>
 	<string name="sample_module_viewer_rationale">Відтворює трекерний модуль (MOD, S3M, XM) і показує його як старі трекери: осцилограми, спектри й паттерн, що прокручується.</string>
 	<string name="sample_demo_writer_name">Демо-письменник</string>
@@ -643,6 +658,10 @@
 	<string name="offscreen_buffers_remove_message">Код у %1$s буде видалено.</string>
 	<string name="offscreen_buffers_remove">Видалити</string>
 	<string name="pass_tab_sound">Звук</string>
+	<string name="pass_tab_common">Спільний</string>
+	<string name="common_add">Додати спільний код</string>
+	<string name="common_remove">Видалити спільний код</string>
+	<string name="common_remove_message">Це видалить спільний код, з якого починається кожен прохід.</string>
 	<string name="pass_tab_image">Зобр</string>
 	<string name="pass_tab_text">Текст %1$s</string>
 	<string name="shader_texts_button">Тексти…</string>
@@ -674,6 +693,7 @@
 	<string name="channel_wrap_repeat">Повтор</string>
 	<string name="buffers_capture_unsupported">Шейдери з позаекранними буферами поки можна знімати лише в режимі «Як у застосунку» (без суперсемплінгу)</string>
 	<string name="not_a_shader_pack">Це не набір шейдерів</string>
+	<string name="shader_pack_too_new">Для цього набору шейдерів потрібна новіша версія застосунку</string>
 	<plurals name="shader_pack_installed">
 		<item quantity="one">%1$s встановлено: %2$d шейдер</item>
 		<item quantity="few">%1$s встановлено: %2$d шейдери</item>
@@ -813,4 +833,37 @@
 		<item quantity="many">Перейменувати %d шейдерів за цим списком? Дати не змінюються.</item>
 		<item quantity="other">Перейменувати %d шейдера за цим списком? Дати не змінюються.</item>
 	</plurals>
+	<string name="upscaling_menu">Масштабування…</string>
+	<string name="upscaling">Масштабування</string>
+	<string name="upscale_default">Типово (як фільтрація backbuffer)</string>
+	<string name="upscale_nearest">Найближчий</string>
+	<string name="upscale_sharp">Чіткі пікселі</string>
+	<string name="upscale_linear">Білінійний</string>
+	<string name="upscale_bspline">Гладкий (B-сплайн)</string>
+	<string name="upscale_catmull">Чіткий кубічний (Кетмалл-Ром)</string>
+	<string name="upscale_sinc">Sinc (Ланцош)</string>
+	<string name="upscale_defocus">Розфокус</string>
+	<string name="upscale_gaussian">Гаусове (м\'яке)</string>
+	<string name="upscale_points">Накопичення точок (останній буфер)</string>
+	<string name="upscale_splats">2D-гауссові сплати (останній буфер)</string>
+	<string name="upscale_exposure">Експозиція</string>
+	<string name="upscale_adjust_xform">Налаштувати трансформацію сплатів…</string>
+	<string name="splats_xform_adjusting">Трансформація сплатів: тягніть, зводьте, обертайте</string>
+	<string name="splats_xform_reset">Скинути</string>
+	<string name="splats_xform_done">Готово</string>
+	<string name="upscale_bokeh">Вигадливий розфокус (боке)</string>
+	<string name="upscale_crt">ЕПТ</string>
+	<string name="upscale_edges">За краями кадру</string>
+	<string name="upscale_edge_clamp">Край</string>
+	<string name="upscale_edge_periodic">Періодично</string>
+	<string name="upscale_edge_mirror">Дзеркально</string>
+	<string name="upscale_edge_black">Чорний</string>
+	<string name="upscale_radius">Радіус (пікселі кадру)</string>
+	<string name="upscale_strength">Сила</string>
+	<string name="upscale_hint">Лише на екрані й за якості нижче 1/1. Зберігається, доки застосунок відкритий; початкове задається в налаштуваннях.</string>
+	<string name="upscale_lobes">Пелюстки</string>
+	<string name="default_upscaling">Типове масштабування</string>
+	<string name="upscale_default_hint">Масштабування, з якого вигляд починає під час кожного запуску застосунку.</string>
+	<string name="higher_res_include_upscaling_label">Включити масштабування</string>
+	<string name="higher_res_include_upscaling">Включити масштабування - лише з «Як у застосунку»: знімки виходять такими, як на екрані, розміром екрана з поточним масштабуванням (Масштабування… у меню якості), тож масштаб відео дорівнює 1</string>
 </resources>

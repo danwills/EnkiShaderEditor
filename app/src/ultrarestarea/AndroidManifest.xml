@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ultra Rest Area (docs/ultra-rest-area.md): the shared app with Enki's
+     editor, its launcher, open-with/share entries, wallpaper, capture
+     services and every permission taken away - and RestAreaActivity, the
+     menu, as its launcher. ShowActivity (from main) plays the sets. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools">
+	<uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
+	<uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove"/>
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+		tools:node="remove"/>
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+		tools:node="remove"/>
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove"/>
+	<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+		tools:node="remove"/>
+	<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+		tools:node="remove"/>
+	<uses-feature android:name="android.hardware.camera.any" android:required="false"
+		tools:node="remove"/>
+	<uses-feature android:name="android.hardware.camera.autofocus" android:required="false"
+		tools:node="remove"/>
+	<uses-feature android:name="android.software.live_wallpaper" tools:node="remove"/>
+
+	<application>
+		<activity android:name=".activity.SplashActivity" tools:node="remove"/>
+		<activity android:name=".activity.MainActivity" tools:node="remove"/>
+		<activity android:name=".activity.PreviewActivity" tools:node="remove"/>
+		<activity android:name=".activity.PreferencesActivity" tools:node="remove"/>
+		<activity android:name=".activity.AddUniformActivity" tools:node="remove"/>
+		<activity android:name=".activity.LoadSampleActivity" tools:node="remove"/>
+		<activity android:name=".activity.TextureViewActivity" tools:node="remove"/>
+		<activity android:name=".activity.CropImageActivity" tools:node="remove"/>
+		<activity android:name=".activity.CubeMapActivity" tools:node="remove"/>
+		<service android:name=".service.ShaderWallpaperService" tools:node="remove"/>
+		<service android:name="enk.danwills.android.enkishadereditor.service.NotificationService"
+			tools:node="remove"/>
+		<service android:name=".service.AudioCaptureForegroundService" tools:node="remove"/>
+		<service android:name=".service.HighResCaptureService" tools:node="remove"/>
+		<service android:name=".service.TileProbeService" tools:node="remove"/>
+		<receiver android:name=".receiver.CompileAllCancelReceiver" tools:node="remove"/>
+
+		<activity
+			android:name=".restarea.RestAreaActivity"
+			android:theme="@style/PreviewTheme"
+			android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+			android:exported="true">
+			<intent-filter>
+				<action android:name="android.intent.action.MAIN"/>
+				<category android:name="android.intent.category.LAUNCHER"/>
+			</intent-filter>
+		</activity>
+	</application>
+</manifest>

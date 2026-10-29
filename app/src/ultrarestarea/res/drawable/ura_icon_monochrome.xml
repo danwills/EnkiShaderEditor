@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The icon's three blobs as plain circles, for themed (monochrome)
+     launcher icons - kept inside the adaptive icon's safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="108dp"
+	android:height="108dp"
+	android:viewportWidth="108"
+	android:viewportHeight="108">
+	<path
+		android:fillColor="#FFFFFFFF"
+		android:pathData="M38.9,42.1m-13,0a13,13 0,1 1,26 0a13,13 0,1 1,-26 0"/>
+	<path
+		android:fillColor="#FFFFFFFF"
+		android:pathData="M68.2,45.4m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0"/>
+	<path
+		android:fillColor="#FFFFFFFF"
+		android:pathData="M54,67.8m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0"/>
+</vector>

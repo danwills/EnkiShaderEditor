@@ -7,13 +7,20 @@ import java.util.List;
 
 final class ShaderLineMapping {
 	private static final ShaderLineMapping IDENTITY =
-			new ShaderLineMapping(List.of());
+			new ShaderLineMapping(List.of(), 0, 0);
 
 	@NonNull
 	private final List<InsertedLines> insertions;
+	// Where the shader's Common section is in the prepared source (its
+	// first line, 0 for none, and how many) - see ShaderSourcePreparer.
+	private final int commonFirstLine;
+	private final int commonLineCount;
 
-	private ShaderLineMapping(@NonNull List<InsertedLines> insertions) {
+	private ShaderLineMapping(@NonNull List<InsertedLines> insertions,
+			int commonFirstLine, int commonLineCount) {
 		this.insertions = List.copyOf(insertions);
+		this.commonFirstLine = commonFirstLine;
+		this.commonLineCount = commonLineCount;
 	}
 
 	@NonNull
@@ -47,6 +54,20 @@ final class ShaderLineMapping {
 		return Math.max(preparedLine - removedLines, -1);
 	}
 
+	// A prepared line's line in the Common section, or -1 if it isn't one
+	// of Common's.
+	int toCommonLine(int preparedLine) {
+		return commonFirstLine > 0 && preparedLine >= commonFirstLine &&
+				preparedLine < commonFirstLine + commonLineCount
+				? preparedLine - commonFirstLine + 1
+				: -1;
+	}
+
+	@NonNull
+	ShaderLineMapping withCommon(int firstLine, int lineCount) {
+		return new ShaderLineMapping(insertions, firstLine, lineCount);
+	}
+
 	@NonNull
 	ShaderLineMapping addInsertedLinesAfterSourceLine(int sourceLine, int lineCount) {
 		if (lineCount <= 0) {
@@ -61,11 +82,12 @@ final class ShaderLineMapping {
 				updatedInsertions.set(last, new InsertedLines(
 						sourceLine,
 						previous.lineCount + lineCount));
-				return new ShaderLineMapping(updatedInsertions);
+				return new ShaderLineMapping(updatedInsertions, commonFirstLine,
+						commonLineCount);
 			}
 		}
 		updatedInsertions.add(new InsertedLines(sourceLine, lineCount));
-		return new ShaderLineMapping(updatedInsertions);
+		return new ShaderLineMapping(updatedInsertions, commonFirstLine, commonLineCount);
 	}
 
 	private static final class InsertedLines {

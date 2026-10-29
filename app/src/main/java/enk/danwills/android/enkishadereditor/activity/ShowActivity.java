@@ -64,6 +64,9 @@ import enk.danwills.android.enkishadereditor.widget.ShaderView;
 public class ShowActivity extends AppCompatActivity {
 	private static final String TAG = "ShowActivity";
 	public static final String PACK_ID = "pack_id";
+	// No title text and no toasts - nothing but the shaders (Ultra Rest
+	// Area, which shows no Android UI).
+	public static final String QUIET = "quiet";
 	private static final long TITLE_MILLIS = 2500;
 	private static final long KEY_FRAME_MILLIS = 33;
 	private static final long FADE_MILLIS = 250;
@@ -73,8 +76,13 @@ public class ShowActivity extends AppCompatActivity {
 			"(?m)^[ \\t]*///mod:[A-Za-z0-9_]*[ \\t]*$");
 
 	public static void start(@NonNull Context context, @NonNull String packId) {
+		start(context, packId, false);
+	}
+
+	public static void start(@NonNull Context context, @NonNull String packId, boolean quiet) {
 		context.startActivity(new Intent(context, ShowActivity.class)
-				.putExtra(PACK_ID, packId));
+				.putExtra(PACK_ID, packId)
+				.putExtra(QUIET, quiet));
 	}
 
 	// One shader's turn, ready to run. sound: what's heard, shown under
@@ -82,7 +90,8 @@ public class ShowActivity extends AppCompatActivity {
 	private record Slide(@NonNull String title, @NonNull String source,
 			@Nullable String[] buffers, float quality, long shaderId, long millis,
 			@Nullable PackShow.Scene scene, @NonNull Map<String, ShaderDefine.Type> live,
-			@Nullable String sound, @NonNull Map<String, String> texts) {
+			@Nullable String sound, @NonNull Map<String, String> texts,
+			@Nullable String common) {
 	}
 
 	// What load() makes of a pack.
@@ -163,6 +172,7 @@ public class ShowActivity extends AppCompatActivity {
 	private long slideElapsed;
 	private int failedInARow;
 	private boolean started;
+	private boolean quiet;
 
 	@Override
 	protected void onCreate(Bundle state) {
@@ -173,6 +183,7 @@ public class ShowActivity extends AppCompatActivity {
 			return;
 		}
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		quiet = getIntent().getBooleanExtra(QUIET, false);
 
 		var taps = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
 			@Override
@@ -232,6 +243,9 @@ public class ShowActivity extends AppCompatActivity {
 		int pad = (int) (24 * getResources().getDisplayMetrics().density);
 		titleView.setPadding(pad, pad, pad, pad);
 		titleView.setAlpha(0f);
+		if (quiet) {
+			titleView.setVisibility(View.GONE);
+		}
 
 		var layout = new FrameLayout(this);
 		layout.addView(shaderView);
@@ -257,7 +271,7 @@ public class ShowActivity extends AppCompatActivity {
 					return;
 				}
 				if (loaded == null || loaded.slides().isEmpty()) {
-					Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
+					nothingToPlay();
 					finish();
 					return;
 				}
@@ -303,6 +317,12 @@ public class ShowActivity extends AppCompatActivity {
 		}
 	}
 
+	private void nothingToPlay() {
+		if (!quiet) {
+			Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
+		}
+	}
+
 	// Every slide's passes compiled ahead, the next ones first.
 	private void warm(@NonNull List<Slide> slides) {
 		var passes = new ArrayList<HeadlessShaderCompiler.Passes>();
@@ -316,7 +336,8 @@ public class ShowActivity extends AppCompatActivity {
 				}
 			}
 			passes.add(new HeadlessShaderCompiler.Passes(slide.shaderId(),
-					ShaderView.removeNonAscii(slide.source()), buffers));
+					ShaderView.removeNonAscii(slide.source()), buffers,
+					slide.common() != null ? ShaderView.removeNonAscii(slide.common()) : null));
 		}
 		new Thread(() -> warmer.warm(passes, binaryCache), "WarmShow").start();
 	}
@@ -350,8 +371,8 @@ public class ShowActivity extends AppCompatActivity {
 		slideElapsed = 0;
 		applyKeys();
 		shaderView.getRenderer().setShaderTexts(slide.texts(), false);
-		shaderView.setFragmentShader(slide.source(), slide.buffers(), slide.quality(),
-				slide.shaderId());
+		shaderView.setFragmentShader(slide.source(), slide.buffers(), slide.common(),
+				slide.quality(), slide.shaderId(), false);
 		if (slide.sound() != null) {
 			var text = new SpannableString(slide.title() + "\n\u266a " + slide.sound());
 			text.setSpan(new RelativeSizeSpan(0.7f), slide.title().length(), text.length(),
@@ -382,7 +403,7 @@ public class ShowActivity extends AppCompatActivity {
 
 	private void onSlideFailed() {
 		if (++failedInARow >= slides.size()) {
-			Toast.makeText(this, R.string.show_nothing_to_play, Toast.LENGTH_LONG).show();
+			nothingToPlay();
 			finish();
 			return;
 		}
@@ -481,9 +502,7 @@ public class ShowActivity extends AppCompatActivity {
 			long millis, @Nullable PackShow.Scene scene, boolean soundtrack,
 			@Nullable String soundtrackSource, float quality, @Nullable String showSound,
 			@NonNull String shaderAudio) {
-		var session = new LegacyShaderProjectSource(shader,
-				dataSource.buffer.getBufferSources(shader.id()),
-				dataSource.text.getTexts(shader.id())).openSession();
+		var session = LegacyShaderProjectSource.load(dataSource, shader).openSession();
 		String source = session.getEntryPointSource();
 		String[] buffers = session.getProject().getBufferSources();
 		// Each shader's own sound: its module, else its Sound pass.
@@ -556,6 +575,7 @@ public class ShowActivity extends AppCompatActivity {
 			title = title.substring(separator + DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
 		}
 		return new Slide(title, source, buffers, quality > 0 ? quality : shader.quality(),
-				shader.id(), millis, scene, live, sound, session.getProject().getTexts());
+				shader.id(), millis, scene, live, sound, session.getProject().getTexts(),
+				session.getProject().getCommonSource());
 	}
 }

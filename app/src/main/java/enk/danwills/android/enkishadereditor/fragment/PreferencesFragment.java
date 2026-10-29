@@ -44,9 +44,11 @@ import enk.danwills.android.enkishadereditor.io.DatabaseExporter;
 import enk.danwills.android.enkishadereditor.io.DatabaseImporter;
 import enk.danwills.android.enkishadereditor.io.ImportExportAsFiles;
 import enk.danwills.android.enkishadereditor.io.VideoFormat;
+import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.preference.ShaderListPreference;
 import enk.danwills.android.enkishadereditor.receiver.BatteryLevelReceiver;
+import enk.danwills.android.enkishadereditor.widget.UpscaleDialog;
 
 public class PreferencesFragment
 		extends PreferenceFragmentCompat
@@ -332,6 +334,32 @@ public class PreferencesFragment
 							DatabaseExporter.exportDatabase(context),
 							Toast.LENGTH_LONG).show();
 				}
+				return true;
+			});
+		}
+		// The same picker as the quality menu's Upscaling…, its choice kept
+		// as the one each session starts with.
+		Preference defaultUpscale = findPreference(Preferences.DEFAULT_UPSCALE);
+		if (defaultUpscale != null) {
+			defaultUpscale.setSummary(UpscaleDialog.filterName(
+					ShaderEditorApp.preferences.getDefaultUpscale()));
+			defaultUpscale.setOnPreferenceClickListener(preference -> {
+				var activity = getActivity();
+				if (activity == null) {
+					return true;
+				}
+				UpscaleDialog.show(activity, ShaderEditorApp.preferences.getDefaultUpscale(),
+						new UpscaleDialog.Host() {
+							@Override
+							public void preview(@NonNull Upscaling.Upscale upscale) {
+							}
+
+							@Override
+							public void apply(@NonNull Upscaling.Upscale upscale) {
+								ShaderEditorApp.preferences.setDefaultUpscale(upscale);
+								preference.setSummary(UpscaleDialog.filterName(upscale));
+							}
+						}, true);
 				return true;
 			});
 		}

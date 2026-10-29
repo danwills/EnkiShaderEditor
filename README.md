@@ -57,3 +57,10 @@ See [FAQ.md](FAQ.md) for frequently asked questions.
 * The built-in `font` texture is rendered from
 	[IBM Plex Mono](https://github.com/IBM/plex), Copyright © 2017 IBM Corp., under the
 	[SIL Open Font License 1.1](tools/font/OFL.txt) - see `tools/font/make_atlas.py`.
+
+* The built-in `colormaps` texture holds the
+	[CET Perceptually Uniform Colour Maps](https://colorcet.com) by Peter Kovesi, under
+	[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (the newest via the
+	[colorcet](https://github.com/holoviz/colorcet) package), and Ready's colour maps: ColorBrewer's
+	(Apache 2.0, from VTK) and matplotlib's inferno (CC0) - see
+	`app/src/main/res/raw/colormaps_license.txt` and `tools/colormaps/make_atlas.py`.

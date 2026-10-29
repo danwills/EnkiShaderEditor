@@ -185,9 +185,8 @@ public class ShaderManager {
 		if (shader == null) {
 			return;
 		}
-		ShaderProjectSession session = new LegacyShaderProjectSource(shader,
-				dataSource.buffer.getBufferSources(selectedShaderId),
-				dataSource.text.getTexts(selectedShaderId)).openSession();
+		ShaderProjectSession session = LegacyShaderProjectSource.load(dataSource, shader)
+				.openSession();
 		String activePath = savedInstanceState.getString(ACTIVE_FILE_PATH);
 		if (activePath != null && session.getProject().hasFile(activePath)) {
 			session = session.withActiveFile(activePath);
@@ -241,6 +240,7 @@ public class ShaderManager {
 		}
 		dataSource.shader.updateShader(id, parsed.imageSource(), null, shader.quality());
 		dataSource.buffer.setBufferSources(id, parsed.bufferSources());
+		dataSource.buffer.setCommonSource(id, parsed.commonSource());
 		dataSource.text.setTexts(id, parsed.texts());
 	}
 
@@ -297,6 +297,15 @@ public class ShaderManager {
 		return currentProjectSession;
 	}
 
+	// Adds (source) or removes (null) the Common section, as
+	// setBufferSources() does buffers.
+	@NonNull
+	public ShaderProjectSession setCommonSource(@Nullable String source) {
+		currentProjectSession = getEditedProjectSession().withCommonSource(source);
+		setModified(true);
+		return currentProjectSession;
+	}
+
 	// Adds/removes/renames texts, as setBufferSources() does buffers - the
 	// caller first moves off a text tab that's about to go.
 	@NonNull
@@ -323,8 +332,8 @@ public class ShaderManager {
 			return;
 		}
 
-		ShaderProjectSession projectSession = new LegacyShaderProjectSource(shader,
-				dataSource.buffer.getBufferSources(id), dataSource.text.getTexts(id)).openSession();
+		ShaderProjectSession projectSession = LegacyShaderProjectSource.load(dataSource, shader)
+				.openSession();
 		ShaderEditorApp.preferences.setLastOpenedShader(id);
 		applyProjectSession(id,
 				projectSession,
@@ -365,6 +374,8 @@ public class ShaderManager {
 		if (ownsBuffers) {
 			dataSource.buffer.setBufferSources(selectedShaderId,
 					edited.getProject().getBufferSources());
+			dataSource.buffer.setCommonSource(selectedShaderId,
+					edited.getProject().getCommonSource());
 			dataSource.text.setTexts(selectedShaderId, edited.getProject().getTexts());
 		}
 
@@ -412,9 +423,11 @@ public class ShaderManager {
 				: intent.getData();
 		if (uri == null) {
 			CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-			return text != null && !text.toString().isBlank()
-					? new SharedText(text.toString(), null)
-					: null;
+			if (text == null || text.toString().isBlank()) {
+				return null;
+			}
+			var named = MultipassSource.takeName(text.toString());
+			return new SharedText(named.text(), named.name());
 		}
 
 		try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
@@ -431,7 +444,10 @@ public class ShaderManager {
 			if (text.isBlank()) {
 				return null;
 			}
-			return new SharedText(text, getNameWithoutExtension(uri));
+			// A name line (see MultipassSource.withName()) beats the file's.
+			var named = MultipassSource.takeName(text);
+			return new SharedText(named.text(),
+					named.name() != null ? named.name() : getNameWithoutExtension(uri));
 		} catch (IOException | SecurityException e) {
 			Toast.makeText(activity, R.string.unsuitable_text,
 					Toast.LENGTH_SHORT).show();
@@ -529,6 +545,21 @@ public class ShaderManager {
 		return newId;
 	}
 
+	// A new shader from `session` - every pass, Common and texts - with
+	// the current thumbnail and quality, unnamed; the selected shader is
+	// left as it is. Returns the new id, or NO_SHADER.
+	public long insertShader(@NonNull ShaderProjectSession session) {
+		long newId = dataSource.shader.insertShader(session.getEntryPointSource(), null,
+				getThumbnail(), quality);
+		if (newId <= 0) {
+			return NO_SHADER;
+		}
+		dataSource.buffer.setBufferSources(newId, session.getProject().getBufferSources());
+		dataSource.buffer.setCommonSource(newId, session.getProject().getCommonSource());
+		dataSource.text.setTexts(newId, session.getProject().getTexts());
+		return newId;
+	}
+
 	public void deleteShader(long shaderId) {
 		dataSource.shader.removeShader(shaderId);
 		if (shaderId == selectedShaderId) {
@@ -558,9 +589,7 @@ public class ShaderManager {
 			@NonNull String fallbackSource) {
 		var shader = dataSource.shader.getShader(shaderId);
 		return shader != null
-				? new LegacyShaderProjectSource(shader,
-						dataSource.buffer.getBufferSources(shaderId),
-						dataSource.text.getTexts(shaderId)).openSession()
+				? LegacyShaderProjectSource.load(dataSource, shader).openSession()
 				: createScratchProjectSession(fallbackSource, quality);
 	}
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Kept by resource shrinking although nothing refers to them: the font
      atlas's licence (SIL Open Font License) and IBXM's (BSD-3-Clause) have
-     to ship with the app. -->
+     to ship with the app - as do the colour maps' credits (CC BY 4.0). -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-	tools:keep="@raw/font_atlas_license,@raw/ibxm_licence"/>
+	tools:keep="@raw/font_atlas_license,@raw/ibxm_licence,@raw/colormaps_license"/>

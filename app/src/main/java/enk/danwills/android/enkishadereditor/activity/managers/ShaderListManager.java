@@ -676,9 +676,10 @@ public class ShaderListManager {
 	}
 
 	// NameTokenizer/the tree view assume PascalCase, so text that
-	// doesn't start with a capital letter (including starting with a
-	// digit) won't group the way the user probably expects - catch that
-	// here rather than silently accepting it. onAccepted is invoked with
+	// starts with a lowercase letter (or a symbol) won't group the way
+	// the user probably expects - catch that here rather than silently
+	// accepting it. A digit is fine: a number after a lowercase letter
+	// starts a token of its own (see NameTokenizer). onAccepted is invoked with
 	// the final text to use - immediately (synchronously) if no warning
 	// was needed, otherwise once the user picks a way to resolve it (not
 	// at all if they cancel). Shared by the plain rename dialog (checked
@@ -687,7 +688,8 @@ public class ShaderListManager {
 	// already).
 	public void checkNamePrefixAndThen(
 			@NonNull String candidate, @NonNull Consumer<String> onAccepted) {
-		if (candidate.isEmpty() || Character.isUpperCase(candidate.charAt(0))) {
+		if (candidate.isEmpty() || Character.isUpperCase(candidate.charAt(0))
+				|| Character.isDigit(candidate.charAt(0))) {
 			onAccepted.accept(candidate);
 			return;
 		}
