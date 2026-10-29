@@ -746,3 +746,11 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   still needs the same change (outside ~/dev/shaderEditor, so not done here).
 - "go ahead and copy it to the skill's kit" - copied the chirp (Chime, TestStatusReceiver,
   README) into ~/.claude/skills/phone-testing/kit and committed it there (b212dae).
+- "let's do multi-species now.. maybe 3 initially each with their own color ramp setting..
+  would like to be able to go back to 1 reagent.. could number of reagents be a slider that
+  redoes the ui only when released" - Slime Cartographer v7: up to 3 species (default 3), each
+  with its own colours bar; a SPECIES bar that takes effect when the finger lifts (the menu's
+  rows change then; agents dealt species afresh); AVOIDANCE (how much each shies from the
+  others' trails); new Rust and Ink schemes (Paper/Rust/Ink by default). One species is the old
+  colony. Checked headless: three species weave bands, dragging species to 1 changes the menu
+  only on release and goes back to Lace.
