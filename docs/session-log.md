@@ -758,3 +758,10 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   name; Dan ignored it to keep v6. Fixed: ShaderImportReceiver asks only when the name exists
   (add_shader.sh reports accordingly). Reinstalled Enki debug (asked first), and v7 went on as
   1058 alongside v6, open at 56 fps with three species.
+- "make the menu take up 3/4 of the screen ... tap on the color ones cycle through all the
+  ramps ... soften out the look of the pheromones when they have just had sharp trails
+  deposited ... can [Scale] scale from the center too?" - Slime Cartographer v8: menu rows
+  spread up to 3/4 height; tap on a colours bar = next scheme; SOFTEN bar (display only: ridges
+  above the mean of a ring of samples are eased down, so fresh thin trails blur and veins stay
+  crisp; no extra buffers); scale about the middle like zoom (agents shifted, trail resampled).
+  Checked headless (scale: centre correlation 0.34 vs 0.007 for the corner). Not on the phone yet.
