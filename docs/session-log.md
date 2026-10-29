@@ -739,3 +739,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - "there we go" (phone) - Slime Cartographer v6 on the phone (1057): starts in Paper with no
   agents at 57 fps; Dan gave zooming about the middle a thumbs up. Zoom put back to 1, phone
   back on the home screen. Screenshots: `~/dev/shaderEditor/physarum/phone/v6/`.
+- "play some kind of chime for the thumbs-up/down question too as I often miss those.. make it
+  sound inquisitive" (meant for another session, but "you can do it") - `Chime.wondering` in
+  Enki debug and tools/phone-kit, played when `rate` asks: tuned on the phone from a three-note
+  bend to a 0.2 s low chirp rising C4 to G4 (thumbs up). The phone-testing skill's own kit
+  still needs the same change (outside ~/dev/shaderEditor, so not done here).
