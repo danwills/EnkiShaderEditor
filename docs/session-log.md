@@ -770,3 +770,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   at 0/1/2 show softer fresh trails and smoother, slightly bolder veins.
 - "chuck it on the phone" - Slime Cartographer v8 on the phone (1059), next to v7, open with
   the 3/4-height menu showing.
+- "merge it to master" - squash-merged UltraRestArea (276 commits since 21 Oct) into master as
+  0cd2ec4d and pushed; master and the branch now have the same tree. No docs-site changes, so
+  no docs deploy to check.
