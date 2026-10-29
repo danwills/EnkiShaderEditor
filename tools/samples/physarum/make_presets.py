@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Writes presets (presets.py: PRESETS = [(name, {setting: value}), ...])
-into the shader between its PRESET markers, adding any glyphs the names
-need to the font.
+into the shader between its PRESET markers, and the menu's labels (from
+the "A | B | ..." line between its LABELS markers), adding any glyphs the
+names and labels need to the font.
 
   make_presets.py shader.glsl presets.py
 """
@@ -21,6 +22,7 @@ FONT = {
 ORDER = ["SENSOR_ANGLE", "SENSOR_DISTANCE", "TURN", "SPEED", "FADE", "GLOW",
 		"DIFFUSE", "BLUR", "JITTER", "SPAWN"]
 NAME_COLUMNS = 11
+LABEL_COLUMNS = 21
 
 
 def f(v):
@@ -30,19 +32,26 @@ def f(v):
 def main():
 	path, presets = sys.argv[1], runpy.run_path(sys.argv[2])["PRESETS"]
 	s = open(path).read()
-	m = re.search(r"//[^\n]*highest bit\) - small numbers, exact on any GPU:  ([^\n]*)\n"
-			r"const int GLYPHS\[GLYPH_COUNT \* 5\] = int\[\]\(\n(.*?)\);", s, re.S)
+	m = re.search(r"// FONT BEGIN\n.*?exact on any GPU:  ([^\n]*)\n"
+			r"const int GLYPHS\[GLYPH_COUNT \* 5\] = int\[\]\(\n(.*?)\);\n// FONT END", s, re.S)
 	chars = " " + m.group(1)
 	rows = [int(x) for x in m.group(2).replace("\n", " ").split(",")]
-	need = sorted({c for name, _ in presets for c in name.upper() if c not in chars})
-	for c in need:
+	labels = re.search(r"// LABELS BEGIN\n//[^\n]*\n// ([^\n]*)\n", s).group(1).split(" | ")
+	text = "".join(name for name, _ in presets).upper() + "".join(labels)
+	for c in sorted({c for c in text if c not in chars}):
 		chars += c
 		rows += list(FONT[c])
 	lines = ",\n".join("\t\t" + ", ".join(str(r) for r in rows[k:k + 5]) for k in range(0, len(rows), 5))
-	s = s[:m.start()] + ("// 5x5 glyphs, five rows each (top first, leftmost pixel in the\n"
+	s = s[:m.start()] + ("// FONT BEGIN\n// 5x5 glyphs, five rows each (top first, leftmost pixel in the\n"
 			"// highest bit) - small numbers, exact on any GPU:  %s\n"
-			"const int GLYPHS[GLYPH_COUNT * 5] = int[](\n%s);" % (chars[1:], lines)) + s[m.end():]
+			"const int GLYPHS[GLYPH_COUNT * 5] = int[](\n%s);\n// FONT END" % (chars[1:], lines)) + s[m.end():]
 	s = re.sub(r"#define GLYPH_COUNT \d+", "#define GLYPH_COUNT %d" % len(chars), s)
+
+	codes = [", ".join(str(chars.index(c)) for c in label[:LABEL_COLUMNS].ljust(LABEL_COLUMNS)) for label in labels]
+	block = ("// LABELS BEGIN\n// The bars' labels, bottom row first (made by make_presets.py from this line):\n"
+			"// %s\nconst int LABELS[%d * LABEL_COLUMNS] = int[](\n%s);\n// LABELS END") % (
+			" | ".join(labels), len(labels), ",\n".join("\t\t" + c for c in codes))
+	s = re.sub(r"// LABELS BEGIN.*?// LABELS END", lambda _: block, s, flags=re.S)
 
 	names = []
 	for name, _ in presets:
