@@ -40,6 +40,14 @@
 #   status.sh wait SECONDS [TEXT [KIND]]
 #                     use instead of sleep: TEXT posted first (if given),
 #                     then waits, heeding the panel's buttons as it goes
+#   status.sh run COMMAND [ARGS...]
+#                     runs a long step (an install, a recording, a loop)
+#                     while watching for Stop or a swipe every second; on
+#                     either it stops waiting and exits 3 at once, so Claude
+#                     hears about it, but leaves the step to finish by
+#                     itself (Dan wants Stop to get attention, not kill
+#                     things half-done; its pid is printed). Otherwise exits
+#                     with the step's own status
 #
 # Every command (but ask and done) heeds the panel's buttons first, so
 # they get through whatever Claude's doing:
@@ -48,6 +56,10 @@
 #   - Stop exits 3 with a note on stderr - once: after that commands run
 #     as normal, so Claude can narrate putting things back - but check
 #     keeps failing
+#   - a swiped-away notification makes check, wait and run exit (3 for
+#     wait and run), every time
+# So a batch should end the moment any of them exits 3 (see README.md's
+# "Stopping quickly"), and use wait, not sleep.
 #   status.sh rate "Does the preview look right?" [SECONDS]
 #                     the line, with thumbs up/down and Clarify
 #                     beside the panel until one's tapped or SECONDS
@@ -93,6 +105,15 @@ tag() {
 }
 
 # The phone's shell gets one string: no straight single quotes inside.
+# The notification's icons (icons/): working, finished or stopped, so the
+# status bar shows at a glance whether Claude's still at it. The small one
+# is the status bar's (a white shape), the large a coloured disc in the shade.
+KIT="$(cd "$(dirname "$0")" && pwd)"
+icons() {
+	[ -s "$KIT/icons/$1.png" ] || return 0
+	printf -- "-i %s -I %s" "data:base64,$(base64 -w0 "$KIT/icons/$1.png")" "data:base64,$(base64 -w0 "$KIT/icons/$1-large.png")"
+}
+
 quote() {
 	printf "'%s'" "$(printf %s "$1" | sed "s/'/’/g")"
 }
@@ -177,6 +198,14 @@ messages() {
 	fi
 }
 
+# Exits 3 if the notification's been swiped away mid-run.
+swiped() {
+	[ -s "$STATE" ] || return 0
+	[ -n "$(key "$(tag)")" ] && return 0
+	echo "⏹ Dan swiped the notification away: finish the step in hand, put the phone back, run done, and stop." >&2
+	exit 3
+}
+
 heed() {
 	messages
 	said=
@@ -228,7 +257,7 @@ post)
 		[ -s "$FINISHED" ] && remove "$(cat "$FINISHED")" && rm -f "$FINISHED"
 		: > "$LOG"
 		adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
-		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
+		adb shell "cmd notification post $(icons working) -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
 	heed
@@ -238,11 +267,32 @@ wait)
 	[ -n "$2" ] || { echo "usage: $0 wait SECONDS [TEXT [KIND]]" >&2; exit 2; }
 	heed
 	[ -n "${3:-}" ] && line "$3" "${4:-wait}" "~$2 s"
-	end=$(($(date +%s) + $2))
+	# Whole seconds polled; a fraction (wait 1.5) is slept first.
+	case "$2" in *.*) sleep "0.${2#*.}" ;; esac
+	end=$(($(date +%s) + ${2%.*}))
 	while [ "$(date +%s)" -lt "$end" ]; do
 		sleep 1
+		swiped
 		heed
 	done
+	;;
+run)
+	shift
+	[ $# -gt 0 ] || { echo "usage: $0 run COMMAND [ARGS...]" >&2; exit 2; }
+	heed
+	"$@" &
+	pid=$!
+	# On a stop, say what's still running and leave it be.
+	trap 'kill -0 $pid 2>/dev/null && echo "(the step is still running, pid $pid: left to finish)" >&2' EXIT
+	while kill -0 "$pid" 2>/dev/null; do
+		sleep 1
+		kill -0 "$pid" 2>/dev/null || break
+		swiped
+		heed
+	done
+	trap - EXIT
+	wait "$pid"
+	exit $?
 	;;
 again)
 	# Only mid-run: the panel's back, with the pill and the run's last lines.
@@ -394,10 +444,10 @@ done)
 	t=$(tag)
 	if [ "$3" = sad ]; then
 		title="😢 Claude has stopped"
-		kind=sad
+		kind=sad; look=stopped
 	else
 		title="😊 Claude is all finished"
-		kind=happy
+		kind=happy; look=finished
 	fi
 	# The summary, then the run's last lines, to look back over.
 	body="$(icon "$kind") ${2:-Finished testing} - nothing is driving your phone now."
@@ -409,14 +459,14 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 		done)"
 	fi
 	# Updated in place - left up, so it's clear nothing's driving the phone.
-	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
+	adb shell "cmd notification post $(icons $look) -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
 	echo "$t" > "$FINISHED"
 	rm -f "$STATE" "$LOG" "$LAST"
 	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 	# And the panel gone at once, and "appear on top" back as it was (off,
 	# unless it's been turned on in Settings) - so it's never left on, to
 	# get in the way after the run.
-	say "--ez done true"
+	say "--ez done true --es mood $kind"
 	adb shell appops set $PKG SYSTEM_ALERT_WINDOW default >/dev/null 2>&1
 	# Rotation and stay-awake as the run found them.
 	if [ -s "$FOUND" ]; then

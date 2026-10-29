@@ -33,6 +33,8 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		var overlay = StatusOverlay.get(app);
 		if (intent.getBooleanExtra("done", false)) {
 			overlay.clear();
+			// A soft chime of its own (the shell's notification sound is the usual one).
+			if ("sad".equals(intent.getStringExtra("mood"))) Chime.stopped(); else Chime.finished();
 			return;
 		}
 		if (intent.getBooleanExtra("rate_clear", false)) {

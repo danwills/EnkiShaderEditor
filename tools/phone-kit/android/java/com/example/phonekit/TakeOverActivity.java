@@ -87,6 +87,7 @@ public class TakeOverActivity extends Activity {
 			finish();
 			return;
 		}
+		Chime.asking();   // to catch an ear, as the question may be up while they're looking elsewhere
 		message = text != null && !text.isEmpty() ? text
 				: "Claude would like to drive the phone for a test.";
 		int wait = getIntent().getIntExtra("wait", 15);

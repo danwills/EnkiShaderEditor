@@ -91,6 +91,14 @@ tag() {
 }
 
 # The phone's shell gets one string: no straight single quotes inside.
+# The notification's icons (the generic kit's icons/): working, finished or
+# stopped, so the status bar shows at a glance whether Claude's still at it.
+KIT="$(cd "$(dirname "$0")/../phone-kit" && pwd)"
+icons() {
+	[ -s "$KIT/icons/$1.png" ] || return 0
+	printf -- "-i %s -I %s" "data:base64,$(base64 -w0 "$KIT/icons/$1.png")" "data:base64,$(base64 -w0 "$KIT/icons/$1-large.png")"
+}
+
 quote() {
 	printf "'%s'" "$(printf %s "$1" | sed "s/'/’/g")"
 }
@@ -226,7 +234,7 @@ post)
 		[ -s "$FINISHED" ] && remove "$(cat "$FINISHED")" && rm -f "$FINISHED"
 		: > "$LOG"
 		adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
-		adb shell "cmd notification post -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
+		adb shell "cmd notification post $(icons working) -S bigtext -t $(quote "🤖 Claude is using your phone") $(tag) $(quote "Testing - swipe this away to interrupt")" >/dev/null
 		adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1
 	fi
 	heed
@@ -392,10 +400,10 @@ done)
 	t=$(tag)
 	if [ "$3" = sad ]; then
 		title="😢 Claude has stopped"
-		kind=sad
+		kind=sad; look=stopped
 	else
 		title="😊 Claude is all finished"
-		kind=happy
+		kind=happy; look=finished
 	fi
 	# The summary, then the run's last lines, to look back over.
 	body="$(icon "$kind") ${2:-Finished testing} - nothing is driving your phone now."
@@ -407,14 +415,14 @@ $(tail -n "$TAIL" "$LOG" | while IFS="$(printf '\t')" read -r k text eta start t
 		done)"
 	fi
 	# Updated in place - left up, so it's clear nothing's driving the phone.
-	adb shell "cmd notification post -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
+	adb shell "cmd notification post $(icons $look) -S bigtext -t $(quote "$title") $t $(quote "$body")" >/dev/null
 	echo "$t" > "$FINISHED"
 	rm -f "$STATE" "$LOG" "$LAST"
 	adb shell "run-as $PKG rm -f files/claude-control" >/dev/null 2>&1
 	# And the panel gone at once, and "appear on top" back as it was (off,
 	# unless it's been turned on in Settings) - so it's never left on, to
 	# get in the way after the run.
-	say "--ez done true"
+	say "--ez done true --es mood $kind"
 	adb shell appops set $PKG SYSTEM_ALERT_WINDOW default >/dev/null 2>&1
 	# Rotation and stay-awake as the run found them.
 	if [ -s "$FOUND" ]; then

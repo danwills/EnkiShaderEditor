@@ -16,7 +16,9 @@ import android.widget.Toast;
 // answer written to files/claude-rate-<id> (`question`: the question, for
 // the clarify box); `rate_clear` - thumbs gone;
 // `hide` - the panel out of sight, for a clean screenshot; `done` - the
-// run's over, the panel gone at once (the notification has the log's end). Shown in StatusOverlay
+// run's over, the panel gone at once (the notification has the log's end),
+// with a soft chime of its own (Chime; `mood` sad: the stopped one), so the end doesn't
+// sound like any other notification. Shown in StatusOverlay
 // over whatever's on screen, or - without the overlay permission, which
 // status.sh grants with appops - as a plain toast.
 public class TestStatusReceiver extends BroadcastReceiver {
@@ -33,6 +35,7 @@ public class TestStatusReceiver extends BroadcastReceiver {
 		var overlay = StatusOverlay.get(app);
 		if (intent.getBooleanExtra("done", false)) {
 			overlay.clear();
+			if ("sad".equals(intent.getStringExtra("mood"))) Chime.stopped(); else Chime.finished();
 			return;
 		}
 		if (intent.getBooleanExtra("rate_clear", false)) {

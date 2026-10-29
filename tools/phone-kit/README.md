@@ -150,6 +150,19 @@ When driving the phone over adb:
   to, put the phone back, and stop. Use `status.sh wait SECONDS 'why'`
   instead of `sleep`. `status.sh check` between steps also fails if the
   notification was swiped away.
+- **Stopping quickly.** Dan expects ⏹ to take effect within a second
+  or two, not after the batch in hand. So in every batch:
+  - call the script through a function that ends the batch on exit 3,
+    e.g. `S() { tools/phone/status.sh "$@"; r=$?; [ $r = 3 ] && exit 3; return $r; }`,
+    and never send its output to /dev/null without keeping that check;
+  - wrap anything long (an install, a recording, a polling loop) in
+    `S run CMD ...`, which comes back the moment Dan stops (leaving the
+    step itself to finish: Stop is to get your attention, not to kill
+    things half-done);
+  - use `S wait N` instead of `sleep`, and `S check || exit 3` at the
+    top of every loop iteration.
+  After a stop, put things back with plain adb (not `run` or `wait`,
+  which keep exiting while the notification's gone), then `done`.
 - `status.sh rate` can answer `clarify: <text>`: that's the real
   answer, so act on what it says.
 - Finish by putting the phone back: reopen the app that was showing
@@ -196,3 +209,14 @@ When driving the phone over adb:
 - **Look before acting.** Screenshots (`adb exec-out screencap -p`) are
   the agent's eyes, and the panel and prompt show up in them, so clear
   them first when the result matters.
+
+- **Telling a finished run from a quiet one:** the run's notification carries
+  icons from `kit/icons/` (posted inline as `data:base64`, so nothing's copied
+  to the phone): a ring while working, a tick when finished, a cross when
+  stopped, as the status bar's small icon and a coloured disc in the shade.
+  The shell's notification sound can't be changed, so `done` also has the
+  app play a soft low chime of its own (`Chime`: two synthesised notes,
+  G4 falling to C4 when finished, E♭4 to C4 when stopped; ToneGenerator's beeps were too harsh, and
+  bare low sines too quiet on a phone speaker, so they carry some overtones).
+  `ask`'s dialog plays a quick C up to G as it opens, to catch an ear. Redraw the icons with any 96 px white-on-transparent PNG
+  plus a `-large` one.

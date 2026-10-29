@@ -87,6 +87,7 @@ public class TakeOverActivity extends Activity {
 			finish();
 			return;
 		}
+		enk.danwills.android.enkishadereditor.receiver.Chime.asking();   // to catch an ear
 		message = text != null && !text.isEmpty() ? text
 				: "Claude would like to drive the phone for a test.";
 		int wait = getIntent().getIntExtra("wait", 15);

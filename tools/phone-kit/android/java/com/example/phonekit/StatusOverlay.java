@@ -608,6 +608,14 @@ final class StatusOverlay {
 		lines.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 		windows.addView(lines, params);
 		panel = lines;
+		// Overlays stack in the order they're added, and the buttons sit over
+		// the panel's top: if they came first (thumbs asked for before any
+		// line), they'd be under it, looking greyed out. Back on top.
+		if (controls != null) {
+			var controlParams = controls.getLayoutParams();
+			windows.removeView(controls);
+			windows.addView(controls, controlParams);
+		}
 		return lines;
 	}
 
