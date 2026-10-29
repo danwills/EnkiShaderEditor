@@ -704,3 +704,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   physarum search data, renders and Softology's pictures are already under
   `~/dev/shaderEditor/physarum/`; the scratchpad held only an early v3 draft. Next time: v3 on
   the phone, then species.
+- "phone is here" - Slime Cartographer v3 (1054) on the phone. All 14 presets look as on the
+  desktop, at 47-85 fps (1/4 quality). Once, stepping Stars → Glow Worms left it stuck: a solid
+  yellow speckle, the row reading LACE, with Lace's settings, and taps doing nothing (as if a
+  fresh colony were seeded every frame) until Rewind. It didn't happen again on the phone (Maze
+  → Glow Worms, Stars → Glow Worms), nor replaying the nine taps headless on the desktop.
+  Screenshots: `~/dev/shaderEditor/physarum/phone/v3/`. Cause not found yet.
