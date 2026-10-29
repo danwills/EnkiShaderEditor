@@ -716,3 +716,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   bars set where touched and dragged (the 2/3-finger gestures are gone); new bars for trail
   opacity, agent opacity and scale (above 1 a smaller colony magnified, below 1 distances
   shrunk). Tested headless with scripted touches; not on the phone yet.
+- "phone's here" - Slime Cartographer v4 on the phone (1055). The menu tap, touching and
+  dragging bars, both opacities, and scale at 2.5 and 0.3 all work there, at 54-67 fps. Put it
+  back to defaults after. Screenshots: `~/dev/shaderEditor/physarum/phone/v4/`.
