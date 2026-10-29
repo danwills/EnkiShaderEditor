@@ -773,3 +773,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - "merge it to master" - squash-merged UltraRestArea (276 commits since 21 Oct) into master as
   0cd2ec4d and pushed; master and the branch now have the same tree. No docs-site changes, so
   no docs deploy to check.
+
+- Dan wants Enki on the Play Store as a free app, with paid shader packs later: answered with the checklist (bundles already build with `make bundle`; the 14-day closed test for new personal accounts; Play App Signing; the Console forms; credit for the fork; licences when curating packs; billing in a later update).
+- He'll do internal testing first and handle the Console himself, and asked for the bundle and release notes: bumped to 2.37.0 (versionCode 96), with a CHANGELOG entry and `fastlane/.../en-US/changelogs/96.txt` (383 characters, under Play's 500). The signed bundle needs his keystore passwords (`~/.android-signing/enki-shader-editor-release.jks`), so he runs `make bundle` himself. Also told him where Create app is in Play Console.
