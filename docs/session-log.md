@@ -765,3 +765,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   above the mean of a ring of samples are eased down, so fresh thin trails blur and veins stay
   crisp; no extra buffers); scale about the middle like zoom (agents shifted, trail resampled).
   Checked headless (scale: centre correlation 0.34 vs 0.007 for the corner). Not on the phone yet.
+- "maybe pheromone deposit radius should be a thing?" - DEPOSIT RADIUS bar (left column, 0-2
+  cells): agents lay a normalised tent that wide instead of one pixel; 0 is as before. Renders
+  at 0/1/2 show softer fresh trails and smoother, slightly bolder veins.
