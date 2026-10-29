@@ -98,7 +98,7 @@ public class TakeOverActivity extends Activity {
 				: android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
 				.setTitle("🤖 Can Claude use your phone?")
 				.setMessage(message)
-				.setPositiveButton("Go ahead", (d, w) -> answer(id, "yes"))
+				.setPositiveButton("Go ahead", (d, w) -> { enk.danwills.android.enkishadereditor.receiver.Chime.starting(); answer(id, "yes"); })
 				.setNegativeButton("Not now", (d, w) -> answer(id, "no"))
 				.setNeutralButton("Hang on a sec", null)
 				.setOnCancelListener(d -> answer(id, "no"))

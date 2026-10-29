@@ -218,5 +218,6 @@ When driving the phone over adb:
   app play a soft low chime of its own (`Chime`: two synthesised notes,
   G4 falling to C4 when finished, E♭4 to C4 when stopped; ToneGenerator's beeps were too harsh, and
   bare low sines too quiet on a phone speaker, so they carry some overtones).
-  `ask`'s dialog plays a quick C up to G as it opens, to catch an ear. Redraw the icons with any 96 px white-on-transparent PNG
+  `ask`'s dialog plays a quick C up to G as it opens, to catch an ear. Tapping its Go ahead plays a car starting
+  (`Chime.starting`: the starter cranks, the engine catches and revs twice). Redraw the icons with any 96 px white-on-transparent PNG
   plus a `-large` one.
