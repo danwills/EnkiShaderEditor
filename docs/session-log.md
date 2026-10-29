@@ -754,3 +754,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   others' trails); new Rust and Ink schemes (Paper/Rust/Ink by default). One species is the old
   colony. Checked headless: three species weave bands, dragging species to 1 changes the menu
   only on release and goes back to Lace.
+- "chuck it on phone now" - the Replace/Ignore prompt came up for v7 though no shader had that
+  name; Dan ignored it to keep v6. Fixed: ShaderImportReceiver asks only when the name exists
+  (add_shader.sh reports accordingly). Reinstalled Enki debug (asked first), and v7 went on as
+  1058 alongside v6, open at 56 fps with three species.
