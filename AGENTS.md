@@ -231,7 +231,7 @@ This document captures how the app is structured today so you can change it conf
 - **Modify shader preview behavior**: touch `ShaderViewManager`, `ShaderRenderer`, and `MainActivity`. Remember manual-run flows rely on `PreviewActivity`, not the embedded GLSurfaceView.
 - **Adjust import/export**: modify `ImportExportAsFiles` and the preference wiring; keep runtime permissions + scoped storage differences in mind.
 - **Extend preferences**: add entries to `res/xml/preferences.xml`, define keys/defaults in `Preferences`, update `PreferencesFragment` summaries and any code paths referencing the new setting.
-- **Release prep**: update `CHANGELOG.md`, `fastlane/metadata/**/changelogs`, bump `versionCode`/`versionName` in `app/build.gradle.kts`, run `make release` or `make bundle`, and refresh screenshots if UI changed.
+- **Release prep**: update `CHANGELOG.md`, `fastlane/metadata/**/changelogs`, bump `versionCode`/`versionName` in `app/build.gradle.kts`, run `make release` or `make bundle` (after `source ~/.android-signing/enki-shader-editor-release.env`, which sets the signing vars), and refresh screenshots if UI changed.
 
 ---
 

@@ -34,7 +34,12 @@ Two independent projects:
 - `make install` / `make start` / `make uninstall` — adb install/launch/uninstall Enki's debug
   build (`make ura-install` / `make ura-start` for Ultra Rest Area's).
 - `./gradlew assembleEnkiRelease` / `make release` — release build (minified, resource-shrunk;
-  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
+  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead (what Play
+  takes). Dan's keystore and its passwords are in `~/.android-signing/`: run
+  `source ~/.android-signing/enki-shader-editor-release.env && make bundle` yourself - don't ask
+  Dan for an alias or passwords. The bundle lands in
+  `app/build/outputs/bundle/enkiRelease/app-enki-release.aab`; copy it to
+  `~/dev/shaderEditor/release/enki-<versionName>-<versionCode>.aab` for him to upload.
 - `./gradlew lintEnkiDebug` or `make lint` — Android lint (`lintUltrarestareaDebug` for the other
   app; both should stay at the 50-warning baseline).
 - `make infer` — runs Facebook Infer static analysis over a clean assembleDebug.
