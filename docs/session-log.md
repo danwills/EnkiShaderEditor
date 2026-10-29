@@ -736,3 +736,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   colony (agents and trail) by half the patch's change, so the middle stays put (checked
   headless: the zoomed view matches the old centre, not the bottom-left); fresh colonies are
   Paper with agent opacity 0. Not on the phone yet.
+- "there we go" (phone) - Slime Cartographer v6 on the phone (1057): starts in Paper with no
+  agents at 57 fps; Dan gave zooming about the middle a thumbs up. Zoom put back to 1, phone
+  back on the home screen. Screenshots: `~/dev/shaderEditor/physarum/phone/v6/`.
