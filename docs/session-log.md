@@ -744,3 +744,5 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   Enki debug and tools/phone-kit, played when `rate` asks: tuned on the phone from a three-note
   bend to a 0.2 s low chirp rising C4 to G4 (thumbs up). The phone-testing skill's own kit
   still needs the same change (outside ~/dev/shaderEditor, so not done here).
+- "go ahead and copy it to the skill's kit" - copied the chirp (Chime, TestStatusReceiver,
+  README) into ~/.claude/skills/phone-testing/kit and committed it there (b212dae).
