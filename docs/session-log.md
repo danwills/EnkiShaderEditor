@@ -785,3 +785,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Jittered samples are averaged in a new Buffer C, carried by Catmull-Rom.
   - Distance-estimated `EDGE` colouring, plus `COLOUR_POWER`, `SOFTNESS` and `SAMPLES`.
 - "throw it on": Mandelbrot Dive v2 went on the phone as 1061 at quality 0.2. It runs at 93 fps in the editor, with no red bar, and looks soft and smooth fullscreen. It's left up for Dan to play with.
+- Dan: "Stunning!" It took him a while to see that a tap zooms in. It stops after a while: "I thought this technique could be pretty much extended indefinitely if we allow a small amount of error?" He also wanted somewhat more base iterations for the Julia sets ("not too much!"). v3:
+  - Explained that depth needs the reference finer than a pixel (its error grows like a pixel's difference from it). The reference and the view's middle are now in 128-bit integer fixed point (eight 16-bit limbs) instead of double-float. That goes to MAX_OCTAVES 100 (about 10^30), against 36 before; float's exponent ends near 2^-126.
+  - Checked against an exact integer render: median error 5e-4 at 2^-60. At 2^-90 the median is 0.013, with scattered chaotic pixels matching a CPU float32 simulation.
+  - MAX_ITER 300 -> 450. Taps up to 0.35 s. AUTO_ZOOM 1 octave a second.

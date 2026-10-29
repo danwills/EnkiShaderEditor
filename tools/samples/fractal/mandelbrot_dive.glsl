@@ -12,10 +12,9 @@
 //                     left it. (A point outside the Mandelbrot set makes a
 //                     Julia set of dust: nothing inside, fast everywhere.)
 // The thin bar along the bottom shows how deep you are, out of the deepest
-// it can go (2^-44 a pixel, about 10^11 times): green while zooming in,
-// orange while zooming out. A red bar along the top means this GPU's
-// floats don't do the double-float tricks below, so deep views will be
-// blocky.
+// it can go (MAX_OCTAVES: 2^-107 a pixel, about 10^30 times): green while
+// zooming in, orange while zooming out. A red bar along the top means this
+// GPU's integer arithmetic isn't doing what the deep maths below needs.
 //
 // HOW IT'S FAST
 // Each frame mostly reuses the last. Every pixel finds where its point was
@@ -36,9 +35,9 @@
 // A phone GPU's floats have about 7 digits: enough for 10^5 times or so.
 // Instead:
 //   - one reference point (the middle of the view when it was chosen) has
-//     its orbit worked out in double-float arithmetic (each number two
-//     floats, about 14 digits), REF_STEPS iterations a frame, and kept in
-//     Buffer A, a texel an iteration;
+//     its orbit worked out in 128-bit fixed point (eight 16-bit integer
+//     limbs, about 37 digits), REF_STEPS iterations a frame, and kept in
+//     Buffer A as floats, a texel an iteration;
 //   - every pixel iterates only its tiny difference d from that orbit Z, in
 //     plain floats: d' = (2Z + d) d + dc. Floats keep 7 digits of the
 //     difference however small it is;
@@ -47,8 +46,10 @@
 //     (Zhuoran's rebasing), which keeps perturbation's glitches away with
 //     one reference. For the Mandelbrot set that's the same orbit; a Julia
 //     set has the orbit of 0 worked out too.
-// The view's middle is kept in double-float too, which is what limits the
-// depth.
+// The view's middle is kept in fixed point too. Depth needs the reference
+// worked out finer than a pixel (its rounding error grows just as a
+// pixel's difference from it does), so 128 bits go to about 2^-110 a
+// pixel; past 2^-126, floats themselves run out.
 //
 // SOFT, NOT SPARKLY
 // Each fresh result is worked out at a random spot up to SOFTNESS pixels
@@ -95,8 +96,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		vec3 bar = view.y > 0.5 ? vec3(0.4, 1.0, 0.5) : view.y < -0.5 ? vec3(1.0, 0.6, 0.2) : vec3(1.0);
 		col = mix(col * 0.5, bar, deep ? 0.8 : 0.0);
 	}
-	// A red bar along the top when double-float arithmetic doesn't work here.
-	if (fragCoord.y > iResolution.y - thick && !dfWorks()) {
+	// A red bar along the top when the fixed point doesn't work here.
+	if (fragCoord.y > iResolution.y - thick && !fxWorks()) {
 		col = vec3(1.0, 0.1, 0.1);
 	}
 	fragColor = vec4(col, 1.0);
@@ -124,9 +125,9 @@ uniform int pointerCount;
 #define JULIA 0
 #define JULIA_C vec2(-0.7436439, 0.13182591)
 // How fast tapping zooms, in octaves (doublings) a second.
-#define AUTO_ZOOM 0.7
-// The deepest it goes, in octaves: a pixel's then about 2^-44.
-#define MAX_OCTAVES 36.0
+#define AUTO_ZOOM 1.0
+// The deepest it goes, in octaves: a pixel's then about 2^-107.
+#define MAX_OCTAVES 100.0
 // How fast a fling slows (each frame's share kept).
 #define INERTIA 0.92
 // How long a long press is, in seconds.
@@ -134,11 +135,11 @@ uniform int pointerCount;
 
 // Iterations: MAX_ITER at the start's depth, ITER_PER_OCTAVE more for each
 // octave deeper, up to ITER_LIMIT (the reference orbits' length).
-#define MAX_ITER 300
+#define MAX_ITER 450
 #define ITER_PER_OCTAVE 50.0
 #define ITER_LIMIT 20000
 // The reference orbits' iterations worked out a frame.
-#define REF_STEPS 512
+#define REF_STEPS 256
 // A new reference once the view's middle is this many screens from it.
 #define REF_MOVE 1.5
 #define BAILOUT 1e6
@@ -175,34 +176,42 @@ uniform int pointerCount;
 #define EMBOSS_DEPTH 0.6
 
 // Buffer A's top row, texel by texel:
-//   S_CENTRE     the view's middle, double-float: re hi, re lo, im hi, im lo
 //   S_VIEW       octaves deep, zooming (1 in, -1 out, 0), iterations, MARK
-//   S_PREV       last frame's middle
 //   S_PREV_VIEW  last frame's octaves, the size, and whether last frame's
 //                results can be reused
-//   S_REF        the reference point, double-float
-//   S_REF_STATE  iterations of its orbit worked out, the size they're laid
-//                out for
+//   S_MOVED      how far the middle moved since last frame, and the middle
+//                less the reference point (complex, as floats)
+//   S_REF_STATE  iterations of the reference orbits worked out, the size
+//                they're laid out for
 //   S_TOUCH      fingers last frame, when the touch started, most fingers,
 //                how far it's moved
 //   S_POINTS     last frame's two finger points
 //   S_FLING      fling velocity (pixels a frame), where the touch started
 //   S_MODE       Julia (1) or not, its c, whether this touch has long-pressed
+//   S_SAVED_VIEW the Mandelbrot set's octaves, while on a Julia set
+//   S_WHERE      the middle, as floats
+// and complex numbers in fixed point, FX_TEXELS texels each:
+//   S_CENTRE     the view's middle
+//   S_REF        the reference point
 //   S_SAVED      the Mandelbrot set's middle, while on a Julia set
-//   S_SAVED_VIEW its octaves
-#define S_CENTRE 0
-#define S_VIEW 1
-#define S_PREV 2
-#define S_PREV_VIEW 3
-#define S_REF 4
-#define S_REF_STATE 5
-#define S_TOUCH 6
-#define S_POINTS 7
-#define S_FLING 8
-#define S_MODE 9
-#define S_SAVED 10
-#define S_SAVED_VIEW 11
-#define STATES 12
+//   S_CHECK      the reference orbit at its last iteration worked out
+//   S_CHECK2     the orbit of 0's (a Julia set's)
+#define S_VIEW 0
+#define S_PREV_VIEW 1
+#define S_MOVED 2
+#define S_REF_STATE 3
+#define S_TOUCH 4
+#define S_POINTS 5
+#define S_FLING 6
+#define S_MODE 7
+#define S_SAVED_VIEW 8
+#define S_WHERE 9
+#define S_CENTRE 10
+#define S_REF (S_CENTRE + FX_TEXELS)
+#define S_SAVED (S_REF + FX_TEXELS)
+#define S_CHECK (S_SAVED + FX_TEXELS)
+#define S_CHECK2 (S_CHECK + FX_TEXELS)
+#define STATES (S_CHECK2 + FX_TEXELS)
 #define MARK 0.777
 
 vec4 stateAt(sampler2D a, int i) {
@@ -225,70 +234,146 @@ float pixelScale(float octaves) {
 	return START_WIDTH * exp2(-octaves) / min(iResolution.x, iResolution.y);
 }
 
-// Double-float arithmetic: a number is hi + lo, lo below hi's last digit.
-// one() is 1 in a way the compiler can't see, so it can't simplify
-// (a + b) - a to b and lose the rounding error these keep.
-float one() {
-	return iFrame < -1 ? 0.0 : 1.0;
+// Fixed point: LIMBS 16-bit limbs (each in a uint, most significant
+// first), two's complement over all 16 LIMBS bits, the point 4 bits in -
+// so -8 to 8, to 2^-(16 LIMBS - 4). Integers, so exact on any GPU (no
+// fused multiply-adds or compiler shortcuts to dodge), and longer for
+// deeper. A complex number's two parts are stored 4 limbs a texel, as
+// floats (exact up to 2^24).
+const int LIMBS = 8;
+#define FX_TEXELS (LIMBS / 2)
+#define LIMB 65536.0
+
+void fxNeg(inout uint a[LIMBS]) {
+	uint carry = 1u;
+	for (int k = LIMBS - 1; k >= 0; k--) {
+		uint t = (65535u - a[k]) + carry;
+		a[k] = t & 65535u;
+		carry = t >> 16;
+	}
 }
 
-vec2 twoSum(float a, float b) {
-	float s = a + b;
-	float v = s * one() - a;
-	return vec2(s, (a - (s - v)) + (b - v));
+void fxAdd(uint a[LIMBS], uint b[LIMBS], out uint r[LIMBS]) {
+	uint carry = 0u;
+	for (int k = LIMBS - 1; k >= 0; k--) {
+		uint t = a[k] + b[k] + carry;
+		r[k] = t & 65535u;
+		carry = t >> 16;
+	}
 }
 
-vec2 quickTwoSum(float a, float b) {
-	float s = a + b;
-	return vec2(s, b - (s * one() - a));
+void fxSub(uint a[LIMBS], uint b[LIMBS], out uint r[LIMBS]) {
+	uint n[LIMBS] = b;
+	fxNeg(n);
+	fxAdd(a, n, r);
 }
 
-// A float's top 12 significant bits and the rest, so each half times another
-// is exact. Masked off rather than Dekker's 4097a - (4097a - a): GPUs fuse
-// that into one multiply-add, which leaves the bottom half 0. (The mask is
-// made at run time, as the test phone's compiler mangles big constants.)
-vec2 split(float a) {
-	uint low = uint(iFrame < -1 ? 0 : 4095);
-	float hi = uintBitsToFloat(floatBitsToUint(a) & ~low);
-	return vec2(hi, a - hi);
+// Exactly: each step multiplies by 2^16 and takes off the whole part.
+void fxFromFloat(float v, out uint r[LIMBS]) {
+	float a = abs(v) / 16.0;
+	for (int k = 0; k < LIMBS; k++) {
+		a *= LIMB;
+		float whole = floor(a);
+		r[k] = uint(whole);
+		a -= whole;
+	}
+	if (v < 0.0) {
+		fxNeg(r);
+	}
 }
 
-// a b exactly, as the rounded product and its rounding error. Times one(),
-// so p can't be fused into the subtraction below (unrounded, the error
-// comes out 0).
-vec2 twoProd(float a, float b) {
-	float p = a * b * one();
-	vec2 x = split(a), y = split(b);
-	return vec2(p, ((x.x * y.x - p) + x.x * y.y + x.y * y.x) + x.y * y.y);
+float fxToFloat(uint a[LIMBS]) {
+	bool negative = a[0] >= 32768u;
+	uint m[LIMBS] = a;
+	if (negative) {
+		fxNeg(m);
+	}
+	float v = 0.0;
+	for (int k = LIMBS - 1; k >= 0; k--) {
+		v = v / LIMB + float(m[k]);
+	}
+	v *= 16.0 / LIMB;
+	return negative ? -v : v;
 }
 
-vec2 dfAdd(vec2 a, vec2 b) {
-	vec2 s = twoSum(a.x, b.x);
-	vec2 t = twoSum(a.y, b.y);
-	s.y += t.x;
-	s = quickTwoSum(s.x, s.y);
-	s.y += t.y;
-	return quickTwoSum(s.x, s.y);
+// a b, the bits below the last limb dropped (|a b| must be under 8).
+void fxMul(uint a[LIMBS], uint b[LIMBS], out uint r[LIMBS]) {
+	bool negative = (a[0] >= 32768u) != (b[0] >= 32768u);
+	uint x[LIMBS] = a, y[LIMBS] = b;
+	if (x[0] >= 32768u) {
+		fxNeg(x);
+	}
+	if (y[0] >= 32768u) {
+		fxNeg(y);
+	}
+	// Column sums of the 16x16-bit products, each split in its two halves.
+	uint acc[LIMBS + 1];
+	for (int k = 0; k <= LIMBS; k++) {
+		acc[k] = 0u;
+	}
+	for (int i = 0; i < LIMBS; i++) {
+		for (int j = 0; j < LIMBS - i; j++) {
+			uint p = x[i] * y[j];
+			acc[i + j] += p >> 16;
+			acc[i + j + 1] += p & 65535u;
+		}
+	}
+	for (int k = LIMBS; k > 0; k--) {
+		acc[k - 1] += acc[k] >> 16;
+		acc[k] &= 65535u;
+	}
+	// Times 16, for the point 4 bits in.
+	for (int k = 0; k < LIMBS; k++) {
+		r[k] = ((acc[k] << 4) | (acc[k + 1] >> 12)) & 65535u;
+	}
+	if (negative) {
+		fxNeg(r);
+	}
 }
 
-vec2 dfMul(vec2 a, vec2 b) {
-	vec2 p = twoProd(a.x, b.x);
-	p.y += a.x * b.y + a.y * b.x;
-	return quickTwoSum(p.x, p.y);
+// One step of z^2 + c, on fixed-point parts.
+void fxStep(inout uint zr[LIMBS], inout uint zi[LIMBS], uint cr[LIMBS], uint ci[LIMBS]) {
+	uint rr[LIMBS], ii[LIMBS], ri[LIMBS], t[LIMBS];
+	fxMul(zr, zr, rr);
+	fxMul(zi, zi, ii);
+	fxMul(zr, zi, ri);
+	fxSub(rr, ii, t);
+	fxAdd(t, cr, zr);
+	fxAdd(ri, ri, t);
+	fxAdd(t, ci, zi);
 }
 
-// Two double-float complex numbers' difference, as plain floats.
-vec2 dfDiff(vec4 a, vec4 b) {
-	vec2 re = dfAdd(a.xy, -b.xy), im = dfAdd(a.zw, -b.zw);
-	return vec2(re.x + re.y, im.x + im.y);
+// A fixed-point complex number from Buffer A's top row, and texel t of one.
+void fxLoad(sampler2D a, int at, out uint re[LIMBS], out uint im[LIMBS]) {
+	for (int t = 0; t < FX_TEXELS / 2; t++) {
+		vec4 v = stateAt(a, at + t), w = stateAt(a, at + FX_TEXELS / 2 + t);
+		for (int k = 0; k < 4; k++) {
+			re[4 * t + k] = uint(v[k]);
+			im[4 * t + k] = uint(w[k]);
+		}
+	}
 }
 
-// Whether this GPU's floats round as double-float needs.
-bool dfWorks() {
-	float a = 1.0 + exp2(-12.0);
-	vec2 p = twoProd(a, a);
-	vec2 s = dfAdd(vec2(1.0, 0.0), vec2(exp2(-30.0), 0.0));
-	return p.y == exp2(-24.0) && s.x == 1.0 && s.y == exp2(-30.0);
+vec4 fxTexel(uint re[LIMBS], uint im[LIMBS], int t) {
+	vec4 v;
+	for (int k = 0; k < 4; k++) {
+		int i = 4 * (t % (FX_TEXELS / 2)) + k;
+		v[k] = float(t < FX_TEXELS / 2 ? re[i] : im[i]);
+	}
+	return v;
+}
+
+// Whether this GPU's integer arithmetic does what the fixed point needs:
+// 1.5^2 + 2^-100 - 2.25 must leave just 2^-100.
+bool fxWorks() {
+	uint a[LIMBS], b[LIMBS], r[LIMBS];
+	fxFromFloat(-1.5, a);
+	fxMul(a, a, r);
+	fxFromFloat(exp2(-100.0), b);
+	fxAdd(r, b, r);
+	fxFromFloat(2.25, a);
+	fxSub(r, a, r);
+	return fxToFloat(r) == exp2(-100.0);
 }
 
 vec2 cmul(vec2 a, vec2 b) {
@@ -361,88 +446,131 @@ vec2 scaled(vec2 p) {
 	return p.x <= 1.5 && p.y <= 1.5 ? p * iResolution.xy : p;
 }
 
-// Moves a double-float complex point by a plain one.
-vec4 moved(vec4 c, vec2 d) {
-	return vec4(dfAdd(c.xy, vec2(d.x, 0.0)), dfAdd(c.zw, vec2(d.y, 0.0)));
+// Moves a fixed-point complex number by a float one.
+void move(inout uint re[LIMBS], inout uint im[LIMBS], vec2 d) {
+	uint t[LIMBS];
+	fxFromFloat(d.x, t);
+	fxAdd(re, t, re);
+	fxFromFloat(d.y, t);
+	fxAdd(im, t, im);
+}
+
+vec2 difference(uint ar[LIMBS], uint ai[LIMBS], uint br[LIMBS], uint bi[LIMBS]) {
+	uint t[LIMBS];
+	fxSub(ar, br, t);
+	float x = fxToFloat(t);
+	fxSub(ai, bi, t);
+	return vec2(x, fxToFloat(t));
+}
+
+// The reference orbits, as last frame left them: orbit 0 is the view's
+// middle's (Mandelbrot: from 0, c the reference point; Julia: from the
+// reference point, c the Julia set's), orbit 1 a Julia set's orbit of 0.
+// Its start, and its c.
+void orbitStart(int orbit, vec4 mode, out uint zr[LIMBS], out uint zi[LIMBS], out uint cr[LIMBS],
+		out uint ci[LIMBS]) {
+	bool julia = mode.x > 0.5;
+	uint rr[LIMBS], ri[LIMBS];
+	fxLoad(iChannel0, S_REF, rr, ri);
+	fxFromFloat(0.0, zr);
+	fxFromFloat(0.0, zi);
+	if (julia) {
+		fxFromFloat(mode.y, cr);
+		fxFromFloat(mode.z, ci);
+		if (orbit == 0) {
+			zr = rr;
+			zi = ri;
+		}
+	} else {
+		cr = rr;
+		ci = ri;
+	}
+}
+
+// Iteration k of an orbit, from the last one worked out (S_CHECK, at
+// done - 1) or its start: none past its escape.
+void orbitAt(int orbit, int k, int done, vec4 mode, out uint zr[LIMBS], out uint zi[LIMBS]) {
+	uint cr[LIMBS], ci[LIMBS];
+	orbitStart(orbit, mode, zr, zi, cr, ci);
+	int from = 0;
+	if (done > 0) {
+		fxLoad(iChannel0, orbit == 0 ? S_CHECK : S_CHECK2, zr, zi);
+		from = done - 1;
+	}
+	for (int n = from; n < k; n++) {
+		float x = fxToFloat(zr), y = fxToFloat(zi);
+		if (x * x + y * y > 4.0) {
+			break;
+		}
+		fxStep(zr, zi, cr, ci);
+	}
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	ivec2 c = ivec2(fragCoord);
 	ivec2 size = ivec2(iResolution.xy);
-	vec4 s[STATES];
-	for (int i = 0; i < STATES; i++) {
-		s[i] = stateAt(iChannel0, i);
-	}
-	bool fresh = abs(s[S_VIEW].w - MARK) > 0.01;
-	bool laidOut = !fresh && int(s[S_REF_STATE].y) == size.x && int(s[S_REF_STATE].z) == size.y;
+	vec4 view = stateAt(iChannel0, S_VIEW);
+	vec4 refState = stateAt(iChannel0, S_REF_STATE);
+	vec4 mode = stateAt(iChannel0, S_MODE);
+	bool fresh = abs(view.w - MARK) > 0.01;
+	bool laidOut = !fresh && int(refState.y) == size.x && int(refState.z) == size.y;
 	int limit = refLimit();
+	int done = int(refState.x + 0.5);
+	bool julia = mode.x > 0.5;
+	int next = min(done + REF_STEPS, limit);
 
 	if (c.y != size.y - 1) {
-		// The reference orbits: last frame's reference, the next REF_STEPS
-		// iterations after those already worked out, each texel from the
-		// last one done. The view's middle's orbit (of z with c the middle,
-		// or on a Julia set of the middle with c the Julia set's) first,
-		// then on a Julia set the orbit of 0.
+		// The reference orbits, as floats for the pixels: the next
+		// REF_STEPS iterations after those already worked out.
 		int i = c.x + c.y * size.x;
-		bool julia = s[S_MODE].x > 0.5;
-		int start = 0;
-		if (julia && i >= limit) {
-			start = limit;
-		}
-		int k = i - start;
-		int done = int(s[S_REF_STATE].x + 0.5);
-		if (!laidOut || k < done || k >= done + REF_STEPS || k >= limit || (!julia && start > 0)) {
+		int orbit = julia && i >= limit ? 1 : 0;
+		int k = i - orbit * limit;
+		if (!laidOut || k < done || k >= next) {
 			fragColor = texelFetch(iChannel0, c, 0);
 			return;
 		}
-		vec4 point = julia ? vec4(quickTwoSum(s[S_MODE].y, 0.0), quickTwoSum(s[S_MODE].z, 0.0)) : s[S_REF];
-		vec2 zr = vec2(0.0), zi = vec2(0.0);
-		if (julia && start == 0) {
-			zr = s[S_REF].xy;
-			zi = s[S_REF].zw;
-		}
-		int from = 0;
-		if (done > 0) {
-			vec4 z = texelFetch(iChannel0, refTexel(start + done - 1, size.x), 0);
-			zr = z.xz;
-			zi = z.yw;
-			from = done - 1;
-		}
-		for (int n = from; n < k; n++) {
-			// Escaped: keep the first value past 2 from here on.
-			if (zr.x * zr.x + zi.x * zi.x > 4.0) {
-				break;
-			}
-			vec2 rr = dfMul(zr, zr), ii = dfMul(zi, zi), ri = dfMul(zr, zi);
-			zr = dfAdd(dfAdd(rr, -ii), point.xy);
-			zi = dfAdd(2.0 * ri, point.zw);
-		}
-		fragColor = vec4(zr.x, zi.x, zr.y, zi.y);
+		uint zr[LIMBS], zi[LIMBS];
+		orbitAt(orbit, k, done, mode, zr, zi);
+		fragColor = vec4(fxToFloat(zr), fxToFloat(zi), 0.0, 0.0);
 		return;
 	}
 	if (c.x >= STATES) {
 		fragColor = vec4(0.0);
 		return;
 	}
+	if (c.x >= S_CHECK) {
+		// Each orbit's last iteration worked out, in fixed point, to carry
+		// on from next frame.
+		int orbit = c.x >= S_CHECK2 ? 1 : 0;
+		uint zr[LIMBS], zi[LIMBS];
+		if (laidOut && next > 0) {
+			orbitAt(orbit, next - 1, done, mode, zr, zi);
+		}
+		fragColor = fxTexel(zr, zi, c.x - (orbit == 0 ? S_CHECK : S_CHECK2));
+		return;
+	}
 
 	vec2 res = iResolution.xy;
 	vec2 half_ = 0.5 * res;
 	float dt = iTimeDelta > 0.0 ? min(iTimeDelta, 0.1) : 1.0 / 60.0;
-	vec4 centre = s[S_CENTRE];
-	float octaves = s[S_VIEW].x;
-	float zooming = s[S_VIEW].y;
-	int fingers = int(s[S_TOUCH].x + 0.5);
-	float started = s[S_TOUCH].y;
-	float most = s[S_TOUCH].z;
-	float travel = s[S_TOUCH].w;
-	vec2 last0 = s[S_POINTS].xy, last1 = s[S_POINTS].zw;
-	vec2 velocity = s[S_FLING].xy;
-	vec2 origin = s[S_FLING].zw;
-	vec4 ref = s[S_REF];
-	float done = s[S_REF_STATE].x;
-	vec4 mode = s[S_MODE];
-	vec4 saved = s[S_SAVED];
-	float savedOctaves = s[S_SAVED_VIEW].x;
+	uint cr[LIMBS], ci[LIMBS], rr[LIMBS], ri[LIMBS], sr[LIMBS], si[LIMBS];
+	fxLoad(iChannel0, S_CENTRE, cr, ci);
+	fxLoad(iChannel0, S_REF, rr, ri);
+	fxLoad(iChannel0, S_SAVED, sr, si);
+	uint lastR[LIMBS] = cr, lastI[LIMBS] = ci;
+	float octaves = view.x;
+	float zooming = view.y;
+	vec4 touch = stateAt(iChannel0, S_TOUCH);
+	int fingers = int(touch.x + 0.5);
+	float started = touch.y;
+	float most = touch.z;
+	float travel = touch.w;
+	vec4 points = stateAt(iChannel0, S_POINTS);
+	vec2 last0 = points.xy, last1 = points.zw;
+	vec4 fling = stateAt(iChannel0, S_FLING);
+	vec2 velocity = fling.xy;
+	vec2 origin = fling.zw;
+	float savedOctaves = stateAt(iChannel0, S_SAVED_VIEW).x;
 	bool reset = fresh;
 	bool switched = false;
 
@@ -466,22 +594,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			switched = true;
 			if (mode.x < 0.5) {
 				// To the Julia set of the point under the finger.
-				vec2 point = vec2(centre.x + centre.y, centre.z + centre.w) + (p0 - half_) * scale;
-				saved = centre;
+				vec2 point = vec2(fxToFloat(cr), fxToFloat(ci)) + (p0 - half_) * scale;
+				sr = cr;
+				si = ci;
 				savedOctaves = octaves;
 				mode.xyz = vec3(1.0, point);
-				centre = vec4(0.0);
+				fxFromFloat(0.0, cr);
+				fxFromFloat(0.0, ci);
 				octaves = 0.0;
 			} else {
 				mode.x = 0.0;
-				centre = saved;
+				cr = sr;
+				ci = si;
 				octaves = savedOctaves;
 			}
 			zooming = 0.0;
 			velocity = vec2(0.0);
 			scale = pixelScale(octaves);
 		}
-	} else if (fingers > 0 && iTime - started < 0.3 && still) {
+	} else if (fingers > 0 && iTime - started < 0.35 && still) {
 		if (most < 1.5) {
 			zooming = zooming > 0.5 ? 0.0 : 1.0;
 		} else if (most < 2.5) {
@@ -498,7 +629,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			float grow = max(length(p1 - p0), 1.0) / max(length(last1 - last0), 1.0);
 			float next = clamp(octaves + log2(grow), -2.0, MAX_OCTAVES);
 			float nextScale = pixelScale(next);
-			centre = moved(centre, (lastMid - half_) * scale - (mid - half_) * nextScale);
+			move(cr, ci, (lastMid - half_) * scale - (mid - half_) * nextScale);
 			octaves = next;
 			scale = nextScale;
 		}
@@ -506,13 +637,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	} else if (pointerCount == 1) {
 		if (fingers == 1 && !switched) {
 			vec2 delta = p0 - last0;
-			centre = moved(centre, -delta * scale);
+			move(cr, ci, -delta * scale);
 			velocity = mix(velocity, delta, 0.5);
 		} else {
 			velocity = vec2(0.0);
 		}
 	} else if (length(velocity) > 0.05) {
-		centre = moved(centre, -velocity * scale);
+		move(cr, ci, -velocity * scale);
 		velocity *= INERTIA;
 	} else {
 		velocity = vec2(0.0);
@@ -528,55 +659,72 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	fingers = pointerCount;
 	last0 = p0;
 	last1 = p1;
+	// Inside fixed point's -8 to 8 (and well past the set).
+	vec2 where = vec2(fxToFloat(cr), fxToFloat(ci));
+	if (abs(where.x) > 4.0) {
+		fxFromFloat(clamp(where.x, -4.0, 4.0), cr);
+	}
+	if (abs(where.y) > 4.0) {
+		fxFromFloat(clamp(where.y, -4.0, 4.0), ci);
+	}
 
 	if (reset) {
-		// (Times one(): with constants, the compiler adds the parts in
-		// higher precision and the fine part's lost.)
-		centre = vec4(START_X, START_X_FINE, START_Y, START_Y_FINE) * one();
-		centre = vec4(quickTwoSum(centre.x, centre.y), quickTwoSum(centre.z, centre.w));
+		uint t[LIMBS];
+		fxFromFloat(START_X, cr);
+		fxFromFloat(START_X_FINE, t);
+		fxAdd(cr, t, cr);
+		fxFromFloat(START_Y, ci);
+		fxFromFloat(START_Y_FINE, t);
+		fxAdd(ci, t, ci);
 		octaves = START_OCTAVES;
 		zooming = 0.0;
 		velocity = vec2(0.0);
 		mode.xyz = vec3(float(JULIA), JULIA_C);
-		saved = centre;
+		sr = cr;
+		si = ci;
 		savedOctaves = octaves;
 		if (JULIA > 0) {
 			// The START view's on the Julia set; a long press goes to the
 			// whole Mandelbrot set round JULIA_C.
-			saved = vec4(JULIA_C.x, 0.0, JULIA_C.y, 0.0);
+			fxFromFloat(JULIA_C.x, sr);
+			fxFromFloat(JULIA_C.y, si);
 			savedOctaves = 0.0;
 		}
 		scale = pixelScale(octaves);
 	}
-	vec4 prev = fresh ? centre : s[S_CENTRE];
-	float prevOctaves = fresh ? octaves : s[S_VIEW].x;
+	float prevOctaves = fresh ? octaves : view.x;
 	// Last frame's results are reusable if it was this size and the same set.
-	bool reusable = !fresh && !reset && !switched && int(s[S_PREV_VIEW].y) == size.x
-			&& int(s[S_PREV_VIEW].z) == size.y;
+	bool reusable = !fresh && !reset && !switched && int(stateAt(iChannel0, S_PREV_VIEW).y) == size.x
+			&& int(stateAt(iChannel0, S_PREV_VIEW).z) == size.y;
+	vec2 moved = reusable ? difference(cr, ci, lastR, lastI) : vec2(0.0);
 
 	// A new reference when the view's gone too far from it.
-	vec2 off = dfDiff(centre, ref);
+	vec2 off = difference(cr, ci, rr, ri);
+	float doneNow;
 	if (reset || switched || !laidOut || length(off) > REF_MOVE * scale * max(res.x, res.y)) {
-		ref = centre;
-		done = 0.0;
+		rr = cr;
+		ri = ci;
+		off = vec2(0.0);
+		doneNow = 0.0;
 	} else {
-		done = min(done + float(REF_STEPS), float(limit));
+		doneNow = float(next);
 	}
 	float iterations = clamp(float(MAX_ITER) + ITER_PER_OCTAVE * max(octaves, 0.0), 16.0, float(limit - 1));
 
 	vec4 o;
-	if (c.x == S_CENTRE) o = centre;
-	else if (c.x == S_VIEW) o = vec4(octaves, zooming, iterations, MARK);
-	else if (c.x == S_PREV) o = prev;
+	if (c.x == S_VIEW) o = vec4(octaves, zooming, iterations, MARK);
 	else if (c.x == S_PREV_VIEW) o = vec4(prevOctaves, res, reusable ? 1.0 : 0.0);
-	else if (c.x == S_REF) o = ref;
-	else if (c.x == S_REF_STATE) o = vec4(done, res, 0.0);
+	else if (c.x == S_MOVED) o = vec4(moved, off);
+	else if (c.x == S_REF_STATE) o = vec4(doneNow, res, 0.0);
 	else if (c.x == S_TOUCH) o = vec4(float(fingers), started, most, travel);
 	else if (c.x == S_POINTS) o = vec4(last0, last1);
 	else if (c.x == S_FLING) o = vec4(velocity, origin);
 	else if (c.x == S_MODE) o = mode;
-	else if (c.x == S_SAVED) o = saved;
-	else o = vec4(savedOctaves, 0.0, 0.0, 0.0);
+	else if (c.x == S_SAVED_VIEW) o = vec4(savedOctaves, 0.0, 0.0, 0.0);
+	else if (c.x == S_WHERE) o = vec4(fxToFloat(cr), fxToFloat(ci), 0.0, 0.0);
+	else if (c.x < S_REF) o = fxTexel(cr, ci, c.x - S_CENTRE);
+	else if (c.x < S_SAVED) o = fxTexel(rr, ri, c.x - S_REF);
+	else o = fxTexel(sr, si, c.x - S_SAVED);
 	fragColor = o;
 }
 
@@ -590,11 +738,9 @@ uniform sampler2D iChannel1; ///buf:B;
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 res = iResolution.xy;
 	ivec2 size = ivec2(res);
-	vec4 centre = stateAt(iChannel0, S_CENTRE);
 	vec4 view = stateAt(iChannel0, S_VIEW);
-	vec4 prev = stateAt(iChannel0, S_PREV);
 	vec4 prevView = stateAt(iChannel0, S_PREV_VIEW);
-	vec4 ref = stateAt(iChannel0, S_REF);
+	vec4 moves = stateAt(iChannel0, S_MOVED);
 	vec4 mode = stateAt(iChannel0, S_MODE);
 	int done = int(stateAt(iChannel0, S_REF_STATE).x + 0.5);
 	float scale = pixelScale(view.x);
@@ -609,7 +755,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	int insides = 0;
 	if (prevView.w > 0.5) {
 		float prevScale = pixelScale(prevView.x);
-		vec2 moved = dfDiff(centre, prev) / prevScale;
+		vec2 moved = moves.xy / prevScale;
 		vec2 then = moved + q * (scale / prevScale) + 0.5 * res;
 		ivec2 b = ivec2(floor(then - 0.5));
 		for (int k = 0; k < 4; k++) {
@@ -649,10 +795,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		// A random spot up to SOFTNESS pixels from the middle.
 		float a = TAU * hash13(vec3(fragCoord, frame + 0.25));
 		vec2 jitter = SOFTNESS * sqrt(hash13(vec3(fragCoord.yx, frame + 0.75))) * vec2(cos(a), sin(a));
-		vec2 d0 = dfDiff(centre, ref) + (q + jitter) * scale;
+		vec2 d0 = moves.zw + (q + jitter) * scale;
 		// The two biggest blobs, when zoomed out far enough for floats.
 		if (!julia && scale > 1e-6) {
-			vec2 c = vec2(ref.x + ref.y, ref.z + ref.w) + d0;
+			vec2 c = stateAt(iChannel0, S_WHERE).xy + (q + jitter) * scale;
 			float r = length(c - vec2(0.25, 0.0));
 			if (c.x < r - 2.0 * r * r + 0.25 || dot(c + vec2(1.0, 0.0), c + vec2(1.0, 0.0)) < 0.0625) {
 				fragColor = vec4(-float(iterations), jitter, 0.0);
@@ -698,9 +844,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 			// Back where it was at the checkpoint, the difference from the
 			// reference holding steady (not just following a reference
 			// that's in a cycle), and pulled in: inside.
-			vec2 dd = d - dSaved;
+			// (As the largest part, not squared: deep down d's square is
+			// below the smallest float, and 0 <= 0 would call it steady.)
+			vec2 dd = abs(d - dSaved), ad = abs(d);
 			if (dot(z - zSaved, z - zSaved) < CYCLE_EPSILON * CYCLE_EPSILON
-					&& dot(dd, dd) <= 1e-2 * dot(d, d) && dot(pull, pull) < 1.0) {
+					&& max(dd.x, dd.y) <= 0.1 * max(ad.x, ad.y) && dot(pull, pull) < 1.0) {
 				break;
 			}
 			if (n == checkpoint) {
@@ -766,16 +914,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 res = iResolution.xy;
 	ivec2 size = ivec2(res);
 	ivec2 p = ivec2(fragCoord);
-	vec4 centre = stateAt(iChannel0, S_CENTRE);
 	vec4 view = stateAt(iChannel0, S_VIEW);
-	vec4 prev = stateAt(iChannel0, S_PREV);
 	vec4 prevView = stateAt(iChannel0, S_PREV_VIEW);
 	float scale = pixelScale(view.x);
 
 	vec4 acc = vec4(0.0);
 	if (prevView.w > 0.5) {
 		float prevScale = pixelScale(prevView.x);
-		vec2 then = dfDiff(centre, prev) / prevScale + (fragCoord - 0.5 * res) * (scale / prevScale) + 0.5 * res;
+		vec2 then = stateAt(iChannel0, S_MOVED).xy / prevScale + (fragCoord - 0.5 * res) * (scale / prevScale) + 0.5 * res;
 		if (all(greaterThanEqual(then, vec2(0.0))) && all(lessThan(then, res))) {
 			acc = history(then, size);
 			// Zooming in, each old pixel's spread over more new ones: worth
