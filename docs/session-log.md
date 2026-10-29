@@ -784,3 +784,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - A long press switches to the Julia set of the point under the finger, and another switches back. It uses a second reference orbit (of 0) for rebasing, and is checked against long double at 2^-25.
   - Jittered samples are averaged in a new Buffer C, carried by Catmull-Rom.
   - Distance-estimated `EDGE` colouring, plus `COLOUR_POWER`, `SOFTNESS` and `SAMPLES`.
+- "throw it on": Mandelbrot Dive v2 went on the phone as 1061 at quality 0.2. It runs at 93 fps in the editor, with no red bar, and looks soft and smooth fullscreen. It's left up for Dan to play with.
