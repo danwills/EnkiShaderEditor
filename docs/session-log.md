@@ -710,3 +710,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   fresh colony were seeded every frame) until Rewind. It didn't happen again on the phone (Maze
   → Glow Worms, Stars → Glow Worms), nor replaying the nine taps headless on the desktop.
   Screenshots: `~/dev/shaderEditor/physarum/phone/v3/`. Cause not found yet.
+- "can we make single-tap show/hide the menu, and make the menu sliders draggable ... separate
+  opacity control for each [particles and pheromones] ... an overall 'scale' (whole effect)
+  control?" - Slime Cartographer v4: a tap toggles the menu, food only once a touch isn't a tap;
+  bars set where touched and dragged (the 2/3-finger gestures are gone); new bars for trail
+  opacity, agent opacity and scale (above 1 a smaller colony magnified, below 1 distances
+  shrunk). Tested headless with scripted touches; not on the phone yet.
