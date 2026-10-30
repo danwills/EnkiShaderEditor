@@ -1,0 +1,4 @@
+* Offscreen buffers can have their own size
+* High-res captures of shaders with buffers
+* Fix high-res captures of ShaderToy-style shaders
+* 1/2× in the resolution presets
