@@ -809,3 +809,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - A sideways view at 110 km/h with motion blur worked out exactly, no samples. The ground's noise is box-filtered along the road (streaks), and plants, rocks and posts are cut-outs made of horizontal spans, so blur is how much of a span the pixel's stretch of road covers.
   - Lane chip seal, edge line, dusty shoulder, red gravel, red dirt with pebbles. Spinifex hummocks with golden needles, saltbush, mulga and desert oaks, ghost gums, termite mounds, red boulders, guide posts with red reflectors, ground shadows, red mesas far off, deep blue sky.
   - Framing works in portrait and landscape. About 3 ms a frame at quality 0.25's size on the desktop GPU.
+- "throw it on the phone": Outback Window v1 went on as 1068 at quality 0.25. It compiled and looks as the desktop renders do, but runs at only 24 fps in the editor (about 3 ms on the desktop's GTX 960). It's left fullscreen for Dan.
