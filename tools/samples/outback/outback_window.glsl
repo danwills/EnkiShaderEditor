@@ -198,7 +198,7 @@ vec2 markings(float x, float z, float wx, float wz, vec2 turn) {
 	float wobble = (bad ? 0.05 : 0.012) * (noise(vec2(x / 7.0, 1.0)) * 2.0 - 1.0);
 	float width = LINE_W * (bad ? 0.75 + 0.5 * noise(vec2(x / 3.0, 2.0)) : 1.0);
 	// (Painted a little in and out, slowly.)
-	wobble += 0.07 * (noise(vec2(x / 80.0, 12.0)) * 2.0 - 1.0);
+	wobble += 0.15 * (noise(vec2(x / 80.0, 12.0)) * 2.0 - 1.0) + 0.04 * (noise(vec2(x / 14.0, 13.0)) * 2.0 - 1.0);
 	float z0 = LINE_Z + turn.y + wobble;
 	float across = smoothstep(z0 - soft, z0 + soft, z) * smoothstep(z0 + width + soft, z0 + width - soft, z);
 	if (bad) {
@@ -244,7 +244,8 @@ vec3 ground(float x, float z, float wx, float wz) {
 			+ 0.35 * (noise(vec2(z * 71.0, x / 40.0 + 5.0)) - 0.5) * (1.0 - smoothstep(0.004, 0.014, wz));
 	col *= 1.0 + lines;
 	// The seal's edge: ragged, more so (and bitten into) where it's rough.
-	vec2 seal = ragged(x, 2.5, 0.05 + 0.1 * rough, wx, 3.0);
+	vec2 seal = ragged(x, 2.5, 0.1 + 0.12 * rough, wx, 3.0);
+	seal.x += 0.25 * (noise(vec2(x / 140.0, 21.0)) - 0.5);
 	vec2 bites = ragged(x, 9.0, 0.1 * rough, wx, 5.0);
 	float sealZ = SEAL_Z + turn.y + seal.x + bites.x;
 	float dust = smoothstep(LINE_Z + turn.y, sealZ, z) * (0.5 + 0.5 * streaks(p, 2.0, 2, wx, wz));
@@ -278,15 +279,25 @@ vec3 ground(float x, float z, float wx, float wz) {
 	vec3 hue = mix(vec3(0.62, 0.20, 0.11), vec3(0.82, 0.78, 0.68), clamp(0.5 + 2.5 * streaks(p + 90.0, 30.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(vec3(0.26, 0.14, 0.10), hue, clamp(0.6 + 2.5 * streaks(p + 130.0, 24.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(hue, vec3(0.76, 0.56, 0.26), clamp(2.5 * streaks(p + 170.0, 20.0, 2, wx, wz), 0.0, 1.0));
-	col = mix(col, mix(GRAVEL, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
-	// The dirt: red, dusty patches, darker patches.
 	float vergeZ = verge(x) + turn.y;
-	vec2 edge = ragged(x, 1.2, 0.12, wx, 9.0);
+	// Bands along it, graded in by the grader: sandy, grey, and here and
+	// there a pale edge to the dirt.
+	float out_ = (z - sealZ) / max(vergeZ - sealZ, 0.3);
+	float bands = noise(vec2(out_ * 4.0 + noise(vec2(x / 300.0, 9.0)), x / 250.0)) * (1.0 - smoothstep(0.08, 0.3, wz));
+	vec3 g = mix(GRAVEL, mix(vec3(0.74, 0.60, 0.42), vec3(0.50, 0.48, 0.45), smoothstep(0.3, 0.7, bands)), 0.6 * abs(bands * 2.0 - 1.0) + 0.1);
+	g = mix(g, vec3(0.84, 0.74, 0.58), 0.6 * smoothstep(0.6, 0.8, noise(vec2(x / 200.0, 4.0))) * smoothstep(0.75, 0.95, out_) * smoothstep(1.1, 0.95, out_));
+	col = mix(col, mix(g, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
+	// The dirt: red, dusty patches, darker patches.
+	vec2 edge = ragged(x, 1.2, 0.3, wx, 9.0) + ragged(x, 6.0, 0.1, wx, 19.0);
 	float softDirt = edge.y + 0.5 * wz + 0.05;
 	float dirt = smoothstep(vergeZ + edge.x - softDirt, vergeZ + edge.x + softDirt, z);
 	float patches = streaks(p * 0.3, 1.0, 3, wx * 0.3, wz * 0.3);
 	vec3 d = mix(DIRT, DUST, clamp(0.4 + patches, 0.0, 1.0));
 	d *= 0.9 + 0.3 * streaks(p + 7.0, 10.0, 3, wx, wz);
+	// Sandy country, and darker, greyer soil, over large regions.
+	float soil = noise(vec2(x / 900.0, z / 260.0 + 11.0)) + 0.3 * noise(vec2(x / 230.0, z / 70.0 + 5.0)) - 0.15;
+	d = mix(d, vec3(0.82, 0.64, 0.44) * (0.9 + 0.2 * patches), smoothstep(0.55, 0.8, soil));
+	d = mix(d, vec3(0.40, 0.33, 0.29) * (0.9 + 0.2 * patches), 0.85 * smoothstep(0.4, 0.15, soil));
 	// Further out the dirt's flecked with plants too small to stand up.
 	d = mix(d, mix(SPINIFEX_CORE, SPINIFEX, 0.5) * 0.8, 0.3 * smoothstep(10.0, 80.0, z) * (0.6 + 0.4 * noise(p / 40.0)));
 	col = mix(col, d, dirt);
@@ -343,10 +354,15 @@ void needleSpan(inout vec4 acc, float a0, float a1, float b0, float b1, float s,
 	acc += vec4(col * light * l, l);
 }
 
-// A plant's own green: darker or lighter (by dark), bluer or yellower.
+// The region the cut-out being drawn stands in (region()).
+vec2 gRegion = vec2(0.5);
+
+// A plant's own green: darker or lighter (by dark), bluer or yellower, and
+// its region's - dry and golden, or dark and green.
 vec3 plantTint(vec4 seed, float dark) {
 	float a = fract(seed.y * 7.3 + seed.z * 3.1), b = fract(seed.x * 5.7 + seed.w * 2.3);
-	return mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0 - 0.4 * dark, b);
+	vec3 own = mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0 - 0.4 * dark, b);
+	return own * mix(vec3(1.15, 1.02, 0.72), vec3(0.62, 0.74, 0.62), smoothstep(0.25, 0.75, gRegion.y));
 }
 
 // A hummock of spinifex: a grey-green dome bristling with golden needles,
@@ -361,6 +377,8 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	float tuck = sqrt(smoothstep(0.0, 0.5 * h, y));
 	float wc = y < core ? r * sqrt(1.0 - (y / core) * (y / core)) * (0.15 + 0.85 * tuck) : 0.0;
 	float we = r * (tuft ? 1.0 : 1.2) * sqrt(1.0 - (y / he) * (y / he)) * (tuft ? 1.0 : 0.6 + 0.4 * tuck);
+	// (Ragged: needles' tips at different heights.)
+	we *= 0.85 + 0.15 * sin(y * 47.0 / h + seed.x * 20.0) * sin(y * 19.0 / h + seed.y * 9.0);
 	if (!tuft && y < 0.35 * h) {
 		// Stems: from the middle, forking out as they rise, seen through
 		// the thinner foliage low down.
@@ -372,7 +390,7 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	}
 	if (wc > 0.0) {
 		vec3 col = mix(SPINIFEX_CORE * 0.75, SPINIFEX_CORE, smoothstep(0.0, core, y));
-		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w) * plantTint(seed, 0.45);
+		col = mix(col, seed.z > 0.7 ? SPINIFEX * 0.8 : SPINIFEX_DARK, 0.35 * seed.w) * plantTint(seed, 0.45);
 		vec4 c = vec4(0.0);
 		// (Lit by span(), shady side to sunny. Shading the dome by its own
 		// normal, or even by the light's height, tipped the phone's
@@ -381,12 +399,15 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 		acc += c * (tuft ? 1.0 : mix(0.35, 1.0, tuck));
 	}
 	// Needles: spaced 0.03 of their slope out from below the middle.
-	float s = 1.0 / (0.03 * (y + 0.5 * h));
-	float d = mix(0.65, 0.2, y / he);
-	vec3 col = mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.z) * mix(0.75, 1.05, y / he);
+	// (Finer or coarser, thicker or sparser, by region; patchy.)
+	float s = 1.0 / (mix(0.02, 0.05, gRegion.x) * (y + 0.5 * h));
+	float d = mix(0.65, 0.2, y / he) * mix(0.6, 1.2, gRegion.y) * (0.75 + 0.25 * sin(y * 23.0 / h + seed.z * 17.0));
+	// Mostly dark grey-green; some dried golden.
+	vec3 col = (seed.z > 0.7 ? mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.y) * 0.8 : SPINIFEX_DARK * (0.7 + 0.3 * seed.y)) * plantTint(seed, 0.3)
+			* mix(0.7, 1.0, y / he) * (0.85 + 0.15 * sin(y * 31.0 / h + seed.w * 12.0));
 	float phase = seed.x * 7.0;
 	needleSpan(acc, a0, a1, -we, -wc, s, phase, d, col, gLeft);
-	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, gRight);
+	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, mix(gLeft, gRight, 0.6));
 }
 
 // Buffel grass: a tussock of arching stems, widening upwards, with seed
@@ -1052,13 +1073,24 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 			float y = eye + rd.y * kj;
 			float lx = along + (m.y - along) * zj / z - ox;
 			vec2 e = extent(kind, size);
-			if (y < 0.0 || y > e.y || abs(lx) > e.x + 0.5 * w) {
+			// A pixel's height there: small things far off are averaged over
+			// it (two heights), or they flicker as the view bobs.
+			float dy = kj * pa;
+			int n = e.y < 12.0 * dy ? 2 : 1;
+			if (y < -0.5 * dy || y > e.y + 0.5 * dy || abs(lx) > e.x + 0.5 * w) {
 				continue;
 			}
+			gRegion = region(ox, zj);
 			vec4 s = vec4(0.0);
-			cutOut(s, kind, lx - 0.5 * w, lx + 0.5 * w, y, size, seed);
+			for (int k = 0; k < n; k++) {
+				float yk = n == 1 ? y : y + (float(k) - 0.5) * 0.5 * dy;
+				if (yk >= 0.0) {
+					cutOut(s, kind, lx - 0.5 * w, lx + 0.5 * w, yk, size, seed);
+				}
+			}
+			s /= float(n);
 			if (s.w > 0.0) {
-				vec2 tex = texture2(kind, lx, w, y, seed);
+				vec2 tex = texture2(kind, lx, max(w, dy), y, seed);
 				vec3 col = s.rgb / s.w * tex.x;
 				if (isPlant(kind)) {
 					col += col * gGlow / max(dot(gLeft + gRight, vec3(0.1667)), 0.02);
@@ -1101,6 +1133,23 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 	return col - k + 0.2 * (1.0 - exp(-k / 0.2));
 }
 
+// While the atlas is made: a progress bar (how far, 0-1), white on black,
+// filling a hollow box.
+float progressBar(vec2 fragCoord, vec2 res, float done) {
+	float u = min(res.x, res.y) / 100.0;
+	vec2 o = abs(fragCoord - 0.5 * res);
+	vec2 box = vec2(32.0, 3.0) * u;
+	float line = max(1.0, 0.5 * u), gap = max(1.0, 0.8 * u);
+	// The box's outline.
+	if (o.x < box.x && o.y < box.y && (o.x > box.x - line || o.y > box.y - line)) {
+		return 1.0;
+	}
+	// The bar inside it, growing from the left.
+	vec2 in_ = box - line - gap;
+	float x = fragCoord.x - (0.5 * res.x - in_.x);
+	return o.y < in_.y && x >= 0.0 ? clamp(2.0 * in_.x * done - x, 0.0, 1.0) : 0.0;
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec2 res = iResolution.xy;
 	vec4 clock = texelFetch(iChannel0, ivec2(S_CLOCK, 0), 0);
@@ -1111,6 +1160,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	gAtlasRes = res;
 	vec4 mark = texelFetch(iChannel2, ivec2(0, int(res.y) - 1), 0);
 	gAtlas = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y && mark.w >= atlasDone(gTiles.x);
+	if (!gAtlas) {
+		float done = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y ? mark.w / atlasDone(gTiles.x) : 0.0;
+		fragColor = vec4(vec3(progressBar(fragCoord, res, done)), 1.0);
+		return;
+	}
 	vec4 glint = texelFetch(iChannel0, ivec2(S_GLINT, 0), 0);
 	if (abs(roll.w - MARK) > 0.01) {
 		// Not started yet.
@@ -1237,6 +1291,7 @@ uniform int pointerCount;
 #define DUST vec3(0.80, 0.50, 0.32)
 #define TRACK vec3(0.76, 0.42, 0.25)
 #define SPINIFEX vec3(0.86, 0.72, 0.38)
+#define SPINIFEX_DARK vec3(0.36, 0.38, 0.27)
 #define SPINIFEX_CORE vec3(0.40, 0.42, 0.27)
 #define SALTBUSH vec3(0.55, 0.58, 0.48)
 #define BUFFEL vec3(0.60, 0.62, 0.48)
@@ -1282,10 +1337,12 @@ ivec3 atlasLayout(vec2 res) {
 	return ivec3(tile, tile.y * TREE_ROWS);
 }
 
-// The atlas's step once it's done (drawn at 0, summed in steps 1 to the
-// log2 of a tile's width, then copied to the other target).
+// The atlas's step once it's done: a tile drawn each step (so the progress
+// bar moves, and no one frame's slow), summed in steps up to the log2 of a
+// tile's width, then copied to the other target.
+#define ATLAS_DRAWS float(TREE_COLS * TREE_ROWS)
 float atlasDone(int tileW) {
-	return ceil(log2(float(max(tileW, 2)))) + 2.0;
+	return ATLAS_DRAWS + ceil(log2(float(max(tileW, 2)))) + 1.0;
 }
 #define POLE_WOOD vec3(0.42, 0.38, 0.33)
 #define MOUND vec3(0.66, 0.32, 0.17)
@@ -1450,8 +1507,14 @@ vec4 pothole(float x) {
 
 // Where the dirt starts, out from the road: wandering in and out.
 float verge(float x) {
-	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 0.8 * (noise(vec2(x / 600.0, 8.0)) - 0.5);
+	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 1.6 * (noise(vec2(x / 500.0, 8.0)) - 0.4) + 0.6 * (noise(vec2(x / 35.0, 6.0)) - 0.5) + 0.25 * (noise(vec2(x / 9.0, 4.0)) - 0.5);
 	return max(v, SEAL_Z + 0.4);
+}
+
+// Slow noise over the land (x along the road, z out): what varies over
+// large regions - the plants' size, colour and texture, the soil's.
+vec2 region(float x, float z) {
+	return vec2(noise(vec2(x / 700.0, z / 220.0 + 3.0)), noise(vec2(x / 450.0 + 7.0, z / 160.0)));
 }
 
 // The cut-outs (see the Image pass): their kinds.
@@ -1498,29 +1561,36 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 	// Patches thick and thin, slowly changing along the road.
 	float thick = BUSH * (0.4 + 1.2 * noise(vec2(x / 60.0, float(lane) * 0.37)));
 	float k = more.x / max(thick, 1e-3);
-	float spin = 0.9, bush = 0.06, trees = z > 15.0 ? 0.12 : 0.0, gums = z > 30.0 ? 0.02 : 0.0;
+	// Bigger plants in some regions, smaller in others.
+	vec2 reg = region(x, zj);
+	float big = 0.55 + 1.0 * reg.x;
+	// Near the road, now and then a big tree or a big dark bush.
+	float spin = 0.9, bush = z < 15.0 ? 0.06 + 0.1 * smoothstep(0.5, 0.8, reg.y) : 0.06;
+	float trees = z > 15.0 ? 0.12 : z > 6.0 ? 0.04 : 0.0, gums = z > 30.0 ? 0.02 : z > 6.0 ? 0.01 : 0.0;
 	float mounds = z > 6.0 ? 0.05 : 0.0, rocks = 0.06, tufts = z < 12.0 ? 0.5 : 0.0;
 	// Mulga thickets here and there; weeds by the road, in patches.
 	trees *= 0.3 + 2.5 * smoothstep(0.55, 0.8, noise(vec2(x / 300.0, 5.0)));
 	float weeds = (z < 25.0 ? 0.35 : 0.04) * smoothstep(0.35, 0.7, noise(vec2(x / 90.0, 6.0)));
 	if ((k -= tufts) < 0.0) {
-		size = vec2(0.15 + 0.2 * more.y, 0.2 + 0.25 * more.z);
+		size = vec2(0.15 + 0.2 * more.y, 0.2 + 0.25 * more.z) * big;
 		return TUFT;
 	}
 	if ((k -= weeds) < 0.0) {
-		size = vec2(0.2 + 0.3 * more.y, 0.45 + 0.5 * more.z);
+		size = vec2(0.2 + 0.3 * more.y, 0.45 + 0.5 * more.z) * mix(1.0, big, 0.6);
 		return WEED;
 	}
 	if ((k -= spin) < 0.0) {
-		size = vec2(0.4 + 0.7 * more.y, 0.25 + 0.3 * more.z);
+		size = vec2(min((0.4 + 0.7 * more.y) * big, 0.35 * cw), (0.25 + 0.3 * more.z) * big);
 		return SPINIFEX_CLUMP;
 	}
 	if ((k -= bush) < 0.0) {
-		size = vec2(0.4 + 0.5 * more.y, 0.5 + 0.7 * more.z);
+		// (Near the road, some big.)
+		float b = z < 15.0 ? 1.0 + 1.2 * more.w * more.w : big;
+		size = vec2(min((0.4 + 0.5 * more.y) * b, 0.35 * cw), (0.5 + 0.7 * more.z) * b);
 		return BUSH_CLUMP;
 	}
 	if ((k -= trees) < 0.0) {
-		size = vec2(min(1.2 + 1.5 * more.y, 0.3 * cw), 3.0 + 3.0 * more.z);
+		size = vec2(min(1.2 + 1.5 * more.y, 0.3 * cw), (3.0 + 3.0 * more.z) * (z < 15.0 ? 1.3 : 1.0));
 		return MULGA_TREE;
 	}
 	if ((k -= gums) < 0.0) {
@@ -1989,13 +2059,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		return;
 	}
 	ivec2 p = ivec2(c.x - col * L.x, ly - row * L.y);
-	if (step == 0.0 && p.x == 0) {
+	int t = row * TREE_COLS + col;
+	if (step < ATLAS_DRAWS && t != int(step)) {
+		// Not this step's tile: kept if drawn, or still empty.
+		fragColor = t < int(step) ? texelFetch(iChannel0, c, 0) : vec4(0.0);
+	} else if (step < ATLAS_DRAWS && p.x == 0) {
 		// Each tile's first column's left empty (see the Image pass's
 		// atlasSum()).
 		fragColor = vec4(0.0);
-	} else if (step == 0.0) {
+	} else if (step < ATLAS_DRAWS) {
 		// Drawn: 3 x 3 samples a texel.
-		int t = row * TREE_COLS + col;
 		vec2 texel = vec2(2.0 * TREE_SPAN / float(L.x), tileTall(t) / float(L.y));
 		vec2 q0 = vec2(-TREE_SPAN, 0.0) + vec2(p) * texel;
 		vec4 a = vec4(0.0), b = vec4(0.0);
@@ -2015,7 +2088,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		fragColor = band == 0 ? a : b;
 	} else if (step < done - 1.0) {
 		// Summed along the row: each step adds what's d to the left.
-		int d = 1 << int(step - 1.0);
+		int d = 1 << int(step - ATLAS_DRAWS);
 		fragColor = texelFetch(iChannel0, c, 0);
 		if (p.x >= d) {
 			vec4 left = texelFetch(iChannel0, c - ivec2(d, 0), 0);
