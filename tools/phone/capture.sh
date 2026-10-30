@@ -21,6 +21,9 @@
 set -e
 PKG=enk.danwills.android.enkishadereditor.debug
 MAIN=$PKG/enk.danwills.android.enkishadereditor.activity.MainActivity
+# MainActivity listens for this while it exists (a broadcast, so it isn't
+# paused on the way, as am start would - an ANR mid-capture).
+ACTION=enk.danwills.android.enkishadereditor.CAPTURE
 STATUS="$(dirname "$0")/status.sh"
 usage() {
 	sed -n '4,6p' "$0" | sed 's/^# *//' >&2
@@ -51,6 +54,14 @@ while [ $# -gt 0 ]; do
 done
 out="${out:-$HOME/dev/shaderEditor/captures/$(date +%Y%m%d-%H%M%S)}"
 
+stop() {
+	[ -n "$stopped" ] && return 0
+	stopped=1
+	echo "Stopped from the panel - stopping the capture." >&2
+	adb shell am broadcast -a $ACTION -p $PKG --ez capture_stop true >/dev/null 2>&1
+}
+stopped=
+
 # A line on the panel (and here); a ⏹ there stops the capture.
 post() {
 	echo "$1"
@@ -59,10 +70,8 @@ post() {
 	"$STATUS" post "$@"
 	code=$?
 	set -e
-	if [ $code -eq 3 ]; then
-		echo "Stopped from the panel - stopping the capture." >&2
-		adb shell am start -n $MAIN --ez capture_stop true >/dev/null 2>&1
-	fi
+	[ $code -eq 3 ] && stop
+	return 0
 }
 
 if [ -n "$shader" ]; then
@@ -77,11 +86,16 @@ fi
 
 since=$(adb shell date "+%m-%d\ %H:%M:%S.000" | tr -d "\r")
 post "Capturing $size, $frames frame(s)" step '?'
-adb shell am start -n $MAIN $extras >/dev/null 2>&1
+adb shell am broadcast -a $ACTION -p $PKG $extras >/dev/null 2>&1
 seen=0
 result=
 while [ -z "$result" ]; do
 	sleep 2
+	# ⏹ (or the notification swiped away) stops it now, not at the next
+	# frame - minutes away for a heavy shader.
+	if [ -z "$quiet" ] && [ -z "$stopped" ] && ! "$STATUS" check >/dev/null; then
+		stop
+	fi
 	log=$(adb logcat -d -T "$since" -s ScriptedCapture:I | sed -n 's/^.*ScriptedCapture: //p')
 	n=$(printf '%s\n' "$log" | grep -c '^frame ' || true)
 	if [ "$n" -gt "$seen" ]; then

@@ -4,11 +4,14 @@ import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.app.WallpaperManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.ContentUris;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -191,6 +194,7 @@ public class MainActivity extends AppCompatActivity {
 	public static final String EXTRA_OPEN_SHADER = "open_shader";
 	// Debug builds only: a capture from the test tooling, with no dialog
 	// (tools/phone/capture.sh) - see runScriptedCapture().
+	public static final String ACTION_CAPTURE = "enk.danwills.android.enkishadereditor.CAPTURE";
 	public static final String EXTRA_CAPTURE = "capture";
 	public static final String EXTRA_CAPTURE_STOP = "capture_stop";
 	private static final String CODE_VISIBLE = "code_visible";
@@ -361,6 +365,7 @@ public class MainActivity extends AppCompatActivity {
 	protected void onCreate(@Nullable Bundle state) {
 		super.onCreate(state);
 		Log.i(AUDIO_CAPTURE_TAG, "MainActivity.onCreate (savedState=" + (state != null) + ")");
+		registerScriptedCapture();
 		mediaProjectionLauncher = registerForActivityResult(
 				new ActivityResultContracts.StartActivityForResult(),
 				this::onMediaProjectionResult);
@@ -1353,14 +1358,6 @@ public class MainActivity extends AppCompatActivity {
 	protected void onResume() {
 		super.onResume();
 		activityResumed = true;
-		// Debug builds only: a scripted capture that came with the intent
-		// that paused this - run once the GL thread has made its context
-		// again (its queued events don't wait for one).
-		if (pendingScriptedCapture != null) {
-			Intent capture = pendingScriptedCapture;
-			pendingScriptedCapture = null;
-			getWindow().getDecorView().postDelayed(() -> runScriptedCapture(capture), 500);
-		}
 		// A HighResCaptureService capture that finished while this
 		// Activity wasn't in the foreground couldn't safely show its
 		// result then (a Toast posted from a backgrounded/cached process
@@ -1421,6 +1418,9 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onDestroy() {
+		if (scriptedCaptureReceiver != null) {
+			unregisterReceiver(scriptedCaptureReceiver);
+		}
 		stopService(new Intent(this, AudioCaptureForegroundService.class));
 		if (localMusicPlayer != null) {
 			localMusicPlayer.release();
@@ -1442,12 +1442,6 @@ public class MainActivity extends AppCompatActivity {
 	@Override
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
-		if (BuildConfig.DEBUG && (intent.hasExtra(EXTRA_CAPTURE) || intent.hasExtra(EXTRA_CAPTURE_STOP))) {
-			// Not yet: am start pauses this on the way, which takes the
-			// GL context with it - see onResume().
-			pendingScriptedCapture = intent;
-			return;
-		}
 		if (reloadReplacedShader(intent)) {
 			return;
 		}
@@ -1486,31 +1480,43 @@ public class MainActivity extends AppCompatActivity {
 	// hand.
 	private final AtomicBoolean scriptedCaptureStop = new AtomicBoolean();
 	private boolean scriptedCaptureRunning;
+	// A broadcast, not an intent to start this: `am start` pauses the
+	// activity on the way, and pausing waits on the GL thread - minutes
+	// into a capture, an ANR (and the stop never arrived).
 	@Nullable
-	private Intent pendingScriptedCapture;
+	private BroadcastReceiver scriptedCaptureReceiver;
+
+	private void registerScriptedCapture() {
+		if (!BuildConfig.DEBUG) {
+			return;
+		}
+		scriptedCaptureReceiver = new BroadcastReceiver() {
+			@Override
+			public void onReceive(Context context, Intent intent) {
+				runScriptedCapture(intent);
+			}
+		};
+		ContextCompat.registerReceiver(this, scriptedCaptureReceiver,
+				new IntentFilter(ACTION_CAPTURE), ContextCompat.RECEIVER_EXPORTED);
+	}
 
 	// Debug builds only: renders the open shader as Custom Res/Seq would,
-	// but straight from an intent, with no dialog -
-	// `am start ... --es capture WxH [--ei oversample N] [--ei frames N]
-	// [--ei skip N] [--ef fps F] [--es bucket NORMAL]`. Frames go to the
-	// app's own files/capture/ (emptied first) as frame0000.png..., for the
-	// tooling to pull with run-as, and progress is logged under
-	// ScriptedCapture ("frame 1/6 ...", then "done ..." or "failed ...").
-	// --ez capture_stop true stops it.
-	private boolean runScriptedCapture(@Nullable Intent intent) {
-		if (!BuildConfig.DEBUG || intent == null) {
-			return false;
-		}
+	// but from the test tooling, with no dialog - `am broadcast -a
+	// ACTION_CAPTURE -p <package> --es capture WxH [--ei oversample N]
+	// [--ei frames N] [--ei skip N] [--ef fps F] [--es bucket NORMAL]`.
+	// Frames go to the app's own files/capture/ (emptied first) as
+	// frame0000.png..., for the tooling to pull with run-as, and progress
+	// is logged under ScriptedCapture ("frame 1/6 ...", then "done ...",
+	// "stopped ..." or "failed ..."). --ez capture_stop true stops it.
+	private void runScriptedCapture(@NonNull Intent intent) {
 		if (intent.getBooleanExtra(EXTRA_CAPTURE_STOP, false)) {
-			intent.removeExtra(EXTRA_CAPTURE_STOP);
 			scriptedCaptureStop.set(true);
-			return true;
+			return;
 		}
 		String size = intent.getStringExtra(EXTRA_CAPTURE);
 		if (size == null) {
-			return false;
+			return;
 		}
-		intent.removeExtra(EXTRA_CAPTURE);
 		String tag = "ScriptedCapture";
 		String[] wh = size.split("x");
 		int width;
@@ -1520,7 +1526,7 @@ public class MainActivity extends AppCompatActivity {
 			height = Integer.parseInt(wh[1]);
 		} catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
 			Log.i(tag, "failed: needs WxH, not " + size);
-			return true;
+			return;
 		}
 		int oversample = Math.max(1, intent.getIntExtra("oversample", 1));
 		int frames = Math.max(1, intent.getIntExtra("frames", 1));
@@ -1534,7 +1540,7 @@ public class MainActivity extends AppCompatActivity {
 		}
 		if (scriptedCaptureRunning) {
 			Log.i(tag, "failed: a capture's already running");
-			return true;
+			return;
 		}
 		File dir = new File(getFilesDir(), "capture");
 		File[] old = dir.listFiles();
@@ -1546,7 +1552,7 @@ public class MainActivity extends AppCompatActivity {
 		}
 		if (!dir.isDirectory() && !dir.mkdirs()) {
 			Log.i(tag, "failed: can't make " + dir);
-			return true;
+			return;
 		}
 		scriptedCaptureRunning = true;
 		scriptedCaptureStop.set(false);
@@ -1600,7 +1606,7 @@ public class MainActivity extends AppCompatActivity {
 				setShaderPaused(wasPaused);
 			});
 		}, "ScriptedCapture").start();
-		return true;
+		return;
 	}
 
 	@Override
