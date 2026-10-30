@@ -1299,10 +1299,25 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	// Rows in one whole frame of the pass chain: each buffer pass - as
 	// many times over as the shader's steps (see chainSteps()) - then the
-	// Image pass, all at the render size.
+	// Image pass, each at its own height (the render's, but for a buffer
+	// with a `///size:`).
 	private int getChainRows() {
-		return renderPipeline.getTargetHeight() *
-				(programManager.getBufferPasses().size() * chainSteps() + 1);
+		int height = renderPipeline.getTargetHeight();
+		return stepRows(height) * chainSteps() + height;
+	}
+
+	// Rows in one step of the buffer passes.
+	private int stepRows(int height) {
+		int rows = 0;
+		for (var pass : programManager.getBufferPasses()) {
+			rows += passRows(pass, height);
+		}
+		return rows;
+	}
+
+	private static int passRows(@NonNull BufferPass pass, int height) {
+		int rows = pass.getHeight();
+		return rows > 0 ? rows : height;
 	}
 
 	// Set while redoLastStep() draws: only the last of a frame's steps is
@@ -1363,14 +1378,27 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	private void ensureBufferTargets() {
 		int width = renderPipeline.getTargetWidth();
 		int height = renderPipeline.getTargetHeight();
+		if (width <= 0 || height <= 0) {
+			return;
+		}
+		if (maxTextureSize <= 0) {
+			maxTextureSize = device.getMaxTextureSize();
+		}
 		List<ShaderError> errors = null;
 		for (var pass : programManager.getBufferPasses()) {
+			int passWidth = pass.targetWidth(width, viewWidth, maxTextureSize);
+			int passHeight = pass.targetHeight(height, viewHeight, maxTextureSize);
+			// (Ones taken over from the shader as it was, a different size.)
+			if (pass.hasTargets() &&
+					(pass.getWidth() != passWidth || pass.getHeight() != passHeight)) {
+				pass.releaseTargets(device);
+			}
 			if (!pass.hasTargets()) {
 				if (errors == null) {
 					errors = new ArrayList<>();
 				}
-				pass.ensureTargets(device, width, height, halfFloatBuffers, float32Buffers,
-						errors);
+				pass.ensureTargets(device, passWidth, passHeight, halfFloatBuffers,
+						float32Buffers, errors);
 				pass.restoreSaved(device, glVersion >= 3, displayRotation());
 			}
 		}
@@ -1378,6 +1406,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			submitErrors(errors);
 		}
 	}
+
+	// GL_MAX_TEXTURE_SIZE, once asked - the most a buffer of its own size
+	// gets.
+	private int maxTextureSize;
 
 	private void updateBufferMipmapNeeds() {
 		java.util.Arrays.fill(bufferNeedsMipmaps, false);
@@ -1417,14 +1449,23 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		int steps = chainSteps();
 		boolean stepping = programManager.getSteps() > 1;
 		int lastStep = programManager.getSteps() - 1;
+		int stepRows = stepRows(height);
+		boolean ownSize = false;
 		for (int done = start, end = start + rows; done < end; ) {
-			int passIndex = done / height;
-			int y0 = done % height;
-			int n = Math.min(end - done, height - y0);
-			if (passIndex < passes.size() * steps) {
-				var pass = passes.get(passIndex % passes.size());
+			if (done < stepRows * steps) {
+				// Which pass, of which step, and how far into it.
+				int step = done / stepRows;
+				int y0 = done % stepRows;
+				int index = 0;
+				while (y0 >= passRows(passes.get(index), height)) {
+					y0 -= passRows(passes.get(index), height);
+					++index;
+				}
+				var pass = passes.get(index);
+				int passHeight = passRows(pass, height);
+				int n = Math.min(end - done, passHeight - y0);
 				if (stepping) {
-					setStepFrame(bindings, redoingStep ? lastStep : passIndex / passes.size());
+					setStepFrame(bindings, redoingStep ? lastStep : step);
 				}
 				var program = pass.getProgram();
 				var framebuffer = pass.getRenderFramebuffer();
@@ -1434,10 +1475,18 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					bindSourceText(bindings, program, pass.getSourceText(context, device, tabWidth()));
 					// A buffer's own `backbuffer` is its previous frame.
 					bindings.setTexture(UNIFORM_BACKBUFFER, pass.getCurrentTexture());
+					int passWidth = pass.getWidth() > 0 ? pass.getWidth() : width;
+					boolean own = passWidth != width || passHeight != height;
+					if (own || ownSize) {
+						builtinUniforms.bindPassResolution(bindings, own ? passWidth : 0,
+								passHeight);
+						ownSize = own;
+					}
 					renderPipeline.renderPassRows(bindings, program, framebuffer,
-							width, height, y0, n);
+							passWidth, passHeight, y0, n);
 				}
-				if (y0 + n >= height) {
+				done += n;
+				if (y0 + n >= passHeight) {
 					pass.swap();
 					var texture = pass.getCurrentTexture();
 					if (texture != null && pass.buffer < bufferNeedsMipmaps.length &&
@@ -1446,16 +1495,25 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					}
 				}
 			} else {
+				int y0 = done - stepRows * steps;
+				int n = Math.min(end - done, height - y0);
 				if (stepping) {
 					setStepFrame(bindings, lastStep);
+				}
+				if (ownSize) {
+					builtinUniforms.bindPassResolution(bindings, 0, 0);
+					ownSize = false;
 				}
 				bindings.retarget(mainProgram);
 				bindChannels(bindings, programManager.getPreparedShaderSource(), passes);
 				bindSourceText(bindings, mainProgram, programManager.getMainSourceText());
 				bindings.setTexture(UNIFORM_BACKBUFFER, mainBackTexture);
 				renderPipeline.renderMainPassRows(bindings, mainProgram, y0, n);
+				done += n;
 			}
-			done += n;
+		}
+		if (ownSize) {
+			builtinUniforms.bindPassResolution(bindings, 0, 0);
 		}
 		bindings.retarget(mainProgram);
 	}

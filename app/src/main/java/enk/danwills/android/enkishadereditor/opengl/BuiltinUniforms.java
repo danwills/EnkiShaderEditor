@@ -39,6 +39,9 @@ final class BuiltinUniforms {
 	private final float[] offset = new float[]{0, 0};
 	// ShaderToy uniforms - see bindShaderToyUniforms().
 	private final float[] stResolution = new float[]{0, 0, 1};
+	// A buffer pass's own size, while it's drawn - see bindPassResolution().
+	private final float[] passResolution = new float[]{0, 0};
+	private final float[] passStResolution = new float[]{0, 0, 1};
 	private final float[] stMouse = new float[]{0, 0, 0, 0};
 	private final float[] stDate = new float[]{0, 0, 0, 0};
 	private final Calendar calendar = Calendar.getInstance();
@@ -595,6 +598,21 @@ final class BuiltinUniforms {
 
 	void setBackgroundCaptureActive(boolean active) {
 		backgroundCaptureActive = active;
+	}
+
+	// A buffer pass of its own size (`///size:` - see BufferPass) sees that
+	// as `resolution`/`iResolution` while ShaderRenderer.drawChainRows()
+	// draws it; width 0 puts the render's back.
+	void bindPassResolution(@NonNull ProgramBindings bindings, int width, int height) {
+		if (width <= 0) {
+			bindings.setFloat2(ShaderRenderer.UNIFORM_RESOLUTION, resolution);
+			bindings.setFloat3(ShaderRenderer.UNIFORM_ST_RESOLUTION, stResolution);
+			return;
+		}
+		passResolution[0] = passStResolution[0] = width;
+		passResolution[1] = passStResolution[1] = height;
+		bindings.setFloat2(ShaderRenderer.UNIFORM_RESOLUTION, passResolution);
+		bindings.setFloat3(ShaderRenderer.UNIFORM_ST_RESOLUTION, passStResolution);
 	}
 
 	private void bindFrameUniforms(
