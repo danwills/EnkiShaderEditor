@@ -880,3 +880,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - The line was the ranges' own plain 2.5-4 km out: rays skimming it hit it or not as the view bobbed, and it was lit by a bumpy normal, in its own colour. Its low flats are now lit flat, and the far ground fades to the same colour (`RANGE_PLAIN`) by 2.6 km, so ground, plain and hills meet without a line. A pixel row straddling the ground's 2.6 km cut-off is blended by how much of it is ground, and far-ground soil and flecks average out as a pixel spans them.
   - A cooler, greyer band was tried and dropped: as Dan said, the plain's as far off as the hills, so it hazes the same.
   - Haze: everything hazed by its true distance (the ranges used half theirs, the far ground a blend; `HAZE` doubled to 24 km to keep the look), times a new `HAZE_DENSITY`. A dust storm will also need `DUSTY` raised.
+- "Yeah chuck it on phone": Outback Window v11 is 1079, at 1/16: 14 fps, left fullscreen.
