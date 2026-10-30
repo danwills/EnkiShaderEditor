@@ -197,6 +197,8 @@ vec2 markings(float x, float z, float wx, float wz, vec2 turn) {
 	bool bad = h.x > 0.88;
 	float wobble = (bad ? 0.05 : 0.012) * (noise(vec2(x / 7.0, 1.0)) * 2.0 - 1.0);
 	float width = LINE_W * (bad ? 0.75 + 0.5 * noise(vec2(x / 3.0, 2.0)) : 1.0);
+	// (Painted a little in and out, slowly.)
+	wobble += 0.07 * (noise(vec2(x / 80.0, 12.0)) * 2.0 - 1.0);
 	float z0 = LINE_Z + turn.y + wobble;
 	float across = smoothstep(z0 - soft, z0 + soft, z) * smoothstep(z0 + width + soft, z0 + width - soft, z);
 	if (bad) {
@@ -236,6 +238,11 @@ vec3 ground(float x, float z, float wx, float wz) {
 	vec4 st = stones(x, z, wx, wz, 0.016, 0.0072, 0.85, 120.0);
 	col = mix(col, mix(CHIPS, st.rgb * vec3(0.62, 0.66, 0.7), 0.4) * (1.0 + 0.3 * chips), st.a);
 	col *= 1.0 - 0.25 * smoothstep(0.4, 0.0, abs(z - 0.75));
+	// Fine stripes along it - wheel paths, drips, the chips' rows - which
+	// the blur along the road leaves (faded as a pixel spans them).
+	float lines = 0.45 * (noise(vec2(z * 23.0, x / 60.0)) - 0.5) * (1.0 - smoothstep(0.01, 0.04, wz))
+			+ 0.35 * (noise(vec2(z * 71.0, x / 40.0 + 5.0)) - 0.5) * (1.0 - smoothstep(0.004, 0.014, wz));
+	col *= 1.0 + lines;
 	// The seal's edge: ragged, more so (and bitten into) where it's rough.
 	vec2 seal = ragged(x, 2.5, 0.05 + 0.1 * rough, wx, 3.0);
 	vec2 bites = ragged(x, 9.0, 0.1 * rough, wx, 5.0);
@@ -271,9 +278,15 @@ vec3 ground(float x, float z, float wx, float wz) {
 	vec3 hue = mix(vec3(0.62, 0.20, 0.11), vec3(0.82, 0.78, 0.68), clamp(0.5 + 2.5 * streaks(p + 90.0, 30.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(vec3(0.26, 0.14, 0.10), hue, clamp(0.6 + 2.5 * streaks(p + 130.0, 24.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(hue, vec3(0.76, 0.56, 0.26), clamp(2.5 * streaks(p + 170.0, 20.0, 2, wx, wz), 0.0, 1.0));
-	col = mix(col, mix(GRAVEL, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
-	// The dirt: red, dusty patches, darker patches.
 	float vergeZ = verge(x) + turn.y;
+	// Bands along it, graded in by the grader: sandy, grey, and here and
+	// there a pale edge to the dirt.
+	float out_ = (z - sealZ) / max(vergeZ - sealZ, 0.3);
+	float bands = noise(vec2(out_ * 4.0 + noise(vec2(x / 300.0, 9.0)), x / 250.0)) * (1.0 - smoothstep(0.08, 0.3, wz));
+	vec3 g = mix(GRAVEL, mix(vec3(0.74, 0.60, 0.42), vec3(0.50, 0.48, 0.45), smoothstep(0.3, 0.7, bands)), 0.6 * abs(bands * 2.0 - 1.0) + 0.1);
+	g = mix(g, vec3(0.84, 0.74, 0.58), 0.6 * smoothstep(0.6, 0.8, noise(vec2(x / 200.0, 4.0))) * smoothstep(0.75, 0.95, out_) * smoothstep(1.1, 0.95, out_));
+	col = mix(col, mix(g, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
+	// The dirt: red, dusty patches, darker patches.
 	vec2 edge = ragged(x, 1.2, 0.12, wx, 9.0);
 	float softDirt = edge.y + 0.5 * wz + 0.05;
 	float dirt = smoothstep(vergeZ + edge.x - softDirt, vergeZ + edge.x + softDirt, z);
@@ -339,7 +352,7 @@ void needleSpan(inout vec4 acc, float a0, float a1, float b0, float b1, float s,
 // A plant's own green: darker or lighter (by dark), bluer or yellower.
 vec3 plantTint(vec4 seed, float dark) {
 	float a = fract(seed.y * 7.3 + seed.z * 3.1), b = fract(seed.x * 5.7 + seed.w * 2.3);
-	return mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0, b);
+	return mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0 - 0.4 * dark, b);
 }
 
 // A hummock of spinifex: a grey-green dome bristling with golden needles,
@@ -354,6 +367,8 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	float tuck = sqrt(smoothstep(0.0, 0.5 * h, y));
 	float wc = y < core ? r * sqrt(1.0 - (y / core) * (y / core)) * (0.15 + 0.85 * tuck) : 0.0;
 	float we = r * (tuft ? 1.0 : 1.2) * sqrt(1.0 - (y / he) * (y / he)) * (tuft ? 1.0 : 0.6 + 0.4 * tuck);
+	// (Ragged: needles' tips at different heights.)
+	we *= 0.85 + 0.15 * sin(y * 47.0 / h + seed.x * 20.0) * sin(y * 19.0 / h + seed.y * 9.0);
 	if (!tuft && y < 0.35 * h) {
 		// Stems: from the middle, forking out as they rise, seen through
 		// the thinner foliage low down.
@@ -365,7 +380,7 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	}
 	if (wc > 0.0) {
 		vec3 col = mix(SPINIFEX_CORE * 0.75, SPINIFEX_CORE, smoothstep(0.0, core, y));
-		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w) * plantTint(seed, 0.45);
+		col = mix(col, seed.z > 0.7 ? SPINIFEX * 0.8 : SPINIFEX_DARK, 0.35 * seed.w) * plantTint(seed, 0.45);
 		vec4 c = vec4(0.0);
 		// (Lit by span(), shady side to sunny. Shading the dome by its own
 		// normal, or even by the light's height, tipped the phone's
@@ -376,10 +391,12 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	// Needles: spaced 0.03 of their slope out from below the middle.
 	float s = 1.0 / (0.03 * (y + 0.5 * h));
 	float d = mix(0.65, 0.2, y / he);
-	vec3 col = mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.z) * mix(0.75, 1.05, y / he);
+	// Mostly dark grey-green; some dried golden.
+	vec3 col = (seed.z > 0.7 ? mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.y) : SPINIFEX_DARK * (0.8 + 0.4 * seed.y))
+			* mix(0.7, 1.0, y / he) * (0.85 + 0.15 * sin(y * 31.0 / h + seed.w * 12.0));
 	float phase = seed.x * 7.0;
 	needleSpan(acc, a0, a1, -we, -wc, s, phase, d, col, gLeft);
-	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, gRight);
+	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, mix(gLeft, gRight, 0.6));
 }
 
 // Buffel grass: a tussock of arching stems, widening upwards, with seed
@@ -816,9 +833,9 @@ vec3 starfield(vec3 rd, float day, float turn, float pa) {
 	vec2 cell = floor(sp);
 	vec4 h = hash42(cell + 3.7);
 	float dist = length(sp - cell - 0.25 - 0.5 * h.xy) * TAU / cells;
-	float bright = h.z < 0.55 ? 0.0 : (0.012 + 2.0 * pow((h.z - 0.55) / 0.45, 8.0)) * (0.75 + 0.25 * sin(iTime * (3.0 + 4.0 * h.w) + h.w * TAU));
-	// All but a handful at half that.
-	bright *= h.z > 0.985 ? 1.0 : 0.5;
+	// A handful bright; the rest faint, a few of them less so.
+	float s = (h.z - 0.55) / 0.45;
+	float bright = h.z < 0.55 ? 0.0 : (h.z > 0.985 ? 2.0 * pow(s, 8.0) : 0.006 + 0.12 * pow(s, 12.0)) * (0.75 + 0.25 * sin(iTime * (3.0 + 4.0 * h.w) + h.w * TAU));
 	vec3 col = mix(vec3(1.0, 0.85, 0.7), vec3(0.8, 0.9, 1.0), h.w) * bright * smoothstep(1.3 * pa, 0.3 * pa, dist);
 	// The Milky Way: a band, mottled, with dark lanes.
 	float band = dot(q, normalize(vec3(0.2, 0.6, 0.75)));
@@ -1168,6 +1185,8 @@ uniform int pointerCount;
 #define STOPS 0.2
 // How far over the car pulls (onto the gravel) when three fingers stop it.
 #define PULL_Z 2.3
+// How far it drifts in and out in its lane, in metres.
+#define DRIFT 0.15
 // Glints off glass or quartz in the dirt: the chance of a shard in an empty
 // cell, how near its face must be to the mirror angle (radians), how bright.
 #define GLINTS 0.13
@@ -1228,7 +1247,8 @@ uniform int pointerCount;
 #define DUST vec3(0.80, 0.50, 0.32)
 #define TRACK vec3(0.76, 0.42, 0.25)
 #define SPINIFEX vec3(0.86, 0.72, 0.38)
-#define SPINIFEX_CORE vec3(0.56, 0.57, 0.34)
+#define SPINIFEX_DARK vec3(0.36, 0.38, 0.27)
+#define SPINIFEX_CORE vec3(0.40, 0.42, 0.27)
 #define SALTBUSH vec3(0.55, 0.58, 0.48)
 #define BUFFEL vec3(0.60, 0.62, 0.48)
 #define MULGA vec3(0.34, 0.38, 0.23)
@@ -1441,7 +1461,7 @@ vec4 pothole(float x) {
 
 // Where the dirt starts, out from the road: wandering in and out.
 float verge(float x) {
-	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 0.8 * (noise(vec2(x / 600.0, 8.0)) - 0.5);
+	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 1.6 * (noise(vec2(x / 500.0, 8.0)) - 0.4) + 0.4 * (noise(vec2(x / 35.0, 6.0)) - 0.5);
 	return max(v, SEAL_Z + 0.4);
 }
 
@@ -1489,7 +1509,7 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 	// Patches thick and thin, slowly changing along the road.
 	float thick = BUSH * (0.4 + 1.2 * noise(vec2(x / 60.0, float(lane) * 0.37)));
 	float k = more.x / max(thick, 1e-3);
-	float spin = 0.8, bush = 0.15, trees = z > 15.0 ? 0.12 : 0.0, gums = z > 30.0 ? 0.02 : 0.0;
+	float spin = 0.9, bush = 0.06, trees = z > 15.0 ? 0.12 : 0.0, gums = z > 30.0 ? 0.02 : 0.0;
 	float mounds = z > 6.0 ? 0.05 : 0.0, rocks = 0.06, tufts = z < 12.0 ? 0.5 : 0.0;
 	// Mulga thickets here and there; weeds by the road, in patches.
 	trees *= 0.3 + 2.5 * smoothstep(0.55, 0.8, noise(vec2(x / 300.0, 5.0)));
@@ -1719,6 +1739,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 	// Pulling over as the fingers stop it, and back out as it goes again.
 	float pull = PULL_Z * smoothstep(0.0, 1.0 - MIN_RATE, 1.0 - rate);
+	// (And drifting a little in and out in its lane.)
+	pull += DRIFT * (noise(vec2(clock.x / 220.0, 41.0)) * 2.0 - 1.0);
 	float pv = (pull - stop.z) / dt;
 	float sideways = clamp((pv - stop.w) / dt, -3.0, 3.0);
 	stop.zw = vec2(pull, pv);
