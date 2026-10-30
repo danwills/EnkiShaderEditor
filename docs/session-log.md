@@ -832,3 +832,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Bushes come from the atlas now: six tiles after the trees (two grey-green saltbushes, two darker-leaved, two bare and sticky), each five stems fanning from the root with twigs and leaf clumps. The atlas is 6 x 4 tiles.
   - Every trunk, branch and stem wanders by two octaves of noise, nothing at the root and growing to `WOBBLE` at the top.
   - Checked on the desktop only; not yet on the phone.
+- "chuck it on as v4": Outback Window v4 went on as 1072 and was left fullscreen. It read 3.6 fps 12 s in and 19 fps 30 s in, so it starts slow and settles; that explains the jumpy readings in the bisecting, which were all taken at 10 s. v2 was 25 at a cool 10 s reading.
