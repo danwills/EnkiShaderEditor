@@ -283,12 +283,27 @@ vec3 ground(float x, float z, float wx, float wz) {
 	// Bands along it, graded in by the grader: sandy, grey, and here and
 	// there a pale edge to the dirt.
 	float out_ = (z - sealZ) / max(vergeZ - sealZ, 0.3);
-	float bands = noise(vec2(out_ * 4.0 + noise(vec2(x / 300.0, 9.0)), x / 250.0)) * (1.0 - smoothstep(0.08, 0.3, wz));
-	vec3 g = mix(GRAVEL, mix(vec3(0.74, 0.60, 0.42), vec3(0.50, 0.48, 0.45), smoothstep(0.3, 0.7, bands)), 0.6 * abs(bands * 2.0 - 1.0) + 0.1);
-	g = mix(g, vec3(0.84, 0.74, 0.58), 0.6 * smoothstep(0.6, 0.8, noise(vec2(x / 200.0, 4.0))) * smoothstep(0.75, 0.95, out_) * smoothstep(1.1, 0.95, out_));
+	// Its style changes along the road: how banded, and red, sandy or grey.
+	vec3 style = vec3(noise(vec2(x / 180.0, 31.0)), noise(vec2(x / 260.0, 33.0)), noise(vec2(x / 140.0, 35.0)));
+	float bands = noise(vec2(out_ * (2.0 + 6.0 * style.z) + noise(vec2(x / 300.0, 9.0)), x / 250.0)) * (1.0 - smoothstep(0.08, 0.3, wz));
+	vec3 base = mix(mix(GRAVEL, vec3(0.78, 0.63, 0.44), smoothstep(0.45, 0.7, style.y)), vec3(0.50, 0.47, 0.44), smoothstep(0.45, 0.25, style.y));
+	vec3 g = mix(base, mix(vec3(0.74, 0.60, 0.42), vec3(0.46, 0.44, 0.42), smoothstep(0.3, 0.7, bands)), (0.8 * abs(bands * 2.0 - 1.0) + 0.1) * (0.2 + 1.2 * style.x));
+	// Its edges, now and then: a pale one, or a dark grey one - either
+	// side, each its own width.
+	float pale = noise(vec2(x / 150.0, 4.0)), grey = noise(vec2(x / 170.0, 41.0));
+	float outer = smoothstep(0.65 + 0.2 * style.z, 0.9, out_) * smoothstep(1.15, 0.95, out_);
+	float inner = smoothstep(0.0, 0.05, out_) * smoothstep(0.12 + 0.25 * style.x, 0.05, out_);
+	g = mix(g, vec3(0.86, 0.77, 0.60), 0.7 * smoothstep(0.58, 0.75, pale) * max(outer, inner * step(0.5, style.z)));
+	g = mix(g, vec3(0.34, 0.32, 0.30), 0.7 * smoothstep(0.62, 0.8, grey) * max(outer * step(style.z, 0.5), inner));
+	// Low grassy clumps lying in it, thick here, none there.
+	float tussock = streaks(p * vec2(1.0, 1.4) + 300.0, 3.0, 2, wx, wz * 1.4);
+	float grassy = smoothstep(0.35, 0.75, noise(vec2(x / 110.0, 37.0)));
+	g = mix(g, mix(vec3(0.58, 0.55, 0.33), vec3(0.36, 0.40, 0.24), style.x) * (0.8 + 0.4 * tussock), grassy * smoothstep(0.05, 0.25, tussock + 0.1 * grassy) * smoothstep(0.05, 0.3, out_));
 	col = mix(col, mix(g, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
 	// The dirt: red, dusty patches, darker patches.
-	vec2 edge = ragged(x, 1.2, 0.3, wx, 9.0) + ragged(x, 6.0, 0.1, wx, 19.0);
+	vec2 edge = ragged(x, 1.2, 0.3, wx, 9.0) + ragged(x, 6.0, 0.15, wx, 19.0) + ragged(x, 20.0, 0.06, wx, 29.0);
+	// (Fingers of dirt into the gravel and of gravel out into the dirt.)
+	edge.x += 0.9 * streaks(p * vec2(1.0, 2.0) + 60.0, 2.0, 3, wx, wz * 2.0);
 	float softDirt = edge.y + 0.5 * wz + 0.05;
 	float dirt = smoothstep(vergeZ + edge.x - softDirt, vergeZ + edge.x + softDirt, z);
 	float patches = streaks(p * 0.3, 1.0, 3, wx * 0.3, wz * 0.3);
@@ -793,14 +808,10 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 			return vec4(0.0);
 		}
 		last = t = top;
-	} else {
-		// Just under one: how far the skyline beyond rises over the ray.
-		for (int i = 1; i < 3; i++) {
-			float tb = t * (1.0 + 0.15 * float(i));
-			above = max(above, (terrain(o + d * tb, false) - eye - rise * tb + tb * tb / 12.7e6) / (tb * pa));
-		}
 	}
-	float cover = clamp(0.5 + above, 0.0, 1.0);
+	// (A hit covers the pixel: half covering one that only grazes a ridge
+	// let the sky show through in front of the ranges behind.)
+	float cover = hit ? 1.0 : clamp(0.5 + above, 0.0, 1.0);
 	for (int i = 0; i < (hit ? 6 : 0); i++) {
 		float mid = 0.5 * (last + t);
 		if (eye + rise * mid - mid * mid / 12.7e6 < terrain(o + d * mid, true)) {
@@ -1109,7 +1120,8 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 		float wz = eye * pa / (rd.y * rd.y);
 		vec2 lit = r.y < 200.0 ? sunlight(r.x, r.y, wx, along) : vec2(1.0);
 		back = ground(r.x, r.y, wx, wz) * (gAmbient * lit.y + gLightCol * max(gLight.y, 0.0) * lit.x * mix(1.0, lit.y, 0.6));
-		back = haze(back, tg, hazeCol);
+		// (Hazed as the ranges are where it meets them, so there's no seam.)
+		back = haze(back, tg * mix(1.0, 0.5, smoothstep(1200.0, 2600.0, tg * length(d))), hazeCol);
 	} else {
 		vec4 far = ranges(rotY(rd, hd.x), eye, along, pa, hd.x, hazeCol);
 		back = far.w < 1.0 ? sky(normalize(rd), true, day, hd.x, pa) : vec3(0.0);
@@ -1548,7 +1560,16 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 	size = vec2(0.0);
 	if (z < 12.0) {
 		vec2 turn = turning(x);
-		if (zj < verge(x) + turn.y + 0.5 || abs(x - turn.x) < 6.0) {
+		if (abs(x - turn.x) < 6.0 || abs(x - crossing(x)) < 10.0) {
+			return NONE;
+		}
+		if (zj < verge(x) + turn.y + 0.5) {
+			// On the verge: low grassy clumps, thick here, none there.
+			vec4 v = hash42(vec2(cell + 0.3, float(lane) * 5.1 + 2.0));
+			if (zj > SEAL_Z + turn.y + 0.5 && v.x < 0.8 * smoothstep(0.35, 0.75, noise(vec2(x / 110.0, 37.0)))) {
+				size = vec2(0.15 + 0.2 * v.y, 0.12 + 0.18 * v.z);
+				return TUFT;
+			}
 			return NONE;
 		}
 	} else if (abs(x - turning(x).x) < 6.0) {

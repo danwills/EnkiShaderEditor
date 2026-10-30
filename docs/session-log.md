@@ -867,3 +867,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - The tree atlas is drawn a tile a frame (24 frames, then the sums), with a white progress bar in a hollow box until it's done.
   - Saved as feedback: push the look forward, don't bisect fps at length.
 - "Yeah go for it" (v8 on the phone): Outback Window v8 is 1076, 0.5 fps after 40 s (the Adreno cliff again); the progress bar was over before the first screenshot. Left fullscreen.
+- "I'm loving it at 1/16 actually!"; "a tiny possible gap between the tops of the distant hills and their bases"; the verge "can vary heaps more with low grassy clumps, occasional lighter or darker/greyer edges, and a much noisier interface to the 'outback' behind":
+  - The gaps were the skyline antialiasing half-covering rays that graze a near ridge, letting the sky through in front of the ranges behind: a hit now covers fully. The ground's haze also eases to the ranges' where they meet, so there's no seam.
+  - The verge's style changes along the road (how banded; red, sandy or grey). Now and then it has a pale or dark grey edge on either side. Low grassy clumps lie in it, thick in places, with small tussocks standing among them. Its boundary with the dirt is fingered both ways (2D streaks, plus a finer ragged octave).
