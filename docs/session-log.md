@@ -840,3 +840,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Shadows take 0.6 of the key light (was 0.7); the darkening round plants' feet is back down (0.55).
   - Glints by moonlight are `GLINT_NIGHT` (0.35) as bright.
   - Desktop only so far.
+- "Yeah please do" (v5 on the phone): Outback Window v5 went on as 1073, read 17 fps after 30 s (v4: 19), and was left fullscreen.
