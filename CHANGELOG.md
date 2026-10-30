@@ -1,5 +1,11 @@
 # Change Log
 
+## 2.38.0
+* Let offscreen buffers have their own size, whatever the quality setting: `///size:WxH`, `///scale:F` or `///minScale:F`
+* Capture shaders with offscreen buffers at any resolution or oversampling in Custom Res/Seq
+* Fix high-res captures of ShaderToy-style shaders using the screen's iResolution
+* Say 1/2× rather than 0.5× in the Custom Res presets
+
 ## 2.37.0
 * Add a Common section: code every pass of a shader shares
 * Add a live mode to Adjust Defines, with a toolbar button, filter and groups
