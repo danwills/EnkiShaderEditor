@@ -395,14 +395,17 @@ void limb(inout vec4 acc, float a0, float a1, float y, vec2 p0, vec2 p1, float w
 }
 
 // A clump of leaves round c (half sizes r): ragged, and gaps through it.
+// (Sines, not noise: nine clumps a tree, and noise in them took the phone
+// to 0.5 fps.)
 void leaves(inout vec4 acc, float a0, float a1, float y, vec2 c, vec2 r, float seed, vec3 col, float gaps) {
 	float t = (y - c.y) / r.y;
 	if (abs(t) >= 1.0) {
 		return;
 	}
-	float w = r.x * sqrt(1.0 - t * t) * (0.6 + 0.7 * noise(vec2(y * 5.0 / r.y, seed)));
+	float s = t * 4.5 + seed;
+	float w = r.x * sqrt(1.0 - t * t) * (0.95 + 0.25 * sin(2.0 * s) + 0.2 * sin(5.1 * s + 1.7 * seed));
 	vec4 l = vec4(0.0);
-	span(l, a0, a1, c.x + 0.3 * r.x * (noise(vec2(y * 3.0 / r.y, seed + 5.0)) - 0.5), w, col * mix(0.65, 1.05, 0.5 + 0.5 * t));
+	span(l, a0, a1, c.x + 0.15 * r.x * sin(1.3 * s + 2.0 * seed), w, col * mix(0.65, 1.05, 0.5 + 0.5 * t));
 	acc += l * gaps;
 }
 
@@ -418,27 +421,41 @@ void tree(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 se
 	float tw = h * (gum ? 0.024 : 0.018) * (y < 0.3 ? 1.0 + (0.3 - y) : 1.0);
 	vec2 top = vec2((seed.z - 0.5) * 0.3 * fork, fork);
 	limb(acc, a0, a1, y, vec2(0.0), top, tw, bark);
+	// Below the fork there's only the trunk.
+	if (y < fork) {
+		return;
+	}
 	// The leaves' gaps, from noise across the pixel's stretch, quietened by
 	// the blur.
 	float mid = 0.5 * (a0 + a1), ww = a1 - a0;
 	float n = noise(vec2(mid * 6.0, y * 6.0 + seed.x * 30.0)) * 2.0 - 1.0 + 0.6 * (noise(vec2(mid * 17.0, y * 17.0 + seed.y * 30.0)) * 2.0 - 1.0);
 	float gaps = clamp((gum ? 0.6 : 0.8) + 1.1 * n / max(1.0, 6.0 * ww), 0.0, 1.0);
 	float droop = oak ? 0.06 * h : 0.0;
-	for (int i = 0; i < 3; i++) {
+	// Each limb's two twigs, then the limb itself, one part a turn: one
+	// copy each of limb() and leaves() (unrolled, there were nine), and
+	// limbs too far from this stretch skipped.
+	int limbs = 3 + min(iFrame, 0);
+	for (int i = 0; i < limbs; i++) {
 		vec4 hh = hash42(vec2(seed.x * 91.0 + float(i), seed.y * 37.0));
 		float side = float(i) - 1.0;
 		vec2 tip = vec2(r * (0.7 * side + 0.3 * (hh.x - 0.5)), h * (0.68 + 0.2 * hh.y));
-		limb(acc, a0, a1, y, top, tip, 0.6 * tw, bark);
-		for (int j = 0; j < 2; j++) {
-			vec2 at = mix(top, tip, 0.45 + 0.3 * float(j));
-			vec2 twig = at + vec2(r * (0.28 * (2.0 * float(j) - 1.0) + 0.1 * side) * (0.6 + 0.6 * hh.z), h * (0.1 + 0.12 * hh.w));
-			limb(acc, a0, a1, y, at, twig, 0.3 * tw, bark);
-			if (!dead) {
-				leaves(acc, a0, a1, y, twig - vec2(0.0, droop), vec2(0.26 * r, 0.1 * h) * (0.8 + 0.4 * hh.z), hh.x * 40.0 + float(j) * 9.0, green, gaps);
-			}
+		if (a1 < min(top.x, tip.x) - 0.9 * r || a0 > max(top.x, tip.x) + 0.9 * r) {
+			continue;
 		}
-		if (!dead) {
-			leaves(acc, a0, a1, y, tip - vec2(0.0, droop), vec2(0.32 * r, 0.12 * h) * (0.8 + 0.4 * hh.w), hh.y * 40.0, green, gaps);
+		for (int j = 0; j < 3; j++) {
+			vec2 p0 = top, p1 = tip, leaf = vec2(0.32 * r, 0.12 * h) * (0.8 + 0.4 * hh.w);
+			float w = 0.6 * tw, ls = hh.y * 40.0;
+			if (j < 2) {
+				p0 = mix(top, tip, 0.45 + 0.3 * float(j));
+				p1 = p0 + vec2(r * (0.28 * (2.0 * float(j) - 1.0) + 0.1 * side) * (0.6 + 0.6 * hh.z), h * (0.1 + 0.12 * hh.w));
+				leaf = vec2(0.26 * r, 0.1 * h) * (0.8 + 0.4 * hh.z);
+				w = 0.3 * tw;
+				ls = hh.x * 40.0 + float(j) * 9.0;
+			}
+			limb(acc, a0, a1, y, p0, p1, w, bark);
+			if (!dead) {
+				leaves(acc, a0, a1, y, p1 - vec2(0.0, droop), leaf, ls, green, gaps);
+			}
 		}
 	}
 }
@@ -553,8 +570,7 @@ void cutOut(inout vec4 acc, int kind, float a0, float a1, float y, vec2 size, ve
 	else if (kind == TUFT) spinifex(acc, a0, a1, y, size.x, size.y, seed, true);
 	else if (kind == WEED) buffel(acc, a0, a1, y, size.x, size.y, seed);
 	else if (kind == BUSH_CLUMP) bush(acc, a0, a1, y, size.x, size.y, seed);
-	else if (kind == MULGA_TREE) tree(acc, a0, a1, y, size.x, size.y, seed, false);
-	else if (kind == GHOST_GUM) tree(acc, a0, a1, y, size.x, size.y, seed, true);
+	else if (kind == MULGA_TREE || kind == GHOST_GUM) tree(acc, a0, a1, y, size.x, size.y, seed, kind == GHOST_GUM);
 	else if (kind == TERMITES) termites(acc, a0, a1, y, size.x, size.y, seed);
 	else if (kind == BOULDER) boulder(acc, a0, a1, y, size.x, size.y, seed);
 }
