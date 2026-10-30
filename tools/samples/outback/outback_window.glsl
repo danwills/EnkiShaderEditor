@@ -22,6 +22,10 @@
 // quartz scattered in the dirt, each a mirror tilted at random, glinting
 // when the light reflects off one into the eye.
 // Buffer B tables what stands in each cell near the car, once a frame.
+// Buffer C is an atlas of trees, drawn once (branches, twigs, clumps of
+// leaves with gaps, their colours and normals), each tile's rows summed
+// from its left edge so a pixel's stretch of a row, however blurred, is
+// two filtered reads.
 // The Image pass looks out sideways (the car drives to the right, on the
 // left of the road), so the road's along the screen and everything streams
 // past, faster the nearer it is. The road has long straights and bends:
@@ -42,6 +46,8 @@
 //     a canopy...), so the blur's just how much of the pixel's stretch of
 //     road a span covers - exact, at any speed, with no samples. Spinifex
 //     needles are a radiating square wave, integrated the same way.
+//     Trees are the atlas's, its sums read the same way and lit by its
+//     normals.
 //   - Shadows from the same spans, and a little darkness under each thing.
 //   - The ranges: a height field marched out to 45 km, lit by the sun.
 //   - Dust haze nearer, air haze far off.
@@ -52,6 +58,12 @@
 
 uniform sampler2D iChannel0; ///buf:A;
 uniform sampler2D iChannel1; ///buf:B;
+uniform sampler2D iChannel2; ///buf:C;
+
+// The tree atlas: whether it's ready, and its layout (atlasLayout()).
+bool gAtlas;
+ivec3 gTiles;
+vec2 gAtlasRes;
 
 // ---- Light, set once a pixel by setLight(), in the car's frame: towards
 // the sun and moon; the key light (the sun, or the moon at night) and its
@@ -384,80 +396,57 @@ void bush(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 se
 	acc += b * 0.92;
 }
 
-// A branch from p0 up to p1 (across from the middle, and up), half width
-// w: its span at height y.
-void limb(inout vec4 acc, float a0, float a1, float y, vec2 p0, vec2 p1, float w, vec3 col) {
-	if (y < p0.y || y >= p1.y) {
-		return;
-	}
-	float slope = (p1.x - p0.x) / (p1.y - p0.y);
-	span(acc, a0, a1, p0.x + (y - p0.y) * slope, w * sqrt(1.0 + slope * slope), col);
+// The tree atlas's sums along a tile's rows at (x, y) texels in, from
+// the tile's left edge: band 0's (coverage, colour) and band 1's (normal,
+// leaves). Its texels hold the sum to their right edges, so a texel's
+// middle is the sum to x + 0.5; filtering does the rest, linear along and
+// between rows. (Four filtered reads: sixteen texelFetches took the phone
+// from 13 to 1.6 fps.)
+void atlasSum(vec2 o, float x, float y, float wgt, inout vec4 a, inout vec4 b) {
+	vec2 p = (o + vec2(x - 0.5, y)) / gAtlasRes;
+	a += wgt * texture(iChannel2, p);
+	b += wgt * texture(iChannel2, p + vec2(0.0, float(gTiles.z) / gAtlasRes.y));
 }
 
-// A clump of leaves round c (half sizes r): ragged, and gaps through it.
-// (Sines, not noise: nine clumps a tree, and noise in them took the phone
-// to 0.5 fps.)
-void leaves(inout vec4 acc, float a0, float a1, float y, vec2 c, vec2 r, float seed, vec3 col, float gaps) {
-	float t = (y - c.y) / r.y;
-	if (abs(t) >= 1.0) {
+// A tree (size: radius, height), one of the atlas's (Buffer C) by its kind
+// and seed, mirrored for some: its tile's rows at height y, summed from a0
+// to a1, so blurred exactly, and lit by its normals there.
+void tree(inout vec4 acc, float a0, float a1, float y, vec2 size, vec4 seed, bool gum) {
+	if (!gAtlas) {
 		return;
 	}
-	float s = t * 4.5 + seed;
-	float w = r.x * sqrt(1.0 - t * t) * (0.95 + 0.25 * sin(2.0 * s) + 0.2 * sin(5.1 * s + 1.7 * seed));
-	vec4 l = vec4(0.0);
-	span(l, a0, a1, c.x + 0.15 * r.x * sin(1.3 * s + 2.0 * seed), w, col * mix(0.65, 1.05, 0.5 + 0.5 * t));
-	acc += l * gaps;
-}
-
-// A tree: a dark trunk forking into three limbs, each with two twigs, and
-// clumps of leaves at their ends. A mulga (dark grey-green), a desert oak
-// (darker, droopier), a dead one (bare, grey), or a ghost gum (white bark,
-// a bright, open canopy).
-void tree(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 seed, bool gum) {
-	bool oak = !gum && seed.w < 0.3, dead = !gum && seed.w > 0.82;
-	vec3 bark = gum ? GUM_BARK : dead ? vec3(0.42, 0.40, 0.38) : BARK * mix(0.6, 1.0, seed.z);
-	vec3 green = gum ? GUM_LEAVES : oak ? MULGA * vec3(0.5, 0.55, 0.6) : MULGA * 0.75;
-	float fork = h * (gum ? 0.45 : 0.25 + 0.2 * seed.y);
-	float tw = h * (gum ? 0.024 : 0.018) * (y < 0.3 ? 1.0 + (0.3 - y) : 1.0);
-	vec2 top = vec2((seed.z - 0.5) * 0.3 * fork, fork);
-	limb(acc, a0, a1, y, vec2(0.0), top, tw, bark);
-	// Below the fork there's only the trunk.
-	if (y < fork) {
+	int t = gum ? MULGAS + OAKS + DEAD + int(seed.x * float(GUMS))
+			: seed.w < 0.3 ? MULGAS + int(seed.x * float(OAKS))
+			: seed.w > 0.82 ? MULGAS + OAKS + int(seed.x * float(DEAD))
+			: int(seed.x * float(MULGAS));
+	float flip = fract(seed.x * 7.0) > 0.5 ? -1.0 : 1.0;
+	if (flip < 0.0) {
+		float s = a0;
+		a0 = -a1;
+		a1 = -s;
+	}
+	// Texels a metre across.
+	float k = float(gTiles.x) / (2.0 * TREE_SPAN * size.x);
+	// (Its first column's empty: nothing to sum before it.)
+	float u0 = clamp((a0 + TREE_SPAN * size.x) * k, 1.0, float(gTiles.x));
+	float u1 = clamp((a1 + TREE_SPAN * size.x) * k, 1.0, float(gTiles.x));
+	if (u1 <= u0) {
 		return;
 	}
-	// The leaves' gaps, from noise across the pixel's stretch, quietened by
-	// the blur.
-	float mid = 0.5 * (a0 + a1), ww = a1 - a0;
-	float n = noise(vec2(mid * 6.0, y * 6.0 + seed.x * 30.0)) * 2.0 - 1.0 + 0.6 * (noise(vec2(mid * 17.0, y * 17.0 + seed.y * 30.0)) * 2.0 - 1.0);
-	float gaps = clamp((gum ? 0.6 : 0.8) + 1.1 * n / max(1.0, 6.0 * ww), 0.0, 1.0);
-	float droop = oak ? 0.06 * h : 0.0;
-	// Each limb's two twigs, then the limb itself, one part a turn: one
-	// copy each of limb() and leaves() (unrolled, there were nine), and
-	// limbs too far from this stretch skipped.
-	int limbs = 3 + min(iFrame, 0);
-	for (int i = 0; i < limbs; i++) {
-		vec4 hh = hash42(vec2(seed.x * 91.0 + float(i), seed.y * 37.0));
-		float side = float(i) - 1.0;
-		vec2 tip = vec2(r * (0.7 * side + 0.3 * (hh.x - 0.5)), h * (0.68 + 0.2 * hh.y));
-		if (a1 < min(top.x, tip.x) - 0.9 * r || a0 > max(top.x, tip.x) + 0.9 * r) {
-			continue;
-		}
-		for (int j = 0; j < 3; j++) {
-			vec2 p0 = top, p1 = tip, leaf = vec2(0.32 * r, 0.12 * h) * (0.8 + 0.4 * hh.w);
-			float w = 0.6 * tw, ls = hh.y * 40.0;
-			if (j < 2) {
-				p0 = mix(top, tip, 0.45 + 0.3 * float(j));
-				p1 = p0 + vec2(r * (0.28 * (2.0 * float(j) - 1.0) + 0.1 * side) * (0.6 + 0.6 * hh.z), h * (0.1 + 0.12 * hh.w));
-				leaf = vec2(0.26 * r, 0.1 * h) * (0.8 + 0.4 * hh.z);
-				w = 0.3 * tw;
-				ls = hh.x * 40.0 + float(j) * 9.0;
-			}
-			limb(acc, a0, a1, y, p0, p1, w, bark);
-			if (!dead) {
-				leaves(acc, a0, a1, y, p1 - vec2(0.0, droop), leaf, ls, green, gaps);
-			}
-		}
+	float v = clamp(y / size.y * float(gTiles.y), 0.5, float(gTiles.y) - 0.5);
+	vec2 o = vec2((t % TREE_COLS) * gTiles.x, (t / TREE_COLS) * gTiles.y);
+	vec4 a = vec4(0.0), b = vec4(0.0);
+	atlasSum(o, u1, v, 1.0, a, b);
+	atlasSum(o, u0, v, -1.0, a, b);
+	if (a.x <= 1e-5) {
+		return;
 	}
+	// Lit as the other cut-outs are (by normals up and out a bit, as from
+	// gLeft to gRight), turned by the atlas's, and wrapping round a little
+	// (light through the leaves).
+	vec2 n = vec2(flip * b.x, b.y) / a.x;
+	vec3 light = gAmbient * (0.85 + 0.15 * n.y) + 1.1 * gLightCol * max(0.25 + 0.75 * dot(normalize(vec3(n.x, 0.6 + 0.4 * n.y, -0.35)), gLight), 0.0);
+	acc += vec4(a.yzw / a.x * light, 1.0) * a.x / k;
 }
 
 // A termite mound: a lumpy red spire.
@@ -570,7 +559,7 @@ void cutOut(inout vec4 acc, int kind, float a0, float a1, float y, vec2 size, ve
 	else if (kind == TUFT) spinifex(acc, a0, a1, y, size.x, size.y, seed, true);
 	else if (kind == WEED) buffel(acc, a0, a1, y, size.x, size.y, seed);
 	else if (kind == BUSH_CLUMP) bush(acc, a0, a1, y, size.x, size.y, seed);
-	else if (kind == MULGA_TREE || kind == GHOST_GUM) tree(acc, a0, a1, y, size.x, size.y, seed, kind == GHOST_GUM);
+	else if (kind == MULGA_TREE || kind == GHOST_GUM) tree(acc, a0, a1, y, size, seed, kind == GHOST_GUM);
 	else if (kind == TERMITES) termites(acc, a0, a1, y, size.x, size.y, seed);
 	else if (kind == BOULDER) boulder(acc, a0, a1, y, size.x, size.y, seed);
 }
@@ -579,6 +568,10 @@ void cutOut(inout vec4 acc, int kind, float a0, float a1, float y, vec2 size, ve
 // at the pixel's stretch of road (lx, w wide) and height y, quietened as
 // the blur averages it.
 vec2 texture2(int kind, float lx, float w, float y, vec4 seed) {
+	if (kind == MULGA_TREE || kind == GHOST_GUM) {
+		// (The atlas has its own.)
+		return vec2(1.0);
+	}
 	float f = kind == BUSH_CLUMP ? 12.0 : kind == MULGA_TREE || kind == GHOST_GUM ? 5.0 : kind == BOULDER ? 9.0 : kind == TERMITES ? 7.0 : 18.0;
 	float n = noise(vec2(lx * f, y * f + seed.x * 30.0)) * 2.0 - 1.0;
 	n += 0.5 * (noise(vec2(lx * f * 2.7, y * f * 2.7 + seed.y * 30.0)) * 2.0 - 1.0);
@@ -1054,6 +1047,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 bounce = texelFetch(iChannel0, ivec2(S_BOUNCE, 0), 0);
 	vec4 roll = texelFetch(iChannel0, ivec2(S_ROLL, 0), 0);
 	gPull = texelFetch(iChannel0, ivec2(S_STOP, 0), 0).z;
+	gTiles = atlasLayout(res);
+	gAtlasRes = res;
+	vec4 mark = texelFetch(iChannel2, ivec2(0, int(res.y) - 1), 0);
+	gAtlas = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y && mark.w >= atlasDone(gTiles.x);
 	vec4 glint = texelFetch(iChannel0, ivec2(S_GLINT, 0), 0);
 	if (abs(roll.w - MARK) > 0.01) {
 		// Not started yet.
@@ -1179,6 +1176,41 @@ uniform int pointerCount;
 #define GUM_LEAVES vec3(0.44, 0.54, 0.26)
 #define GUM_BARK vec3(0.93, 0.91, 0.86)
 #define BARK vec3(0.27, 0.22, 0.19)
+
+// ---- The tree atlas (Buffer C): TREE_COLS x TREE_ROWS tiles, each a tree
+// TREE_SPAN of its radius either side of its trunk and its height tall:
+// MULGAS mulgas, then OAKS desert oaks, DEAD dead trees and GUMS ghost gums.
+#define TREE_COLS 6
+#define TREE_ROWS 3
+#define MULGAS 6
+#define OAKS 4
+#define DEAD 3
+#define GUMS 5
+#define TREE_SPAN 1.6
+// Atlas trees' height over radius (each's stretched to its own).
+#define MULGA_TALL 2.3
+#define GUM_TALL 2.9
+// Leaves across a tree's radius, about.
+#define LEAF_FREQ 14.0
+// What the atlas's progress texel starts with (a new value redraws it).
+#define ATLAS_MARK 7.25
+// The atlas's biggest tile, in texels.
+#define TILE_MAX ivec2(96, 200)
+
+// The atlas in a buffer res big: a tile's width and height, and a band's
+// height (there are two, the same tiles in each, below the progress row).
+// No bigger than TILE_MAX: a screen-sized one (70 MB at the phone's full
+// size) was slow to read.
+ivec3 atlasLayout(vec2 res) {
+	ivec2 tile = min(ivec2(int(res.x) / TREE_COLS, (int(res.y) - 1) / (2 * TREE_ROWS)), TILE_MAX);
+	return ivec3(tile, tile.y * TREE_ROWS);
+}
+
+// The atlas's step once it's done (drawn at 0, summed in steps 1 to the
+// log2 of a tile's width, then copied to the other target).
+float atlasDone(int tileW) {
+	return ceil(log2(float(max(tileW, 2)))) + 2.0;
+}
 #define POLE_WOOD vec3(0.42, 0.38, 0.33)
 #define MOUND vec3(0.66, 0.32, 0.17)
 #define ROCK vec3(0.50, 0.20, 0.11)
@@ -1682,4 +1714,181 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 seed;
 	int kind = standing(lane, cell, cw, z, x, zj, size, seed);
 	fragColor = c.x % 2 == 0 ? vec4(x, zj, size.x, float(kind) * 16.0 + size.y) : seed;
+}
+
+//// Buffer C
+///float32
+// The tree atlas: TREE_COLS x TREE_ROWS trees - mulgas, desert oaks, dead
+// trees, ghost gums - drawn once into tiles, then summed along each tile's
+// rows, so the Image pass gets any stretch of a row (a pixel's, however
+// blurred) from two sums. Two bands of the same tiles: (coverage, colour x
+// coverage), and (normal across, normal up, leaves) x coverage with the
+// distance to the outline in texels (not summed; not used yet). Built over
+// a few frames - drawn, summed in doubling steps, copied to the pass's
+// other target - then left be. Texel (0, top) says how far it's got:
+// (ATLAS_MARK, width, height, step).
+uniform sampler2D iChannel0; ///buf:C;
+
+// Atlas tree t: whether it's a ghost gum, and its seed (seed.w: a mulga,
+// desert oak or dead tree).
+void treeTile(int t, out bool gum, out vec4 seed) {
+	seed = hash42(vec2(float(t) * 1.37 + 0.5, 9.1));
+	gum = t >= MULGAS + OAKS + DEAD;
+	seed.w = t < MULGAS ? 0.3 + 0.5 * seed.w : t < MULGAS + OAKS ? 0.29 * seed.w : 0.83 + 0.17 * seed.w;
+}
+
+// How far q is outside the branch from p0 to p1 (half width w, tapering
+// to 0.6 w), keeping the nearest so far in d, and where across it q is
+// (out from its middle, 1 at its edge) in across.
+void branch(vec2 q, vec2 p0, vec2 p1, float w, inout float d, inout vec2 across) {
+	vec2 e = p1 - p0;
+	float s = clamp(dot(q - p0, e) / dot(e, e), 0.0, 1.0);
+	float ws = w * mix(1.0, 0.6, s);
+	vec2 o = q - (p0 + s * e);
+	float dq = length(o) - ws;
+	if (dq < d) {
+		d = dq;
+		across = o / ws;
+	}
+}
+
+// A clump of leaves round c (half sizes r): a few ragged blobs. Keeps the
+// one q's deepest in so far: e (under 1 inside it) and where in it q is
+// (p, its normal out, roughly).
+void clump(vec2 q, vec2 c, vec2 r, float seed, inout float e, inout vec2 p) {
+	for (int k = 0; k < 5; k++) {
+		vec4 hk = hash42(vec2(seed + float(k) * 3.1, 2.7));
+		vec2 rb = r * (0.45 + 0.25 * hk.z);
+		vec2 pb = (q - c - (hk.xy - 0.5) * r * 1.1) / rb;
+		float a = atan(pb.y, pb.x);
+		float eb = length(pb) / (1.0 + 0.18 * sin(5.0 * a + 6.28 * hk.w) + 0.1 * sin(11.0 * a + 3.0 * hk.z));
+		if (eb < e) {
+			e = eb;
+			p = pb;
+		}
+	}
+}
+
+// What's at q (x in the tree's radius, y up from its foot) on atlas tree
+// t: colour, darker where it's shaded within, and whether it's covered;
+// the normal's x and y, and whether it's leaves; how far outside it q is.
+void treeAt(int t, vec2 q, out vec4 col, out vec3 nl, out float dist) {
+	bool gum;
+	vec4 seed;
+	treeTile(t, gum, seed);
+	float h = gum ? GUM_TALL : MULGA_TALL;
+	bool oak = !gum && seed.w < 0.3, dead = !gum && seed.w > 0.82;
+	vec3 bark = gum ? GUM_BARK : dead ? vec3(0.42, 0.40, 0.38) : BARK * mix(0.6, 1.0, seed.z);
+	vec3 green = gum ? GUM_LEAVES : oak ? MULGA * vec3(0.5, 0.55, 0.6) : MULGA * 0.75;
+	float fork = h * (gum ? 0.45 : 0.25 + 0.2 * seed.y);
+	float tw = h * (gum ? 0.024 : 0.018);
+	vec2 top = vec2((seed.z - 0.5) * 0.3 * fork, fork);
+	vec2 sag = vec2(0.0, oak ? 0.06 * h : 0.0);
+	// The trunk, flaring at its foot; three limbs, each with two twigs; and
+	// clumps of leaves on their ends.
+	float db = 1e9, e = 9.0;
+	vec2 across = vec2(0.0), p = vec2(0.0);
+	branch(q, vec2(0.0), top, tw * (1.0 + 1.2 * (1.0 - smoothstep(0.0, 0.1 * h, q.y))), db, across);
+	for (int i = 0; i < 3; i++) {
+		vec4 hh = hash42(vec2(seed.x * 91.0 + float(i), seed.y * 37.0));
+		float side = float(i) - 1.0;
+		vec2 tip = vec2(0.7 * side + 0.3 * (hh.x - 0.5), h * (0.68 + 0.2 * hh.y));
+		vec2 at0 = mix(top, tip, 0.45), at1 = mix(top, tip, 0.75);
+		float spread = 0.6 + 0.6 * hh.z, lift = h * (0.1 + 0.12 * hh.w);
+		vec2 twig0 = at0 + vec2(spread * (-0.28 + 0.1 * side), lift);
+		vec2 twig1 = at1 + vec2(spread * (0.28 + 0.1 * side), lift);
+		branch(q, top, tip, 0.6 * tw, db, across);
+		branch(q, at0, twig0, 0.3 * tw, db, across);
+		branch(q, at1, twig1, 0.3 * tw, db, across);
+		if (!dead) {
+			vec2 small = vec2(0.26, 0.1 * h) * (0.8 + 0.4 * hh.z);
+			clump(q, twig0 - sag, small, hh.x * 40.0, e, p);
+			clump(q, twig1 - sag, small, hh.x * 40.0 + 9.0, e, p);
+			clump(q, tip - sag, vec2(0.32, 0.12 * h) * (0.8 + 0.4 * hh.w), hh.y * 40.0, e, p);
+		}
+	}
+	dist = min(db, (e - 1.0) * 0.1 * h);
+	// Leaves, where the noise leaves no gap - more gaps towards the edges.
+	vec2 f = q * LEAF_FREQ + seed.xy * 50.0;
+	float n = 0.65 * noise(f) + 0.35 * noise(f * 2.3 + 7.0);
+	if (e < 1.0 && n > (gum ? 0.4 : 0.3) + 0.35 * e * e) {
+		float shade = (0.55 + 0.45 * smoothstep(-0.9, 0.7, p.y)) * mix(0.8, 1.0, smoothstep(fork, h, q.y));
+		col = vec4(green * (0.75 + 0.5 * noise(f * 0.5 + 17.0)) * shade, 1.0);
+		vec2 tilt = vec2(noise(f + 31.0), noise(f + 57.0)) - 0.5;
+		vec2 nxy = 0.75 * p + 0.5 * tilt;
+		nl = vec3(nxy / max(1.0, length(nxy) / 0.95), 1.0);
+		return;
+	}
+	if (db < 0.0) {
+		// Bark: streaky up it (a gum's in patches), darker in the leaves.
+		float g = noise(q * vec2(25.0, 3.0) + seed.zw * 20.0);
+		vec3 c = gum ? bark * mix(0.75, 1.0, smoothstep(0.3, 0.6, noise(q * 6.0 + 3.0))) : bark * (0.8 + 0.35 * g);
+		col = vec4(c * mix(0.6, 1.0, smoothstep(0.9, 1.5, e)), 1.0);
+		nl = vec3(0.9 * across, 0.0);
+		return;
+	}
+	col = vec4(0.0);
+	nl = vec3(0.0);
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+	ivec2 c = ivec2(fragCoord);
+	vec2 res = iResolution.xy;
+	ivec3 L = atlasLayout(res);
+	float done = atlasDone(L.x);
+	ivec2 at = ivec2(0, int(res.y) - 1);
+	vec4 mark = texelFetch(iChannel0, at, 0);
+	float step = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y ? mark.w : 0.0;
+	if (c == at) {
+		fragColor = vec4(ATLAS_MARK, res, min(step + 1.0, done));
+		return;
+	}
+	if (step >= done) {
+		discard;
+	}
+	int band = c.y / L.z, ly = c.y - band * L.z;
+	int col = c.x / L.x, row = ly / L.y;
+	if (band > 1 || col >= TREE_COLS || row >= TREE_ROWS) {
+		fragColor = vec4(0.0);
+		return;
+	}
+	ivec2 p = ivec2(c.x - col * L.x, ly - row * L.y);
+	if (step == 0.0 && p.x == 0) {
+		// Each tile's first column's left empty (see the Image pass's
+		// atlasSum()).
+		fragColor = vec4(0.0);
+	} else if (step == 0.0) {
+		// Drawn: 3 x 3 samples a texel.
+		int t = row * TREE_COLS + col;
+		bool gum;
+		vec4 seed;
+		treeTile(t, gum, seed);
+		vec2 texel = vec2(2.0 * TREE_SPAN / float(L.x), (gum ? GUM_TALL : MULGA_TALL) / float(L.y));
+		vec2 q0 = vec2(-TREE_SPAN, 0.0) + vec2(p) * texel;
+		vec4 a = vec4(0.0), b = vec4(0.0);
+		for (int i = 0; i < 9; i++) {
+			vec4 s;
+			vec3 nl;
+			float d;
+			treeAt(t, q0 + (vec2(i % 3, i / 3) + 0.5) / 3.0 * texel, s, nl, d);
+			a += vec4(s.a, s.rgb * s.a) / 9.0;
+			b.xyz += nl * s.a / 9.0;
+		}
+		vec4 s;
+		vec3 nl;
+		float d;
+		treeAt(t, q0 + 0.5 * texel, s, nl, d);
+		b.w = d / texel.x;
+		fragColor = band == 0 ? a : b;
+	} else if (step < done - 1.0) {
+		// Summed along the row: each step adds what's d to the left.
+		int d = 1 << int(step - 1.0);
+		fragColor = texelFetch(iChannel0, c, 0);
+		if (p.x >= d) {
+			vec4 left = texelFetch(iChannel0, c - ivec2(d, 0), 0);
+			fragColor += band == 0 ? left : vec4(left.xyz, 0.0);
+		}
+	} else {
+		fragColor = texelFetch(iChannel0, c, 0);
+	}
 }
