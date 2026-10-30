@@ -342,23 +342,6 @@ vec3 plantTint(vec4 seed, float dark) {
 	return mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0, b);
 }
 
-// Light on a surface facing n: the sky's from above, the key light's.
-vec3 lightOn(vec3 n) {
-	return gAmbient * (0.55 + 0.45 * max(n.y, 0.0)) + 1.1 * gLightCol * max(dot(n, gLight), 0.0);
-}
-
-// Like span(), for the slice at height y (half width w) of a dome (radius
-// r, h tall): lit by the dome's normal there, so its shadow side turns
-// with the light.
-void domeSpan(inout vec4 acc, float a0, float a1, float y, float w, float r, float h, vec3 col) {
-	float b0 = max(a0, -w), b1 = min(a1, w);
-	if (b1 > b0) {
-		vec2 p = vec2(0.5 * (b0 + b1) / r, y / h);
-		vec3 n = normalize(vec3(p.x / r, p.y / h, -sqrt(max(1.0 - dot(p, p), 0.0)) / r));
-		acc += vec4(col * lightOn(n), 1.0) * (b1 - b0);
-	}
-}
-
 // A hummock of spinifex: a grey-green dome bristling with golden needles,
 // which radiate from below its middle, tucked in at its foot over a few
 // woody stems. A tuft is just the needles.
@@ -384,7 +367,10 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 		vec3 col = mix(SPINIFEX_CORE * 0.75, SPINIFEX_CORE, smoothstep(0.0, core, y));
 		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w) * plantTint(seed, 0.45);
 		vec4 c = vec4(0.0);
-		domeSpan(c, a0, a1, y, wc, r, core, col);
+		// (Lit by span(), shady side to sunny. Shading the dome by its own
+		// normal, or even by the light's height, tipped the phone's
+		// compiler over: 16 fps to 2-3.)
+		span(c, a0, a1, 0.0, wc, col);
 		acc += c * (tuft ? 1.0 : mix(0.35, 1.0, tuck));
 	}
 	// Needles: spaced 0.03 of their slope out from below the middle.
