@@ -816,3 +816,9 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Ray-marched ranges (mesas, ridges, gullies); the sun sets in front, the moon rises soon after, stars come out; smoother plant lighting and denser needles.
   - From 6.3 ms on the first pass of v2 to 3.2 ms (v1: 3 ms) at 360x772 on the desktop.
 - "yes please" (put v2 on the phone): Outback Window v2 went on as 1069. It compiled and runs at 32 fps (v1: 24), and was left fullscreen.
+- Outback Window feedback: power lines without poles; "pull over" when slowing for three fingers; gravel colour at full speed; suspension flipping when scrubbing fast; plants floating; "occasional quite sharp corners that require the viewer to slow down", or stop signs; trees "a bit blobby" - want dark branching trunks, some bare, darker, less blobby leaves; "a quite-rare glint from the terrain" with a spiky flare, from the sun/moon, about every 10 s; "also depth haze". Outback Window v3, all done:
+  - Wires only between two poles; three fingers pull the car over onto the gravel (rougher there) and back out; coloured stone streaks at speed; suspension targets and state clamped; plant contact shadows found from both rows and darken the sunlight too.
+  - Sharp corners (radius about 50-80 m, 50-85 degrees) every few stretches, the car braking to about 55 km/h; crossroads with a stop sign, a stop line and a track off into the bush, waiting 3 s at the line.
+  - Trees rebuilt from branches: trunk, limbs and twigs with ragged leaf clumps; mulga, darker desert oak, bare dead trees, ghost gums.
+  - Glints: Buffer A finds mirror shards in the dirt that catch the sun or moon, about one every 6-15 s by day, drawn as a spiky flare. Warm dust haze nearer.
+  - About 4.1 ms a frame on the desktop (v2 3.2).

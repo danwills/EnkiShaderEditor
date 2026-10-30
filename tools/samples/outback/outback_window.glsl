@@ -3,18 +3,25 @@
 // spinifex, saltbush, buffel grass, mulga and the odd ghost gum, termite
 // mounds, red boulders, guide posts, now and then power poles, and red
 // ranges far off - through a day: the sun sets in front of you and the
-// moon rises, the stars come out.
+// moon rises, the stars come out. Now and then a sharp corner to slow for,
+// a crossroads to stop at, a glint off glass in the dirt.
 //
 // FINGERS
-//   three fingers     hold them down and the car slows to a stop (time
-//                     stops); drag them left or right to scrub through
-//                     time, back or forward; let go and it drives on
+//   three fingers     hold them down and the car slows and pulls over
+//                     onto the gravel (time stops); drag them left or
+//                     right to scrub through time, back or forward; let go
+//                     and it pulls out and drives on
 //
 // HOW IT WORKS
 // Buffer A keeps the clock - how far along the road, the time of day, how
-// fast time's going - and the car's suspension: a spring on each of
+// fast time's going - and drives the car: as fast as the road allows
+// (slowing for sharp corners and stop signs, waiting at the line), pulled
+// over when it's stopped by hand. Its suspension is a spring on each of
 // bounce, pitch and roll, driven by bumps and potholes, braking and
-// accelerating, and cornering.
+// accelerating, and cornering. It also looks for glints: shards of glass or
+// quartz scattered in the dirt, each a mirror tilted at random, glinting
+// when the light reflects off one into the eye.
+// Buffer B tables what stands in each cell near the car, once a frame.
 // The Image pass looks out sideways (the car drives to the right, on the
 // left of the road), so the road's along the screen and everything streams
 // past, faster the nearer it is. The road has long straights and bends:
@@ -37,15 +44,14 @@
 //     needles are a radiating square wave, integrated the same way.
 //   - Shadows from the same spans, and a little darkness under each thing.
 //   - The ranges: a height field marched out to 45 km, lit by the sun.
+//   - Dust haze nearer, air haze far off.
+//   - A glint's flare: its shard put on the screen, a hot core, a halo and
+//     spikes, as bright as the light.
 //   - The sky: by the sun's height, the sunset's glow round it, the sun
 //     and moon, stars and the Milky Way.
 
 uniform sampler2D iChannel0; ///buf:A;
 uniform sampler2D iChannel1; ///buf:B;
-
-// How much the sun and moon turn with the road (they'd turn as much as the
-// far hills do, but then the sunset could be off the screen).
-#define CELESTIAL 0.25
 
 // ---- Light, set once a pixel by setLight(), in the car's frame: towards
 // the sun and moon; the key light (the sun, or the moon at night) and its
@@ -54,12 +60,8 @@ uniform sampler2D iChannel1; ///buf:B;
 // much the picture's brightened (more at night).
 vec3 gSun, gMoon, gSunCol, gLight, gLightCol, gAmbient, gLeft, gRight, gGlow;
 float gDay, gExposure;
-
-// Turns v by a about the vertical (x towards z).
-vec3 rotY(vec3 v, float a) {
-	float c = cos(a), s = sin(a);
-	return vec3(v.x * c - v.z * s, v.y, v.x * s + v.z * c);
-}
+// How far out the car's pulled over.
+float gPull;
 
 // Noise along the road (x) and out from it (z), averaged over wx along and
 // wz across: an octave finer than wx along is stretched to wx (a streak) and
@@ -212,6 +214,7 @@ vec2 markings(float x, float z, float wx, float wz, vec2 turn) {
 vec3 ground(float x, float z, float wx, float wz) {
 	vec2 p = vec2(x, z);
 	vec2 turn = turning(x);
+	float cross = crossing(x);
 	float rough = roughness(x);
 	// Bitumen: chip seal, a darker polished wheel path, red dust towards
 	// the edge.
@@ -228,6 +231,10 @@ vec3 ground(float x, float z, float wx, float wz) {
 	float dust = smoothstep(LINE_Z + turn.y, sealZ, z) * (0.5 + 0.5 * streaks(p, 2.0, 2, wx, wz));
 	col = mix(col, DIRT * 0.7, 0.45 * dust);
 	vec2 paint = markings(x, z, wx, wz, turn);
+	// (The edge line stops at the crossroads; a stop line across the lane.)
+	paint.x *= 1.0 - overlap(x - 0.5 * wx, x + 0.5 * wx, cross - 5.0, cross + 5.0) / max(wx, 1e-5);
+	paint.x = max(paint.x, overlap(x - 0.5 * wx, x + 0.5 * wx, cross - 6.6, cross - 6.1) / max(wx, 1e-5)
+			* smoothstep(LINE_Z + 0.1 + wz, LINE_Z + 0.1 - wz, z));
 	col = mix(col, PAINT * paint.y * (0.9 + 0.1 * chips), paint.x);
 	// A pothole: broken chips round it, dark and dusty in it.
 	vec4 hole = pothole(x);
@@ -247,7 +254,12 @@ vec3 ground(float x, float z, float wx, float wz) {
 	// The gravel shoulder.
 	float softSeal = seal.y + bites.y + 0.5 * wz + 0.01;
 	float gravel = smoothstep(sealZ - softSeal, sealZ + softSeal, z);
-	col = mix(col, GRAVEL * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
+	// Its stones' colours (red jasper, quartz, ironstone, ochre) streak out
+	// along the road at speed.
+	vec3 hue = mix(vec3(0.62, 0.20, 0.11), vec3(0.82, 0.78, 0.68), clamp(0.5 + 2.5 * streaks(p + 90.0, 30.0, 2, wx, wz), 0.0, 1.0));
+	hue = mix(vec3(0.26, 0.14, 0.10), hue, clamp(0.6 + 2.5 * streaks(p + 130.0, 24.0, 2, wx, wz), 0.0, 1.0));
+	hue = mix(hue, vec3(0.76, 0.56, 0.26), clamp(2.5 * streaks(p + 170.0, 20.0, 2, wx, wz), 0.0, 1.0));
+	col = mix(col, mix(GRAVEL, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
 	// The dirt: red, dusty patches, darker patches.
 	float vergeZ = verge(x) + turn.y;
 	vec2 edge = ragged(x, 1.2, 0.12, wx, 9.0);
@@ -260,7 +272,8 @@ vec3 ground(float x, float z, float wx, float wz) {
 	d = mix(d, mix(SPINIFEX_CORE, SPINIFEX, 0.5) * 0.8, 0.3 * smoothstep(10.0, 80.0, z) * (0.6 + 0.4 * noise(p / 40.0)));
 	col = mix(col, d, dirt);
 	// The side road: a dirt track going off into the bush.
-	float track = overlap(x - 0.5 * wx, x + 0.5 * wx, turn.x - 3.5, turn.x + 3.5) / wx;
+	float track = (overlap(x - 0.5 * wx, x + 0.5 * wx, turn.x - 3.5, turn.x + 3.5)
+			+ overlap(x - 0.5 * wx, x + 0.5 * wx, cross - 4.0, cross + 4.0)) / wx;
 	if (track > 0.0) {
 		vec3 tr = TRACK * (0.85 + 0.3 * streaks(p.yx, 3.0, 3, wz, wx));
 		col = mix(col, tr, track * smoothstep(sealZ - 0.1, sealZ + 0.3, z));
@@ -371,27 +384,61 @@ void bush(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 se
 	acc += b * 0.92;
 }
 
-// A mulga (or, darker and droopier, a desert oak): a few thin leaning
-// trunks under a ragged canopy. A ghost gum: a white trunk under a bright,
-// open canopy.
+// A branch from p0 up to p1 (across from the middle, and up), half width
+// w: its span at height y.
+void limb(inout vec4 acc, float a0, float a1, float y, vec2 p0, vec2 p1, float w, vec3 col) {
+	if (y < p0.y || y >= p1.y) {
+		return;
+	}
+	float slope = (p1.x - p0.x) / (p1.y - p0.y);
+	span(acc, a0, a1, p0.x + (y - p0.y) * slope, w * sqrt(1.0 + slope * slope), col);
+}
+
+// A clump of leaves round c (half sizes r): ragged, and gaps through it.
+void leaves(inout vec4 acc, float a0, float a1, float y, vec2 c, vec2 r, float seed, vec3 col, float gaps) {
+	float t = (y - c.y) / r.y;
+	if (abs(t) >= 1.0) {
+		return;
+	}
+	float w = r.x * sqrt(1.0 - t * t) * (0.6 + 0.7 * noise(vec2(y * 5.0 / r.y, seed)));
+	vec4 l = vec4(0.0);
+	span(l, a0, a1, c.x + 0.3 * r.x * (noise(vec2(y * 3.0 / r.y, seed + 5.0)) - 0.5), w, col * mix(0.65, 1.05, 0.5 + 0.5 * t));
+	acc += l * gaps;
+}
+
+// A tree: a dark trunk forking into three limbs, each with two twigs, and
+// clumps of leaves at their ends. A mulga (dark grey-green), a desert oak
+// (darker, droopier), a dead one (bare, grey), or a ghost gum (white bark,
+// a bright, open canopy).
 void tree(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 seed, bool gum) {
-	float bottom = h * (gum ? 0.4 : (seed.w < 0.3 ? 0.25 : 0.45));
-	float w = lumpy(y, bottom, h, r, 0.3, seed.x);
-	// The canopy's middle wanders up it.
-	float c = r * 0.25 * (noise(vec2(y * 1.3, seed.y * 40.0)) * 2.0 - 1.0);
-	vec3 leaves = gum ? GUM_LEAVES : (seed.w < 0.3 ? MULGA * 0.7 : MULGA);
-	leaves *= mix(0.7, 1.05, smoothstep(bottom, h, y));
-	vec4 can = vec4(0.0);
-	span(can, a0, a1, c, w, leaves);
-	acc += can * (gum ? 0.8 : 0.9);
-	// Trunks, up into the canopy.
-	if (y < mix(bottom, h, 0.6)) {
-		float lean = (seed.z - 0.5) * 0.16;
-		if (gum) {
-			span(acc, a0, a1, lean * y, mix(0.16, 0.08, y / h) * h / 8.0, GUM_BARK);
-		} else {
-			span(acc, a0, a1, lean * y, 0.05, BARK);
-			span(acc, a0, a1, -lean * y + 0.1, 0.04, BARK);
+	bool oak = !gum && seed.w < 0.3, dead = !gum && seed.w > 0.82;
+	vec3 bark = gum ? GUM_BARK : dead ? vec3(0.42, 0.40, 0.38) : BARK * mix(0.6, 1.0, seed.z);
+	vec3 green = gum ? GUM_LEAVES : oak ? MULGA * vec3(0.5, 0.55, 0.6) : MULGA * 0.75;
+	float fork = h * (gum ? 0.45 : 0.25 + 0.2 * seed.y);
+	float tw = h * (gum ? 0.024 : 0.018) * (y < 0.3 ? 1.0 + (0.3 - y) : 1.0);
+	vec2 top = vec2((seed.z - 0.5) * 0.3 * fork, fork);
+	limb(acc, a0, a1, y, vec2(0.0), top, tw, bark);
+	// The leaves' gaps, from noise across the pixel's stretch, quietened by
+	// the blur.
+	float mid = 0.5 * (a0 + a1), ww = a1 - a0;
+	float n = noise(vec2(mid * 6.0, y * 6.0 + seed.x * 30.0)) * 2.0 - 1.0 + 0.6 * (noise(vec2(mid * 17.0, y * 17.0 + seed.y * 30.0)) * 2.0 - 1.0);
+	float gaps = clamp((gum ? 0.6 : 0.8) + 1.1 * n / max(1.0, 6.0 * ww), 0.0, 1.0);
+	float droop = oak ? 0.06 * h : 0.0;
+	for (int i = 0; i < 3; i++) {
+		vec4 hh = hash42(vec2(seed.x * 91.0 + float(i), seed.y * 37.0));
+		float side = float(i) - 1.0;
+		vec2 tip = vec2(r * (0.7 * side + 0.3 * (hh.x - 0.5)), h * (0.68 + 0.2 * hh.y));
+		limb(acc, a0, a1, y, top, tip, 0.6 * tw, bark);
+		for (int j = 0; j < 2; j++) {
+			vec2 at = mix(top, tip, 0.45 + 0.3 * float(j));
+			vec2 twig = at + vec2(r * (0.28 * (2.0 * float(j) - 1.0) + 0.1 * side) * (0.6 + 0.6 * hh.z), h * (0.1 + 0.12 * hh.w));
+			limb(acc, a0, a1, y, at, twig, 0.3 * tw, bark);
+			if (!dead) {
+				leaves(acc, a0, a1, y, twig - vec2(0.0, droop), vec2(0.26 * r, 0.1 * h) * (0.8 + 0.4 * hh.z), hh.x * 40.0 + float(j) * 9.0, green, gaps);
+			}
+		}
+		if (!dead) {
+			leaves(acc, a0, a1, y, tip - vec2(0.0, droop), vec2(0.32 * r, 0.12 * h) * (0.8 + 0.4 * hh.w), hh.y * 40.0, green, gaps);
 		}
 	}
 }
@@ -421,6 +468,34 @@ void post(inout vec4 acc, float a0, float a1, float y) {
 	if (y < 1.0) {
 		bool reflector = y > 0.8 && y < 0.93;
 		span(acc, a0, a1, 0.0, 0.05, reflector ? vec3(0.95, 0.06, 0.04) : PAINT * mix(0.75, 1.0, y));
+	}
+}
+
+// A stop sign: a red octagon with a white rim and lettering, on a grey
+// post, standing slantwise to the road (so squashed across).
+void stopSign(inout vec4 acc, float a0, float a1, float y) {
+	if (y < 1.75) {
+		span(acc, a0, a1, 0.0, 0.03, vec3(0.6, 0.6, 0.62));
+	}
+	float dy = abs(y - 2.05), a = 0.3, k = 0.55;
+	if (dy >= a) {
+		return;
+	}
+	vec3 red = vec3(0.72, 0.04, 0.04), white = vec3(0.92);
+	span(acc, a0, a1, 0.0, min(a, a * 1.4142 - dy) * k, white);
+	float ai = 0.88 * a;
+	if (dy < ai) {
+		float wi = min(ai, ai * 1.4142 - dy) * k;
+		vec4 face = vec4(0.0), rim = vec4(0.0);
+		span(rim, a0, a1, 0.0, wi, white);
+		span(face, a0, a1, 0.0, wi, red);
+		// The letters: white strokes across the middle.
+		float lo = max(a0, -0.8 * wi), hi = min(a1, 0.8 * wi);
+		if (dy < 0.3 * a && hi > lo) {
+			float f = dashes(lo + 0.8 * wi, hi + 0.8 * wi, 0.4 * wi, 0.45) * (hi - lo);
+			face.rgb += (white - red) * mix(gLeft, gRight, 0.5) * f;
+		}
+		acc += face - rim;
 	}
 }
 
@@ -464,7 +539,7 @@ int stood(int lane, float cell, float cw, float z, float along, out float x, out
 // How far a cut-out can reach: across from its middle, and up.
 vec2 extent(int kind, vec2 size) {
 	if (kind == SPINIFEX_CLUMP) return vec2(1.25 * size.x, 1.4 * size.y);
-	if (kind == MULGA_TREE || kind == GHOST_GUM) return vec2(1.35 * size.x + 0.1 * size.y, size.y);
+	if (kind == MULGA_TREE || kind == GHOST_GUM) return vec2(1.6 * size.x, size.y);
 	return vec2(1.25 * size.x, size.y);
 }
 
@@ -492,7 +567,7 @@ vec2 texture2(int kind, float lx, float w, float y, vec4 seed) {
 	float n = noise(vec2(lx * f, y * f + seed.x * 30.0)) * 2.0 - 1.0;
 	n += 0.5 * (noise(vec2(lx * f * 2.7, y * f * 2.7 + seed.y * 30.0)) * 2.0 - 1.0);
 	n /= max(1.0, f * w);
-	bool leafy = kind == BUSH_CLUMP || kind == MULGA_TREE || kind == GHOST_GUM;
+	bool leafy = kind == BUSH_CLUMP;
 	return vec2(1.0 + 0.45 * n, leafy ? clamp(1.0 + 0.8 * n, 0.0, 1.0) : 1.0);
 }
 
@@ -500,24 +575,29 @@ vec2 texture2(int kind, float lx, float w, float y, vec4 seed) {
 // when straight), `along` metres along the road. Where a ray (d: its x and
 // z) meets the line z out from the road, bent with it: how far along the
 // ray (0 or less if it doesn't) and along the road.
+// (The car's pulled gPull out: it's on a bend of radius bend - gPull.)
 vec2 meet(vec2 d, float z, float bend, float along) {
-	float b = d.y * bend, c = z * (2.0 * bend - z);
+	float B = bendAt(bend, z);
+	float bc = B - gPull, zc = z - gPull;
+	float b = d.y * bc, c = zc * (2.0 * bc - zc);
 	float disc = b * b - dot(d, d) * c;
 	if (disc < 0.0) {
 		return vec2(-1.0);
 	}
-	float sg = bend >= 0.0 ? 1.0 : -1.0;
+	float sg = B >= 0.0 ? 1.0 : -1.0;
 	float t = c / (b + sg * sqrt(disc));
 	vec2 p = t * d;
-	return vec2(t, along + abs(bend) * atan(p.x, sg * (bend - p.y)));
+	return vec2(t, along + abs(B) * atan(p.x, sg * (bc - p.y)));
 }
 
 // Where on the road (along, out) the ground point p (x along, z out, from
 // the car) is.
 vec2 onRoad(vec2 p, float bend, float along) {
-	float sg = bend >= 0.0 ? 1.0 : -1.0;
-	float dist = length(vec2(p.x, p.y - bend));
-	return vec2(along + abs(bend) * atan(p.x, sg * (bend - p.y)), (2.0 * bend * p.y - dot(p, p)) / (bend + sg * dist));
+	float B = bendAt(bend, length(p) + gPull);
+	float bc = B - gPull;
+	float sg = B >= 0.0 ? 1.0 : -1.0;
+	float dist = length(vec2(p.x, p.y - bc));
+	return vec2(along + abs(B) * atan(p.x, sg * (bc - p.y)), gPull + (2.0 * bc * p.y - dot(p, p)) / (bc + sg * dist));
 }
 
 // How much of the key light reaches the ground at x, z (over wx along the
@@ -560,7 +640,7 @@ vec2 sunlight(float x, float z, float wx, float along) {
 	}
 	// Darker round the feet of things here.
 	int here = laneOf(z);
-	for (int lane = max(here - 1, 0); lane <= min(here, LANES - 1); lane++) {
+	for (int lane = max(here - 1, 0); lane <= min(here + 1, LANES - 1); lane++) {
 		float zl = laneZ(lane);
 		float cw = cellWidth(zl);
 		float c0 = floor(x / cw);
@@ -602,7 +682,9 @@ float terrain(vec2 p, bool fine) {
 	return h - 8.0;
 }
 
+// Haze: the dust's, warm, nearer (but never all of it), then the air's.
 vec3 haze(vec3 col, float dist, vec3 hazeCol) {
+	col = mix(col, hazeCol * vec3(1.1, 0.92, 0.78), DUSTY * (1.0 - exp2(-dist / DUST_HAZE)));
 	return mix(col, hazeCol, 1.0 - exp2(-dist / HAZE));
 }
 
@@ -725,21 +807,9 @@ vec3 sky(vec3 rd, bool details, float day, float turn, float pa) {
 	return col;
 }
 
-// The light for the time of day: the sun rises behind, peaks high to the
-// right and sets in front, slantwise; the moon rises in front, a little to
-// the left, soon after (full, as it would be), and climbs slowly across to
-// the right before going over and setting behind.
+// The light for the time of day (see sunMoon()).
 void setLight(float day, float turn) {
-	vec3 w = normalize(vec3(0.25, 0.0, 1.0));
-	vec3 u = normalize(vec3(0.7, 1.0, -0.3));
-	u = normalize(u - dot(u, w) * w);
-	float p = (day - 0.25) * TAU;
-	vec3 wm = normalize(vec3(-0.22, 0.0, 1.0));
-	vec3 um = normalize(vec3(1.0, 0.5, 0.2));
-	um = normalize(um - dot(um, wm) * wm);
-	float pm = (day - 0.75) * TAU - 0.35;
-	gSun = rotY(-cos(p) * w + sin(p) * u, -turn * CELESTIAL);
-	gMoon = rotY(cos(pm) * wm + sin(pm) * um, -turn * CELESTIAL);
+	sunMoon(day, turn, gSun, gMoon);
 	float e = gSun.y;
 	gDay = smoothstep(-0.12, 0.2, e);
 	gSunCol = mix(vec3(1.0, 0.42, 0.15), vec3(1.0, 0.95, 0.88), smoothstep(0.0, 0.4, e)) * smoothstep(-0.035, 0.03, e);
@@ -789,7 +859,9 @@ void drawPoles(inout vec4 acc, vec3 rd, float eye, float bend, float along, floa
 	}
 	for (int j = 0; j < 3; j++) {
 		vec2 mw = meet(rd.xz, POLE_Z + 1.1 * float(j - 1), bend, along);
-		if (mw.x <= 0.0 || !poled(mw.y)) {
+		// (Only between two poles.)
+		float last = floor(mw.y / POLE_GAP) * POLE_GAP;
+		if (mw.x <= 0.0 || !poled(last) || !poled(last + POLE_GAP)) {
 			continue;
 		}
 		float u = fract(mw.y / POLE_GAP + 0.5);
@@ -800,8 +872,21 @@ void drawPoles(inout vec4 acc, vec3 rd, float eye, float bend, float along, floa
 	}
 }
 
+// A glint's flare, o from it (in screen sizes): a hot core, a halo, and
+// three spikes across.
+float flare(vec2 o) {
+	float r = length(o);
+	float f = 8.0 * exp(-r * r / 1.2e-5) + 0.3 * exp(-r / 0.006) + 0.02 / (1.0 + r * r / 4e-4);
+	for (int i = 0; i < 3; i++) {
+		float a = 0.35 + float(i) * PI / 3.0;
+		vec2 u = vec2(cos(a), sin(a));
+		f += 0.7 * exp(-abs(dot(o, vec2(-u.y, u.x))) / 1.5e-3) * exp(-abs(dot(o, u)) / 0.05);
+	}
+	return f;
+}
+
 // What's seen at fragCoord.
-vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll) {
+vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 glint) {
 	float along = clock.x, day = clock.y, v = clock.w;
 	float spread = tan(radians(FOV) * 0.5);
 	float side = sqrt(res.x * res.y);
@@ -837,10 +922,24 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll) {
 			m = meet(d, POST_Z + turn.y, bend, along);
 		}
 		float y = eye + rd.y * m.x;
-		if (m.x > 0.0 && y > 0.0 && y < 1.0 && abs(near - turn.x) > 15.0) {
+		if (m.x > 0.0 && y > 0.0 && y < 1.0 && abs(near - turn.x) > 15.0 && abs(near - crossing(near)) > 15.0) {
 			float lx = m.y - near, w = max(blur, m.x * pa) + m.x * spin;
 			vec4 s = vec4(0.0);
 			post(s, lx - 0.5 * w, lx + 0.5 * w, y);
+			if (s.w > 0.0) {
+				over(acc, s.rgb / s.w, min(s.w / w, 1.0));
+			}
+		}
+	}
+	// The stop sign at a crossroads, just before it.
+	{
+		vec2 m = meet(d, POST_Z + 2.5, bend, along);
+		float sx = crossing(m.y) - 8.0;
+		float y = eye + rd.y * m.x;
+		if (m.x > 0.0 && y > 0.0 && y < 2.4 && abs(m.y - sx) < 3.0) {
+			float lx = m.y - sx, w = max(blur, m.x * pa) + m.x * spin;
+			vec4 s = vec4(0.0);
+			stopSign(s, lx - 0.5 * w, lx + 0.5 * w, y);
 			if (s.w > 0.0) {
 				over(acc, s.rgb / s.w, min(s.w / w, 1.0));
 			}
@@ -910,13 +1009,23 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll) {
 		float wx = max(blur, tg * pa) + tg * spin;
 		float wz = eye * pa / (rd.y * rd.y);
 		vec2 lit = r.y < 200.0 ? sunlight(r.x, r.y, wx, along) : vec2(1.0);
-		back = ground(r.x, r.y, wx, wz) * (gAmbient * lit.y + gLightCol * max(gLight.y, 0.0) * lit.x);
+		back = ground(r.x, r.y, wx, wz) * (gAmbient * lit.y + gLightCol * max(gLight.y, 0.0) * lit.x * mix(1.0, lit.y, 0.6));
 		back = haze(back, tg, hazeCol);
 	} else {
 		vec4 far = ranges(rotY(rd, hd.x), eye, along, pa, hd.x, hazeCol);
 		back = far.w > 0.0 ? far.rgb : sky(normalize(rd), true, day, hd.x, pa);
 	}
 	over(acc, back, 1.0);
+	// A glint: where the shard is on the screen, and its flare.
+	if (glint.z > 0.003) {
+		vec2 p = fromRoad(glint.xy, bend, along, gPull);
+		vec3 g = vec3(p.x, -eye, p.y);
+		g = vec3(g.x, g.y * cos(pitch) + g.z * sin(pitch), g.z * cos(pitch) - g.y * sin(pitch));
+		if (g.z > 0.0) {
+			vec2 at = mat2(cos(roll), -sin(roll), sin(roll), cos(roll)) * (g.xy / g.z) / spread * 0.5 * side + 0.5 * res;
+			acc.rgb += gLightCol * GLINT_POWER * glint.z * flare((fragCoord - at) / side);
+		}
+	}
 	// Brightened at night, and bright lights eased in.
 	vec3 col = acc.rgb * gExposure;
 	vec3 k = max(col - 0.8, 0.0);
@@ -928,13 +1037,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 clock = texelFetch(iChannel0, ivec2(S_CLOCK, 0), 0);
 	vec4 bounce = texelFetch(iChannel0, ivec2(S_BOUNCE, 0), 0);
 	vec4 roll = texelFetch(iChannel0, ivec2(S_ROLL, 0), 0);
+	gPull = texelFetch(iChannel0, ivec2(S_STOP, 0), 0).z;
+	vec4 glint = texelFetch(iChannel0, ivec2(S_GLINT, 0), 0);
 	if (abs(roll.w - MARK) > 0.01) {
 		// Not started yet.
 		clock = vec4(START_ALONG, START_TIME, 1.0, SPEED / 3.6);
 		bounce = vec4(0.0);
 		roll = vec4(0.0);
+		gPull = 0.0;
+		glint = vec4(0.0);
 	}
-	fragColor = vec4(render(fragCoord, res, clock, bounce, roll.x), 1.0);
+	fragColor = vec4(render(fragCoord, res, clock, bounce, roll.x, glint), 1.0);
 }
 
 //// Common
@@ -974,6 +1087,26 @@ uniform int pointerCount;
 #define ROAD_CELL 3000.0
 #define MAX_TURN 0.6
 #define MIN_RADIUS 450.0
+// Sharp corners: now and then (a chance each other stretch) the bend's a
+// corner of radius SHARP_RADIUS or a bit more, turning 50-85 degrees. The
+// car takes bends at up to CORNERING m/s^2 sideways, braking at BRAKING and
+// speeding up at PICKUP (m/s^2).
+#define SHARP 0.35
+#define SHARP_RADIUS 70.0
+#define CORNERING 3.5
+#define BRAKING 2.5
+#define PICKUP 1.5
+// Crossroads, with a stop sign: a chance each stretch; how long the car
+// waits at the line, in seconds.
+#define STOPS 0.2
+#define STOP_WAIT 3.0
+// How far over the car pulls (onto the gravel) when three fingers stop it.
+#define PULL_Z 2.3
+// Glints off glass or quartz in the dirt: the chance of a shard in an empty
+// cell, how near its face must be to the mirror angle (radians), how bright.
+#define GLINTS 0.13
+#define GLINT_SPREAD 0.035
+#define GLINT_POWER 3.0
 // The suspension: how bouncy (Hz), how damped, how much it pitches under
 // braking (radians per m/s^2) and rolls in bends.
 #define BOUNCE_HZ 1.4
@@ -1008,8 +1141,11 @@ uniform int pointerCount;
 #define LANE_RATIO 1.16
 // How thick the bush is (0-1).
 #define BUSH 0.6
-// How far until haze takes half, in metres.
+// How far until haze takes half, in metres; the dust's, nearer, and how
+// much it takes at most.
 #define HAZE 12000.0
+#define DUST_HAZE 400.0
+#define DUSTY 0.3
 
 // Colours (what they look like in the midday sun).
 #define BITUMEN vec3(0.16, 0.155, 0.15)
@@ -1037,9 +1173,21 @@ uniform int pointerCount;
 #define S_TOUCH 1
 #define S_BOUNCE 2
 #define S_ROLL 3
+#define S_STOP 4
+#define S_GLINT 5
 #define MARK 0.777
 // How far along the road wraps (float precision).
 #define WRAP 60000.0
+
+// How much the sun and moon turn with the road (they'd turn as much as the
+// far hills do, but then the sunset could be off the screen).
+#define CELESTIAL 0.25
+
+// Turns v by a about the vertical (x towards z).
+vec3 rotY(vec3 v, float a) {
+	float c = cos(a), s = sin(a);
+	return vec3(v.x * c - v.z * s, v.y, v.x * s + v.z * c);
+}
 
 // ---- Hashes and noise. Float hashes (Hoskins' without sine): the phone's
 // compiler mangles big integer constants.
@@ -1069,17 +1217,75 @@ float noise(vec2 p) {
 			mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
-// ---- The road along its length (x, metres from the start).
-// Which way it heads at x (radians, left positive), and how sharply it's
-// turning (1/radius).
+// ---- The road along its length (x, metres from the start), in stretches
+// ROAD_CELL long, each starting with a bend.
+// Whether stretch n's bend is a sharp corner (only odd ones: so the one
+// before never is).
+bool sharp(float n) {
+	return mod(n, 2.0) > 0.5 && hash11(n + 0.25) < SHARP;
+}
+
+// Which way the road heads after stretch n's bend (radians, left positive):
+// a sharp corner turns hard, back across the way it was heading.
+float headTo(float n) {
+	if (sharp(n)) {
+		float from = (hash11(n - 1.0) - 0.5) * 2.0 * MAX_TURN;
+		return from - (from >= 0.0 ? 1.0 : -1.0) * (0.9 + 0.6 * hash11(n + 0.75));
+	}
+	return (hash11(n) - 0.5) * 2.0 * MAX_TURN;
+}
+
+// Stretch n's bend: the heading from and to, and how long it is.
+vec3 bendOf(float n) {
+	float from = headTo(n - 1.0), to = headTo(n);
+	float radius = sharp(n) ? SHARP_RADIUS * (1.0 + 0.8 * hash11(n + 0.5)) : MIN_RADIUS * (1.0 + 2.0 * hash11(n + 0.5));
+	return vec3(from, to, max(abs(to - from) * radius, 1.0));
+}
+
+// Which way it heads at x, and how sharply it's turning (1/radius).
 vec2 heading(float x) {
 	float n = floor(x / ROAD_CELL);
-	float from = (hash11(n - 1.0) - 0.5) * 2.0 * MAX_TURN;
-	float to = (hash11(n) - 0.5) * 2.0 * MAX_TURN;
-	float radius = MIN_RADIUS * (1.0 + 2.0 * hash11(n + 0.5));
-	float bend = max(abs(to - from) * radius, 1.0);
-	float u = clamp((x - n * ROAD_CELL) / bend, 0.0, 1.0);
-	return vec2(mix(from, to, u * u * (3.0 - 2.0 * u)), (to - from) * 6.0 * u * (1.0 - u) / bend);
+	vec3 b = bendOf(n);
+	float u = clamp((x - n * ROAD_CELL) / b.z, 0.0, 1.0);
+	return vec2(mix(b.x, b.y, u * u * (3.0 - 2.0 * u)), (b.y - b.x) * 6.0 * u * (1.0 - u) / b.z);
+}
+
+// Where the car stops for the stop sign in stretch n (along), or -1: at a
+// crossroads, well after a gentle bend.
+float stopIn(float n) {
+	return !sharp(n) && hash11(n + 0.6) < STOPS && bendOf(n).z < 2000.0 ? n * ROAD_CELL + 2500.0 : -1.0;
+}
+
+// The middle of the crossroads in x's stretch (along), or far away.
+float crossing(float x) {
+	float s = stopIn(floor(x / ROAD_CELL));
+	return s > 0.0 ? s + 9.0 : -1e9;
+}
+
+// How fast the car can go at x (m/s): slowing for sharp corners and stop
+// signs (but not the last one it waited at, `passed`), speeding up after.
+float speedLimit(float x, float passed) {
+	float v = SPEED / 3.6;
+	float n = floor(x / ROAD_CELL);
+	for (int i = -1; i <= 1; i++) {
+		float m = n + float(i);
+		if (sharp(m)) {
+			vec3 b = bendOf(m);
+			float s0 = m * ROAD_CELL, s1 = s0 + b.z;
+			// (Its tightest is 1.5 times its mean.)
+			float vc2 = CORNERING * b.z / (1.5 * abs(b.y - b.x));
+			v = min(v, sqrt(vc2 + 2.0 * (x < s0 ? BRAKING * (s0 - x) : PICKUP * max(x - s1, 0.0))));
+		}
+		float s = stopIn(m);
+		if (s > 0.0) {
+			if (s > passed + 0.5) {
+				v = min(v, x < s ? max(sqrt(2.0 * BRAKING * (s - x)), 0.4) : 0.4);
+			} else if (x > s) {
+				v = min(v, sqrt(2.0 * PICKUP * (x - s)) + 0.8);
+			}
+		}
+	}
+	return v;
 }
 
 // A turning lane: where its side road is (along), and how wide the lane is
@@ -1091,6 +1297,10 @@ vec2 turning(float x) {
 		return vec2(-1e9, 0.0);
 	}
 	float at = n * 2500.0 + 400.0 + 1700.0 * h.y;
+	// (None by a crossroads.)
+	if (abs(at - crossing(at)) < 600.0 || abs(at - crossing(at - 600.0)) < 600.0) {
+		return vec2(-1e9, 0.0);
+	}
 	float w = TURN_W * clamp((x - (at - 230.0)) / 50.0, 0.0, 1.0) * clamp((at + 170.0 - x) / 50.0, 0.0, 1.0);
 	return vec2(at, w);
 }
@@ -1155,6 +1365,9 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 	} else if (abs(x - turning(x).x) < 6.0) {
 		return NONE;
 	}
+	if (abs(x - crossing(x)) < 10.0) {
+		return NONE;
+	}
 	vec4 more = hash42(vec2(cell + 0.5, float(lane) * 3.17 + 11.0));
 	// Patches thick and thin, slowly changing along the road.
 	float thick = BUSH * (0.4 + 1.2 * noise(vec2(x / 60.0, float(lane) * 0.37)));
@@ -1181,11 +1394,11 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 		return BUSH_CLUMP;
 	}
 	if ((k -= trees) < 0.0) {
-		size = vec2(min(1.2 + 1.5 * more.y, 0.35 * cw), 3.0 + 3.0 * more.z);
+		size = vec2(min(1.2 + 1.5 * more.y, 0.3 * cw), 3.0 + 3.0 * more.z);
 		return MULGA_TREE;
 	}
 	if ((k -= gums) < 0.0) {
-		size = vec2(min(2.0 + 1.5 * more.y, 0.35 * cw), 6.0 + 4.0 * more.z);
+		size = vec2(min(2.0 + 1.5 * more.y, 0.3 * cw), 6.0 + 4.0 * more.z);
 		return GHOST_GUM;
 	}
 	if ((k -= mounds) < 0.0) {
@@ -1204,6 +1417,51 @@ int standing(int lane, float cell, float cw, float z, out float x, out float zj,
 #define SLOTS 64
 float firstCell(float along, float cw) {
 	return floor(along / cw) - float(SLOTS / 2);
+}
+
+// Towards the sun and the moon at time of day `day`, in the car's frame
+// (the road heading `turn`): the sun rises behind, peaks high to the right
+// and sets in front, slantwise; the moon rises in front, a little to the
+// left, soon after (full, as it would be), and climbs slowly across to the
+// right before going over and setting behind.
+void sunMoon(float day, float turn, out vec3 sun, out vec3 moon) {
+	vec3 w = normalize(vec3(0.25, 0.0, 1.0));
+	vec3 u = normalize(vec3(0.7, 1.0, -0.3));
+	u = normalize(u - dot(u, w) * w);
+	float p = (day - 0.25) * TAU;
+	vec3 wm = normalize(vec3(-0.22, 0.0, 1.0));
+	vec3 um = normalize(vec3(1.0, 0.5, 0.2));
+	um = normalize(um - dot(um, wm) * wm);
+	float pm = (day - 0.75) * TAU - 0.35;
+	sun = rotY(-cos(p) * w + sin(p) * u, -turn * CELESTIAL);
+	moon = rotY(cos(pm) * wm + sin(pm) * um, -turn * CELESTIAL);
+}
+
+// The key light: towards the sun, or the moon at night, and how strong.
+vec4 keyLight(float day, float turn) {
+	vec3 sun, moon;
+	sunMoon(day, turn, sun, moon);
+	if (sun.y > -0.03 || moon.y < 0.0) {
+		return vec4(sun, smoothstep(-0.035, 0.03, sun.y));
+	}
+	return vec4(moon, 0.09 * smoothstep(-0.03, 0.1, moon.y));
+}
+
+// The bend a thing z out bends with: on the inside of a tight bend, things
+// further out than its middle bend less (rather than wrap round it).
+float bendAt(float bend, float z) {
+	return bend > 0.0 ? max(bend, 1.5 * z) : bend;
+}
+
+// Where the road point r (along, out) is from the car (x along, z out), the
+// car `along` the road and pulled `pull` out, on a bend of radius `bend`.
+vec2 fromRoad(vec2 r, float bend, float along, float pull) {
+	float b = bendAt(bend, r.y);
+	float sg = b >= 0.0 ? 1.0 : -1.0;
+	float th = (r.x - along) / abs(b);
+	float d = sg * (b - r.y);
+	float h = sin(0.5 * th);
+	return vec2(d * sin(th), r.y - pull + sg * d * 2.0 * h * h);
 }
 
 // How far the wheel's dropped at x: road roughness and potholes in the
@@ -1227,9 +1485,56 @@ vec2 scaled(vec2 p) {
 	return p.x <= 1.5 && p.y <= 1.5 ? p * iResolution.xy : p;
 }
 
+// The brightest glint the key light makes off a shard of glass or quartz in
+// the dirt, seen from the car: (along, out, how bright, 0). Shards lie in
+// the rows' empty cells, their faces tilted every which way; one glints
+// when it's near the mirror angle between the light and the eye.
+vec4 findGlint(float along, float day, float pull) {
+	vec2 hd = heading(along);
+	vec4 key = keyLight(day, hd.x);
+	if (key.w < 0.01 || key.y < 0.005) {
+		return vec4(0.0);
+	}
+	float bend = 1.0 / (abs(hd.y) < 1e-6 ? 1e-6 : hd.y);
+	vec4 best = vec4(0.0);
+	// The rows from about 8 m out to 120 m, the stretch of each in view.
+	for (int lane = 4; lane <= 22; lane++) {
+		float z = laneZ(lane), cw = cellWidth(z);
+		float c0 = floor((along - 1.3 * z) / cw);
+		float cells = 2.6 * z / cw;
+		for (int i = 0; i < 40; i++) {
+			if (float(i) > cells) {
+				break;
+			}
+			float cell = c0 + float(i);
+			vec4 h = hash42(vec2(cell, float(lane) * 5.13 + 77.0));
+			if (h.x > GLINTS) {
+				continue;
+			}
+			float x, zj;
+			vec2 size;
+			vec4 seed;
+			if (standing(lane, cell, cw, z, x, zj, size, seed) != NONE) {
+				continue;
+			}
+			vec2 r = vec2((cell + h.y) * cw, z * (1.0 + (LANE_RATIO - 1.0) * (h.z - 0.5)));
+			vec2 p = fromRoad(r, bend, along, pull);
+			vec3 eye = normalize(vec3(-p.x, EYE, -p.y));
+			vec4 g = hash42(vec2(cell, float(lane) * 2.71 + 33.0));
+			float tilt = 1.1 * sqrt(g.x), az = g.y * TAU;
+			vec3 n = vec3(sin(tilt) * cos(az), cos(tilt), sin(tilt) * sin(az));
+			float b = exp(-2.0 * (1.0 - dot(n, normalize(key.xyz + eye))) / (GLINT_SPREAD * GLINT_SPREAD));
+			if (b > best.z) {
+				best = vec4(r, b, 0.0);
+			}
+		}
+	}
+	return best;
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	ivec2 c = ivec2(fragCoord);
-	if (c.y != 0 || c.x > S_ROLL) {
+	if (c.y != 0 || c.x > S_GLINT) {
 		fragColor = vec4(0.0);
 		return;
 	}
@@ -1242,11 +1547,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 bounce = texelFetch(iChannel0, ivec2(S_BOUNCE, 0), 0);
 	// Roll, how fast it's changing, acceleration, MARK.
 	vec4 roll = texelFetch(iChannel0, ivec2(S_ROLL, 0), 0);
+	// The last stop sign waited at (along), how long it's waited at the
+	// next; how far it's pulled over, and how fast it's going over.
+	vec4 stop = texelFetch(iChannel0, ivec2(S_STOP, 0), 0);
 	if (abs(roll.w - MARK) > 0.01) {
 		clock = vec4(START_ALONG, START_TIME, 1.0, SPEED / 3.6);
 		touch = vec4(0.0);
 		bounce = vec4(0.0);
 		roll = vec4(0.0, 0.0, 0.0, MARK);
+		stop = vec4(-1.0, 0.0, 0.0, 0.0);
 	}
 	float dt = iTimeDelta > 0.0 ? min(iTimeDelta, 0.1) : 1.0 / 60.0;
 
@@ -1262,21 +1571,57 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	float scrub = three && touch.x > 2.5 ? (across - touch.y) / iResolution.x * SCRUB : 0.0;
 	touch = vec4(float(pointerCount), across, 0.0, 0.0);
 	clock.z += clamp((three ? 0.0 : 1.0) - clock.z, -dt / EASE, dt / EASE);
-	float step = clock.z * dt + scrub;
-	float speed = SPEED / 3.6;
-	clock.x = mod(clock.x + step * speed, WRAP);
-	clock.y = fract(clock.y + step / DAY_LENGTH);
-	float v = mix(step * speed / dt, clock.w, exp(-dt / 0.08));
+	float rate = clock.z;
+
+	// How far it goes: as fast as the road lets it, held at a stop sign
+	// until it's waited there (scrubbing skips them).
+	float from = clock.x;
+	float go = rate * dt * speedLimit(from, stop.x) + scrub * SPEED / 3.6;
+	float to = from + go;
+	float cell = floor(from / ROAD_CELL);
+	for (int i = 0; i <= 1; i++) {
+		float s = stopIn(cell + float(i));
+		if (s > stop.x + 0.5 && s > from - 0.5) {
+			if (scrub != 0.0 && to > s) {
+				stop.xy = vec2(s, 0.0);
+			} else if (to >= s - 0.05) {
+				to = min(to, s);
+				stop.y += rate * dt;
+				if (stop.y > STOP_WAIT) {
+					stop.xy = vec2(s, 0.0);
+				}
+			}
+			break;
+		}
+	}
+	go = to - from;
+	if (to >= WRAP || to < 0.0) {
+		to = mod(to, WRAP);
+		stop.x = -1.0;
+	}
+	clock.x = to;
+	clock.y = fract(clock.y + (rate * dt + scrub) / DAY_LENGTH);
+	float v = mix(go / dt, clock.w, exp(-dt / 0.08));
 	float accel = mix(clamp((v - clock.w) / dt, -12.0, 12.0), roll.z, exp(-dt / 0.25));
 	clock.w = v;
 	roll.z = accel;
 
-	// The suspension: springs to where the bumps, braking and bends push.
-	float k = pow(TAU * BOUNCE_HZ, 2.0), damp = 2.0 * DAMPING * TAU * BOUNCE_HZ;
-	float front = bump(clock.x + 1.3), back = bump(clock.x - 1.4);
+	// Pulling over as the fingers stop it, and back out as it goes again.
+	float pull = PULL_Z * smoothstep(0.0, 1.0, 1.0 - rate);
+	float pv = (pull - stop.z) / dt;
+	float sideways = clamp((pv - stop.w) / dt, -3.0, 3.0);
+	stop.zw = vec2(pull, pv);
+
+	// The suspension: springs to where the bumps, braking and bends push -
+	// within reason when scrubbing fast (the bumps blur out, the car only
+	// leans so far); rougher on the gravel.
+	float calm = min(40.0 / max(abs(v), 1.0), 1.0) * (1.0 + 2.0 * pull / PULL_Z);
+	float front = calm * bump(clock.x + 1.3), back = calm * bump(clock.x - 1.4);
 	float lift = 0.5 * (front + back);
-	float nose = (back - front) / 2.7 * 0.6 - accel * DIVE;
-	float lean = v * v * heading(clock.x).y * LEAN;
+	float nose = clamp((back - front) / 2.7 * 0.6 - accel * DIVE, -0.05, 0.05);
+	float vs = clamp(v, -40.0, 40.0);
+	float lean = clamp((vs * vs * heading(clock.x).y + sideways) * LEAN, -0.06, 0.06);
+	float k = pow(TAU * BOUNCE_HZ, 2.0), damp = 2.0 * DAMPING * TAU * BOUNCE_HZ;
 	for (int i = 0; i < 4; i++) {
 		float h = 0.25 * dt;
 		bounce.y += (-k * (bounce.x - lift) - damp * bounce.y) * h;
@@ -1286,13 +1631,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 		roll.y += (-k * 0.7 * (roll.x - lean) - damp * roll.y) * h;
 		roll.x += roll.y * h;
 	}
+	bounce = clamp(bounce, vec4(-0.08, -1.0, -0.08, -1.0), vec4(0.08, 1.0, 0.08, 1.0));
+	roll.xy = clamp(roll.xy, vec2(-0.1, -1.0), vec2(0.1, 1.0));
 
 	if (c.x == S_CLOCK) fragColor = clock;
 	else if (c.x == S_TOUCH) fragColor = touch;
 	else if (c.x == S_BOUNCE) fragColor = bounce;
-	else fragColor = roll;
+	else if (c.x == S_ROLL) fragColor = roll;
+	else if (c.x == S_STOP) fragColor = stop;
+	else fragColor = findGlint(clock.x, clock.y, pull);
 }
-
 
 //// Buffer B
 ///float32
