@@ -321,11 +321,13 @@ vec3 ground(float x, float z, float wx, float wz) {
 	vec3 d = mix(DIRT, DUST, clamp(0.4 + patches, 0.0, 1.0));
 	d *= 0.9 + 0.3 * streaks(p + 7.0, 10.0, 3, wx, wz);
 	// Sandy country, and darker, greyer soil, over large regions.
-	float soil = noise(vec2(x / 900.0, z / 260.0 + 11.0)) + 0.3 * noise(vec2(x / 230.0, z / 70.0 + 5.0)) - 0.15;
+	// (Each averaged towards its mean as a pixel spans it, far off.)
+	float soil = mix(0.5, noise(vec2(x / 900.0, z / 260.0 + 11.0)), 1.0 - smoothstep(80.0, 400.0, wz))
+			+ 0.3 * mix(0.5, noise(vec2(x / 230.0, z / 70.0 + 5.0)), 1.0 - smoothstep(20.0, 100.0, wz)) - 0.15;
 	d = mix(d, vec3(0.82, 0.64, 0.44) * (0.9 + 0.2 * patches), smoothstep(0.55, 0.8, soil));
 	d = mix(d, vec3(0.40, 0.33, 0.29) * (0.9 + 0.2 * patches), 0.85 * smoothstep(0.4, 0.15, soil));
 	// Further out the dirt's flecked with plants too small to stand up.
-	d = mix(d, mix(SPINIFEX_CORE, SPINIFEX, 0.5) * 0.8, 0.3 * smoothstep(10.0, 80.0, z) * (0.6 + 0.4 * noise(p / 40.0)));
+	d = mix(d, mix(SPINIFEX_CORE, SPINIFEX, 0.5) * 0.8, 0.3 * smoothstep(10.0, 80.0, z) * (0.6 + 0.4 * mix(0.5, noise(p / 40.0), 1.0 - smoothstep(10.0, 60.0, wz))));
 	col = mix(col, d, dirt);
 	// The side road: a dirt track going off into the bush.
 	float track = (overlap(x - 0.5 * wx, x + 0.5 * wx, turn.x - 3.5, turn.x + 3.5)
@@ -776,8 +778,10 @@ float terrain(vec2 p, float foot) {
 	return h - 8.0;
 }
 
-// Haze: the dust's, warm, nearer (but never all of it), then the air's.
+// Haze, dist metres away: the dust's, warm, nearer (but never all of
+// it), then the air's.
 vec3 haze(vec3 col, float dist, vec3 hazeCol) {
+	dist *= HAZE_DENSITY;
 	col = mix(col, hazeCol * vec3(1.1, 0.92, 0.78), DUSTY * (1.0 - exp2(-dist / DUST_HAZE)));
 	return mix(col, hazeCol, 1.0 - exp2(-dist / HAZE));
 }
@@ -847,12 +851,16 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 	float gully = mix(0.5, noise(vec2(p.x / 25.0, h / 300.0)), 1.0 - smoothstep(8.0, 30.0, fp));
 	float band = mix(0.5, noise(vec2(p.x / 900.0, h / 14.0)), 1.0 - smoothstep(5.0, 18.0, fp));
 	vec3 rock = RANGE * (0.75 + 0.35 * gully) * mix(vec3(0.8, 0.75, 0.75), vec3(1.1, 1.05, 0.95), band);
-	vec3 plain = mix(DIRT, SPINIFEX_CORE, 0.45) * 0.85;
+	vec3 plain = RANGE_PLAIN;
+	// The low flats out from the foot of the ranges, lit flat as the far
+	// ground is (which fades to their colour), so where a ray skims them -
+	// now here, now not - they don't stand out: they flickered as a line.
+	float lowFlat = (1.0 - smoothstep(0.03, 0.15, steep)) * (1.0 - smoothstep(15.0, 45.0, h)) * (1.0 - smoothstep(4000.0, 12000.0, t));
 	vec3 col = mix(plain, rock, smoothstep(0.08, 0.3, steep));
 	col = mix(col, vec3(0.38, 0.2, 0.13), 0.5 * smoothstep(0.1, 0.0, steep) * smoothstep(150.0, 250.0, h));
 	vec3 l = rotY(gLight, turn);
-	col *= gAmbient + gLightCol * max(dot(n, l), 0.0);
-	return vec4(haze(col, 0.5 * t, hazeCol), cover);
+	col *= gAmbient + gLightCol * mix(max(dot(n, l), 0.0), max(l.y, 0.0), lowFlat);
+	return vec4(haze(col, t, hazeCol), cover);
 }
 
 // ---- The sky.
@@ -969,7 +977,7 @@ void drawPoles(inout vec4 acc, vec3 rd, float eye, float bend, float along, floa
 		vec4 s = vec4(0.0);
 		pole(s, lx - 0.5 * w, lx + 0.5 * w, y, rd.x / rd.z);
 		if (s.w > 0.0) {
-			over(acc, haze(s.rgb / s.w, m.x, hazeCol), min(s.w / w, 1.0));
+			over(acc, haze(s.rgb / s.w, m.x * length(rd.xz), hazeCol), min(s.w / w, 1.0));
 		}
 	}
 	for (int j = 0; j < 3; j++) {
@@ -984,7 +992,7 @@ void drawPoles(inout vec4 acc, vec3 rd, float eye, float bend, float along, floa
 		float hw = (j == 1 ? 9.42 : 8.55) - 4.4 * u * (1.0 - u);
 		float pv = mw.x * pa;
 		float a = min(0.03 / pv, 1.0) * max(0.0, 1.0 - abs(eye + rd.y * mw.x - hw) / pv);
-		over(acc, haze(vec3(0.12) * (gAmbient + 0.5 * gLightCol), mw.x, hazeCol), a);
+		over(acc, haze(vec3(0.12) * (gAmbient + 0.5 * gLightCol), mw.x * length(rd.xz), hazeCol), a);
 	}
 }
 
@@ -1126,26 +1134,36 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 				if (isPlant(kind)) {
 					col += col * gGlow / max(dot(gLeft + gRight, vec3(0.1667)), 0.02);
 				}
-				over(acc, haze(col, kj, hazeCol), min(s.w / w, 1.0) * tex.y);
+				over(acc, haze(col, kj * length(d), hazeCol), min(s.w / w, 1.0) * tex.y);
 			}
 		}
 	}
 
-	// The ground, or else the ranges and the sky.
-	vec3 back;
-	float tg = rd.y < -1e-5 ? eye / -rd.y : 1e9;
-	if (tg * length(d) < 2600.0) {
+	// The ground out to 2.6 km, and beyond it the ranges and the sky: a
+	// pixel that straddles that is blended by how much of it is ground (at
+	// low resolutions that row's thousands of metres deep, and it flickered
+	// between the two as the view bobbed).
+	vec3 back = vec3(0.0);
+	float ld = length(d);
+	float onGround = clamp((-eye / 2600.0 - rd.y / ld) / pa + 0.5, 0.0, 1.0);
+	if (onGround > 0.0) {
+		float tg = min(rd.y < -1e-5 ? eye / -rd.y : 1e9, 2600.0 / ld);
 		vec2 r = onRoad(tg * d, bend, along);
 		float wx = max(blur, tg * pa) + tg * spin;
-		float wz = eye * pa / (rd.y * rd.y);
+		// (Across: as deep as the pixel's footprint, up to past the cut.)
+		float wz = min(eye * pa / max(rd.y * rd.y, 1e-8), 4000.0);
 		vec2 lit = r.y < 200.0 ? sunlight(r.x, r.y, wx, along) : vec2(1.0);
-		back = ground(r.x, r.y, wx, wz) * (gAmbient * lit.y + gLightCol * max(gLight.y, 0.0) * lit.x * mix(1.0, lit.y, 0.6));
-		// (Hazed as the ranges are where it meets them, so there's no seam.)
-		back = haze(back, tg * mix(1.0, 0.5, smoothstep(1200.0, 2600.0, tg * length(d))), hazeCol);
-	} else {
+		// (Fading to the ranges' plain by where it meets them: no seam.)
+		float dist = tg * ld;
+		vec3 g = mix(ground(r.x, r.y, wx, wz), RANGE_PLAIN, smoothstep(1200.0, 2600.0, dist)) * (gAmbient * lit.y + gLightCol * max(gLight.y, 0.0) * lit.x * mix(1.0, lit.y, 0.6));
+		// (Hazed by its distance, as everything is.)
+		g = haze(g, dist, hazeCol);
+		back = g * onGround;
+	}
+	if (onGround < 1.0) {
 		vec4 far = ranges(rotY(rd, hd.x), eye, along, pa, hd.x, hazeCol);
-		back = far.w < 1.0 ? sky(normalize(rd), true, day, hd.x, pa) : vec3(0.0);
-		back = mix(back, far.rgb, far.w);
+		vec3 b = far.w < 1.0 ? sky(normalize(rd), true, day, hd.x, pa) : vec3(0.0);
+		back += mix(b, far.rgb, far.w) * (1.0 - onGround);
 	}
 	over(acc, back, 1.0);
 	// A glint: where the shard is on the screen, and its flare.
@@ -1311,8 +1329,10 @@ uniform int pointerCount;
 // How thick the bush is (0-1).
 #define BUSH 0.6
 // How far until haze takes half, in metres; the dust's, nearer, and how
-// much it takes at most.
-#define HAZE 12000.0
+// much it takes at most. Everything's hazed by its true distance (times
+// HAZE_DENSITY: thicker for a dust storm).
+#define HAZE_DENSITY 1.0
+#define HAZE 24000.0
 #define DUST_HAZE 400.0
 #define DUSTY 0.3
 
@@ -1382,6 +1402,8 @@ float atlasDone(int tileW) {
 #define MOUND vec3(0.66, 0.32, 0.17)
 #define ROCK vec3(0.50, 0.20, 0.11)
 #define RANGE vec3(0.72, 0.33, 0.18)
+// The plain round the ranges (and the ground, where it meets it).
+#define RANGE_PLAIN (mix(DIRT, SPINIFEX_CORE, 0.45) * 0.85)
 
 // Buffer A's texels.
 #define S_CLOCK 0
