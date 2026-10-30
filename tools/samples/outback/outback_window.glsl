@@ -873,7 +873,8 @@ void drawPoles(inout vec4 acc, vec3 rd, float eye, float bend, float along, floa
 		if (mw.x <= 0.0 || !poled(last) || !poled(last + POLE_GAP)) {
 			continue;
 		}
-		float u = fract(mw.y / POLE_GAP + 0.5);
+		// (Highest at the poles, sagging between.)
+		float u = fract(mw.y / POLE_GAP);
 		float hw = (j == 1 ? 9.42 : 8.55) - 4.4 * u * (1.0 - u);
 		float pv = mw.x * pa;
 		float a = min(0.03 / pv, 1.0) * max(0.0, 1.0 - abs(eye + rd.y * mw.x - hw) / pv);
