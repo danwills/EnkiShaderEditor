@@ -1,11 +1,13 @@
-<resources>
+<resources
+	xmlns:tools="http://schemas.android.com/tools"
+	tools:ignore="TypographyFractions">
 	<string-array name="custom_res_presets">
 		<item>分辨率</item>
 		<item>1/32× 设备分辨率</item>
 		<item>1/16× 设备分辨率</item>
 		<item>1/8× 设备分辨率</item>
 		<item>1/4× 设备分辨率</item>
-		<item>0.5× 设备分辨率</item>
+		<item>1/2× 设备分辨率</item>
 		<item>1× 设备分辨率</item>
 		<item>2× 设备分辨率</item>
 		<item>4× 设备分辨率</item>
