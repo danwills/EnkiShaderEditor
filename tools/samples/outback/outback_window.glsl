@@ -336,6 +336,29 @@ void needleSpan(inout vec4 acc, float a0, float a1, float b0, float b1, float s,
 	acc += vec4(col * light * l, l);
 }
 
+// A plant's own green: darker or lighter (by dark), bluer or yellower.
+vec3 plantTint(vec4 seed, float dark) {
+	float a = fract(seed.y * 7.3 + seed.z * 3.1), b = fract(seed.x * 5.7 + seed.w * 2.3);
+	return mix(vec3(0.85, 1.0, 0.97), vec3(1.1, 1.02, 0.78), a) * mix(1.0 - dark, 1.0, b);
+}
+
+// Light on a surface facing n: the sky's from above, the key light's.
+vec3 lightOn(vec3 n) {
+	return gAmbient * (0.55 + 0.45 * max(n.y, 0.0)) + 1.1 * gLightCol * max(dot(n, gLight), 0.0);
+}
+
+// Like span(), for the slice at height y (half width w) of a dome (radius
+// r, h tall): lit by the dome's normal there, so its shadow side turns
+// with the light.
+void domeSpan(inout vec4 acc, float a0, float a1, float y, float w, float r, float h, vec3 col) {
+	float b0 = max(a0, -w), b1 = min(a1, w);
+	if (b1 > b0) {
+		vec2 p = vec2(0.5 * (b0 + b1) / r, y / h);
+		vec3 n = normalize(vec3(p.x / r, p.y / h, -sqrt(max(1.0 - dot(p, p), 0.0)) / r));
+		acc += vec4(col * lightOn(n), 1.0) * (b1 - b0);
+	}
+}
+
 // A hummock of spinifex: a grey-green dome bristling with golden needles,
 // which radiate from below its middle, tucked in at its foot over a few
 // woody stems. A tuft is just the needles.
@@ -358,10 +381,10 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 		}
 	}
 	if (wc > 0.0) {
-		vec3 col = mix(SPINIFEX_CORE * 0.55, SPINIFEX_CORE, smoothstep(0.0, core, y));
-		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w);
+		vec3 col = mix(SPINIFEX_CORE * 0.75, SPINIFEX_CORE, smoothstep(0.0, core, y));
+		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w) * plantTint(seed, 0.45);
 		vec4 c = vec4(0.0);
-		span(c, a0, a1, 0.0, wc, col);
+		domeSpan(c, a0, a1, y, wc, r, core, col);
 		acc += c * (tuft ? 1.0 : mix(0.35, 1.0, tuck));
 	}
 	// Needles: spaced 0.03 of their slope out from below the middle.
@@ -428,7 +451,7 @@ int atlasTile(int kind, vec4 seed) {
 // A tree or bush (size: radius, height) from the atlas (Buffer C), tile
 // t, mirrored for some (seed): its tile's rows at height y, summed from a0
 // to a1, so blurred exactly, and lit by its normals there.
-void tree(inout vec4 acc, float a0, float a1, float y, vec2 size, vec4 seed, int t) {
+void tree(inout vec4 acc, float a0, float a1, float y, vec2 size, vec4 seed, int t, float dark) {
 	if (!gAtlas) {
 		return;
 	}
@@ -459,7 +482,9 @@ void tree(inout vec4 acc, float a0, float a1, float y, vec2 size, vec4 seed, int
 	// (light through the leaves).
 	vec2 n = vec2(flip * b.x, b.y) / a.x;
 	vec3 light = gAmbient * (0.85 + 0.15 * n.y) + 1.1 * gLightCol * max(0.25 + 0.75 * dot(normalize(vec3(n.x, 0.6 + 0.4 * n.y, -0.35)), gLight), 0.0);
-	acc += vec4(a.yzw / a.x * light, 1.0) * a.x / k;
+	// Each its own green (the leaves).
+	vec3 tint = mix(vec3(1.0), plantTint(seed, dark), clamp(b.z / a.x, 0.0, 1.0));
+	acc += vec4(a.yzw / a.x * tint * light, 1.0) * a.x / k;
 }
 
 // A termite mound: a lumpy red spire.
@@ -571,7 +596,7 @@ void cutOut(inout vec4 acc, int kind, float a0, float a1, float y, vec2 size, ve
 	if (kind == SPINIFEX_CLUMP) spinifex(acc, a0, a1, y, size.x, size.y, seed, false);
 	else if (kind == TUFT) spinifex(acc, a0, a1, y, size.x, size.y, seed, true);
 	else if (kind == WEED) buffel(acc, a0, a1, y, size.x, size.y, seed);
-	else if (kind == MULGA_TREE || kind == GHOST_GUM || kind == BUSH_CLUMP) tree(acc, a0, a1, y, size, seed, atlasTile(kind, seed));
+	else if (kind == MULGA_TREE || kind == GHOST_GUM || kind == BUSH_CLUMP) tree(acc, a0, a1, y, size, seed, atlasTile(kind, seed), kind == BUSH_CLUMP ? 0.45 : 0.0);
 	else if (kind == TERMITES) termites(acc, a0, a1, y, size.x, size.y, seed);
 	else if (kind == BOULDER) boulder(acc, a0, a1, y, size.x, size.y, seed);
 }
@@ -677,7 +702,10 @@ vec2 sunlight(float x, float z, float wx, float along) {
 				continue;
 			}
 			float r = size.x * (kind == MULGA_TREE || kind == GHOST_GUM ? 0.5 : 1.1);
-			vec2 q = vec2(max(abs(x - ox) - 0.5 * wx, 0.0) / r, (z - zj) / (0.8 * r + 0.1));
+			// (Moved away from the key light, more as it's lower.)
+			vec2 away = l.y > 0.02 ? -vec2(l.x, l.z) / max(l.y, 0.3) * 0.3 * r : vec2(0.0);
+			away *= min(1.0, 0.6 * r / max(length(away), 1e-4));
+			vec2 q = vec2(max(abs(x - ox - away.x) - 0.5 * wx, 0.0) / r, (z - zj - away.y) / (0.8 * r + 0.1));
 			dark = max(dark, (1.0 - smoothstep(0.0, 1.3, dot(q, q))) * (kind == TUFT ? 0.3 : 0.55));
 		}
 	}
@@ -1131,6 +1159,8 @@ uniform int pointerCount;
 // Three fingers: how long time takes to stop (and start again), in
 // seconds; how much time a drag across the screen scrubs through.
 #define EASE 3.0
+// ...down to this much of the time (and speed): always a little blur.
+#define MIN_RATE 0.15
 #define SCRUB 60.0
 
 // The road: a stretch every ROAD_CELL metres, turning at its start by up to
@@ -1671,7 +1701,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	bool three = pointerCount >= 3;
 	float scrub = three && touch.x > 2.5 ? (across - touch.y) / iResolution.x * SCRUB : 0.0;
 	touch = vec4(float(pointerCount), across, 0.0, 0.0);
-	clock.z += clamp((three ? 0.0 : 1.0) - clock.z, -dt / EASE, dt / EASE);
+	clock.z += clamp((three ? MIN_RATE : 1.0) - clock.z, -dt / EASE, dt / EASE);
 	float rate = clock.z;
 
 	// How far it goes: as fast as the road lets it, held at a stop sign
@@ -1708,7 +1738,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	roll.z = accel;
 
 	// Pulling over as the fingers stop it, and back out as it goes again.
-	float pull = PULL_Z * smoothstep(0.0, 1.0, 1.0 - rate);
+	float pull = PULL_Z * smoothstep(0.0, 1.0 - MIN_RATE, 1.0 - rate);
 	float pv = (pull - stop.z) / dt;
 	float sideways = clamp((pv - stop.w) / dt, -3.0, 3.0);
 	stop.zw = vec2(pull, pv);

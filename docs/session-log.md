@@ -841,3 +841,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Glints by moonlight are `GLINT_NIGHT` (0.35) as bright.
   - Desktop only so far.
 - "Yeah please do" (v5 on the phone): Outback Window v5 went on as 1073, read 17 fps after 30 s (v4: 19), and was left fullscreen.
+- "the bushes are all a bit bright, could they vary more in colour?"; "the bush shadow (including self-shadowing) doesn't seem aware of the sun position, could it be? without needing to raytrace?"; "when 3-pointers are down, let's limit how slow the car can go.. so it's still always a little bit motion blurred":
+  - Each bush and spinifex hummock gets its own green (`plantTint()`): up to 45% darker, bluer or yellower; trees get just the hue shift, on their leaves.
+  - Hummocks are lit by their dome's normal at each slice (`domeSpan()`), so their shadow side turns with the sun (the atlas plants already were, by their stored normals). The darkening round plants' feet moves away from the key light, more as it's lower.
+  - Three fingers now ease the car down to `MIN_RATE` (0.15: about 16 km/h, still blurred) instead of a stop, fully pulled over. Stop signs still wait 3 s at a standstill.
+  - Desktop only so far.
