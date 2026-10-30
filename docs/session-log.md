@@ -815,3 +815,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Bends with straights between; edge lines solid, worn or dashed, with turning lanes and arrows; potholes and bitten seal edges on rough stretches; chip seal made of packed stones; coloured gravel; buffel and weeds; poles on about 12% of the loop, starting at the very beginning.
   - Ray-marched ranges (mesas, ridges, gullies); the sun sets in front, the moon rises soon after, stars come out; smoother plant lighting and denser needles.
   - From 6.3 ms on the first pass of v2 to 3.2 ms (v1: 3 ms) at 360x772 on the desktop.
+- "yes please" (put v2 on the phone): Outback Window v2 went on as 1069. It compiled and runs at 32 fps (v1: 24), and was left fullscreen.
