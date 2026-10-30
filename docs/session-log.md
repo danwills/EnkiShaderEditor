@@ -833,3 +833,10 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Every trunk, branch and stem wanders by two octaves of noise, nothing at the root and growing to `WOBBLE` at the top.
   - Checked on the desktop only; not yet on the phone.
 - "chuck it on as v4": Outback Window v4 went on as 1072 and was left fullscreen. It read 3.6 fps 12 s in and 19 fps 30 s in, so it starts slow and settles; that explains the jumpy readings in the bisecting, which were all taken at 10 s. v2 was 25 at a cool 10 s reading.
+- "the low bushes are very sharp and straight at the base... a small branching trunk inside them"; "the distant mountains are very pixelly, could they analytically antialias themselves"; "most [stars] 1/2 as bright, keeping just a handful"; "Shadows under bushes still seem a bit strong"; "Glints... a little too bright at night time":
+  - Spinifex hummocks now tuck in over the bottom half, with thinner foliage there, and four woody stems fork out from the middle and show through it.
+  - The ranges' march keeps the most the skyline stands above (or below) the ray, in pixels, and the ranges cover the pixel by that, blended over the sky. Just-missed rays are lit at the skyline's point. Mesa tops and ridges are smooth at quality 0.25; steep cliff sides still step a little.
+  - Stars: all but about the brightest 1.5% are half as bright.
+  - Shadows take 0.6 of the key light (was 0.7); the darkening round plants' feet is back down (0.55).
+  - Glints by moonlight are `GLINT_NIGHT` (0.35) as bright.
+  - Desktop only so far.

@@ -337,19 +337,32 @@ void needleSpan(inout vec4 acc, float a0, float a1, float b0, float b1, float s,
 }
 
 // A hummock of spinifex: a grey-green dome bristling with golden needles,
-// which radiate from below its middle. A tuft is just the needles.
+// which radiate from below its middle, tucked in at its foot over a few
+// woody stems. A tuft is just the needles.
 void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec4 seed, bool tuft) {
 	float he = h * (tuft ? 1.0 : 1.4);
 	if (y >= he) {
 		return;
 	}
 	float core = tuft ? 0.0 : h;
-	float wc = y < core ? r * sqrt(1.0 - (y / core) * (y / core)) : 0.0;
-	float we = r * (tuft ? 1.0 : 1.2) * sqrt(1.0 - (y / he) * (y / he));
+	float tuck = sqrt(smoothstep(0.0, 0.5 * h, y));
+	float wc = y < core ? r * sqrt(1.0 - (y / core) * (y / core)) * (0.15 + 0.85 * tuck) : 0.0;
+	float we = r * (tuft ? 1.0 : 1.2) * sqrt(1.0 - (y / he) * (y / he)) * (tuft ? 1.0 : 0.6 + 0.4 * tuck);
+	if (!tuft && y < 0.35 * h) {
+		// Stems: from the middle, forking out as they rise, seen through
+		// the thinner foliage low down.
+		for (int i = 0; i < 4; i++) {
+			float k = float(i) - 1.5;
+			float x = 0.1 * r * k + (0.5 + 0.4 * fract(seed.y * 13.0 + float(i) * 0.37)) * r * k * y / h * 2.0;
+			span(acc, a0, a1, x, 0.012 + 0.015 * r * (1.0 - y / (0.35 * h)), BARK * 0.8);
+		}
+	}
 	if (wc > 0.0) {
 		vec3 col = mix(SPINIFEX_CORE * 0.55, SPINIFEX_CORE, smoothstep(0.0, core, y));
 		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w);
-		span(acc, a0, a1, 0.0, wc, col);
+		vec4 c = vec4(0.0);
+		span(c, a0, a1, 0.0, wc, col);
+		acc += c * (tuft ? 1.0 : mix(0.35, 1.0, tuck));
 	}
 	// Needles: spaced 0.03 of their slope out from below the middle.
 	float s = 1.0 / (0.03 * (y + 0.5 * h));
@@ -665,7 +678,7 @@ vec2 sunlight(float x, float z, float wx, float along) {
 			}
 			float r = size.x * (kind == MULGA_TREE || kind == GHOST_GUM ? 0.5 : 1.1);
 			vec2 q = vec2(max(abs(x - ox) - 0.5 * wx, 0.0) / r, (z - zj) / (0.8 * r + 0.1));
-			dark = max(dark, (1.0 - smoothstep(0.0, 1.3, dot(q, q))) * (kind == TUFT ? 0.35 : 0.75));
+			dark = max(dark, (1.0 - smoothstep(0.0, 1.3, dot(q, q))) * (kind == TUFT ? 0.3 : 0.55));
 		}
 	}
 	return vec2(1.0 - SHADOW * shade, 1.0 - dark);
@@ -700,7 +713,8 @@ vec3 haze(vec3 col, float dist, vec3 hazeCol) {
 }
 
 // The ray (rd, in the far hills' frame) over the ranges, from 2.5 km out to
-// 60 km: their colour, lit and hazed, and how far (0 if it misses).
+// 60 km: their colour, lit and hazed, and how much of the pixel they cover
+// (from how many pixels the nearest skyline's above or below the ray).
 vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol) {
 	float flat_ = length(rd.xz);
 	vec2 d = rd.xz / flat_;
@@ -711,10 +725,17 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 	vec2 o = vec2(along, 0.0);
 	float t = 2500.0, last = t;
 	bool hit = false;
+	// The most the ranges stand above the ray, in pixels, and where.
+	float above = -1e9, top = t;
 	for (int i = 0; i < 16; i++) {
 		// (The earth's curve drops it away.)
 		float y = eye + rise * t - t * t / 12.7e6;
-		if (y < terrain(o + d * t, false)) {
+		float ht = terrain(o + d * t, false);
+		if ((ht - y) / (t * pa) > above) {
+			above = (ht - y) / (t * pa);
+			top = t;
+		}
+		if (y < ht) {
 			hit = true;
 			break;
 		}
@@ -725,9 +746,20 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 		t *= 1.22;
 	}
 	if (!hit) {
-		return vec4(0.0);
+		// Just over a skyline: lit there, partly covering.
+		if (above < -0.5) {
+			return vec4(0.0);
+		}
+		last = t = top;
+	} else {
+		// Just under one: how far the skyline beyond rises over the ray.
+		for (int i = 1; i < 3; i++) {
+			float tb = t * (1.0 + 0.15 * float(i));
+			above = max(above, (terrain(o + d * tb, false) - eye - rise * tb + tb * tb / 12.7e6) / (tb * pa));
+		}
 	}
-	for (int i = 0; i < 6; i++) {
+	float cover = clamp(0.5 + above, 0.0, 1.0);
+	for (int i = 0; i < (hit ? 6 : 0); i++) {
 		float mid = 0.5 * (last + t);
 		if (eye + rise * mid - mid * mid / 12.7e6 < terrain(o + d * mid, true)) {
 			t = mid;
@@ -750,7 +782,7 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 	col = mix(col, vec3(0.38, 0.2, 0.13), 0.5 * smoothstep(0.1, 0.0, steep) * smoothstep(150.0, 250.0, h));
 	vec3 l = rotY(gLight, turn);
 	col *= gAmbient + gLightCol * max(dot(n, l), 0.0);
-	return vec4(haze(col, 0.5 * t, hazeCol), t);
+	return vec4(haze(col, 0.5 * t, hazeCol), cover);
 }
 
 // ---- The sky.
@@ -771,6 +803,8 @@ vec3 starfield(vec3 rd, float day, float turn, float pa) {
 	vec4 h = hash42(cell + 3.7);
 	float dist = length(sp - cell - 0.25 - 0.5 * h.xy) * TAU / cells;
 	float bright = h.z < 0.55 ? 0.0 : (0.012 + 2.0 * pow((h.z - 0.55) / 0.45, 8.0)) * (0.75 + 0.25 * sin(iTime * (3.0 + 4.0 * h.w) + h.w * TAU));
+	// All but a handful at half that.
+	bright *= h.z > 0.985 ? 1.0 : 0.5;
 	vec3 col = mix(vec3(1.0, 0.85, 0.7), vec3(0.8, 0.9, 1.0), h.w) * bright * smoothstep(1.3 * pa, 0.3 * pa, dist);
 	// The Milky Way: a band, mottled, with dark lanes.
 	float band = dot(q, normalize(vec3(0.2, 0.6, 0.75)));
@@ -1025,7 +1059,8 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 		back = haze(back, tg, hazeCol);
 	} else {
 		vec4 far = ranges(rotY(rd, hd.x), eye, along, pa, hd.x, hazeCol);
-		back = far.w > 0.0 ? far.rgb : sky(normalize(rd), true, day, hd.x, pa);
+		back = far.w < 1.0 ? sky(normalize(rd), true, day, hd.x, pa) : vec3(0.0);
+		back = mix(back, far.rgb, far.w);
 	}
 	over(acc, back, 1.0);
 	// A glint: where the shard is on the screen, and its flare.
@@ -1035,7 +1070,8 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 		g = vec3(g.x, g.y * cos(pitch) + g.z * sin(pitch), g.z * cos(pitch) - g.y * sin(pitch));
 		if (g.z > 0.0) {
 			vec2 at = mat2(cos(roll), -sin(roll), sin(roll), cos(roll)) * (g.xy / g.z) / spread * 0.5 * side + 0.5 * res;
-			acc.rgb += gLightCol * GLINT_POWER * glint.z * flare((fragCoord - at) / side);
+			// (Dimmer by moonlight: the night's exposure lifts them.)
+			acc.rgb += gLightCol * GLINT_POWER * mix(GLINT_NIGHT, 1.0, gDay) * glint.z * flare((fragCoord - at) / side);
 		}
 	}
 	// Brightened at night, and bright lights eased in.
@@ -1123,6 +1159,8 @@ uniform int pointerCount;
 #define GLINTS 0.13
 #define GLINT_SPREAD 0.035
 #define GLINT_POWER 3.0
+// How bright, by moonlight, of that.
+#define GLINT_NIGHT 0.35
 // The suspension: how bouncy (Hz), how damped, how much it pitches under
 // braking (radians per m/s^2) and rolls in bends.
 #define BOUNCE_HZ 1.4
@@ -1151,7 +1189,7 @@ uniform int pointerCount;
 #define POLE_GAP 85.0
 // How much shadows take of the key light, and how they soften with the
 // height of what casts them (metres wider a metre up).
-#define SHADOW 0.7
+#define SHADOW 0.6
 #define SHADOW_SOFT 0.12
 #define POLES 0.1
 // The rows of plants and rocks: the first's distance, how many, each this
