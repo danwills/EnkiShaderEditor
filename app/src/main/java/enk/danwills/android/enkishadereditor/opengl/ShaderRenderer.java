@@ -2174,14 +2174,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		if (!programManager.hasPreparedShader()) {
 			return null;
 		}
-		if (hasBufferPasses()) {
-			// The tiled path renders the Image pass on its own, without
-			// the buffer chain it reads - so a buffer shader captures the
-			// live renderer's own completed frame instead, which only
-			// exists at the live render size.
-			if (oversample != 1 || !isLiveRenderSize(width, height)) {
-				return null;
-			}
+		if (hasBufferPasses() && oversample == 1 && isLiveRenderSize(width, height)) {
+			// At the live size, a buffer shader's capture is the live
+			// renderer's own completed frame. Any other size tiles the
+			// Image pass on its own (below), reading the buffers as they
+			// are - see HighResScreenshotCapture.capture()'s bindChannels.
 			byte[] png;
 			if (captureUpscaled) {
 				GlTexture2D frame = renderPipeline.getBackTexture();
@@ -2227,7 +2224,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 				useDevice, programManager, renderPipeline, builtinUniforms,
 				glVersion, width * oversample, height * oversample,
 				preserveBackbufferEdges, bucketSize, oversample == 1, tileOrder, innerListener,
-				innerTilePreviewListener, feedback);
+				innerTilePreviewListener, feedback,
+				hasBufferPasses()
+						? bindings -> bindChannels(bindings,
+								programManager.getPreparedShaderSource(),
+								programManager.getBufferPasses())
+						: null);
 		if (bitmap == null) {
 			return null;
 		}
@@ -2353,8 +2355,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// sequence settles on its shader's speed after the first frame.
 	private int stepBandRows = 1;
 
-	// Whether width x height is the live render size - the only size a
-	// buffer shader can be captured at (see captureHighResScreenshot()).
+	// Whether width x height is the live render size - where a buffer
+	// shader's capture is the live frame (see captureHighResScreenshot()).
 	public boolean isLiveRenderSize(int width, int height) {
 		return width == renderPipeline.getTargetWidth() &&
 				height == renderPipeline.getTargetHeight();

@@ -651,7 +651,6 @@
 	<string name="channel_filter_mipmap">Mipmap 過濾</string>
 	<string name="channel_wrap_clamp">鉗制</string>
 	<string name="channel_wrap_repeat">重複</string>
-	<string name="buffers_capture_unsupported">帶離屏緩衝區的著色器目前只能以「符合應用程式解析度」（不超取樣）擷取</string>
 	<string name="not_a_shader_pack">這不是著色器包</string>
 	<string name="shader_pack_too_new">此著色器包需要較新版本的應用程式</string>
 	<plurals name="shader_pack_installed">

@@ -7,6 +7,8 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.function.Consumer;
+
 // Renders the current shader at a resolution higher than the screen (for
 // "Save At Higher Res") and assembles the result into one Bitmap. Runs
 // entirely on the GL thread, as a one-off operation distinct from the
@@ -401,7 +403,8 @@ final class HighResScreenshotCapture {
 			@NonNull TileRenderOrder tileOrder,
 			@Nullable ProgressListener onProgress,
 			@Nullable TilePreviewListener onTilePreview,
-			@Nullable SequenceFeedback feedback) {
+			@Nullable SequenceFeedback feedback,
+			@Nullable Consumer<ProgramBindings> bindChannels) {
 		// At 1x oversample (allowSinglePass - see TileBucketSize's own
 		// doc) with MAX bucket size, and a resolution that still fits in
 		// one texture, skip tiling - and the tile-offset-macro rewrite/
@@ -573,7 +576,7 @@ final class HighResScreenshotCapture {
 					tileProgram, tileFramebuffer,
 					blitProgram, backbufferTileFramebuffer, backbufferTileTexture,
 					targetWidth, targetHeight, tileContentSize, margin, tileOrder, onProgress,
-					onTilePreview, feedback);
+					onTilePreview, feedback, bindChannels);
 		}
 
 		device.bindFramebuffer(null);
@@ -614,7 +617,8 @@ final class HighResScreenshotCapture {
 			@NonNull TileRenderOrder tileOrder,
 			@Nullable ProgressListener onProgress,
 			@Nullable TilePreviewListener onTilePreview,
-			@Nullable SequenceFeedback feedback) {
+			@Nullable SequenceFeedback feedback,
+			@Nullable Consumer<ProgramBindings> bindChannels) {
 		// One snapshot of every live uniform (time, mouse, sensors,
 		// camera, audio, the existing backbuffer texture) shared by every
 		// tile, so the whole image is internally consistent - only
@@ -630,8 +634,13 @@ final class HighResScreenshotCapture {
 		}
 		var bindings = frame.bindings();
 		bindings.retarget(tileProgram);
-		bindings.setFloat2(ShaderRenderer.UNIFORM_RESOLUTION,
-				new float[]{targetWidth, targetHeight});
+		// (iResolution too, for a ShaderToy-style shader.)
+		builtinUniforms.bindPassResolution(bindings, targetWidth, targetHeight);
+		// A buffer shader's Image pass reads its buffers as they are, live
+		// (at their own sizes - its iChannelResolution says what they are).
+		if (bindChannels != null) {
+			bindChannels.accept(bindings);
+		}
 
 		// Already seeded - bind straight to our own exact-resolution
 		// prior output, no resampling of any kind needed (it's already

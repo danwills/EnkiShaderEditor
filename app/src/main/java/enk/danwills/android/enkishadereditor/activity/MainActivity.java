@@ -5484,16 +5484,6 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 				return;
 			}
-			if (editorFragment.hasBufferPasses() && (oversample != 1 ||
-					width != shaderViewManager.getRenderWidth() ||
-					height != shaderViewManager.getRenderHeight())) {
-				// Tiled rendering draws the Image pass on its own, not the
-				// buffer chain it reads - so buffer shaders are captured
-				// by the live renderer itself, at its own size.
-				Toast.makeText(this, R.string.buffers_capture_unsupported,
-						Toast.LENGTH_LONG).show();
-				return;
-			}
 			boolean autoDetectTileSize = autoDetectTileSizeBox.isChecked()
 					&& !editorFragment.hasBufferPasses();
 			SharedPreferences.Editor prefsEditor = dialogPrefs().edit()
@@ -6087,7 +6077,7 @@ public class MainActivity extends AppCompatActivity {
 		// for a single pass, which is only ever one tile.
 		AtomicBoolean interruptRequested = new AtomicBoolean(false);
 		Button interruptButton = progressView.findViewById(R.id.progress_interrupt_make_video);
-		if (!singlePass && !editorFragment.hasBufferPasses()) {
+		if (!singlePass) {
 			interruptButton.setText(R.string.interrupt_save_partial_button);
 			interruptButton.setVisibility(View.VISIBLE);
 			interruptButton.setOnClickListener(v -> {
