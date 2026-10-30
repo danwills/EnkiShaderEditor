@@ -15,8 +15,8 @@
 // HOW IT WORKS
 // Buffer A keeps the clock - how far along the road, the time of day, how
 // fast time's going - and drives the car: as fast as the road allows
-// (slowing for sharp corners and stop signs, waiting at the line), pulled
-// over when it's stopped by hand. Its suspension is a spring on each of
+// (slowing for sharp corners, and to a crawl over stop signs' lines), pulled
+// over when it's slowed by hand. Its suspension is a spring on each of
 // bounce, pitch and roll, driven by bumps and potholes, braking and
 // accelerating, and cornering. It also looks for glints: shards of glass or
 // quartz scattered in the dirt, each a mirror tilted at random, glinting
@@ -1178,10 +1178,8 @@ uniform int pointerCount;
 #define CORNERING 3.5
 #define BRAKING 2.5
 #define PICKUP 1.5
-// Crossroads, with a stop sign: a chance each stretch; how long the car
-// waits at the line, in seconds.
+// Crossroads, with a stop sign (a rolling stop): a chance each stretch.
 #define STOPS 0.2
-#define STOP_WAIT 3.0
 // How far over the car pulls (onto the gravel) when three fingers stop it.
 #define PULL_Z 2.3
 // Glints off glass or quartz in the dirt: the chance of a shard in an empty
@@ -1394,7 +1392,7 @@ float crossing(float x) {
 }
 
 // How fast the car can go at x (m/s): slowing for sharp corners and stop
-// signs (but not the last one it waited at, `passed`), speeding up after.
+// signs (but not the last one it passed, `passed`), speeding up after.
 float speedLimit(float x, float passed) {
 	float v = SPEED / 3.6;
 	float n = floor(x / ROAD_CELL);
@@ -1407,12 +1405,14 @@ float speedLimit(float x, float passed) {
 			float vc2 = CORNERING * b.z / (1.5 * abs(b.y - b.x));
 			v = min(v, sqrt(vc2 + 2.0 * (x < s0 ? BRAKING * (s0 - x) : PICKUP * max(x - s1, 0.0))));
 		}
-		float s = stopIn(m);
+		// A rolling stop: down to a crawl at the line (never stopped, so
+		// always a little blurred), and away again.
+		float s = stopIn(m), crawl = MIN_RATE * SPEED / 3.6;
 		if (s > 0.0) {
 			if (s > passed + 0.5) {
-				v = min(v, x < s ? max(sqrt(2.0 * BRAKING * (s - x)), 0.4) : 0.4);
+				v = min(v, x < s ? sqrt(crawl * crawl + 2.0 * BRAKING * (s - x)) : crawl);
 			} else if (x > s) {
-				v = min(v, sqrt(2.0 * PICKUP * (x - s)) + 0.8);
+				v = min(v, sqrt(crawl * crawl + 2.0 * PICKUP * (x - s)));
 			}
 		}
 	}
@@ -1678,8 +1678,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 bounce = texelFetch(iChannel0, ivec2(S_BOUNCE, 0), 0);
 	// Roll, how fast it's changing, acceleration, MARK.
 	vec4 roll = texelFetch(iChannel0, ivec2(S_ROLL, 0), 0);
-	// The last stop sign waited at (along), how long it's waited at the
-	// next; how far it's pulled over, and how fast it's going over.
+	// The last stop sign passed (along), unused; how far it's pulled over,
+	// and how fast it's going over.
 	vec4 stop = texelFetch(iChannel0, ivec2(S_STOP, 0), 0);
 	if (abs(roll.w - MARK) > 0.01) {
 		clock = vec4(START_ALONG, START_TIME, 1.0, SPEED / 3.6);
@@ -1704,8 +1704,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	clock.z += clamp((three ? MIN_RATE : 1.0) - clock.z, -dt / EASE, dt / EASE);
 	float rate = clock.z;
 
-	// How far it goes: as fast as the road lets it, held at a stop sign
-	// until it's waited there (scrubbing skips them).
+	// How far it goes: as fast as the road lets it, crawling over a stop
+	// sign's line (which then counts as passed).
 	float from = clock.x;
 	float go = rate * dt * speedLimit(from, stop.x) + scrub * SPEED / 3.6;
 	float to = from + go;
@@ -1713,14 +1713,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	for (int i = 0; i <= 1; i++) {
 		float s = stopIn(cell + float(i));
 		if (s > stop.x + 0.5 && s > from - 0.5) {
-			if (scrub != 0.0 && to > s) {
+			if (to >= s) {
 				stop.xy = vec2(s, 0.0);
-			} else if (to >= s - 0.05) {
-				to = min(to, s);
-				stop.y += rate * dt;
-				if (stop.y > STOP_WAIT) {
-					stop.xy = vec2(s, 0.0);
-				}
 			}
 			break;
 		}

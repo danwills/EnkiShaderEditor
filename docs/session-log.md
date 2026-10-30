@@ -846,3 +846,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Hummocks are lit by their dome's normal at each slice (`domeSpan()`), so their shadow side turns with the sun (the atlas plants already were, by their stored normals). The darkening round plants' feet moves away from the key light, more as it's lower.
   - Three fingers now ease the car down to `MIN_RATE` (0.15: about 16 km/h, still blurred) instead of a stop, fully pulled over. Stop signs still wait 3 s at a standstill.
   - Desktop only so far.
+- "yes rolling stops, then put it on as v6": stop signs are rolling stops now - the car brakes to the three-finger crawl (`MIN_RATE` of full speed, 4.6 m/s) at the line and picks up again, no waiting (`STOP_WAIT` gone). Checked headless through the stop at 14500 m.
