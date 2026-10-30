@@ -101,6 +101,10 @@ When driving Dan's phone over adb (only when he's said it's free):
   one makes the phone ask Replace/Ignore over whatever's showing (Replace is at (1082,1764));
   replacing the open shader reloads it.
 - A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
+- To capture the open shader at any size with no dialog, use `tools/phone/capture.sh WxH
+  [--oversample N] [--frames N --fps F] [--shader ID]`: it renders as Custom Res/Seq would
+  (MainActivity's debug `capture` extra), posts each frame to the status panel (⏹ stops it) and
+  pulls the PNGs to `~/dev/shaderEditor/captures/<date-time>/` (or `--out DIR`).
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; restore
   any other setting changed. Rotation and stay-awake are `done`'s job: `ask` saves auto-rotate,
