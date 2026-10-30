@@ -875,3 +875,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - The ranges are marched in 7% steps (60 at most) instead of 22% (16), which skipped over peaks, so the skyline jumped about and dropped for a frame. The terrain's gully detail and the rock's colour detail (gullies, strata) fade out once they're finer than a pixel.
   - `streaks()` averages three samples along the road for octaves whose features the blur nearly spans: it used to blur only once the blur was longer than a feature, so the grass clumps stayed crisp at slow speeds. The thresholds on blurred noise (grass clumps, the dirt's fingers) widen with the blur.
   - The shutter lengthens as the car slows (`SLOW_SHUTTER` 0.05 s at a crawl, `SHUTTER` 0.01 s from 20 m/s), so there's always visible blur.
+- "Yeah do it" (v10 on the phone): Outback Window v10 is 1078; set to 1/16 (it opened at 1/4: 0.5 fps), 14 fps, left fullscreen.
