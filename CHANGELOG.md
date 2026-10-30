@@ -1,5 +1,25 @@
 # Change Log
 
+## 2.37.0
+* Add a Common section: code every pass of a shader shares
+* Add a live mode to Adjust Defines, with a toolbar button, filter and groups
+* Add Save as New Shader from Adjust Defines
+* Add audio input, system audio, sound passes and shows
+* Add keyboard input, typed text and self-editing shader sources
+* Add a built-in font texture and a hue/saturation colour disc
+* Add upscaling filters, CRT looks and points/splats accumulation
+* Add colour maps for every shader
+* Add Image Format, Video Format and GIF capture settings
+* Add Restart Shader to the Custom Res/Seq dialog
+* Replace a pack's older shaders when installing a newer version
+* Copy and Share carry the shader's name; pasting offers Replace or Rename
+* Keep a running shader's state and clock through edits and leaving the app
+* Keep fullscreen and buffers through a rotation
+* Allow up to 10000 steps a frame
+* Add new samples: Life Viewer, CRT Self-Portrait, Notepad and more
+* Make the shader sidebar fill the screen's width
+* Fix the editor redrawing every frame
+
 ## 2.36.4
 * Add ShaderToy-style offscreen buffer passes with tabs and channel slots
 * Copy, share and paste whole multipass shaders as one text

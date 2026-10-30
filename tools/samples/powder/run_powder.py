@@ -32,7 +32,7 @@ SOUND_W = 512
 
 
 class Run:
-	def __init__(self, text, w, h):
+	def __init__(self, text, w, h, screen=None):
 		rdheadless.context()
 		self.w, self.h = w, h
 		common = check_shader.common(text)
@@ -41,7 +41,8 @@ class Run:
 		self.passes, self.image, self.sound = [], None, None
 		self.modes = {}
 		for name, src in check_shader.passes(text):
-			found = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D]);?([^\n]*)", src)
+			# (Common's declarations bind in every pass, as in the app.)
+			found = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D]);?([^\n]*)", (common or "") + "\n" + src)
 			reads = [(ch, b) for ch, b, _ in found]
 			prog = rdheadless.compile_program(check_shader.wrap(src, common))
 			# Filtering and wrapping as the app sets them: linear unless
@@ -55,7 +56,25 @@ class Run:
 			else:
 				self.passes.append((name[-1], prog, reads))
 		names = [b for b, _, _ in self.passes]
-		self.tex = {b: [rdheadless._texture(w, h), rdheadless._texture(w, h)] for b in names}
+		# Each buffer's size: the render's, or its own, as the app makes it
+		# (///size:WxH, ///scale:F or ///minScale:F of the screen - here the
+		# render size, or screen= if given).
+		sw, sh = screen or (w, h)
+		self.size = {}
+		for name, src in check_shader.passes(text):
+			if name[-1] not in names:
+				continue
+			size = re.search(r"^[ \t]*///size:(\d+)x(\d+)[ \t]*$", src, re.M)
+			scale = re.search(r"^[ \t]*///(scale|minScale):([0-9.]+)[ \t]*$", src, re.M)
+			if size:
+				self.size[name[-1]] = (int(size.group(1)), int(size.group(2)))
+			elif scale:
+				f = float(scale.group(2))
+				s = (round(sw * f), round(sh * f))
+				self.size[name[-1]] = s if scale.group(1) == "scale" else (max(w, s[0]), max(h, s[1]))
+			else:
+				self.size[name[-1]] = (w, h)
+		self.tex = {b: [rdheadless._texture(*self.size[b]), rdheadless._texture(*self.size[b])] for b in names}
 		self.cur = {b: 0 for b in names}
 		self.fbo = gl.glGenFramebuffers(1)
 		for b in names:
@@ -98,6 +117,11 @@ class Run:
 				setter(loc, *val)
 
 		put("iResolution", gl.glUniform3f, size[0], size[1], 1.0)
+		res = np.zeros(12, "f4")
+		for ch, src in reads:
+			k = int(ch[-1])
+			res[k * 3:k * 3 + 3] = (*self.size[src], 1.0)
+		put("iChannelResolution", gl.glUniform3fv, 4, res)
 		put("iFrame", gl.glUniform1i, self.step)
 		put("iTime", gl.glUniform1f, self.step / 60.0 / self.steps)
 		put("pointerCount", gl.glUniform1i, len(self.pointers))
@@ -112,9 +136,10 @@ class Run:
 		gl.glViewport(0, 0, self.w, self.h)
 		for _ in range(self.steps):
 			for b, prog, reads in self.passes:
-				self._bind(prog, reads, (self.w, self.h))
+				self._bind(prog, reads, self.size[b])
 				nxt = 1 - self.cur[b]
 				self._target(self.tex[b][nxt])
+				gl.glViewport(0, 0, *self.size[b])
 				gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, 4)
 				self.cur[b] = nxt
 			self.step += 1
@@ -138,8 +163,9 @@ class Run:
 
 	def read(self, b):
 		self._target(self.tex[b][self.cur[b]])
-		px = np.empty((self.h, self.w, 4), "f4")
-		gl.glReadPixels(0, 0, self.w, self.h, gl.GL_RGBA, gl.GL_FLOAT, px)
+		w, h = self.size[b]
+		px = np.empty((h, w, 4), "f4")
+		gl.glReadPixels(0, 0, w, h, gl.GL_RGBA, gl.GL_FLOAT, px)
 		return px
 
 	def listen(self, seconds):

@@ -1,4 +1,6 @@
-<resources>
+<resources
+	xmlns:tools="http://schemas.android.com/tools"
+	tools:ignore="TypographyFractions">
 	<!-- Index-aligned with MainActivity's CUSTOM_RES_PRESET_* arrays -
 	     index 0 ("Resolution") is a no-op placeholder that leaves the
 	     width/height fields exactly as they are. -->
@@ -8,7 +10,7 @@
 		<item>1/16× Device Res</item>
 		<item>1/8× Device Res</item>
 		<item>1/4× Device Res</item>
-		<item>0.5× Device Res</item>
+		<item>1/2× Device Res</item>
 		<item>1× Device Res</item>
 		<item>2× Device Res</item>
 		<item>4× Device Res</item>

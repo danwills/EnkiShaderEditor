@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 // One offscreen buffer pass (Buffer A-D) of a multipass shader: its
 // program, and a ping-pong pair of render targets at the live render
-// size. Each frame renders into the target that isn't current(), then
+// size (or its own - see SIZE). Each frame renders into the target that isn't current(), then
 // swap() makes that the current one - so a pass reading itself (or any
 // pass reading a buffer that runs after it) sees the previous frame,
 // and one reading an earlier buffer sees this frame's, as on ShaderToy.
@@ -34,7 +34,13 @@ import java.util.regex.Pattern;
 // line too, the rest is kept as well: turned with the screen when it's
 // rotated (so what was at the top of the phone stays there), and tiled
 // over the new size from the bottom left (so a simulation that wraps at
-// its edges carries on, its copies meeting seamlessly). Either way it's read back as floats (ES 3,
+// its edges carries on, its copies meeting seamlessly). A pass can have
+// a size of its own, whatever the quality setting (a texture atlas or
+// table built at full detail while the picture's drawn coarser): a
+// `///size:WxH` line, a fixed size; `///scale:F`, F times the screen's;
+// `///minScale:F`, the render's but at least F times the screen's. Its
+// targets are then only remade when that size changes, and the pass sees
+// it as `resolution`/`iResolution`. Either way it's read back as floats (ES 3,
 // float targets) just before a resize (keepForResize()) and when the
 // app pauses (ShaderRenderer.saveBuffers()) - a rotation recreates the
 // activity and its GL context - and put into the next targets made for
@@ -45,6 +51,10 @@ final class BufferPass {
 			"^[ \\t]*///float32[ \\t]*$", Pattern.MULTILINE);
 	private static final Pattern RESIZE_TILE = Pattern.compile(
 			"^[ \\t]*///resize:tile[ \\t]*$", Pattern.MULTILINE);
+	private static final Pattern SIZE = Pattern.compile(
+			"^[ \\t]*///size:([0-9]{1,5})x([0-9]{1,5})[ \\t]*$", Pattern.MULTILINE);
+	private static final Pattern SCALE = Pattern.compile(
+			"^[ \\t]*///(scale|minScale):([0-9]*\\.?[0-9]+)[ \\t]*$", Pattern.MULTILINE);
 	private static final Pattern STATE_ROW = Pattern.compile(
 			"^[ \\t]*///stateRow:(top|bottom)(?:,([0-9]{1,2}))?[ \\t]*$", Pattern.MULTILINE);
 
@@ -92,6 +102,11 @@ final class BufferPass {
 	private final int stateRows;
 	private final boolean stateRowsAtTop;
 	private final boolean resizeTile;
+	// See SIZE and SCALE: 0 if it hasn't one.
+	private final int fixedWidth;
+	private final int fixedHeight;
+	private final float scale;
+	private final float minScale;
 
 	BufferPass(int buffer, @NonNull String sourceText, @NonNull PreparedShaderSource prepared) {
 		this.buffer = buffer;
@@ -99,6 +114,15 @@ final class BufferPass {
 		this.prepared = prepared;
 		wantsFloat32 = FLOAT32.matcher(sourceText).find();
 		resizeTile = RESIZE_TILE.matcher(sourceText).find();
+		Matcher size = SIZE.matcher(sourceText);
+		boolean sized = size.find();
+		fixedWidth = sized ? Integer.parseInt(size.group(1)) : 0;
+		fixedHeight = sized ? Integer.parseInt(size.group(2)) : 0;
+		Matcher scaled = SCALE.matcher(sourceText);
+		boolean hasScale = !sized && scaled.find();
+		float factor = hasScale ? Float.parseFloat(scaled.group(2)) : 0f;
+		scale = hasScale && scaled.group(1).equals("scale") ? factor : 0f;
+		minScale = hasScale && scaled.group(1).equals("minScale") ? factor : 0f;
 		Matcher stateRow = STATE_ROW.matcher(sourceText);
 		if (stateRow.find()) {
 			stateRows = stateRow.group(2) != null
@@ -115,6 +139,11 @@ final class BufferPass {
 	// kept is read back for the new targets, then the targets go.
 	// rotation: the display's (Surface.ROTATION_*) - see saveForLater().
 	void keepForResize(@NonNull GlDevice device, boolean es3, int rotation) {
+		if (hasOwnSize()) {
+			// (Its own size: ShaderRenderer.ensureBufferTargets() remakes it
+			// if that's changed too, else it carries on as it is.)
+			return;
+		}
 		if (es3) {
 			saveForLater(device, rotation);
 		}
@@ -123,6 +152,29 @@ final class BufferPass {
 
 	private String savedKey() {
 		return buffer + ":" + sourceText.length() + ":" + sourceText.hashCode();
+	}
+
+	boolean hasOwnSize() {
+		return fixedWidth > 0 || scale > 0f || minScale > 0f;
+	}
+
+	// The size a side of its targets should be, with the render's
+	// renderSize and the screen's screenSize: see SIZE and SCALE (at most
+	// maxSize, at least 1), else the render's.
+	int targetWidth(int renderSize, int screenSize, int maxSize) {
+		return targetSide(fixedWidth, renderSize, screenSize, maxSize);
+	}
+
+	int targetHeight(int renderSize, int screenSize, int maxSize) {
+		return targetSide(fixedHeight, renderSize, screenSize, maxSize);
+	}
+
+	private int targetSide(int fixed, int renderSize, int screenSize, int maxSize) {
+		int side = fixed > 0 ? fixed
+				: scale > 0f ? Math.round(screenSize * scale)
+				: minScale > 0f ? Math.max(renderSize, Math.round(screenSize * minScale))
+				: renderSize;
+		return side == renderSize ? side : Math.max(1, Math.min(side, maxSize));
 	}
 
 	boolean keepsState() {

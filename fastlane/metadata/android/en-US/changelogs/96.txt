@@ -1,0 +1,9 @@
+* Common code shared by every pass
+* Live Adjust Defines, and Save as New Shader
+* Audio input, sound passes and shows
+* Keyboard input and self-editing shaders
+* Upscaling filters, CRT looks and splats
+* Colour maps for every shader
+* Image, video and GIF formats for captures
+* Keep state and clock through edits and rotation
+* New samples: Life Viewer, CRT Self-Portrait, Notepad

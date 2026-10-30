@@ -680,7 +680,6 @@
 	<string name="channel_filter_mipmap">Mipmap filtering</string>
 	<string name="channel_wrap_clamp">Clamp</string>
 	<string name="channel_wrap_repeat">Repeat</string>
-	<string name="buffers_capture_unsupported">Shaders with offscreen buffers can only be captured at Match App Res (no oversampling) for now</string>
 	<string name="not_a_shader_pack">This isn\'t a shader pack</string>
 	<string name="shader_pack_too_new">This shader pack needs a newer version of the app</string>
 	<plurals name="shader_pack_installed">

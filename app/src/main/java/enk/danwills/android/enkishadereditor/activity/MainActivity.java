@@ -4,11 +4,14 @@ import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.app.WallpaperManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.ContentUris;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -88,6 +91,8 @@ import org.jetbrains.annotations.Contract;
 
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
@@ -187,6 +192,11 @@ public class MainActivity extends AppCompatActivity {
 	// Debug builds only: the shader to open, from the test tooling
 	// (`am start ... --el open_shader <id>`).
 	public static final String EXTRA_OPEN_SHADER = "open_shader";
+	// Debug builds only: a capture from the test tooling, with no dialog
+	// (tools/phone/capture.sh) - see runScriptedCapture().
+	public static final String ACTION_CAPTURE = "enk.danwills.android.enkishadereditor.CAPTURE";
+	public static final String EXTRA_CAPTURE = "capture";
+	public static final String EXTRA_CAPTURE_STOP = "capture_stop";
 	private static final String CODE_VISIBLE = "code_visible";
 	// Fullscreen and the hidden toolbar, kept through a rotation (which
 	// recreates the activity), with whether fullscreen unpaused it.
@@ -355,6 +365,7 @@ public class MainActivity extends AppCompatActivity {
 	protected void onCreate(@Nullable Bundle state) {
 		super.onCreate(state);
 		Log.i(AUDIO_CAPTURE_TAG, "MainActivity.onCreate (savedState=" + (state != null) + ")");
+		registerScriptedCapture();
 		mediaProjectionLauncher = registerForActivityResult(
 				new ActivityResultContracts.StartActivityForResult(),
 				this::onMediaProjectionResult);
@@ -1407,6 +1418,9 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onDestroy() {
+		if (scriptedCaptureReceiver != null) {
+			unregisterReceiver(scriptedCaptureReceiver);
+		}
 		stopService(new Intent(this, AudioCaptureForegroundService.class));
 		if (localMusicPlayer != null) {
 			localMusicPlayer.release();
@@ -1460,6 +1474,139 @@ public class MainActivity extends AppCompatActivity {
 		}
 		shaderListManager.loadShadersAsync();
 		return true;
+	}
+
+	// Set by EXTRA_CAPTURE_STOP: stops a scripted capture after the tile in
+	// hand.
+	private final AtomicBoolean scriptedCaptureStop = new AtomicBoolean();
+	private boolean scriptedCaptureRunning;
+	// A broadcast, not an intent to start this: `am start` pauses the
+	// activity on the way, and pausing waits on the GL thread - minutes
+	// into a capture, an ANR (and the stop never arrived).
+	@Nullable
+	private BroadcastReceiver scriptedCaptureReceiver;
+
+	private void registerScriptedCapture() {
+		if (!BuildConfig.DEBUG) {
+			return;
+		}
+		scriptedCaptureReceiver = new BroadcastReceiver() {
+			@Override
+			public void onReceive(Context context, Intent intent) {
+				runScriptedCapture(intent);
+			}
+		};
+		ContextCompat.registerReceiver(this, scriptedCaptureReceiver,
+				new IntentFilter(ACTION_CAPTURE), ContextCompat.RECEIVER_EXPORTED);
+	}
+
+	// Debug builds only: renders the open shader as Custom Res/Seq would,
+	// but from the test tooling, with no dialog - `am broadcast -a
+	// ACTION_CAPTURE -p <package> --es capture WxH [--ei oversample N]
+	// [--ei frames N] [--ei skip N] [--ef fps F] [--es bucket NORMAL]`.
+	// Frames go to the app's own files/capture/ (emptied first) as
+	// frame0000.png..., for the tooling to pull with run-as, and progress
+	// is logged under ScriptedCapture ("frame 1/6 ...", then "done ...",
+	// "stopped ..." or "failed ..."). --ez capture_stop true stops it.
+	private void runScriptedCapture(@NonNull Intent intent) {
+		if (intent.getBooleanExtra(EXTRA_CAPTURE_STOP, false)) {
+			scriptedCaptureStop.set(true);
+			return;
+		}
+		String size = intent.getStringExtra(EXTRA_CAPTURE);
+		if (size == null) {
+			return;
+		}
+		String tag = "ScriptedCapture";
+		String[] wh = size.split("x");
+		int width;
+		int height;
+		try {
+			width = Integer.parseInt(wh[0]);
+			height = Integer.parseInt(wh[1]);
+		} catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+			Log.i(tag, "failed: needs WxH, not " + size);
+			return;
+		}
+		int oversample = Math.max(1, intent.getIntExtra("oversample", 1));
+		int frames = Math.max(1, intent.getIntExtra("frames", 1));
+		int skip = Math.max(0, intent.getIntExtra("skip", 0));
+		float fps = intent.getFloatExtra("fps", 30f);
+		TileBucketSize bucket;
+		try {
+			bucket = TileBucketSize.valueOf(String.valueOf(intent.getStringExtra("bucket")));
+		} catch (IllegalArgumentException e) {
+			bucket = TileBucketSize.NORMAL;
+		}
+		if (scriptedCaptureRunning) {
+			Log.i(tag, "failed: a capture's already running");
+			return;
+		}
+		File dir = new File(getFilesDir(), "capture");
+		File[] old = dir.listFiles();
+		if (old != null) {
+			for (File file : old) {
+				//noinspection ResultOfMethodCallIgnored
+				file.delete();
+			}
+		}
+		if (!dir.isDirectory() && !dir.mkdirs()) {
+			Log.i(tag, "failed: can't make " + dir);
+			return;
+		}
+		scriptedCaptureRunning = true;
+		scriptedCaptureStop.set(false);
+		boolean wasPaused = shaderViewManager.isPaused();
+		setShaderPaused(true);
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+		Log.i(tag, String.format(Locale.US, "start %dx%d, oversample %d, %d frame(s), skip %d, %s tiles",
+				width, height, oversample, frames, skip, bucket));
+		long start = System.nanoTime();
+		int[] saved = {0};
+		ShaderRenderer.HighResProgressListener progress = (tilesDone, totalTiles) -> {
+			if (tilesDone == totalTiles || tilesDone % 16 == 0) {
+				Log.i(tag, "tile " + tilesDone + "/" + totalTiles);
+			}
+			return !scriptedCaptureStop.get();
+		};
+		ShaderRenderer.FrameListener save = (frameIndex, totalFrames, png) -> {
+			String name = String.format(Locale.US, "frame%04d.%s", frameIndex,
+					ImageEncoding.sniff(png).extension);
+			try (var out = new FileOutputStream(new File(dir, name))) {
+				out.write(png);
+				saved[0]++;
+				Log.i(tag, String.format(Locale.US, "frame %d/%d %s, %.1f s in", frameIndex + 1,
+						totalFrames, name, (System.nanoTime() - start) / 1e9));
+			} catch (IOException e) {
+				Log.i(tag, "can't save " + name + ": " + e.getMessage());
+			}
+		};
+		TileBucketSize bucketSize = bucket;
+		new Thread(() -> {
+			boolean ok;
+			if (frames == 1 && skip == 0) {
+				byte[] png = shaderViewManager.takeHighResScreenshot(width, height, oversample,
+						false, bucketSize, TileRenderOrder.HILBERT, progress, null);
+				if (png != null) {
+					save.onFrame(0, 1, png);
+				}
+				ok = png != null;
+			} else {
+				ok = shaderViewManager.takeHighResScreenshotSequence(width, height, oversample,
+						false, skip, frames, fps, bucketSize, () -> TileRenderOrder.HILBERT,
+						progress, null, (skipping, stepIndex, totalSteps) -> !scriptedCaptureStop.get(),
+						save);
+			}
+			String how = scriptedCaptureStop.get() ? "stopped" : ok && saved[0] == frames ? "done" : "failed";
+			Log.i(tag, String.format(Locale.US, "%s: %d frame(s) in %.1f s", how, saved[0],
+					(System.nanoTime() - start) / 1e9));
+			runOnUiThread(() -> {
+				scriptedCaptureRunning = false;
+				getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+				setShaderPaused(wasPaused);
+			});
+		}, "ScriptedCapture").start();
+		return;
 	}
 
 	@Override
@@ -5484,16 +5631,6 @@ public class MainActivity extends AppCompatActivity {
 				dialog.dismiss();
 				return;
 			}
-			if (editorFragment.hasBufferPasses() && (oversample != 1 ||
-					width != shaderViewManager.getRenderWidth() ||
-					height != shaderViewManager.getRenderHeight())) {
-				// Tiled rendering draws the Image pass on its own, not the
-				// buffer chain it reads - so buffer shaders are captured
-				// by the live renderer itself, at its own size.
-				Toast.makeText(this, R.string.buffers_capture_unsupported,
-						Toast.LENGTH_LONG).show();
-				return;
-			}
 			boolean autoDetectTileSize = autoDetectTileSizeBox.isChecked()
 					&& !editorFragment.hasBufferPasses();
 			SharedPreferences.Editor prefsEditor = dialogPrefs().edit()
@@ -6087,7 +6224,7 @@ public class MainActivity extends AppCompatActivity {
 		// for a single pass, which is only ever one tile.
 		AtomicBoolean interruptRequested = new AtomicBoolean(false);
 		Button interruptButton = progressView.findViewById(R.id.progress_interrupt_make_video);
-		if (!singlePass && !editorFragment.hasBufferPasses()) {
+		if (!singlePass) {
 			interruptButton.setText(R.string.interrupt_save_partial_button);
 			interruptButton.setVisibility(View.VISIBLE);
 			interruptButton.setOnClickListener(v -> {

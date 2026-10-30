@@ -34,7 +34,12 @@ Two independent projects:
 - `make install` / `make start` / `make uninstall` — adb install/launch/uninstall Enki's debug
   build (`make ura-install` / `make ura-start` for Ultra Rest Area's).
 - `./gradlew assembleEnkiRelease` / `make release` — release build (minified, resource-shrunk;
-  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead.
+  requires `ANDROID_KEY_*` signing env vars). `make bundle` builds the AAB instead (what Play
+  takes). Dan's keystore and its passwords are in `~/.android-signing/`: run
+  `source ~/.android-signing/enki-shader-editor-release.env && make bundle` yourself - don't ask
+  Dan for an alias or passwords. The bundle lands in
+  `app/build/outputs/bundle/enkiRelease/app-enki-release.aab`; copy it to
+  `~/dev/shaderEditor/release/enki-<versionName>-<versionCode>.aab` for him to upload.
 - `./gradlew lintEnkiDebug` or `make lint` — Android lint (`lintUltrarestareaDebug` for the other
   app; both should stay at the 50-warning baseline).
 - `make infer` — runs Facebook Infer static analysis over a clean assembleDebug.
@@ -96,6 +101,10 @@ When driving Dan's phone over adb (only when he's said it's free):
   one makes the phone ask Replace/Ignore over whatever's showing (Replace is at (1082,1764));
   replacing the open shader reloads it.
 - A shader pack file goes in with `tools/phone/add_pack.sh pack.sqlite` (as Install from File would; no UI).
+- To capture the open shader at any size with no dialog, use `tools/phone/capture.sh WxH
+  [--oversample N] [--frames N --fps F] [--shader ID]`: it renders as Custom Res/Seq would
+  (MainActivity's debug `capture` extra), posts each frame to the status panel (⏹ stops it) and
+  pulls the PNGs to `~/dev/shaderEditor/captures/<date-time>/` (or `--out DIR`).
 - Either way, finish by putting the phone back: reopen the previous app
   (`adb shell monkey -p <package> -c android.intent.category.LAUNCHER 1`) or go home; restore
   any other setting changed. Rotation and stay-awake are `done`'s job: `ask` saves auto-rotate,

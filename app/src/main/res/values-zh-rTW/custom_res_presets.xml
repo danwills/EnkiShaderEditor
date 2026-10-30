@@ -1,11 +1,13 @@
-<resources>
+<resources
+	xmlns:tools="http://schemas.android.com/tools"
+	tools:ignore="TypographyFractions">
 	<string-array name="custom_res_presets">
 		<item>解析度</item>
 		<item>1/32× 裝置解析度</item>
 		<item>1/16× 裝置解析度</item>
 		<item>1/8× 裝置解析度</item>
 		<item>1/4× 裝置解析度</item>
-		<item>0.5× 裝置解析度</item>
+		<item>1/2× 裝置解析度</item>
 		<item>1× 裝置解析度</item>
 		<item>2× 裝置解析度</item>
 		<item>4× 裝置解析度</item>

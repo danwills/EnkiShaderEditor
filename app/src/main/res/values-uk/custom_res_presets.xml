@@ -1,11 +1,13 @@
-<resources>
+<resources
+	xmlns:tools="http://schemas.android.com/tools"
+	tools:ignore="TypographyFractions">
 	<string-array name="custom_res_presets">
 		<item>Роздільність</item>
 		<item>1/32× роздільності пристрою</item>
 		<item>1/16× роздільності пристрою</item>
 		<item>1/8× роздільності пристрою</item>
 		<item>1/4× роздільності пристрою</item>
-		<item>0.5× роздільності пристрою</item>
+		<item>1/2× роздільності пристрою</item>
 		<item>1× роздільності пристрою</item>
 		<item>2× роздільності пристрою</item>
 		<item>4× роздільності пристрою</item>
