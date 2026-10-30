@@ -84,7 +84,13 @@ float streaks(vec2 p, float f, int octaves, float wx, float wz) {
 	for (int i = 0; i < octaves; i++) {
 		float fx = min(f, 1.0 / wx);
 		float a = amp * sqrt(fx / f) * (1.0 - smoothstep(0.25, 1.0, f * wz));
-		sum += a * (noise(vec2(p.x * fx, p.y * f) + float(i) * 17.3) * 2.0 - 1.0);
+		vec2 q = vec2(p.x * fx, p.y * f) + float(i) * 17.3;
+		// (A blur shorter than a feature still smears it: three samples
+		// along it, or slow speeds showed it crisp.)
+		float n = f * wx > 0.15 && f * wx < 1.0
+				? (noise(q - vec2(wx * fx / 3.0, 0.0)) + noise(q) + noise(q + vec2(wx * fx / 3.0, 0.0))) / 3.0
+				: noise(q);
+		sum += a * (n * 2.0 - 1.0);
 		f *= 2.0;
 		amp *= 0.5;
 	}
@@ -298,13 +304,18 @@ vec3 ground(float x, float z, float wx, float wz) {
 	// Low grassy clumps lying in it, thick here, none there.
 	float tussock = streaks(p * vec2(1.0, 1.4) + 300.0, 3.0, 2, wx, wz * 1.4);
 	float grassy = smoothstep(0.35, 0.75, noise(vec2(x / 110.0, 37.0)));
-	g = mix(g, mix(vec3(0.58, 0.55, 0.33), vec3(0.36, 0.40, 0.24), style.x) * (0.8 + 0.4 * tussock), grassy * smoothstep(0.05, 0.25, tussock + 0.1 * grassy) * smoothstep(0.05, 0.3, out_));
+	// (Their edges soften as the blur spans them: a sharp threshold on the
+	// blurred noise kept them crisp at slow speeds.)
+	float smear = 0.1 + 0.5 * smoothstep(0.0, 0.6, wx);
+	float clumps = smoothstep(0.15 - smear, 0.15 + smear, tussock + 0.1 * grassy);
+	g = mix(g, mix(vec3(0.58, 0.55, 0.33), vec3(0.36, 0.40, 0.24), style.x) * (0.8 + 0.4 * tussock), grassy * clumps * smoothstep(0.05, 0.3, out_));
 	col = mix(col, mix(g, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
 	// The dirt: red, dusty patches, darker patches.
 	vec2 edge = ragged(x, 1.2, 0.3, wx, 9.0) + ragged(x, 6.0, 0.15, wx, 19.0) + ragged(x, 20.0, 0.06, wx, 29.0);
 	// (Fingers of dirt into the gravel and of gravel out into the dirt.)
 	edge.x += 0.9 * streaks(p * vec2(1.0, 2.0) + 60.0, 2.0, 3, wx, wz * 2.0);
-	float softDirt = edge.y + 0.5 * wz + 0.05;
+	// (Softer as the blur averages the fingers away.)
+	float softDirt = edge.y + 0.5 * wz + 0.05 + 0.3 * smoothstep(0.0, 1.0, wx);
 	float dirt = smoothstep(vergeZ + edge.x - softDirt, vergeZ + edge.x + softDirt, z);
 	float patches = streaks(p * 0.3, 1.0, 3, wx * 0.3, wz * 0.3);
 	vec3 d = mix(DIRT, DUST, clamp(0.4 + patches, 0.0, 1.0));
@@ -743,7 +754,9 @@ vec2 sunlight(float x, float z, float wx, float along) {
 
 // ---- The far ranges: a height field (p along and out, in the far
 // hills' frame), mesas, ridges and low hills, none nearer than 2.5 km.
-float terrain(vec2 p, bool fine) {
+// foot: a pixel's size there, in metres (0 for the coarse shape alone):
+// detail finer than a pixel fades out, or it shimmers at low resolutions.
+float terrain(vec2 p, float foot) {
 	// Fewer nearer, none nearer than about 4 km (they'd loom).
 	float away = smoothstep(3500.0, 20000.0, p.y);
 	float m = noise(p / 3500.0) * 0.65 + noise(p / 1400.0 + 3.1) * 0.35 - 0.35 * (1.0 - away);
@@ -754,11 +767,11 @@ float terrain(vec2 p, bool fine) {
 	h = max(h, 520.0 * r * r * r * smoothstep(0.45, 0.75, noise(p / 9000.0 + 1.3) - 0.4 * (1.0 - away)));
 	// Gullies cut into the high ground; a gently rolling plain.
 	h += 15.0 * noise(p / 700.0) * smoothstep(2500.0, 4000.0, p.y);
-	if (fine) {
+	if (foot > 0.0) {
 		float g = 1.0 - abs(noise(p / 260.0 + 2.2) * 2.0 - 1.0);
-		h -= 22.0 * g * g * smoothstep(20.0, 120.0, h);
+		h -= 22.0 * g * g * smoothstep(20.0, 120.0, h) * (1.0 - smoothstep(60.0, 200.0, foot));
 		float g2 = 1.0 - abs(noise(p / 70.0 + 5.5) * 2.0 - 1.0);
-		h -= 10.0 * g2 * g2 * smoothstep(10.0, 60.0, h);
+		h -= 10.0 * g2 * g2 * smoothstep(10.0, 60.0, h) * (1.0 - smoothstep(15.0, 55.0, foot));
 	}
 	return h - 8.0;
 }
@@ -784,10 +797,12 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 	bool hit = false;
 	// The most the ranges stand above the ray, in pixels, and where.
 	float above = -1e9, top = t;
-	for (int i = 0; i < 16; i++) {
+	// (Small steps, 7% further each: at 22% a peak could fall between two,
+	// and the skyline jumped about and dropped at low resolutions.)
+	for (int i = 0; i < 60; i++) {
 		// (The earth's curve drops it away.)
 		float y = eye + rise * t - t * t / 12.7e6;
-		float ht = terrain(o + d * t, false);
+		float ht = terrain(o + d * t, 0.0);
 		if ((ht - y) / (t * pa) > above) {
 			above = (ht - y) / (t * pa);
 			top = t;
@@ -800,7 +815,7 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 			break;
 		}
 		last = t;
-		t *= 1.22;
+		t *= 1.07;
 	}
 	if (!hit) {
 		// Just over a skyline: lit there, partly covering.
@@ -814,21 +829,23 @@ vec4 ranges(vec3 rd, float eye, float along, float pa, float turn, vec3 hazeCol)
 	float cover = hit ? 1.0 : clamp(0.5 + above, 0.0, 1.0);
 	for (int i = 0; i < (hit ? 6 : 0); i++) {
 		float mid = 0.5 * (last + t);
-		if (eye + rise * mid - mid * mid / 12.7e6 < terrain(o + d * mid, true)) {
+		if (eye + rise * mid - mid * mid / 12.7e6 < terrain(o + d * mid, mid * pa)) {
 			t = mid;
 		} else {
 			last = mid;
 		}
 	}
 	vec2 p = o + d * t;
-	float h = terrain(p, true);
+	float h = terrain(p, t * pa);
 	float e = max(t * pa * 2.0, 15.0);
-	vec3 n = normalize(vec3(h - terrain(p + vec2(e, 0.0), true), e, h - terrain(p + vec2(0.0, e), true)));
+	vec3 n = normalize(vec3(h - terrain(p + vec2(e, 0.0), t * pa), e, h - terrain(p + vec2(0.0, e), t * pa)));
 	float steep = 1.0 - n.y;
 	// Red rock on the steep faces, gullies and strata in it; spinifex and
 	// dirt on the flats; dark ironstone caps.
-	float gully = noise(vec2(p.x / 25.0, h / 300.0));
-	float band = noise(vec2(p.x / 900.0, h / 14.0));
+	// (Each faded out once it's finer than a pixel: it flickered.)
+	float fp = t * pa;
+	float gully = mix(0.5, noise(vec2(p.x / 25.0, h / 300.0)), 1.0 - smoothstep(8.0, 30.0, fp));
+	float band = mix(0.5, noise(vec2(p.x / 900.0, h / 14.0)), 1.0 - smoothstep(5.0, 18.0, fp));
 	vec3 rock = RANGE * (0.75 + 0.35 * gully) * mix(vec3(0.8, 0.75, 0.75), vec3(1.1, 1.05, 0.95), band);
 	vec3 plain = mix(DIRT, SPINIFEX_CORE, 0.45) * 0.85;
 	vec3 col = mix(plain, rock, smoothstep(0.08, 0.3, steep));
@@ -1005,8 +1022,11 @@ vec3 render(vec2 fragCoord, vec2 res, vec4 clock, vec4 bounce, float roll, vec4 
 	vec2 hd = heading(along);
 	float bend = 1.0 / (abs(hd.y) < 1e-6 ? 1e-6 : hd.y);
 	// Blur along the road, and from turning (radians).
-	float blur = abs(v) * SHUTTER;
-	float spin = abs(v * hd.y) * SHUTTER;
+	// (The shutter stays open longer as the car slows, up to SLOW_SHUTTER
+	// at a crawl, so there's always some blur.)
+	float shutter = mix(SLOW_SHUTTER, SHUTTER, smoothstep(4.0, 20.0, abs(v)));
+	float blur = abs(v) * shutter;
+	float spin = abs(v * hd.y) * shutter;
 	setLight(day, hd.x);
 	vec3 hazeCol = sky(normalize(vec3(rd.x, 0.03 * length(rd.xz), rd.z)), false, day, hd.x, pa);
 	vec2 d = rd.xz;
@@ -1200,6 +1220,8 @@ uniform int pointerCount;
 #define SPEED 110.0
 // How long the shutter's open, in seconds: the motion blur.
 #define SHUTTER 0.01
+// ...and at a crawl (blending to SHUTTER by 20 m/s).
+#define SLOW_SHUTTER 0.05
 // The view: across a side the screen's area, in degrees (so a portrait
 // screen sees further down, a landscape one further along); where the
 // horizon is, down from the top of the screen; how high it is, in metres;
