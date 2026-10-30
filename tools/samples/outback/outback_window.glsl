@@ -278,15 +278,9 @@ vec3 ground(float x, float z, float wx, float wz) {
 	vec3 hue = mix(vec3(0.62, 0.20, 0.11), vec3(0.82, 0.78, 0.68), clamp(0.5 + 2.5 * streaks(p + 90.0, 30.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(vec3(0.26, 0.14, 0.10), hue, clamp(0.6 + 2.5 * streaks(p + 130.0, 24.0, 2, wx, wz), 0.0, 1.0));
 	hue = mix(hue, vec3(0.76, 0.56, 0.26), clamp(2.5 * streaks(p + 170.0, 20.0, 2, wx, wz), 0.0, 1.0));
-	float vergeZ = verge(x) + turn.y;
-	// Bands along it, graded in by the grader: sandy, grey, and here and
-	// there a pale edge to the dirt.
-	float out_ = (z - sealZ) / max(vergeZ - sealZ, 0.3);
-	float bands = noise(vec2(out_ * 4.0 + noise(vec2(x / 300.0, 9.0)), x / 250.0)) * (1.0 - smoothstep(0.08, 0.3, wz));
-	vec3 g = mix(GRAVEL, mix(vec3(0.74, 0.60, 0.42), vec3(0.50, 0.48, 0.45), smoothstep(0.3, 0.7, bands)), 0.6 * abs(bands * 2.0 - 1.0) + 0.1);
-	g = mix(g, vec3(0.84, 0.74, 0.58), 0.6 * smoothstep(0.6, 0.8, noise(vec2(x / 200.0, 4.0))) * smoothstep(0.75, 0.95, out_) * smoothstep(1.1, 0.95, out_));
-	col = mix(col, mix(g, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
+	col = mix(col, mix(GRAVEL, hue, 0.5 * smoothstep(0.01, 0.15, wx)) * (0.85 + 0.4 * streaks(p + 40.0, 18.0, 3, wx, wz)), gravel);
 	// The dirt: red, dusty patches, darker patches.
+	float vergeZ = verge(x) + turn.y;
 	vec2 edge = ragged(x, 1.2, 0.12, wx, 9.0);
 	float softDirt = edge.y + 0.5 * wz + 0.05;
 	float dirt = smoothstep(vergeZ + edge.x - softDirt, vergeZ + edge.x + softDirt, z);
@@ -367,8 +361,6 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	float tuck = sqrt(smoothstep(0.0, 0.5 * h, y));
 	float wc = y < core ? r * sqrt(1.0 - (y / core) * (y / core)) * (0.15 + 0.85 * tuck) : 0.0;
 	float we = r * (tuft ? 1.0 : 1.2) * sqrt(1.0 - (y / he) * (y / he)) * (tuft ? 1.0 : 0.6 + 0.4 * tuck);
-	// (Ragged: needles' tips at different heights.)
-	we *= 0.85 + 0.15 * sin(y * 47.0 / h + seed.x * 20.0) * sin(y * 19.0 / h + seed.y * 9.0);
 	if (!tuft && y < 0.35 * h) {
 		// Stems: from the middle, forking out as they rise, seen through
 		// the thinner foliage low down.
@@ -380,7 +372,7 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	}
 	if (wc > 0.0) {
 		vec3 col = mix(SPINIFEX_CORE * 0.75, SPINIFEX_CORE, smoothstep(0.0, core, y));
-		col = mix(col, seed.z > 0.7 ? SPINIFEX * 0.8 : SPINIFEX_DARK, 0.35 * seed.w) * plantTint(seed, 0.45);
+		col = mix(col, SPINIFEX * 0.8, 0.35 * seed.w) * plantTint(seed, 0.45);
 		vec4 c = vec4(0.0);
 		// (Lit by span(), shady side to sunny. Shading the dome by its own
 		// normal, or even by the light's height, tipped the phone's
@@ -391,12 +383,10 @@ void spinifex(inout vec4 acc, float a0, float a1, float y, float r, float h, vec
 	// Needles: spaced 0.03 of their slope out from below the middle.
 	float s = 1.0 / (0.03 * (y + 0.5 * h));
 	float d = mix(0.65, 0.2, y / he);
-	// Mostly dark grey-green; some dried golden.
-	vec3 col = (seed.z > 0.7 ? mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.y) : SPINIFEX_DARK * (0.8 + 0.4 * seed.y))
-			* mix(0.7, 1.0, y / he) * (0.85 + 0.15 * sin(y * 31.0 / h + seed.w * 12.0));
+	vec3 col = mix(SPINIFEX, vec3(0.72, 0.68, 0.55), seed.z) * mix(0.75, 1.05, y / he);
 	float phase = seed.x * 7.0;
 	needleSpan(acc, a0, a1, -we, -wc, s, phase, d, col, gLeft);
-	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, mix(gLeft, gRight, 0.6));
+	needleSpan(acc, a0, a1, wc, we, s, phase, d, col, gRight);
 }
 
 // Buffel grass: a tussock of arching stems, widening upwards, with seed
@@ -1247,7 +1237,6 @@ uniform int pointerCount;
 #define DUST vec3(0.80, 0.50, 0.32)
 #define TRACK vec3(0.76, 0.42, 0.25)
 #define SPINIFEX vec3(0.86, 0.72, 0.38)
-#define SPINIFEX_DARK vec3(0.36, 0.38, 0.27)
 #define SPINIFEX_CORE vec3(0.40, 0.42, 0.27)
 #define SALTBUSH vec3(0.55, 0.58, 0.48)
 #define BUFFEL vec3(0.60, 0.62, 0.48)
@@ -1461,7 +1450,7 @@ vec4 pothole(float x) {
 
 // Where the dirt starts, out from the road: wandering in and out.
 float verge(float x) {
-	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 1.6 * (noise(vec2(x / 500.0, 8.0)) - 0.4) + 0.4 * (noise(vec2(x / 35.0, 6.0)) - 0.5);
+	float v = GRAVEL_Z + GRAVEL_WANDER * (noise(vec2(x / 120.0, 7.0)) - 0.35) + 0.8 * (noise(vec2(x / 600.0, 8.0)) - 0.5);
 	return max(v, SEAL_Z + 0.4);
 }
 

@@ -41,7 +41,8 @@ class Run:
 		self.passes, self.image, self.sound = [], None, None
 		self.modes = {}
 		for name, src in check_shader.passes(text):
-			found = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D]);?([^\n]*)", src)
+			# (Common's declarations bind in every pass, as in the app.)
+			found = re.findall(r"uniform sampler2D (iChannel\d);\s*///buf:([A-D]);?([^\n]*)", (common or "") + "\n" + src)
 			reads = [(ch, b) for ch, b, _ in found]
 			prog = rdheadless.compile_program(check_shader.wrap(src, common))
 			# Filtering and wrapping as the app sets them: linear unless
