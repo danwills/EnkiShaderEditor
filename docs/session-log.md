@@ -866,3 +866,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Small plants far off are averaged over two heights half a pixel apart, and their texture over the pixel's height, against the flicker.
   - The tree atlas is drawn a tile a frame (24 frames, then the sums), with a white progress bar in a hollow box until it's done.
   - Saved as feedback: push the look forward, don't bisect fps at length.
+- "Yeah go for it" (v8 on the phone): Outback Window v8 is 1076, 0.5 fps after 40 s (the Adreno cliff again); the progress bar was over before the first screenshot. Left fullscreen.
