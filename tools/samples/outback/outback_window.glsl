@@ -1206,12 +1206,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 	vec4 bounce = texelFetch(iChannel0, ivec2(S_BOUNCE, 0), 0);
 	vec4 roll = texelFetch(iChannel0, ivec2(S_ROLL, 0), 0);
 	gPull = texelFetch(iChannel0, ivec2(S_STOP, 0), 0).z;
-	gTiles = atlasLayout(res);
-	gAtlasRes = res;
-	vec4 mark = texelFetch(iChannel2, ivec2(0, int(res.y) - 1), 0);
-	gAtlas = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y && mark.w >= atlasDone(gTiles.x);
+	// (The atlas's own size, not the picture's - see Buffer C.)
+	gAtlasRes = iChannelResolution[2].xy;
+	gTiles = atlasLayout(gAtlasRes);
+	vec4 mark = texelFetch(iChannel2, ivec2(0, int(gAtlasRes.y) - 1), 0);
+	bool marked = mark.x == ATLAS_MARK && mark.yz == gAtlasRes;
+	gAtlas = marked && mark.w >= atlasDone(gTiles.x);
 	if (!gAtlas) {
-		float done = mark.x == ATLAS_MARK && mark.y == res.x && mark.z == res.y ? mark.w / atlasDone(gTiles.x) : 0.0;
+		float done = marked ? mark.w / atlasDone(gTiles.x) : 0.0;
 		fragColor = vec4(vec3(progressBar(fragCoord, res, done)), 1.0);
 		return;
 	}
@@ -1385,7 +1387,7 @@ uniform int pointerCount;
 // The atlas in a buffer res big: a tile's width and height, and a band's
 // height (there are two, the same tiles in each, below the progress row).
 // No bigger than TILE_MAX: a screen-sized one (70 MB at the phone's full
-// size) was slow to read.
+// size) was slow to read - Buffer C's sized for it.
 ivec3 atlasLayout(vec2 res) {
 	ivec2 tile = min(ivec2(int(res.x) / TREE_COLS, (int(res.y) - 1) / (2 * TREE_ROWS)), TILE_MAX);
 	return ivec3(tile, tile.y * TREE_ROWS);
@@ -1927,6 +1929,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 //// Buffer C
 ///float32
+// Its own size, just right for the biggest tiles (TILE_MAX: 6 x 96 wide,
+// 2 bands x 4 x 200 tall, and the progress row), whatever the quality
+// setting: at the phone's 1/16 a picture-sized one had tiles a third as
+// big.
+///size:576x1601
 // The tree atlas: TREE_COLS x TREE_ROWS trees and bushes - mulgas, desert
 // oaks, dead trees, ghost gums, saltbushes and others - drawn once into tiles, then summed along each tile's
 // rows, so the Image pass gets any stretch of a row (a pixel's, however
