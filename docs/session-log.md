@@ -892,3 +892,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 
 ## 2026-10-31
 - "merge it to master": squashed into master as a36e9635. The branch is identical to master's last merge as of 72a5a82a, and master had nothing since, so the result is the branch's tree; the conflicts were only from the squash history.
+- "make a release bundle, I'll try to get this onto play console tomorrow": 2.38.0 (versionCode 97), with changelogs for the buffer sizes, high-res buffer captures, the iResolution capture fix and the 1/2x preset. The signed bundle is at ~/dev/shaderEditor/release/enki-2.38.0-97.aab, and the release commit is on master too.
