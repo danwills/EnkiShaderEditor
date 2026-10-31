@@ -1982,6 +1982,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
 //// Buffer B
 ///float32
+// 2 x SLOTS by LANES, whatever the quality: render-sized, at 1/16 (90
+// wide) the far cells of every lane fell off its edge.
+///size:128x40
 // What stands in each cell (see standing()) of each row of plants and
 // rocks, for SLOTS cells round the car: a row a lane, two texels a cell -
 // (along, out, half width, kind x 16 + height), and its seed.

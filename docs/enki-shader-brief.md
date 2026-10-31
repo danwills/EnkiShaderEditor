@@ -197,7 +197,13 @@ Declare only what's used. Sensors are switched on only for shaders that use them
    lines before it.
 9. **Error logs:** some drivers give empty or unhelpful error logs. A link failure with an empty log
    has happened on the phone with a large Image pass.
-10. **Live wallpapers** have no sound, and battery matters there.
+10. **A table in a render-sized buffer can fall off its edge.** At 1/16 the render is only 90x193,
+    so any buffer holding a table or state at fixed texels needs `///size:WxH`. Reads past the
+    edge return undefined values without any error.
+11. **Time a shader at the same scene.** A simulation clocked by `iTimeDelta` (often capped) runs
+    at a different pace at each quality, so after the same wait two runs show different scenes,
+    and Outback's frame cost varied 8x along its drive. Compare timings from a fixed state.
+12. **Live wallpapers** have no sound, and battery matters there.
 
 ## Working with Dan
 
