@@ -385,6 +385,10 @@ ask)
 		esac
 		if [ -n "$answer" ]; then
 			adb shell "run-as $PKG rm -f files/takeover-$id"
+			if [ "$answer" = timeout ]; then
+				echo "yes (no answer: the countdown ran out)"
+				exit 0
+			fi
 			echo "$answer"
 			[ "$answer" = yes ]
 			exit
