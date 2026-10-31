@@ -251,12 +251,14 @@
 	<string name="fps_progressive">%1$s fps（漸進）</string>
 	<string name="fps_full_frame">%1$s fps（整個影格）</string>
 	<string name="fps_progressive_bands">%1$s fps（漸進）· 影格 %2$d×%3$d，橫帶 %4$d×%5$d</string>
-	<string name="gpu_priority">GPU 優先順序</string>
+	<string name="gpu_priority">GPU 優先順序（算繪）</string>
 	<string name="gpu_priority_default">預設（不要求）</string>
 	<string name="gpu_priority_low">低</string>
 	<string name="gpu_priority_medium">中</string>
 	<string name="gpu_priority_high">高</string>
-	<string name="gpu_priority_summary">%1$s - 著色器預覽與畫面其餘部分爭奪 GPU 的程度。設為低可讓應用程式控制項和系統（如切換應用程式）在執行重型著色器時保持流暢（需裝置支援）。下次啟動應用程式時生效。</string>
+	<string name="gpu_priority_summary">%1$s - 即時算繪為漸進模式時，著色器預覽與畫面其餘部分爭奪 GPU 的程度。設為低可讓應用程式控制項和系統（如切換應用程式）在算繪重型著色器時保持流暢（需裝置支援）。下次啟動應用程式時生效。</string>
+	<string name="gpu_priority_realtime">GPU 優先順序（即時）</string>
+	<string name="gpu_priority_realtime_summary">%1$s - 即時算繪為一般或自動模式時，著色器預覽爭奪 GPU 的程度。設為高可獲得最高影格率（需裝置支援）。下次啟動應用程式時生效。</string>
 	<string name="breathing_room">喘息空間</string>
 	<string name="breathing_room_summary_auto">自動 - 僅在著色器慢到導致其他操作卡頓時，於影格之間短暫暫停。輸入數字可手動設定：1.0 = 關閉，1.1 = 少許，2.0 = 半速（更涼爽、更省電）。</string>
 	<string name="breathing_room_summary_value">%1$s× - 每個影格之後等待該影格算繪時間的 %2$d%%，讓 GPU 為畫面其餘部分留出空閒。清空即為自動。</string>

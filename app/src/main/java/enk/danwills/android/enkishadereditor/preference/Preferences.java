@@ -77,6 +77,7 @@ public class Preferences {
 	public static final String IMAGE_QUALITY = "image_quality";
 	public static final String VIDEO_FORMAT = "video_format";
 	public static final String GPU_PRIORITY = "gpu_priority";
+	public static final String GPU_PRIORITY_REALTIME = "gpu_priority_realtime";
 	public static final String BREATHING_ROOM = "breathing_room";
 	public static final String LIVE_RENDER_MODE = "live_render_mode";
 	// Same values as ShaderRenderer.LIVE_RENDER_* - see
@@ -187,6 +188,7 @@ public class Preferences {
 	private int imageQuality = 92;
 	private VideoFormat videoFormat = VideoFormat.H264;
 	private int gpuPriority = GPU_PRIORITY_LOW;
+	private int gpuPriorityRealtime = GPU_PRIORITY_HIGH;
 	private float breathingRoom = 0f;
 	private int liveRenderMode = LIVE_RENDER_AUTO;
 	private int stateRows = STATE_ROWS_AUTO;
@@ -311,6 +313,9 @@ public class Preferences {
 		gpuPriority = parseInt(
 				preferences.getString(GPU_PRIORITY, null),
 				gpuPriority);
+		gpuPriorityRealtime = parseInt(
+				preferences.getString(GPU_PRIORITY_REALTIME, null),
+				gpuPriorityRealtime);
 		breathingRoom = parseBreathingRoom(preferences.getString(BREATHING_ROOM, null));
 		liveRenderMode = parseInt(
 				preferences.getString(LIVE_RENDER_MODE, null),
@@ -350,9 +355,14 @@ public class Preferences {
 
 	// One of the GPU_PRIORITY_* levels - what the live preview's EGL
 	// context asks for via EGL_IMG_context_priority (see ShaderView's
-	// context factory), when the driver supports it at all.
+	// context factory), when the driver supports it at all: the real-time
+	// one (default High) for Normal and Automatic live rendering, the
+	// rendering one (default Low, so the UI stays responsive) for
+	// Progressive. Fixed when the context is made.
 	public int getGpuPriorityLevel() {
-		return gpuPriority;
+		return liveRenderMode == LIVE_RENDER_PROGRESSIVE
+				? gpuPriority
+				: gpuPriorityRealtime;
 	}
 
 	// The live preview's frame-time multiplier - see

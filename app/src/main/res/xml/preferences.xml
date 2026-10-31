@@ -62,6 +62,12 @@
 			android:entryValues="@array/state_rows_values"
 			android:defaultValue="1"/>
 		<ListPreference
+			android:key="gpu_priority_realtime"
+			android:title="@string/gpu_priority_realtime"
+			android:entries="@array/gpu_priority_names"
+			android:entryValues="@array/gpu_priority_values"
+			android:defaultValue="3"/>
+		<ListPreference
 			android:key="gpu_priority"
 			android:title="@string/gpu_priority"
 			android:entries="@array/gpu_priority_names"

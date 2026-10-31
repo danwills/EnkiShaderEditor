@@ -217,6 +217,9 @@ public class PreferencesFragment
 		} else if (Preferences.GPU_PRIORITY.equals(preference.getKey()) &&
 				preference instanceof ListPreference listPreference) {
 			preference.setSummary(getString(R.string.gpu_priority_summary, listPreference.getEntry()));
+		} else if (Preferences.GPU_PRIORITY_REALTIME.equals(preference.getKey()) &&
+				preference instanceof ListPreference listPreference) {
+			preference.setSummary(getString(R.string.gpu_priority_realtime_summary, listPreference.getEntry()));
 		} else if (Preferences.BREATHING_ROOM.equals(preference.getKey())) {
 			// What's stored is the raw text (blank = Auto) - summarise the
 			// value it actually parses to, so a typo or out-of-range number
