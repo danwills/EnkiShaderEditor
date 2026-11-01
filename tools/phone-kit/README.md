@@ -70,9 +70,11 @@ owner might be holding it. It covers four things:
   - `status.sh wait SECONDS ['why' [KIND]]` waits like `sleep`, but
     heeds the buttons while it does. Use it instead of `sleep`.
   - `status.sh rate 'Does it look right?' [SECONDS]` shows 👍/👎 and
-    Clarify until one's tapped (or SECONDS, default 30) and prints up,
-    down, none, or `clarify: <text>`. Clarify opens a text box
-    (SayActivity), and the wait stretches by 5 minutes while it's open.
+    Clarify until one's tapped (or SECONDS, default 20, at most 45) and
+    prints up, down, none, or `clarify: <text>`. Clarify opens a text box
+    (SayActivity), and the wait stretches by 2 minutes while it's open.
+    It never waits long: on none the thumbs stay up, and a later answer
+    comes out of the next status.sh command, like a message.
   - `status.sh shot file.png [why]` says it's hiding, hides the panel,
     takes a screenshot and comes back saying it's looking at it.
   - `status.sh hide` says so and takes the panel out of sight; the next

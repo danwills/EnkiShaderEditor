@@ -4781,6 +4781,23 @@ public class MainActivity extends AppCompatActivity {
 		EditorSearchState state = findInShaderState;
 		Random random = new Random();
 
+		// The last search's matches are positions in whatever text was
+		// open then - another pass (Common, a buffer), another shader, or
+		// since edited - so search again, keeping the place only when
+		// nothing moved. (Stale ones selected the wrong text.)
+		if (state.query.isEmpty()) {
+			state.matches = Collections.emptyList();
+			state.index = -1;
+			state.key = null;
+		} else {
+			List<Integer> fresh = editorFragment.findAllMatches(state.query);
+			if (!fresh.equals(state.matches)) {
+				state.matches = fresh;
+				state.index = -1;
+			}
+			state.key = state.query;
+		}
+
 		queryView.setText(state.query);
 		// Pre-selected rather than just cursor-at-end, so typing a new
 		// search immediately replaces the old one instead of appending.

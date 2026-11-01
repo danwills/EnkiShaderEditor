@@ -51,10 +51,12 @@
 #   status.sh rate "Does the preview look right?" [SECONDS]
 #                     the line, with thumbs up/down and Clarify
 #                     beside the panel until one's tapped or SECONDS
-#                     (default 30) pass; prints up, down, clarify: TEXT, or
-#                     none. While Dan's typing a clarification it waits up
-#                     to 5 minutes more; one sent after that comes as a
-#                     message ("💬 Dan says: (about "...") ...")
+#                     (default 20, at most RATE_MAX 45) pass; prints up,
+#                     down, clarify: TEXT, or none. While Dan's typing a
+#                     clarification it waits up to 2 minutes more. Never a
+#                     long wait: on none the thumbs stay up, and an answer
+#                     given later comes out of the next command, like a
+#                     message ("💬 Dan rated ... (late): up").
 #   status.sh hide    the panel out of sight (a clean screenshot), saying so
 #                     first; the next post brings it back, lines and all
 #   status.sh shot FILE [WHY]
@@ -79,9 +81,14 @@ LOG="${TMPDIR:-/tmp}/enki-phone-status-log"
 # The phone's settings as the run found them (auto-rotate, the locked
 # rotation and stay-awake), put back by `done`.
 FOUND="${TMPDIR:-/tmp}/enki-phone-status-found"
+# A question `rate` stopped waiting for (its id, then the question): its
+# thumbs stay up, and a late answer comes out as a message (late_rating).
+PENDING="${TMPDIR:-/tmp}/enki-phone-status-rate"
 # How many of them the panel shows (StatusOverlay.MAX_LINES), and the
 # notification at the end.
 TAIL=8
+# The longest `rate` waits for a thumb (s), whatever it's asked for.
+RATE_MAX=45
 
 tag() {
 	if [ ! -s "$STATE" ]; then
@@ -183,8 +190,24 @@ messages() {
 	fi
 }
 
+# An answer to a question `rate` stopped waiting for, if Dan's given one
+# since: said like a message (on stderr), and the question's put away.
+late_rating() {
+	[ -s "$PENDING" ] || return 0
+	pid=$(sed -n 1p "$PENDING"); pq=$(sed -n 2p "$PENDING")
+	got=$(adb shell "run-as $PKG cat files/claude-rate-$pid 2>/dev/null" </dev/null | tr -d '\r')
+	case "$got" in
+	''|typing) return 0 ;;
+	clarify:*) echo "💬 Dan says (late, about \"$pq\"): ${got#clarify:}" >&2 ;;
+	*) echo "💬 Dan rated \"$pq\" (late): $got" >&2 ;;
+	esac
+	adb shell "run-as $PKG rm -f files/claude-rate-$pid" </dev/null
+	rm -f "$PENDING"
+}
+
 heed() {
 	messages
+	late_rating
 	said=
 	typing=
 	while :; do
@@ -337,8 +360,12 @@ check)
 rate)
 	heed
 	id="rate$(date +%s)"
-	wait="${3:-30}"
+	# Never a long wait for a thumb (Dan's wish): RATE_MAX at most, then
+	# carry on - the thumbs stay up, and a late answer comes as a message.
+	wait="${3:-20}"
+	[ "$wait" -gt "$RATE_MAX" ] 2>/dev/null && wait=$RATE_MAX
 	question="${2:-Does this look right?}"
+	rm -f "$PENDING"
 	say "--es rate $id --es question $(quote "$question")"
 	line "$question" "🤔" "~${wait} s"
 	waited=0
@@ -352,7 +379,7 @@ rate)
 			# Dan's writing a clarification: give him time, once.
 			if [ -z "$extended" ]; then
 				extended=1
-				wait=$((waited + 300))
+				wait=$((waited + 120))
 			fi
 			;;
 		clarify:*)
@@ -371,9 +398,8 @@ rate)
 		waited=$((waited + 1))
 	done
 	if [ "$answer" = none ]; then
-		# Gone, so a clarification sent after this comes as a message instead.
-		adb shell "run-as $PKG rm -f files/claude-rate-$id"
-		say "--ez rate_clear true"
+		# Left up: a late answer comes out of a later command (late_rating).
+		printf '%s\n%s\n' "$id" "$question" > "$PENDING"
 	fi
 	echo "$answer"
 	;;
@@ -397,6 +423,8 @@ done)
 	took
 	# Any last messages, so none's left unread till the next run.
 	messages
+	late_rating
+	rm -f "$PENDING"
 	t=$(tag)
 	if [ "$3" = sad ]; then
 		title="😢 Claude has stopped"

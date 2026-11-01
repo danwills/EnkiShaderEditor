@@ -124,6 +124,9 @@ class Run:
 		put("iChannelResolution", gl.glUniform3fv, 4, res)
 		put("iFrame", gl.glUniform1i, self.step)
 		put("iTime", gl.glUniform1f, self.step / 60.0 / self.steps)
+		put("iTimeDelta", gl.glUniform1f, 1.0 / 60.0 / self.steps)
+		# A fixed date (2026-10-31, 12:00 plus the run's time), so runs repeat.
+		put("iDate", gl.glUniform4f, 2026.0, 9.0, 31.0, 43200.0 + self.step / 60.0 / self.steps)
 		put("pointerCount", gl.glUniform1i, len(self.pointers))
 		if self.pointers:
 			flat = np.zeros(30, "f4")

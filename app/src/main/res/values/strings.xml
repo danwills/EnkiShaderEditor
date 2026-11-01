@@ -254,12 +254,14 @@
 	<string name="fps_progressive">%1$s fps (progressive)</string>
 	<string name="fps_full_frame">%1$s fps (full frame)</string>
 	<string name="fps_progressive_bands">%1$s fps (progressive) · %2$d×%3$d frame, %4$d×%5$d bands</string>
-	<string name="gpu_priority">GPU Priority</string>
+	<string name="gpu_priority">GPU Priority (rendering)</string>
 	<string name="gpu_priority_default">Default (don\'t ask)</string>
 	<string name="gpu_priority_low">Low</string>
 	<string name="gpu_priority_medium">Medium</string>
 	<string name="gpu_priority_high">High</string>
-	<string name="gpu_priority_summary">%1$s - how hard the shader preview competes with the rest of the screen for the GPU. Low lets the app\'s controls and the system (e.g. app switching) stay responsive while a heavy shader runs, on devices that support it. Takes effect next time the app starts.</string>
+	<string name="gpu_priority_summary">%1$s - how hard the shader preview competes with the rest of the screen for the GPU when Live Rendering is Always Progressive. Low lets the app\'s controls and the system (e.g. app switching) stay responsive while a heavy shader renders, on devices that support it. Takes effect next time the app starts.</string>
+	<string name="gpu_priority_realtime">GPU Priority (real time)</string>
+	<string name="gpu_priority_realtime_summary">%1$s - how hard the shader preview competes for the GPU when Live Rendering is Normal or Automatic. High gives it the most frames per second, on devices that support it. Takes effect next time the app starts.</string>
 	<string name="breathing_room">Breathing Room</string>
 	<string name="breathing_room_summary_auto">Auto - pauses briefly between frames only when a shader is slow enough to make everything else lag. Type a number to set it yourself: 1.0 = off, 1.1 = a little, 2.0 = half speed (cooler, easier on the battery).</string>
 	<string name="breathing_room_summary_value">%1$s× - after each frame, waits %2$d%% of that frame\'s render time before the next, leaving the GPU free for the rest of the screen. Clear it for Auto.</string>

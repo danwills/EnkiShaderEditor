@@ -94,6 +94,9 @@ When driving Dan's phone over adb (only when he's said it's free):
   also fails if the notification was swiped away). When unsure whether something looks right,
   ask him: `status.sh rate 'Does the preview look right?' [seconds]` shows 👍/👎 and Clarify by
   the panel and prints up, down, none, or `clarify: <text>` - his real answer, so act on it.
+  It waits at most 45 s (default 20; Dan: "never wait forever for a thumb"), then carries on
+  with none; the thumbs stay up and a late answer comes out of the next command's stderr like
+  a message (`💬 Dan rated "..." (late): up`) - act on it then.
 - To put a shader in Enki debug's library, use `tools/phone/add_shader.sh file.glsl [name]`, not the
   Paste dialog: it replaces a shader of that name in place, or adds one (`--open` first: then
   opens it in Enki debug, which works from a cold start too). With Enki debug in the

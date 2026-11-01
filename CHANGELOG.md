@@ -1,5 +1,9 @@
 # Change Log
 
+## 2.38.1
+* Run live previews at high GPU priority and progressive rendering at low, with a setting for each
+* Find in Shader searches again each time it opens
+
 ## 2.38.0
 * Let offscreen buffers have their own size, whatever the quality setting: `///size:WxH`, `///scale:F` or `///minScale:F`
 * Capture shaders with offscreen buffers at any resolution or oversampling in Custom Res/Seq
