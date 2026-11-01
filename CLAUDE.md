@@ -124,6 +124,9 @@ When driving Dan's phone over adb (only when he's said it's free):
 - Java import order and most formatting choices are encoded in `.editorconfig`; don't fight it.
 - Commit style: one feature/fix per commit, squash feature branches when merging to `master`
   (`git merge <branch> --squash`), write a proper commit message.
+  Master pushes only to `origin` (Dan's fork), never `upstream` (Markus's). After each squash,
+  record it on the branch with `git merge -s ours master` (no file changes) and push, or the next
+  squash re-conflicts on everything since the last one.
 - String resources: when adding/changing a string, update it for all supported languages under
   `app/src/main/res/values-*`, not just the default `values`.
 - Keep `docs/session-log.md` up to date continuously: after each request from Dan, append an
