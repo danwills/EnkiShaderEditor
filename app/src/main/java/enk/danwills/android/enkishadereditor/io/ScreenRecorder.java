@@ -71,12 +71,11 @@ public final class ScreenRecorder {
 	private static final float VOICE_GAIN = 1f;
 	// Ducking: while the voice is over DUCK_THRESHOLD (RMS of a chunk,
 	// about -36 dB: the voice mode's noise suppression leaves near
-	// silence between words), what's playing goes down to DUCK_LEVEL
-	// (-12 dB) within a chunk, holds DUCK_HOLD after the voice stops,
+	// silence between words), what's playing goes down to duckLevel
+	// within a chunk, holds DUCK_HOLD after the voice stops,
 	// so it doesn't pump between words, then comes back up over
 	// DUCK_RELEASE.
 	private static final double DUCK_THRESHOLD = 500;
-	private static final float DUCK_LEVEL = 0.25f;
 	private static final int DUCK_HOLD = RATE * 3 / 10;
 	private static final int DUCK_RELEASE = RATE / 2;
 	private static final long TIMEOUT_US = 10_000;
@@ -88,6 +87,7 @@ public final class ScreenRecorder {
 	private final float soundLevel;
 	private final boolean voice;
 	private final boolean duck;
+	private final float duckLevel;
 	private final Listener listener;
 
 	private MediaCodec video;
@@ -115,16 +115,17 @@ public final class ScreenRecorder {
 	private int voiceCount;
 
 	// soundLevel: what's playing, 0 for none (no playback capture at
-	// all), 1 as it is; voice: the microphone; duck: lowering what's
-	// playing while the voice talks.
+	// all), 1 as it is; voice: the microphone; duckLevel: what's playing
+	// while the voice talks, 1 for no ducking.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
-			float soundLevel, boolean voice, boolean duck, @NonNull Listener listener) {
+			float soundLevel, boolean voice, float duckLevel, @NonNull Listener listener) {
 		this.context = context.getApplicationContext();
 		this.projection = projection;
 		this.sound = soundLevel > 0;
 		this.soundLevel = Math.min(1f, Math.max(0f, soundLevel));
 		this.voice = voice;
-		this.duck = duck;
+		this.duckLevel = Math.min(1f, Math.max(0f, duckLevel));
+		this.duck = this.duckLevel < 1f;
 		this.listener = listener;
 	}
 
@@ -483,7 +484,7 @@ public final class ScreenRecorder {
 							hold = Math.max(0, hold - frames);
 						}
 						duckGain = hold > 0
-								? DUCK_LEVEL
+								? duckLevel
 								: Math.min(1f, duckGain + (float) frames / DUCK_RELEASE);
 					}
 					// Ramped across the chunk, so the gain never steps.

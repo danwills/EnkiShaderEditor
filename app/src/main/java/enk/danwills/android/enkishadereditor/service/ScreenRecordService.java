@@ -52,7 +52,7 @@ public class ScreenRecordService extends Service {
 	private static final String EXTRA_DATA = "data";
 	private static final String EXTRA_SOUND_LEVEL = "sound_level";
 	private static final String EXTRA_VOICE = "voice";
-	private static final String EXTRA_DUCK = "duck";
+	private static final String EXTRA_DUCK_LEVEL = "duck_level";
 
 	private static volatile boolean recording;
 	// Told when a recording starts, on the main thread (MainActivity, so
@@ -89,15 +89,16 @@ public class ScreenRecordService extends Service {
 
 	// Starts recording with a MediaProjection consent's resultCode and
 	// data: soundLevel, what's playing (0 for none, 1 as it is); voice,
-	// the microphone; duck, lowering what's playing while the voice talks.
+	// the microphone; duckLevel, what's playing while the voice talks (1
+	// for no ducking).
 	public static void start(@NonNull Context context, int resultCode, @NonNull Intent data,
-			float soundLevel, boolean voice, boolean duck) {
+			float soundLevel, boolean voice, float duckLevel) {
 		Intent intent = new Intent(context, ScreenRecordService.class)
 				.putExtra(EXTRA_RESULT_CODE, resultCode)
 				.putExtra(EXTRA_DATA, data)
 				.putExtra(EXTRA_SOUND_LEVEL, soundLevel)
 				.putExtra(EXTRA_VOICE, voice)
-				.putExtra(EXTRA_DUCK, duck);
+				.putExtra(EXTRA_DUCK_LEVEL, duckLevel);
 		recording = true;
 		try {
 			ContextCompat.startForegroundService(context, intent);
@@ -192,7 +193,7 @@ public class ScreenRecordService extends Service {
 		recorder = new ScreenRecorder(this, projection,
 				intent.getFloatExtra(EXTRA_SOUND_LEVEL, 1f),
 				intent.getBooleanExtra(EXTRA_VOICE, true),
-				intent.getBooleanExtra(EXTRA_DUCK, true),
+				intent.getFloatExtra(EXTRA_DUCK_LEVEL, 1f),
 				this::onFinished);
 		if (!recorder.start(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)) {
 			recorder = null;

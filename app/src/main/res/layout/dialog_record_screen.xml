@@ -33,6 +33,21 @@
 		android:layout_height="wrap_content"
 		android:text="@string/record_screen_duck"/>
 
+	<!-- How far down, in dB: 3 + progress. -->
+	<TextView
+		android:id="@+id/record_duck_depth_label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="32dp"
+		android:textAppearance="?attr/textAppearanceBodyMedium"/>
+
+	<SeekBar
+		android:id="@+id/record_duck_depth"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="24dp"
+		android:max="27"/>
+
 	<TextView
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"

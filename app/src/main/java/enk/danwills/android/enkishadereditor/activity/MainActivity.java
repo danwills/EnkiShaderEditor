@@ -328,8 +328,9 @@ public class MainActivity extends AppCompatActivity {
 	// Percent of what's playing in the mix, 0 for none.
 	private int recordSoundLevel = 100;
 	private boolean recordVoice = true;
-	// Lower what's playing while the voice is talking.
+	// Lower what's playing while the voice is talking, by this many dB.
 	private boolean recordDuck = true;
+	private int recordDuckDb = 9;
 	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
 	@Nullable
 	private LocalMusicPlayer localMusicPlayer;
@@ -2145,13 +2146,19 @@ public class MainActivity extends AppCompatActivity {
 		SeekBar level = view.findViewById(R.id.record_sound_level);
 		CheckBox voice = view.findViewById(R.id.record_voice);
 		CheckBox duck = view.findViewById(R.id.record_duck);
-		level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+		TextView depthLabel = view.findViewById(R.id.record_duck_depth_label);
+		SeekBar depth = view.findViewById(R.id.record_duck_depth);
+		// Ducking's settings, usable only with both sound and voice.
+		Runnable enableDuck = () -> {
+			boolean both = level.getProgress() > 0 && voice.isChecked();
+			duck.setEnabled(both);
+			depthLabel.setEnabled(both && duck.isChecked());
+			depth.setEnabled(both && duck.isChecked());
+		};
+		depth.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 			@Override
 			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-				levelLabel.setText(progress > 0
-						? getString(R.string.record_screen_sound_level, progress)
-						: getString(R.string.record_screen_sound_off));
-				duck.setEnabled(progress > 0 && voice.isChecked());
+				depthLabel.setText(getString(R.string.record_screen_duck_depth, 3 + progress));
 			}
 
 			@Override
@@ -2162,12 +2169,31 @@ public class MainActivity extends AppCompatActivity {
 			public void onStopTrackingTouch(SeekBar seekBar) {
 			}
 		});
-		voice.setOnCheckedChangeListener((button, checked) ->
-				duck.setEnabled(level.getProgress() > 0 && checked));
+		level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				levelLabel.setText(progress > 0
+						? getString(R.string.record_screen_sound_level, progress)
+						: getString(R.string.record_screen_sound_off));
+				enableDuck.run();
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		});
+		voice.setOnCheckedChangeListener((button, checked) -> enableDuck.run());
+		duck.setOnCheckedChangeListener((button, checked) -> enableDuck.run());
 		level.setProgress(recordSoundLevel);
 		voice.setChecked(recordVoice);
 		duck.setChecked(recordDuck);
-		duck.setEnabled(recordSoundLevel > 0 && recordVoice);
+		depth.setProgress(recordDuckDb - 3);
+		depthLabel.setText(getString(R.string.record_screen_duck_depth, recordDuckDb));
+		enableDuck.run();
 		// (setProgress() doesn't call the listener when it's unchanged.)
 		levelLabel.setText(recordSoundLevel > 0
 				? getString(R.string.record_screen_sound_level, recordSoundLevel)
@@ -2179,6 +2205,7 @@ public class MainActivity extends AppCompatActivity {
 					recordSoundLevel = level.getProgress();
 					recordVoice = voice.isChecked();
 					recordDuck = duck.isChecked();
+					recordDuckDb = 3 + depth.getProgress();
 					if ((recordSoundLevel > 0 || recordVoice) && ContextCompat.checkSelfPermission(this,
 							Manifest.permission.RECORD_AUDIO) !=
 							PackageManager.PERMISSION_GRANTED) {
@@ -2232,7 +2259,8 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
-				recordSoundLevel / 100f, recordVoice, recordDuck);
+				recordSoundLevel / 100f, recordVoice,
+				recordDuck ? (float) Math.pow(10, -recordDuckDb / 20.0) : 1f);
 		// As onMediaProjectionResult(): the picker can leave something
 		// else in front.
 		try {

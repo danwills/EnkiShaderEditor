@@ -410,6 +410,7 @@
 	<string name="record_screen_sound_off">Звук (то, что играет): выкл.</string>
 	<string name="record_screen_voice">Голос (микрофон)</string>
 	<string name="record_screen_duck">Приглушать звук, когда я говорю</string>
+	<string name="record_screen_duck_depth">Тише на %1$d дБ</string>
 	<string name="record_screen_stop_hint">Остановить: кнопка уменьшения громкости, пока Enki на экране, уведомление или «Другие параметры».</string>
 	<string name="record_screen_start">Записать</string>
 	<string name="record_screen_saved">Запись экрана сохранена в Movies/Enki Shader Editor</string>
