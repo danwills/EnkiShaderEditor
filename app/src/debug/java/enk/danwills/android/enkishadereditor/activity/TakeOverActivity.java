@@ -185,7 +185,8 @@ public class TakeOverActivity extends Activity {
 			return;
 		}
 		if (left <= 0) {
-			answer(id, "yes");
+			// Not "yes": status.sh says it went ahead unanswered, so Claude knows nobody saw it.
+			answer(id, "timeout");
 			return;
 		}
 		// A warning now, so it stands out from the question.

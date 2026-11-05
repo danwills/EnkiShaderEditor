@@ -1,6 +1,7 @@
 # Change Log
 
 ## 2.38.1
+* New app icon: a crystal rendered in Enki
 * Run live previews at high GPU priority and progressive rendering at low, with a setting for each
 * Find in Shader searches again each time it opens
 
