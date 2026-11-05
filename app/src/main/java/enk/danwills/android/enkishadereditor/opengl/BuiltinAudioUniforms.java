@@ -222,6 +222,14 @@ final class BuiltinAudioUniforms {
 	// nothing else ever calls stop() and the whole chain leaks.
 	synchronized void releaseMediaProjection() {
 		destroyed = true;
+		stopMediaProjection();
+	}
+
+	// Ends the current MediaProjection session but keeps taking new ones -
+	// for a manual reacquire (ShaderViewManager.reacquireSystemAudio()),
+	// which releaseMediaProjection() above would leave stopping every
+	// later grant on arrival.
+	synchronized void stopMediaProjection() {
 		unregisterListener();
 		if (mediaProjection != null) {
 			mediaProjection.stop();

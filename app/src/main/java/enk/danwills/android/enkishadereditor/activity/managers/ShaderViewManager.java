@@ -1054,7 +1054,7 @@ public class ShaderViewManager {
 						R.string.audio_capture_already_working, Toast.LENGTH_SHORT).show());
 				return;
 			}
-			renderer.releaseMediaProjection();
+			renderer.stopMediaProjection();
 			renderer.resetAudioCaptureConsent();
 			renderer.refreshAudioCaptureSource();
 		});
