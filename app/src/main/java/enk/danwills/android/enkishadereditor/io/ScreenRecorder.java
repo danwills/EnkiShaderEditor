@@ -88,6 +88,8 @@ public final class ScreenRecorder {
 	private Uri uri;
 	private ParcelFileDescriptor fd;
 	private HandlerThread callbackThread;
+	@Nullable
+	private MediaProjection.Callback projectionCallback;
 	private Thread videoThread;
 	private Thread audioThread;
 	private Thread micThread;
@@ -168,12 +170,13 @@ public final class ScreenRecorder {
 			callbackThread.start();
 			Handler handler = new Handler(callbackThread.getLooper());
 			// (Required before createVirtualDisplay() on API 34+.)
-			projection.registerCallback(new MediaProjection.Callback() {
+			projectionCallback = new MediaProjection.Callback() {
 				@Override
 				public void onStop() {
 					stop();
 				}
-			}, handler);
+			};
+			projection.registerCallback(projectionCallback, handler);
 
 			startNanos = System.nanoTime();
 			video.start();
@@ -301,6 +304,12 @@ public final class ScreenRecorder {
 				// Nothing more to do.
 			}
 			fd = null;
+		}
+		if (projectionCallback != null) {
+			// (The projection can outlive the recording - see
+			// SharedProjection.)
+			projection.unregisterCallback(projectionCallback);
+			projectionCallback = null;
 		}
 		if (callbackThread != null) {
 			callbackThread.quitSafely();

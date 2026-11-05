@@ -270,6 +270,10 @@ final class BuiltinUniforms {
 		audioUniforms.stopMediaProjection();
 	}
 
+	void onRecordingStarted() {
+		audioUniforms.onRecordingStarted();
+	}
+
 	boolean isReceivingAudio() {
 		return audioUniforms.isReceivingAudio();
 	}

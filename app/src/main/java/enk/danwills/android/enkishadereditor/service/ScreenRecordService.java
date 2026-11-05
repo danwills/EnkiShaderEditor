@@ -53,6 +53,10 @@ public class ScreenRecordService extends Service {
 	private static final String EXTRA_VOICE = "voice";
 
 	private static volatile boolean recording;
+	// Told when a recording starts, on the main thread (MainActivity, so
+	// its audio input can carry on with the recording's projection).
+	@Nullable
+	private static Runnable onRecordingStarted;
 
 	// (A ScreenRecorder, API 29+.)
 	@Nullable
@@ -62,6 +66,10 @@ public class ScreenRecordService extends Service {
 
 	public static boolean isRecording() {
 		return recording;
+	}
+
+	public static void setOnRecordingStarted(@Nullable Runnable onRecordingStarted) {
+		ScreenRecordService.onRecordingStarted = onRecordingStarted;
 	}
 
 	// Starts recording with a MediaProjection consent's resultCode and
@@ -170,6 +178,12 @@ public class ScreenRecordService extends Service {
 		if (!recorder.start(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)) {
 			recorder = null;
 			failed();
+			return;
+		}
+		SharedProjection.share(projection);
+		Runnable started = onRecordingStarted;
+		if (started != null) {
+			started.run();
 		}
 	}
 
@@ -219,7 +233,8 @@ public class ScreenRecordService extends Service {
 	private void finishService() {
 		recording = false;
 		if (projection != null) {
-			projection.stop();
+			// (Enki's audio input may be using it still.)
+			SharedProjection.release(projection);
 			projection = null;
 		}
 		stopForeground(STOP_FOREGROUND_REMOVE);

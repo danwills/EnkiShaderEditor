@@ -773,6 +773,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		builtinUniforms.stopMediaProjection();
 	}
 
+	// See BuiltinAudioUniforms.onRecordingStarted().
+	public void onRecordingStarted() {
+		builtinUniforms.onRecordingStarted();
+	}
+
 	// Forwards to BuiltinUniforms - see its own doc on release() for why
 	// this needs to be set before the app can be backgrounded during a
 	// HighResCaptureService capture, and cleared once that capture is

@@ -1018,6 +1018,12 @@ public class ShaderViewManager {
 				shaderView.getRenderer().setMediaProjection(mediaProjection));
 	}
 
+	// Record Screen has started - see BuiltinAudioUniforms.
+	// onRecordingStarted().
+	public void onRecordingStarted() {
+		shaderView.queueEvent(() -> shaderView.getRenderer().onRecordingStarted());
+	}
+
 	// audioSessionId 0 means local playback stopped (see
 	// BuiltinAudioUniforms.localPlaybackAudioSessionId's own doc) - no
 	// leak-prone resource is involved the way a MediaProjection is, so

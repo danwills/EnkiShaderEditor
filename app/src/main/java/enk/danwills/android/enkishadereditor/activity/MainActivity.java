@@ -409,6 +409,9 @@ public class MainActivity extends AppCompatActivity {
 				qualitySpinnerView,
 				dataSource,
 				createShaderViewListener());
+		// Record Screen stops the projection system audio had: carry on
+		// with the recording's (see SharedProjection).
+		ScreenRecordService.setOnRecordingStarted(shaderViewManager::onRecordingStarted);
 		audioPreferenceListener = (preferences, key) -> {
 			if (Preferences.USE_SYSTEM_AUDIO.equals(key) ||
 					Preferences.USE_OWN_SOUND_AUDIO.equals(key)) {
@@ -1444,6 +1447,7 @@ public class MainActivity extends AppCompatActivity {
 			shaderListManager.destroy();
 		}
 		if (shaderViewManager != null) {
+			ScreenRecordService.setOnRecordingStarted(null);
 			shaderViewManager.destroy();
 		}
 		if (audioPreferenceListener != null) {
