@@ -1,0 +1,2 @@
+* Sharper app icon
+* High-res captures of buffer shaders no longer show blocky edges when taken from a low-res preview

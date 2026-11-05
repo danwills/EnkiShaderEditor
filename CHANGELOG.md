@@ -1,5 +1,9 @@
 # Change Log
 
+## 2.38.3
+* Sharper app icon, from a cleaner crystal render
+* High-res captures of buffer shaders draw per-frame buffers at the capture's size, so a coarse preview no longer leaves blocky edges
+
 ## 2.38.2
 * New app icon: a crystal rendered in Enki
 

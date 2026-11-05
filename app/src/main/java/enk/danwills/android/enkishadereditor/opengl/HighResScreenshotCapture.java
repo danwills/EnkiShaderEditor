@@ -922,6 +922,23 @@ final class HighResScreenshotCapture {
 		return result;
 	}
 
+	// Draws program over the whole of framebuffer (width x height) in
+	// timed pieces, as the tiles are - for a buffer pass a capture draws
+	// at its own size (see ShaderRenderer.renderCaptureBuffers()).
+	// chunkSize[0] carries over between calls. False on a GPU reset.
+	static boolean drawPassInChunks(@NonNull GlDevice device, @NonNull GlFramebuffer framebuffer,
+			@NonNull ProgramBindings bindings, @NonNull GlProgram program, int width, int height,
+			@NonNull int[] chunkSize) {
+		device.bindFramebuffer(framebuffer);
+		device.setViewport(0, 0, width, height);
+		device.applyBindings(bindings);
+		boolean drawn = drawInChunks(device, Mesh.fullScreenQuad(), program, 0, 0, width, height,
+				chunkSize, Math.max(width, height));
+		device.disableScissor();
+		device.bindFramebuffer(null);
+		return drawn;
+	}
+
 	// Draws one rect of the bound framebuffer (scissor already enabled)
 	// in pieces no bigger than chunkSize[0], finishing and timing each -
 	// see TARGET_CHUNK_MS. A rect bigger than the current size is split
