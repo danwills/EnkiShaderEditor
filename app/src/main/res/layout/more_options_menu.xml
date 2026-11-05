@@ -116,6 +116,14 @@
 			app:icon="@drawable/ic_play_arrow" />
 
 		<Button
+			android:id="@+id/record_screen"
+			style="@style/MenuItem"
+			android:layout_width="match_parent"
+			android:layout_height="@dimen/menu_item_height"
+			android:text="@string/record_screen"
+			app:icon="@drawable/ic_record" />
+
+		<Button
 			android:id="@+id/type_into_shader"
 			style="@style/MenuItem"
 			android:layout_width="match_parent"

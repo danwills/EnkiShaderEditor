@@ -258,6 +258,8 @@ final class StatusOverlay {
 	}
 
 	// Why the panel went by itself, so it doesn't just vanish.
+	// NotificationPermission: a refusal's caught below.
+	@SuppressLint("NotificationPermission")
 	private void notifyQuiet() {
 		var manager = context.getSystemService(android.app.NotificationManager.class);
 		if (manager.getNotificationChannel(QUIET_CHANNEL) == null) {

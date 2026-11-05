@@ -1,5 +1,6 @@
 package com.example.phonekit;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationChannel;
@@ -242,6 +243,8 @@ public class TakeOverActivity extends Activity {
 		}
 	}
 
+	// NotificationPermission: as StatusOverlay.notifyQuiet().
+	@SuppressLint("NotificationPermission")
 	private void notifyUnanswered() {
 		var manager = getSystemService(NotificationManager.class);
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&

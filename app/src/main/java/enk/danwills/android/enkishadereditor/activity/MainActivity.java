@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.activity;
 
+import android.Manifest;
 import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.app.WallpaperManager;
@@ -13,6 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -167,6 +169,7 @@ import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
 import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
+import enk.danwills.android.enkishadereditor.service.ScreenRecordService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
 import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
 import enk.danwills.android.enkishadereditor.service.TileSizeProber;
@@ -319,6 +322,11 @@ public class MainActivity extends AppCompatActivity {
 	private int trackedFindMatchStart = -1;
 	private int trackedFindMatchLength = 0;
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
+	// Record Screen's (see recordScreen()).
+	private ActivityResultLauncher<Intent> screenRecordLauncher;
+	private ActivityResultLauncher<String> recordAudioPermissionLauncher;
+	private boolean recordSound = true;
+	private boolean recordVoice = true;
 	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
 	@Nullable
 	private LocalMusicPlayer localMusicPlayer;
@@ -369,6 +377,12 @@ public class MainActivity extends AppCompatActivity {
 		mediaProjectionLauncher = registerForActivityResult(
 				new ActivityResultContracts.StartActivityForResult(),
 				this::onMediaProjectionResult);
+		screenRecordLauncher = registerForActivityResult(
+				new ActivityResultContracts.StartActivityForResult(),
+				this::onScreenRecordConsent);
+		recordAudioPermissionLauncher = registerForActivityResult(
+				new ActivityResultContracts.RequestPermission(),
+				this::onRecordAudioPermission);
 		localMusicDirectoryLauncher = registerForActivityResult(
 				new ActivityResultContracts.OpenDocumentTree(),
 				this::onLocalMusicDirectoryPicked);
@@ -2080,7 +2094,85 @@ public class MainActivity extends AppCompatActivity {
 			public void onPlayLocalMusic() {
 				openLocalMusicPlayer();
 			}
+
+			@Override
+			public void onRecordScreen() {
+				recordScreen();
+			}
+
+			@Override
+			public boolean isRecordingScreen() {
+				return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+						ScreenRecordService.isRecording();
+			}
 		};
+	}
+
+	// More Options' Record Screen: stops a recording, or asks what to
+	// record (sound, voice), then for the microphone if that needs it,
+	// then for the screen - see onScreenRecordConsent().
+	private void recordScreen() {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+			return;
+		}
+		if (ScreenRecordService.isRecording()) {
+			ScreenRecordService.stop(this);
+			return;
+		}
+		boolean[] what = {recordSound, recordVoice};
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.record_screen_title)
+				.setMultiChoiceItems(new CharSequence[]{
+						getString(R.string.record_screen_sound),
+						getString(R.string.record_screen_voice)
+				}, what, (dialog, which, checked) -> what[which] = checked)
+				.setPositiveButton(R.string.record_screen_start, (dialog, which) -> {
+					recordSound = what[0];
+					recordVoice = what[1];
+					if ((recordSound || recordVoice) && ContextCompat.checkSelfPermission(this,
+							Manifest.permission.RECORD_AUDIO) !=
+							PackageManager.PERMISSION_GRANTED) {
+						recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+					} else {
+						askToRecordScreen();
+					}
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	private void onRecordAudioPermission(boolean granted) {
+		if (!granted && (recordSound || recordVoice)) {
+			Toast.makeText(this, R.string.record_screen_no_mic, Toast.LENGTH_LONG).show();
+			recordSound = false;
+			recordVoice = false;
+		}
+		askToRecordScreen();
+	}
+
+	private void askToRecordScreen() {
+		MediaProjectionManager projectionManager =
+				getSystemService(MediaProjectionManager.class);
+		if (projectionManager != null) {
+			screenRecordLauncher.launch(projectionManager.createScreenCaptureIntent());
+		}
+	}
+
+	private void onScreenRecordConsent(ActivityResult result) {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+				result.getResultCode() != RESULT_OK || result.getData() == null) {
+			return;
+		}
+		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
+				recordSound, recordVoice);
+		// As onMediaProjectionResult(): the picker can leave something
+		// else in front.
+		try {
+			startActivity(new Intent(this, MainActivity.class)
+					.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+		} catch (RuntimeException e) {
+			Log.e(AUDIO_CAPTURE_TAG, "Could not bring task to front", e);
+		}
 	}
 
 	private void duplicateShader(long id) {

@@ -161,6 +161,7 @@ This document captures how the app is structured today so you can change it conf
 - `BatteryLevelReceiver` – see §4.5.
 - `ShaderWallpaperService` toggles the manifest-enabled state of `BatteryLevelReceiver` based on lifecycle to avoid wakeups when not running.
 - `ShaderWallpaperService.ShaderWallpaperView` extends `ShaderView` but overrides `getHolder()` to render into the wallpaper surface.
+- `ScreenRecordService` (API 29+, Enki only: Ultra Rest Area's manifest removes it) – More Options → Record Screen. `MainActivity.recordScreen()` asks for Sound/Voice, then RECORD_AUDIO if either is wanted, then MediaProjection consent, then starts the service (a `mediaProjection` foreground service, so it survives rotation). It runs `io/ScreenRecorder`: the screen mirrored by a virtual display into an H.264 encoder, a playback capture of what's playing (stereo), and the mic via VOICE_COMMUNICATION plus AcousticEchoCanceler, mixed into both channels. Both share the System.nanoTime() clock, so they stay in sync. The MP4 goes to Movies/Enki Shader Editor. It stops from its notification or from the menu item, which reads Stop Recording while it's recording.
 
 ---
 

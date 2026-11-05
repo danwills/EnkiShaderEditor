@@ -258,6 +258,9 @@ final class StatusOverlay {
 	}
 
 	// Why the panel went by itself, so it doesn't just vanish.
+	// NotificationPermission: a refusal's caught below (and Ultra Rest
+	// Area, which drops POST_NOTIFICATIONS, never runs the phone kit).
+	@SuppressLint("NotificationPermission")
 	private void notifyQuiet() {
 		var manager = context.getSystemService(android.app.NotificationManager.class);
 		if (manager.getNotificationChannel(QUIET_CHANNEL) == null) {

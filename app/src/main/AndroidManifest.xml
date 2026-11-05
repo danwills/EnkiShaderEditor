@@ -88,6 +88,10 @@
 			android:foregroundServiceType="mediaProjection"
 			android:exported="false"/>
 		<service
+			android:name=".service.ScreenRecordService"
+			android:foregroundServiceType="mediaProjection"
+			android:exported="false"/>
+		<service
 			android:name=".service.HighResCaptureService"
 			android:foregroundServiceType="dataSync"
 			android:exported="false"/>

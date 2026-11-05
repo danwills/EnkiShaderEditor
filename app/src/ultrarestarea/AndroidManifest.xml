@@ -38,6 +38,7 @@
 			tools:node="remove"/>
 		<service android:name=".service.AudioCaptureForegroundService" tools:node="remove"/>
 		<service android:name=".service.HighResCaptureService" tools:node="remove"/>
+		<service android:name=".service.ScreenRecordService" tools:node="remove"/>
 		<service android:name=".service.TileProbeService" tools:node="remove"/>
 		<receiver android:name=".receiver.CompileAllCancelReceiver" tools:node="remove"/>
 
