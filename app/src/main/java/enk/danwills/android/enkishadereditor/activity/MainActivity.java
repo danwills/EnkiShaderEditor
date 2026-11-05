@@ -81,6 +81,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.widget.TextViewCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -647,6 +648,16 @@ public class MainActivity extends AppCompatActivity {
 	// handling).
 	@Override
 	public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+		// Volume-down stops Record Screen: a button on screen would be in
+		// the recording (Android can't keep a window out of it).
+		if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN &&
+				Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+				ScreenRecordService.isRecording()) {
+			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+				ScreenRecordService.stop(this);
+			}
+			return true;
+		}
 		if (sendKeyToShader(event)) {
 			return true;
 		}
@@ -2124,8 +2135,17 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		boolean[] what = {recordSound, recordVoice};
+		// How to stop it, under the choices (a dialog with a list shows
+		// no message).
+		TextView stopHint = new TextView(this);
+		stopHint.setText(R.string.record_screen_stop_hint);
+		TextViewCompat.setTextAppearance(stopHint,
+				com.google.android.material.R.style.TextAppearance_Material3_BodyMedium);
+		int pad = Math.round(24 * getResources().getDisplayMetrics().density);
+		stopHint.setPadding(pad, pad / 3, pad, 0);
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.record_screen_title)
+				.setView(stopHint)
 				.setMultiChoiceItems(new CharSequence[]{
 						getString(R.string.record_screen_sound),
 						getString(R.string.record_screen_voice)

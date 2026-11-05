@@ -400,12 +400,14 @@
 	<string name="record_screen_title">錄製螢幕</string>
 	<string name="record_screen_sound">聲音（正在播放的內容）</string>
 	<string name="record_screen_voice">語音（麥克風）</string>
+	<string name="record_screen_stop_hint">停止方式：在 Enki 前景時按音量減小鍵，或透過通知或「更多選項」。</string>
 	<string name="record_screen_start">錄製</string>
 	<string name="record_screen_saved">螢幕錄製已儲存到 Movies/Enki Shader Editor</string>
 	<string name="record_screen_failed">無法錄製螢幕</string>
 	<string name="record_screen_no_mic">將不錄製聲音：需要麥克風權限</string>
 	<string name="screen_record_channel_name">螢幕錄製</string>
 	<string name="screen_record_notification_title">正在錄製螢幕</string>
+	<string name="screen_record_notification_text">在 Enki 中按音量減小鍵即可停止</string>
 	<string name="high_res_capture_channel_name">高解析度擷取</string>
 	<string name="high_res_capture_notification_title">正在渲染高解析度擷取</string>
 	<string name="capture_priority_action_normal">優先度：正常</string>

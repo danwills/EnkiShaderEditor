@@ -39,7 +39,8 @@ import enk.danwills.android.enkishadereditor.io.ScreenRecorder;
 // (without it, Android 14+ hands a service's mic capture silence), and
 // one that outlives the
 // activity being recreated (a rotation) mid-recording. Its notification
-// stops it; More Options' Record Screen does too, while isRecording().
+// stops it; More Options' Record Screen does too, while isRecording(), as
+// does volume-down in MainActivity.
 // API 29+ (see ScreenRecorder); started only there.
 public class ScreenRecordService extends Service {
 	private static final String TAG = "ScreenRecord";
@@ -128,6 +129,7 @@ public class ScreenRecordService extends Service {
 				PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 		Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
 				.setContentTitle(getString(R.string.screen_record_notification_title))
+				.setContentText(getString(R.string.screen_record_notification_text))
 				.setSmallIcon(R.drawable.ic_launcher_monochrome)
 				.setOngoing(true)
 				.addAction(0, getString(R.string.stop_recording), stop)
