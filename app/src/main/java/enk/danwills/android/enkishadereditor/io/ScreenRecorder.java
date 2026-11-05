@@ -120,7 +120,7 @@ public final class ScreenRecorder {
 			videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT,
 					MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
 			videoFormat.setInteger(MediaFormat.KEY_BIT_RATE, (int) Math.min(30_000_000L,
-					Math.max(2_000_000L, (long) size[0] * size[1] * FPS / 7)));
+					Math.max(2_000_000L, (long) size[0] * size[1] * FPS / 10)));
 			videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FPS);
 			videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 			// A still screen sends no frames; keep the video going anyway.

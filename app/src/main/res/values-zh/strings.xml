@@ -398,7 +398,6 @@
 	<string name="record_screen">录制屏幕</string>
 	<string name="stop_recording">停止录制</string>
 	<string name="record_screen_title">录制屏幕</string>
-	<string name="record_screen_message">用于教程或演示：将整个屏幕录制为 MP4，保存在 Movies/Enki Shader Editor。可从通知或“更多选项”停止。</string>
 	<string name="record_screen_sound">声音（正在播放的内容）</string>
 	<string name="record_screen_voice">语音（麦克风）</string>
 	<string name="record_screen_start">录制</string>

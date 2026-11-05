@@ -406,7 +406,6 @@
 	<string name="record_screen">Record Screen</string>
 	<string name="stop_recording">Stop Recording</string>
 	<string name="record_screen_title">Record the screen</string>
-	<string name="record_screen_message">For a tutorial or demo: the whole screen, to an MP4 in Movies/Enki Shader Editor. Stop it from the notification or More Options.</string>
 	<string name="record_screen_sound">Sound (what\'s playing)</string>
 	<string name="record_screen_voice">Voice (microphone)</string>
 	<string name="record_screen_start">Record</string>

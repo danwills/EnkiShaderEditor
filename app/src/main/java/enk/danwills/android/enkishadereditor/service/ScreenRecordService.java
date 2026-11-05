@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.service;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -8,6 +9,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.hardware.display.DisplayManager;
 import android.media.projection.MediaProjection;
@@ -33,7 +35,9 @@ import enk.danwills.android.enkishadereditor.io.ScreenRecorder;
 
 // Records the screen (see ScreenRecorder) for as long as it runs: a
 // foreground service of type mediaProjection, as Android 14+ needs one
-// running before getMediaProjection(), and one that outlives the
+// running before getMediaProjection(), and microphone too for the voice
+// (without it, Android 14+ hands a service's mic capture silence), and
+// one that outlives the
 // activity being recreated (a rotation) mid-recording. Its notification
 // stops it; More Options' Record Screen does too, while isRecording().
 // API 29+ (see ScreenRecorder); started only there.
@@ -122,8 +126,13 @@ public class ScreenRecordService extends Service {
 				.build();
 		try {
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-				startForeground(NOTIFICATION_ID, notification,
-						ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+				int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
+				if (intent.getBooleanExtra(EXTRA_VOICE, false) &&
+						ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+								PackageManager.PERMISSION_GRANTED) {
+					types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+				}
+				startForeground(NOTIFICATION_ID, notification, types);
 			} else {
 				startForeground(NOTIFICATION_ID, notification);
 			}

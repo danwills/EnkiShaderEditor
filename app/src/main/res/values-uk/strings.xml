@@ -406,7 +406,6 @@
 	<string name="record_screen">Запис екрана</string>
 	<string name="stop_recording">Зупинити запис</string>
 	<string name="record_screen_title">Запис екрана</string>
-	<string name="record_screen_message">Для уроку чи демонстрації: увесь екран у MP4 у Movies/Enki Shader Editor. Зупинити можна зі сповіщення або з «Інші параметри».</string>
 	<string name="record_screen_sound">Звук (те, що грає)</string>
 	<string name="record_screen_voice">Голос (мікрофон)</string>
 	<string name="record_screen_start">Записати</string>

@@ -11,6 +11,7 @@
 	<!-- Required (API 34+) to use MediaProjection for system audio capture -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
 	<!-- Required (API 34+) to keep a tiled high-res capture running in
 		HighResCaptureService while the app is backgrounded -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
@@ -89,7 +90,7 @@
 			android:exported="false"/>
 		<service
 			android:name=".service.ScreenRecordService"
-			android:foregroundServiceType="mediaProjection"
+			android:foregroundServiceType="mediaProjection|microphone"
 			android:exported="false"/>
 		<service
 			android:name=".service.HighResCaptureService"
