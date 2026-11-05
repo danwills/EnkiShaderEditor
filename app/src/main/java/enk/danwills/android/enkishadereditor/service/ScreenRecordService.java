@@ -59,6 +59,15 @@ public class ScreenRecordService extends Service {
 	// its audio input can carry on with the recording's projection).
 	@Nullable
 	private static Runnable onRecordingStarted;
+	// Shows that a recording's been saved, on the main thread, while
+	// MainActivity's in front (its bar shows over fullscreen, where this
+	// service's toast didn't stand out); true if it did.
+	public interface SavedListener {
+		boolean onRecordingSaved(@NonNull Uri uri);
+	}
+
+	@Nullable
+	private static SavedListener savedListener;
 
 	// (A ScreenRecorder, API 29+.)
 	@Nullable
@@ -68,6 +77,10 @@ public class ScreenRecordService extends Service {
 
 	public static boolean isRecording() {
 		return recording;
+	}
+
+	public static void setSavedListener(@Nullable SavedListener savedListener) {
+		ScreenRecordService.savedListener = savedListener;
 	}
 
 	public static void setOnRecordingStarted(@Nullable Runnable onRecordingStarted) {
@@ -203,8 +216,11 @@ public class ScreenRecordService extends Service {
 	private void onFinished(@Nullable Uri uri) {
 		new Handler(Looper.getMainLooper()).post(() -> {
 			if (uri != null) {
-				Toast.makeText(getApplicationContext(), R.string.record_screen_saved,
-						Toast.LENGTH_LONG).show();
+				SavedListener saved = savedListener;
+				if (saved == null || !saved.onRecordingSaved(uri)) {
+					Toast.makeText(getApplicationContext(), R.string.record_screen_saved,
+							Toast.LENGTH_LONG).show();
+				}
 				notifySaved(uri);
 			} else {
 				Toast.makeText(getApplicationContext(), R.string.record_screen_failed,

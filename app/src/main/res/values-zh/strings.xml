@@ -405,6 +405,7 @@
 	<string name="record_screen_stop_hint">停止方式：在 Enki 前台时按音量减小键，或通过通知或“更多选项”。</string>
 	<string name="record_screen_start">录制</string>
 	<string name="record_screen_saved">屏幕录制已保存到 Movies/Enki Shader Editor</string>
+	<string name="record_screen_view">查看</string>
 	<string name="record_screen_failed">无法录制屏幕</string>
 	<string name="record_screen_no_mic">将不录制声音：需要麦克风权限</string>
 	<string name="screen_record_channel_name">屏幕录制</string>

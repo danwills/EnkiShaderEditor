@@ -1388,6 +1388,9 @@ public class MainActivity extends AppCompatActivity {
 	protected void onResume() {
 		super.onResume();
 		activityResumed = true;
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			ScreenRecordService.setSavedListener(this::showRecordingSaved);
+		}
 		// A HighResCaptureService capture that finished while this
 		// Activity wasn't in the foreground couldn't safely show its
 		// result then (a Toast posted from a backgrounded/cached process
@@ -1424,6 +1427,7 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onPause() {
+		ScreenRecordService.setSavedListener(null);
 		shaderViewManager.getKeyboardInput().releaseAll();
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
@@ -2185,6 +2189,24 @@ public class MainActivity extends AppCompatActivity {
 				})
 				.setNegativeButton(android.R.string.cancel, null)
 				.show();
+	}
+
+	// Record Screen's "saved", as a bar with View: it shows over
+	// fullscreen, where the service's toast went unnoticed.
+	private boolean showRecordingSaved(@NonNull Uri uri) {
+		Snackbar.make(findViewById(R.id.main_coordinator), R.string.record_screen_saved, 6000)
+				.setAction(R.string.record_screen_view, v -> {
+					try {
+						startActivity(new Intent(Intent.ACTION_VIEW)
+								.setDataAndType(uri, "video/mp4")
+								.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+					} catch (ActivityNotFoundException e) {
+						Toast.makeText(this, R.string.record_screen_saved,
+								Toast.LENGTH_LONG).show();
+					}
+				})
+				.show();
+		return true;
 	}
 
 	private void onRecordAudioPermission(boolean granted) {

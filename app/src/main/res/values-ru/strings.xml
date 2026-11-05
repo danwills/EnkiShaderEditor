@@ -413,6 +413,7 @@
 	<string name="record_screen_stop_hint">Остановить: кнопка уменьшения громкости, пока Enki на экране, уведомление или «Другие параметры».</string>
 	<string name="record_screen_start">Записать</string>
 	<string name="record_screen_saved">Запись экрана сохранена в Movies/Enki Shader Editor</string>
+	<string name="record_screen_view">Открыть</string>
 	<string name="record_screen_failed">Не удалось записать экран</string>
 	<string name="record_screen_no_mic">Запись без звука: нужно разрешение на микрофон</string>
 	<string name="screen_record_channel_name">Запись экрана</string>
