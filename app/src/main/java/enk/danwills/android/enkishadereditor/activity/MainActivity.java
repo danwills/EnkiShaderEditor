@@ -945,7 +945,7 @@ public class MainActivity extends AppCompatActivity {
 			text.setCompoundDrawablePadding(dpToPx(8));
 			text.setMaxLines(4);
 		}
-		snackbar.show();
+		showOverShader(snackbar);
 	}
 
 	private boolean sendKeyToShader(@NonNull KeyEvent event) {
@@ -1900,7 +1900,7 @@ public class MainActivity extends AppCompatActivity {
 					text.setCompoundDrawables(icon, null, null, null);
 					text.setCompoundDrawablePadding(dpToPx(8));
 				}
-				snackbar.show();
+				showOverShader(snackbar);
 			}
 		};
 	}
@@ -2225,10 +2225,29 @@ public class MainActivity extends AppCompatActivity {
 				.show();
 	}
 
-	// Record Screen's "saved", as a bar with View: it shows over
-	// fullscreen, where the service's toast went unnoticed.
+	// Shows bar where it can be seen over the shader. The window leaves
+	// out what it last counted as transparent over the preview (a
+	// SurfaceView), and a bar sliding in from below the screen isn't
+	// counted: in fullscreen, where nearly all of the window is preview,
+	// a bar never showed. So it's recounted once the bar's in place.
+	private void showOverShader(@NonNull Snackbar bar) {
+		bar.addCallback(new Snackbar.Callback() {
+			@Override
+			public void onShown(Snackbar shown) {
+				View preview = findViewById(R.id.preview);
+				if (preview.getParent() instanceof ViewGroup parent) {
+					parent.requestTransparentRegion(preview);
+				}
+			}
+		});
+		bar.show();
+	}
+
+	// Record Screen's "saved", as a bar with View - the service's toast
+	// went unnoticed.
 	private boolean showRecordingSaved(@NonNull Uri uri) {
-		Snackbar.make(findViewById(R.id.main_coordinator), R.string.record_screen_saved, 6000)
+		showOverShader(Snackbar.make(findViewById(R.id.main_coordinator),
+				R.string.record_screen_saved, 6000)
 				.setAction(R.string.record_screen_view, v -> {
 					try {
 						startActivity(new Intent(Intent.ACTION_VIEW)
@@ -2238,8 +2257,7 @@ public class MainActivity extends AppCompatActivity {
 						Toast.makeText(this, R.string.record_screen_saved,
 								Toast.LENGTH_LONG).show();
 					}
-				})
-				.show();
+				}));
 		return true;
 	}
 
