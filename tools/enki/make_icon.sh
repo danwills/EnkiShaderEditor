@@ -4,7 +4,7 @@
 # a soft blue bloom on the highlights. Writes the adaptive icon's
 # background (the whole square: launchers show its middle two thirds),
 # the legacy rounded icons and Play's 512 icon (that middle two thirds),
-# and the docs site's icons.
+# Play's 1024x500 feature graphic and the docs site's icons.
 #
 # Usage, from the repo root: tools/enki/make_icon.sh
 set -e
@@ -43,6 +43,10 @@ done
 
 magick "$TMP/shown.png" -resize 512x512 -unsharp 0x0.8+0.5 -alpha off -strip \
 	fastlane/metadata/android/en-US/images/icon.png
+# The feature graphic: a band across the crystal's middle.
+magick "$TMP/full.png" -crop 1440x703+0+369 +repage -resize 1024x500! \
+	-unsharp 0x0.8+0.5 -alpha off -strip \
+	fastlane/metadata/android/en-US/images/featureGraphic.png
 rounded 256 0.22 docs-site/public/media/app-icon.png
 magick "$TMP/shown.png" -resize 180x180 -unsharp 0x0.8+0.5 -alpha off -strip \
 	docs-site/public/media/apple-touch-icon.png
