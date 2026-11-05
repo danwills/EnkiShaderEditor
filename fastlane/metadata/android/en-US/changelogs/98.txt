@@ -1,3 +1,2 @@
-* New app icon: a crystal rendered in Enki
 * Live previews run at high GPU priority, progressive rendering at low (a setting for each)
 * Find in Shader searches again each time it opens
