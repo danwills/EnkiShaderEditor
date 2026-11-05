@@ -17,10 +17,10 @@ Two independent projects:
   `enk.danwills.android.enkishadereditor`. Java 17, Gradle Kotlin DSL, no Jetpack Compose.
 - `docs-site/` — a separate Astro static site (the project's public docs/landing page), deployed to
   GitHub Pages by `.github/workflows/deploy-docs.yml` on pushes touching `docs-site/**` or `FAQ.md`.
-  Push-triggered runs weren't firing on this fork (only manual runs, until Dan enabled workflows
-  in the Actions tab on 2026-10-21 - not yet confirmed by a docs push): after pushing master with
-  docs changes, check `gh run list` and, if no run started, `gh workflow run deploy-docs.yml
-  --ref master` (and tell Dan the push trigger still isn't working).
+  Push-triggered runs work on the fork (confirmed 2026-11-05). `gh` defaults to Markus's repo
+  here, so pass `-R danwills/EnkiShaderEditor` (e.g. `gh run list -R danwills/EnkiShaderEditor
+  --workflow deploy-docs.yml`) when checking a deploy; don't start one by hand unless no run
+  appears there.
 
 ## Commands
 

@@ -1,19 +1,37 @@
-* Live preview in background or on an extra screen
-* Syntax highlighting
-* Error highlighting
-* FPS display
-* Use any shader as live wallpaper
-* Exposure of hardware sensors
-* Support for wallpaper offset
-* Exposure of battery level
-* Supports multiple touches
-* Previous rendered frame in backbuffer texture
-* Import and use arbitrary textures
-* Disables rendering when battery is low
+Enki Shader Editor is a full GLSL shader workshop that fits in your pocket. Type code and watch it run live behind the editor, then turn sliders, capture stills far beyond screen resolution, record videos, or set your creation as a live wallpaper.
 
-Some devices limit GPU usage to consume less power when not plugged in. Always check the performance with the soft keyboard hidden and the power cord off. A shader should make at least around 30 fps to not slow down the UI if you intend to use it as a live wallpaper.
+WRITE
+• Live preview behind the code, or full screen
+• Syntax and error highlighting, with errors shown on the line
+• Find in shader, an extra keys row for code, and an FPS display
+• Adjust Defines turns your #defines into live sliders and colour pickers
 
-Unfortunately error information is disabled on some devices (e.g. Huawei Ideos X3, Asus Transformer). Error highlighting/reporting is not possible on these devices.
+GO BIG
+• Multipass shaders with offscreen buffers and a Common section, ShaderToy-style
+• Buffers can keep state across frames: simulations, trails, game logic
+• Sound passes: shaders that make audio
+• Heavy shaders draw progressively, a band at a time, so your phone stays responsive
 
-Please report bugs here:
-https://github.com/markusfisch/ShaderEditor/issues
+REACT
+• Multi-touch, the keyboard and typed text
+• Camera, microphone and the audio playing on your phone
+• Accelerometer, gyroscope, light, battery and other sensors
+• Your own images as textures
+
+CAPTURE
+• Stills at any resolution, with oversampling for clean edges
+• Frame sequences, MP4 video and GIFs
+• Upscaling filters, CRT looks and colour maps
+
+SHARE
+• Use any shader as a live wallpaper
+• Install shader packs, and import and export your library
+
+PRIVATE
+Enki has no internet permission, no ads and no tracking. Everything you make stays on your device.
+
+Enki is open source (MIT), forked from Markus Fisch's Shader Editor.
+
+Tips: some phones limit the GPU when unplugged, so check performance on battery with the keyboard hidden. For a smooth live wallpaper, aim for at least 30 fps.
+
+Bugs and ideas: https://github.com/danwills/EnkiShaderEditor/issues

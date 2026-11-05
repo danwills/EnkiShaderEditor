@@ -1,1 +1,1 @@
-Create GLSL shaders and use them as live wallpaper.
+Write GLSL shaders on your phone and watch them run live, even as wallpaper.
