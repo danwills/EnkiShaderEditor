@@ -69,12 +69,25 @@ public final class ScreenRecorder {
 	// The voice, over what's playing (the voice mode's own levelling
 	// already brings speech up to around -15 dB, peaking at full scale).
 	private static final float VOICE_GAIN = 1f;
+	// Ducking: while the voice is over DUCK_THRESHOLD (RMS of a chunk,
+	// about -36 dB: the voice mode's noise suppression leaves near
+	// silence between words), what's playing goes down to DUCK_LEVEL
+	// (-12 dB) within a chunk, holds DUCK_HOLD after the voice stops,
+	// so it doesn't pump between words, then comes back up over
+	// DUCK_RELEASE.
+	private static final double DUCK_THRESHOLD = 500;
+	private static final float DUCK_LEVEL = 0.25f;
+	private static final int DUCK_HOLD = RATE * 3 / 10;
+	private static final int DUCK_RELEASE = RATE / 2;
 	private static final long TIMEOUT_US = 10_000;
 
 	private final Context context;
 	private final MediaProjection projection;
 	private final boolean sound;
+	// What's playing in the mix, 1 as it is.
+	private final float soundLevel;
 	private final boolean voice;
+	private final boolean duck;
 	private final Listener listener;
 
 	private MediaCodec video;
@@ -101,12 +114,17 @@ public final class ScreenRecorder {
 	private int voiceHead;
 	private int voiceCount;
 
+	// soundLevel: what's playing, 0 for none (no playback capture at
+	// all), 1 as it is; voice: the microphone; duck: lowering what's
+	// playing while the voice talks.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
-			boolean sound, boolean voice, @NonNull Listener listener) {
+			float soundLevel, boolean voice, boolean duck, @NonNull Listener listener) {
 		this.context = context.getApplicationContext();
 		this.projection = projection;
-		this.sound = sound;
+		this.sound = soundLevel > 0;
+		this.soundLevel = Math.min(1f, Math.max(0f, soundLevel));
 		this.voice = voice;
+		this.duck = duck;
 		this.listener = listener;
 	}
 
@@ -425,6 +443,9 @@ public final class ScreenRecorder {
 		ByteBuffer bytes = ByteBuffer.allocate(chunk.length * 2).order(ByteOrder.nativeOrder());
 		long samples = 0;
 		long firstUs = -1;
+		// What's playing's gain from ducking, and how long it's held.
+		float duckGain = 1f;
+		int hold = 0;
 		MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 		boolean ended = false;
 		while (!ended) {
@@ -437,8 +458,8 @@ public final class ScreenRecorder {
 				if (n <= 0) {
 					continue;
 				}
+				int frames = n / channels;
 				if (stereo && micThread != null) {
-					int frames = n / 2;
 					synchronized (voiceRing) {
 						int got = Math.min(frames, voiceCount);
 						for (int i = 0; i < got; ++i) {
@@ -450,10 +471,31 @@ public final class ScreenRecorder {
 							voiceChunk[i] = 0;
 						}
 					}
+					float from = duckGain;
+					if (duck) {
+						double sum = 0;
+						for (int i = 0; i < frames; ++i) {
+							sum += (double) voiceChunk[i] * voiceChunk[i];
+						}
+						if (Math.sqrt(sum / Math.max(1, frames)) > DUCK_THRESHOLD) {
+							hold = DUCK_HOLD;
+						} else {
+							hold = Math.max(0, hold - frames);
+						}
+						duckGain = hold > 0
+								? DUCK_LEVEL
+								: Math.min(1f, duckGain + (float) frames / DUCK_RELEASE);
+					}
+					// Ramped across the chunk, so the gain never steps.
 					for (int i = 0; i < frames; ++i) {
+						float gain = soundLevel * (from + (duckGain - from) * i / frames);
 						int v = (int) (voiceChunk[i] * VOICE_GAIN);
-						chunk[i * 2] = clip(chunk[i * 2] + v);
-						chunk[i * 2 + 1] = clip(chunk[i * 2 + 1] + v);
+						chunk[i * 2] = clip((int) (chunk[i * 2] * gain) + v);
+						chunk[i * 2 + 1] = clip((int) (chunk[i * 2 + 1] * gain) + v);
+					}
+				} else if (stereo && soundLevel < 1f) {
+					for (int i = 0; i < n; ++i) {
+						chunk[i] = (short) (chunk[i] * soundLevel);
 					}
 				}
 				if (firstUs < 0) {

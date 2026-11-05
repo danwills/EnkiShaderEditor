@@ -81,7 +81,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.widget.TextViewCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -326,8 +325,11 @@ public class MainActivity extends AppCompatActivity {
 	// Record Screen's (see recordScreen()).
 	private ActivityResultLauncher<Intent> screenRecordLauncher;
 	private ActivityResultLauncher<String> recordAudioPermissionLauncher;
-	private boolean recordSound = true;
+	// Percent of what's playing in the mix, 0 for none.
+	private int recordSoundLevel = 100;
 	private boolean recordVoice = true;
+	// Lower what's playing while the voice is talking.
+	private boolean recordDuck = true;
 	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
 	@Nullable
 	private LocalMusicPlayer localMusicPlayer;
@@ -2134,26 +2136,46 @@ public class MainActivity extends AppCompatActivity {
 			ScreenRecordService.stop(this);
 			return;
 		}
-		boolean[] what = {recordSound, recordVoice};
-		// How to stop it, under the choices (a dialog with a list shows
-		// no message).
-		TextView stopHint = new TextView(this);
-		stopHint.setText(R.string.record_screen_stop_hint);
-		TextViewCompat.setTextAppearance(stopHint,
-				com.google.android.material.R.style.TextAppearance_Material3_BodyMedium);
-		int pad = Math.round(24 * getResources().getDisplayMetrics().density);
-		stopHint.setPadding(pad, pad / 3, pad, 0);
+		View view = getLayoutInflater().inflate(R.layout.dialog_record_screen, null);
+		TextView levelLabel = view.findViewById(R.id.record_sound_level_label);
+		SeekBar level = view.findViewById(R.id.record_sound_level);
+		CheckBox voice = view.findViewById(R.id.record_voice);
+		CheckBox duck = view.findViewById(R.id.record_duck);
+		level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				levelLabel.setText(progress > 0
+						? getString(R.string.record_screen_sound_level, progress)
+						: getString(R.string.record_screen_sound_off));
+				duck.setEnabled(progress > 0 && voice.isChecked());
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		});
+		voice.setOnCheckedChangeListener((button, checked) ->
+				duck.setEnabled(level.getProgress() > 0 && checked));
+		level.setProgress(recordSoundLevel);
+		voice.setChecked(recordVoice);
+		duck.setChecked(recordDuck);
+		duck.setEnabled(recordSoundLevel > 0 && recordVoice);
+		// (setProgress() doesn't call the listener when it's unchanged.)
+		levelLabel.setText(recordSoundLevel > 0
+				? getString(R.string.record_screen_sound_level, recordSoundLevel)
+				: getString(R.string.record_screen_sound_off));
 		new MaterialAlertDialogBuilder(this)
 				.setTitle(R.string.record_screen_title)
-				.setView(stopHint)
-				.setMultiChoiceItems(new CharSequence[]{
-						getString(R.string.record_screen_sound),
-						getString(R.string.record_screen_voice)
-				}, what, (dialog, which, checked) -> what[which] = checked)
+				.setView(view)
 				.setPositiveButton(R.string.record_screen_start, (dialog, which) -> {
-					recordSound = what[0];
-					recordVoice = what[1];
-					if ((recordSound || recordVoice) && ContextCompat.checkSelfPermission(this,
+					recordSoundLevel = level.getProgress();
+					recordVoice = voice.isChecked();
+					recordDuck = duck.isChecked();
+					if ((recordSoundLevel > 0 || recordVoice) && ContextCompat.checkSelfPermission(this,
 							Manifest.permission.RECORD_AUDIO) !=
 							PackageManager.PERMISSION_GRANTED) {
 						recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
@@ -2166,9 +2188,9 @@ public class MainActivity extends AppCompatActivity {
 	}
 
 	private void onRecordAudioPermission(boolean granted) {
-		if (!granted && (recordSound || recordVoice)) {
+		if (!granted && (recordSoundLevel > 0 || recordVoice)) {
 			Toast.makeText(this, R.string.record_screen_no_mic, Toast.LENGTH_LONG).show();
-			recordSound = false;
+			recordSoundLevel = 0;
 			recordVoice = false;
 		}
 		askToRecordScreen();
@@ -2188,7 +2210,7 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
-				recordSound, recordVoice);
+				recordSoundLevel / 100f, recordVoice, recordDuck);
 		// As onMediaProjectionResult(): the picker can leave something
 		// else in front.
 		try {

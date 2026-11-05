@@ -406,8 +406,10 @@
 	<string name="record_screen">Record Screen</string>
 	<string name="stop_recording">Stop Recording</string>
 	<string name="record_screen_title">Record the screen</string>
-	<string name="record_screen_sound">Sound (what\'s playing)</string>
+	<string name="record_screen_sound_level">Sound (what\'s playing): %1$d%%</string>
+	<string name="record_screen_sound_off">Sound (what\'s playing): off</string>
 	<string name="record_screen_voice">Voice (microphone)</string>
+	<string name="record_screen_duck">Lower the sound while I talk</string>
 	<string name="record_screen_stop_hint">Stop it with volume-down while Enki\'s in front, or from the notification or More Options.</string>
 	<string name="record_screen_start">Record</string>
 	<string name="record_screen_saved">Screen recording saved to Movies/Enki Shader Editor</string>

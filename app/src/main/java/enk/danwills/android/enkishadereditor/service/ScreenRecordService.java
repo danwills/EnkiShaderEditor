@@ -50,8 +50,9 @@ public class ScreenRecordService extends Service {
 	private static final String ACTION_STOP = "stop";
 	private static final String EXTRA_RESULT_CODE = "result_code";
 	private static final String EXTRA_DATA = "data";
-	private static final String EXTRA_SOUND = "sound";
+	private static final String EXTRA_SOUND_LEVEL = "sound_level";
 	private static final String EXTRA_VOICE = "voice";
+	private static final String EXTRA_DUCK = "duck";
 
 	private static volatile boolean recording;
 	// Told when a recording starts, on the main thread (MainActivity, so
@@ -74,14 +75,16 @@ public class ScreenRecordService extends Service {
 	}
 
 	// Starts recording with a MediaProjection consent's resultCode and
-	// data: sound, what's playing; voice, the microphone.
+	// data: soundLevel, what's playing (0 for none, 1 as it is); voice,
+	// the microphone; duck, lowering what's playing while the voice talks.
 	public static void start(@NonNull Context context, int resultCode, @NonNull Intent data,
-			boolean sound, boolean voice) {
+			float soundLevel, boolean voice, boolean duck) {
 		Intent intent = new Intent(context, ScreenRecordService.class)
 				.putExtra(EXTRA_RESULT_CODE, resultCode)
 				.putExtra(EXTRA_DATA, data)
-				.putExtra(EXTRA_SOUND, sound)
-				.putExtra(EXTRA_VOICE, voice);
+				.putExtra(EXTRA_SOUND_LEVEL, soundLevel)
+				.putExtra(EXTRA_VOICE, voice)
+				.putExtra(EXTRA_DUCK, duck);
 		recording = true;
 		try {
 			ContextCompat.startForegroundService(context, intent);
@@ -174,8 +177,9 @@ public class ScreenRecordService extends Service {
 	@RequiresApi(Build.VERSION_CODES.Q)
 	private void startRecorder(@NonNull Intent intent, @NonNull DisplayMetrics metrics) {
 		recorder = new ScreenRecorder(this, projection,
-				intent.getBooleanExtra(EXTRA_SOUND, true),
+				intent.getFloatExtra(EXTRA_SOUND_LEVEL, 1f),
 				intent.getBooleanExtra(EXTRA_VOICE, true),
+				intent.getBooleanExtra(EXTRA_DUCK, true),
 				this::onFinished);
 		if (!recorder.start(metrics.widthPixels, metrics.heightPixels, metrics.densityDpi)) {
 			recorder = null;
