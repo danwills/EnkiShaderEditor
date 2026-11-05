@@ -42,6 +42,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Choreographer;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -658,6 +659,12 @@ public class MainActivity extends AppCompatActivity {
 				ScreenRecordService.isRecording()) {
 			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
 				ScreenRecordService.stop(this);
+				// Felt, not seen: in fullscreen nothing drawn over the
+				// shader shows (the saved bar included).
+				getWindow().getDecorView().performHapticFeedback(
+						Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+								? HapticFeedbackConstants.CONFIRM
+								: HapticFeedbackConstants.LONG_PRESS);
 			}
 			return true;
 		}
