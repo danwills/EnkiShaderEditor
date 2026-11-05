@@ -67,6 +67,9 @@ final class BufferPass {
 	private GlProgram program;
 	private final GlFramebuffer[] framebuffers = new GlFramebuffer[2];
 	private final GlTexture2D[] textures = new GlTexture2D[2];
+	// See ensureCaptureTarget().
+	private GlTexture2D captureTexture;
+	private GlFramebuffer captureFramebuffer;
 	private int current;
 	@Nullable
 	private SourceText sourceTextTexture;
@@ -339,10 +342,11 @@ final class BufferPass {
 	}
 
 	// The most recently completed frame - what channels reading this
-	// buffer sample.
+	// buffer sample. While a capture has drawn it at its own size (see
+	// ensureCaptureTarget()), that.
 	@Nullable
 	GlTexture2D getCurrentTexture() {
-		return textures[current];
+		return captureTexture != null ? captureTexture : textures[current];
 	}
 
 	// The framebuffer holding getCurrentTexture(), for reading it back.
@@ -362,11 +366,65 @@ final class BufferPass {
 	}
 
 	int getWidth() {
-		return textures[current] != null ? textures[current].getWidth() : 0;
+		GlTexture2D texture = getCurrentTexture();
+		return texture != null ? texture.getWidth() : 0;
 	}
 
 	int getHeight() {
-		return textures[current] != null ? textures[current].getHeight() : 0;
+		GlTexture2D texture = getCurrentTexture();
+		return texture != null ? texture.getHeight() : 0;
+	}
+
+	// Bytes a pixel of its targets takes.
+	int bytesPerPixel() {
+		return float32 ? 16 : floatTargets ? 8 : 4;
+	}
+
+	// A single target of width x height, in the same format as its own,
+	// for a high-res capture to draw this pass into at the capture's size
+	// (see ShaderRenderer.renderCaptureBuffers()) - which channels then
+	// read in place of its live frame, until releaseCaptureTarget().
+	// False, with none made, if the GPU can't make it.
+	boolean ensureCaptureTarget(@NonNull GlDevice device, int width, int height) {
+		releaseCaptureTarget(device);
+		GlTexture2D texture = device.createTexture2D();
+		GlFramebuffer framebuffer = device.createFramebuffer();
+		if (float32) {
+			device.allocateTexture2DFloat(texture, width, height);
+		} else if (floatTargets) {
+			device.allocateTexture2DHalfFloat(texture, width, height);
+		} else {
+			device.allocateTexture2D(texture, width, height);
+		}
+		boolean outOfMemory = GLES20.glGetError() == GLES20.GL_OUT_OF_MEMORY;
+		device.applyTextureParameters(texture, new ChannelParameters());
+		device.attachColor(framebuffer, texture);
+		if (outOfMemory ||
+				device.checkFramebufferStatus(framebuffer) != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+			device.deleteFramebuffer(framebuffer);
+			device.deleteTexture(texture);
+			device.bindFramebuffer(null);
+			return false;
+		}
+		captureTexture = texture;
+		captureFramebuffer = framebuffer;
+		return true;
+	}
+
+	@Nullable
+	GlFramebuffer getCaptureFramebuffer() {
+		return captureFramebuffer;
+	}
+
+	void releaseCaptureTarget(@NonNull GlDevice device) {
+		if (captureFramebuffer != null) {
+			device.deleteFramebuffer(captureFramebuffer);
+			captureFramebuffer = null;
+		}
+		if (captureTexture != null) {
+			device.deleteTexture(captureTexture);
+			captureTexture = null;
+		}
 	}
 
 	void swap() {
@@ -480,6 +538,7 @@ final class BufferPass {
 	// alive.
 	void release(@NonNull GlDevice device) {
 		releaseTargets(device);
+		releaseCaptureTarget(device);
 		if (sourceTextTexture != null) {
 			sourceTextTexture.release(device);
 			sourceTextTexture = null;
@@ -494,6 +553,8 @@ final class BufferPass {
 			framebuffers[i] = null;
 			textures[i] = null;
 		}
+		captureTexture = null;
+		captureFramebuffer = null;
 		program = null;
 		sourceTextTexture = null;
 		current = 0;

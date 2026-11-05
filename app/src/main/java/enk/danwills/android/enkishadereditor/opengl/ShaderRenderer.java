@@ -2178,7 +2178,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			// At the live size, a buffer shader's capture is the live
 			// renderer's own completed frame. Any other size tiles the
 			// Image pass on its own (below), reading the buffers as they
-			// are - see HighResScreenshotCapture.capture()'s bindChannels.
+			// are - but for those renderCaptureBuffers() draws afresh at
+			// the capture's size.
 			byte[] png;
 			if (captureUpscaled) {
 				GlTexture2D frame = renderPipeline.getBackTexture();
@@ -2220,16 +2221,26 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// inflated render is exactly the kind of oversized single draw
 		// tiling exists to avoid, so it's never offered a shortcut
 		// around tiling regardless of bucket size.
-		var bitmap = HighResScreenshotCapture.capture(
-				useDevice, programManager, renderPipeline, builtinUniforms,
-				glVersion, width * oversample, height * oversample,
-				preserveBackbufferEdges, bucketSize, oversample == 1, tileOrder, innerListener,
-				innerTilePreviewListener, feedback,
-				hasBufferPasses()
-						? bindings -> bindChannels(bindings,
-								programManager.getPreparedShaderSource(),
-								programManager.getBufferPasses())
-						: null);
+		Bitmap bitmap;
+		if (hasBufferPasses()) {
+			renderCaptureBuffers(useDevice, width * oversample, height * oversample);
+		}
+		try {
+			bitmap = HighResScreenshotCapture.capture(
+					useDevice, programManager, renderPipeline, builtinUniforms,
+					glVersion, width * oversample, height * oversample,
+					preserveBackbufferEdges, bucketSize, oversample == 1, tileOrder, innerListener,
+					innerTilePreviewListener, feedback,
+					hasBufferPasses()
+							? bindings -> bindChannels(bindings,
+									programManager.getPreparedShaderSource(),
+									programManager.getBufferPasses())
+							: null);
+		} finally {
+			if (hasBufferPasses()) {
+				releaseCaptureBuffers(useDevice);
+			}
+		}
 		if (bitmap == null) {
 			return null;
 		}
@@ -2354,6 +2365,97 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// Rows per band for stepSimulationFrame() - kept between steps, so a
 	// sequence settles on its shader's speed after the first frame.
 	private int stepBandRows = 1;
+
+	// The most a capture's buffers drawn at its size (see
+	// renderCaptureBuffers()) may take, each - past it, one's drawn
+	// smaller.
+	private static final long CAPTURE_BUFFER_BYTES = 256L << 20;
+
+	// Whether a capture draws this buffer afresh at its own size: one the
+	// render's size sets, that starts from nothing every frame - no state
+	// rows, and nothing (a channel it samples, or `backbuffer`) reading
+	// its own last frame - a channel only declared (in Common, say, for
+	// every pass) doesn't count. A tracer or G-buffer pass, say, that a
+	// coarse preview drew
+	// at 1/8: read at that size by a bigger capture's Image pass, each of
+	// its pixels showed as a block.
+	private boolean redrawnForCapture(@NonNull BufferPass pass) {
+		var program = pass.getProgram();
+		if (program == null || pass.hasOwnSize() || pass.keepsState() ||
+				device.hasUniform(program, UNIFORM_BACKBUFFER)) {
+			return false;
+		}
+		for (int channel = 0; channel < ChannelParameters.MAX_CHANNELS; ++channel) {
+			var parameters = pass.prepared.getChannel(channel);
+			if (parameters != null && parameters.getBuffer() == pass.buffer &&
+					device.hasUniform(program, ChannelParameters.getChannelName(channel))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// Draws the buffers redrawnForCapture() picks, in chain order, at a
+	// width x height capture's size (or as near as the GPU's largest
+	// texture and CAPTURE_BUFFER_BYTES allow), each into a target of its
+	// own that later passes and the Image pass read until
+	// releaseCaptureBuffers(). The frame's uniforms are the capture's
+	// own, so this doesn't advance `frame`. One that can't be made or
+	// drawn keeps its live frame.
+	private void renderCaptureBuffers(@NonNull GlDevice useDevice, int width, int height) {
+		var passes = programManager.getBufferPasses();
+		var frame = builtinUniforms.beginFrame(useDevice, renderPipeline.getBackTexture());
+		if (frame == null) {
+			return;
+		}
+		if (maxTextureSize <= 0) {
+			maxTextureSize = useDevice.getMaxTextureSize();
+		}
+		var bindings = frame.bindings();
+		boolean stepping = programManager.getSteps() > 1;
+		int[] chunkSize = {32};
+		for (var pass : passes) {
+			if (!redrawnForCapture(pass)) {
+				continue;
+			}
+			double fit = Math.min(1.0, Math.min((double) maxTextureSize / width,
+					(double) maxTextureSize / height));
+			fit = Math.min(fit, Math.sqrt((double) CAPTURE_BUFFER_BYTES /
+					((double) width * height * pass.bytesPerPixel())));
+			int passWidth = Math.max(1, (int) (width * fit));
+			int passHeight = Math.max(1, (int) (height * fit));
+			if (!pass.ensureCaptureTarget(useDevice, passWidth, passHeight)) {
+				Log.w(TAG, "capture: no " + passWidth + "x" + passHeight + " target for Buffer " +
+						(char) ('A' + pass.buffer) + " - reading its live frame");
+				continue;
+			}
+			var program = pass.getProgram();
+			bindings.retarget(program);
+			bindChannels(bindings, pass.prepared, passes);
+			bindSourceText(bindings, program, pass.getSourceText(context, device, tabWidth()));
+			if (stepping) {
+				setStepFrame(bindings, programManager.getSteps() - 1);
+			}
+			builtinUniforms.bindPassResolution(bindings, passWidth, passHeight);
+			if (!HighResScreenshotCapture.drawPassInChunks(useDevice, pass.getCaptureFramebuffer(),
+					bindings, program, passWidth, passHeight, chunkSize)) {
+				pass.releaseCaptureTarget(useDevice);
+				break;
+			}
+			if (pass.buffer < bufferNeedsMipmaps.length && bufferNeedsMipmaps[pass.buffer]) {
+				useDevice.generateMipmap(pass.getCurrentTexture());
+			}
+			Log.d(TAG, "capture: Buffer " + (char) ('A' + pass.buffer) + " drawn at " +
+					passWidth + "x" + passHeight);
+		}
+		builtinUniforms.bindPassResolution(bindings, 0, 0);
+	}
+
+	private void releaseCaptureBuffers(@NonNull GlDevice useDevice) {
+		for (var pass : programManager.getBufferPasses()) {
+			pass.releaseCaptureTarget(useDevice);
+		}
+	}
 
 	// Whether width x height is the live render size - where a buffer
 	// shader's capture is the live frame (see captureHighResScreenshot()).
