@@ -66,8 +66,9 @@ public final class ScreenRecorder {
 	// Samples a channel per audio chunk: 20 ms.
 	private static final int CHUNK = RATE / 50;
 	private static final int AUDIO_BITRATE = 192_000;
-	// The voice, over what's playing.
-	private static final float VOICE_GAIN = 1.4f;
+	// The voice, over what's playing (the voice mode's own levelling
+	// already brings speech up to around -15 dB, peaking at full scale).
+	private static final float VOICE_GAIN = 1f;
 	private static final long TIMEOUT_US = 10_000;
 
 	private final Context context;
