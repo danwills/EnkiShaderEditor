@@ -990,3 +990,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - Take 6 (19.13.44, 33.8 s, -26.6 dB mean, peak -6.7 dB) pulled to ~/dev/shaderEditor/captures/rec-test/take6.mp4 and opened in mpv: "flamin sweet!"
 - "nah keep the recordings!": the four 18.42-18.47 test recordings stay in Movies/Enki Shader Editor.
 - Asked for a summary of what a release would contain: Record Screen (sound slider, voice, ducking with depth, volume-down stop, saved bar with View), the reacquire-system-audio fix and bars showing over the shader in fullscreen. New permission FOREGROUND_SERVICE_MICROPHONE needs a Play Console foreground-service declaration (a tutorial take can be the video). "let's make a release tomorrow, wrap up now": release prep (2.38.4 / 102, CHANGELOG, Play changelog, bundle) planned for 2026-11-06.
+
+## 2026-11-06
+
+- UltraIterator is sluggish on a friend's lesser phone (heightfield mode); "can we do more?" Read ~/dev/android/UltraIterator (read only, as it's outside this tree). Keep 30 only scales pixels (renderScale, ⅛ to full). In heightfield mode the mesh (2×192+2 cells a side, ~300k triangles, per layer drawn), MSAA, parallax/shadow steps and Sampling's counts don't shrink with it, and at the ⅛ floor nothing more happens. Proposed: a second adaptive stage stepping those down before the resolution gets blurry, first-run defaults by device, and getting the friend's phone model and UltraFps numbers (GPU vs CPU) first. Asked to work in that repo.
