@@ -994,3 +994,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 ## 2026-11-06
 
 - UltraIterator is sluggish on a friend's lesser phone (heightfield mode); "can we do more?" Read ~/dev/android/UltraIterator (read only, as it's outside this tree). Keep 30 only scales pixels (renderScale, ⅛ to full). In heightfield mode the mesh (2×192+2 cells a side, ~300k triangles, per layer drawn), MSAA, parallax/shadow steps and Sampling's counts don't shrink with it, and at the ⅛ floor nothing more happens. Proposed: a second adaptive stage stepping those down before the resolution gets blurry, first-run defaults by device, and getting the friend's phone model and UltraFps numbers (GPU vs CPU) first. Asked to work in that repo.
+- "wrong Claude!": the UltraIterator question was meant for that project's own chat. Nothing changed there; the findings above are only for reference.
