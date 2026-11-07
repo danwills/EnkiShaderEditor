@@ -7,9 +7,12 @@ import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -48,7 +51,9 @@ import java.util.Locale;
 // the voice; with both, the voice is mixed into both channels (and can go
 // in a second, mono audio track as well, for editing). Frames and
 // sound share one clock (System.nanoTime(), which the virtual display's
-// frames carry), so they stay in step. Runs on threads of its own.
+// frames carry), so they stay in step. The voice can be played back into
+// headphones as it's recorded, so the speaker hears themselves. Runs on
+// threads of its own.
 // Needs API 29 (playback capture, MediaStore paths) and, for any sound,
 // RECORD_AUDIO.
 @RequiresApi(Build.VERSION_CODES.Q)
@@ -112,6 +117,8 @@ public final class ScreenRecorder {
 	private final VoiceClarity clarity;
 	// The voice in a track of its own too, after the mix (with both).
 	private final boolean voiceTrack;
+	// The voice in headphones as it's recorded, 1 as it is, 0 for not.
+	private final float hearLevel;
 	private final boolean duck;
 	private final float duckLevel;
 	private final Listener listener;
@@ -124,6 +131,10 @@ public final class ScreenRecorder {
 	private VirtualDisplay display;
 	private AudioRecord playback;
 	private AudioRecord mic;
+	// Plays the voice back into headphones (hearLevel), if there are any.
+	@Nullable
+	private AudioTrack hear;
+	private short[] hearChunk;
 	private AcousticEchoCanceler echoCanceler;
 	private Muxer muxer;
 	private Uri uri;
@@ -146,10 +157,11 @@ public final class ScreenRecorder {
 	// all), 1 as it is; voice: the microphone; clarity: the voice
 	// cleaned up and levelled (VoiceClarity); voiceTrack: the voice in a
 	// second audio track too, for editing (only with what's playing as well);
+	// hearLevel: the voice played back into headphones, 0 for not;
 	// duckLevel: what's playing while the voice talks, 1 for no ducking.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
 			float soundLevel, boolean voice, boolean clarity, boolean voiceTrack,
-			float duckLevel, @NonNull Listener listener) {
+			float hearLevel, float duckLevel, @NonNull Listener listener) {
 		this.context = context.getApplicationContext();
 		this.projection = projection;
 		this.sound = soundLevel > 0;
@@ -157,6 +169,7 @@ public final class ScreenRecorder {
 		this.voice = voice;
 		this.clarity = voice && clarity ? new VoiceClarity() : null;
 		this.voiceTrack = voice && voiceTrack;
+		this.hearLevel = voice ? Math.min(1f, Math.max(0f, hearLevel)) : 0f;
 		this.duckLevel = Math.min(1f, Math.max(0f, duckLevel));
 		this.duck = this.duckLevel < 1f;
 		this.listener = listener;
@@ -194,6 +207,9 @@ public final class ScreenRecorder {
 				mic = micCapture();
 				if (mic != null && channels == 0) {
 					channels = 1;
+				}
+				if (mic != null && hearLevel > 0 && headphones()) {
+					hear = hearTrack();
 				}
 			}
 			if (channels > 0) {
@@ -245,6 +261,9 @@ public final class ScreenRecorder {
 				}
 				if (mic != null) {
 					mic.startRecording();
+					if (hear != null) {
+						hear.play();
+					}
 					if (playback != null) {
 						micThread = new Thread(this::listen, "record-voice");
 						micThread.start();
@@ -254,7 +273,8 @@ public final class ScreenRecorder {
 				audioThread.start();
 			}
 			Log.i(TAG, "recording " + size[0] + "x" + size[1] + (playback != null ? ", sound" : "") +
-					(mic != null ? ", voice" : "") + (voiceAudio != null ? ", voice track" : ""));
+					(mic != null ? ", voice" : "") + (voiceAudio != null ? ", voice track" : "") +
+					(hear != null ? ", heard" : ""));
 			return true;
 		} catch (IOException | RuntimeException e) {
 			Log.e(TAG, "couldn't start recording", e);
@@ -327,6 +347,15 @@ public final class ScreenRecorder {
 		}
 		playback = null;
 		mic = null;
+		if (hear != null) {
+			try {
+				hear.stop();
+			} catch (RuntimeException ignored) {
+				// Never started.
+			}
+			hear.release();
+			hear = null;
+		}
 		if (echoCanceler != null) {
 			echoCanceler.release();
 			echoCanceler = null;
@@ -462,6 +491,77 @@ public final class ScreenRecorder {
 		}
 	}
 
+	// Whether anything but the phone's own speaker is there to play into:
+	// the voice played back through a speaker would howl.
+	private boolean headphones() {
+		AudioManager manager = context.getSystemService(AudioManager.class);
+		if (manager == null) {
+			return false;
+		}
+		for (AudioDeviceInfo device : manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+			switch (device.getType()) {
+				case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+				case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+				case AudioDeviceInfo.TYPE_USB_HEADSET:
+				case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+				case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+					return true;
+				default:
+					if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+							device.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+						return true;
+					}
+			}
+		}
+		return false;
+	}
+
+	// Plays the voice back, as quickly as it can. As an assistant's speech:
+	// the playback capture doesn't take that usage, so it isn't recorded
+	// twice, and unlike voice-call usage it isn't what the voice mode's echo
+	// canceller takes out of the microphone.
+	@Nullable
+	private AudioTrack hearTrack() {
+		try {
+			AudioTrack track = new AudioTrack.Builder()
+					.setAudioAttributes(new AudioAttributes.Builder()
+							.setUsage(AudioAttributes.USAGE_ASSISTANT)
+							.setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+							.build())
+					.setAudioFormat(new AudioFormat.Builder()
+							.setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+							.setSampleRate(RATE)
+							.setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+							.build())
+					.setBufferSizeInBytes(Math.max(CHUNK * 2 * 2, AudioTrack.getMinBufferSize(
+							RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)))
+					.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+					.setTransferMode(AudioTrack.MODE_STREAM)
+					.build();
+			if (track.getState() == AudioTrack.STATE_INITIALIZED) {
+				hearChunk = new short[CHUNK];
+				return track;
+			}
+			track.release();
+		} catch (RuntimeException e) {
+			Log.w(TAG, "can't play the voice back", e);
+		}
+		return null;
+	}
+
+	// The voice's latest chunk into the headphones, never waiting: what
+	// doesn't fit is dropped rather than letting the delay grow.
+	private void hear(@NonNull short[] chunk, int n) {
+		if (hear == null) {
+			return;
+		}
+		n = Math.min(n, hearChunk.length);
+		for (int i = 0; i < n; ++i) {
+			hearChunk[i] = (short) (chunk[i] * hearLevel);
+		}
+		hear.write(hearChunk, 0, n, AudioTrack.WRITE_NON_BLOCKING);
+	}
+
 	// With what's playing too: the microphone, kept for encodeAudio() to
 	// mix in.
 	private void listen() {
@@ -474,6 +574,7 @@ public final class ScreenRecorder {
 			if (clarity != null) {
 				clarity.process(chunk, n);
 			}
+			hear(chunk, n);
 			synchronized (voiceRing) {
 				for (int i = 0; i < n; ++i) {
 					voiceRing[(voiceHead + voiceCount) % RATE] = chunk[i];
@@ -513,8 +614,11 @@ public final class ScreenRecorder {
 				if (n <= 0) {
 					continue;
 				}
-				if (!stereo && clarity != null) {
-					clarity.process(chunk, n);
+				if (!stereo) {
+					if (clarity != null) {
+						clarity.process(chunk, n);
+					}
+					hear(chunk, n);
 				}
 				int frames = n / channels;
 				if (stereo && micThread != null) {

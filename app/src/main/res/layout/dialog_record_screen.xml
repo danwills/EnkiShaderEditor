@@ -41,6 +41,21 @@
 		android:layout_marginStart="24dp"
 		android:text="@string/record_screen_voice_track"/>
 
+	<!-- The voice played back into headphones, percent. -->
+	<TextView
+		android:id="@+id/record_hear_level_label"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="32dp"
+		android:textAppearance="?attr/textAppearanceBodyMedium"/>
+
+	<SeekBar
+		android:id="@+id/record_hear_level"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="24dp"
+		android:max="100"/>
+
 	<CheckBox
 		android:id="@+id/record_duck"
 		android:layout_width="match_parent"

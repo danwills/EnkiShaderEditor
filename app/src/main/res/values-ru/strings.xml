@@ -411,6 +411,8 @@
 	<string name="record_screen_voice">Голос (микрофон)</string>
 	<string name="record_screen_voice_clarity">Чётче голос (эквалайзер и выравнивание)</string>
 	<string name="record_screen_voice_track">Голос ещё и отдельной дорожкой (для монтажа)</string>
+	<string name="record_screen_hear_level">Слышать себя в наушниках: %1$d%%</string>
+	<string name="record_screen_hear_off">Слышать себя в наушниках: выкл.</string>
 	<string name="record_screen_duck">Приглушать звук, когда я говорю</string>
 	<string name="record_screen_duck_depth">Тише на %1$d дБ</string>
 	<string name="record_screen_stop_hint">Остановить: кнопка уменьшения громкости, пока Enki на экране, уведомление или «Другие параметры».</string>
