@@ -76,12 +76,27 @@ public final class ScreenRecorder {
 	// so it doesn't pump between words, then comes back up over
 	// DUCK_RELEASE.
 	private static final double DUCK_THRESHOLD = 500;
-	// Clearer voice: a high shelf lifting the voice by PRESENCE_DB above
-	// about PRESENCE_HZ, where the consonants ("s", "t", "f") that make
-	// speech intelligible are, so a soft voice still cuts through the
-	// music.
+	// Clearer voice (VoiceClarity), so a soft, bassy voice cuts through
+	// the music: rumble and boom below LOW_CUT_HZ taken out, the mud
+	// round MUD_HZ dipped by MUD_DB, the consonants ("s", "t", "f") that
+	// make speech intelligible lifted by PRESENCE_DB above about
+	// PRESENCE_HZ; then levelled by its peaks (which the voice mode's own
+	// levelling already brings near full scale): over LEVEL_THRESHOLD_DB
+	// they're turned down LEVEL_RATIO times, and LEVEL_MAKEUP_DB brings
+	// everything back up so a full-scale peak comes out where it went in
+	// - the loud syllables stay put and the soft ones come up, by as much
+	// as the makeup - then softly limited above LIMIT.
+	private static final double LOW_CUT_HZ = 90;
+	private static final double MUD_HZ = 300;
+	private static final double MUD_DB = -4;
 	private static final double PRESENCE_HZ = 3000;
 	private static final double PRESENCE_DB = 9;
+	private static final double LEVEL_THRESHOLD_DB = -24;
+	private static final double LEVEL_RATIO = 3;
+	private static final double LEVEL_MAKEUP_DB = 14;
+	private static final double LEVEL_ATTACK_S = 0.005;
+	private static final double LEVEL_RELEASE_S = 0.15;
+	private static final double LIMIT = 0.7;
 	private static final int DUCK_HOLD = RATE * 3 / 10;
 	private static final int DUCK_RELEASE = RATE / 2;
 	private static final long TIMEOUT_US = 10_000;
@@ -93,7 +108,7 @@ public final class ScreenRecorder {
 	private final float soundLevel;
 	private final boolean voice;
 	@Nullable
-	private final Presence presence;
+	private final VoiceClarity clarity;
 	private final boolean duck;
 	private final float duckLevel;
 	private final Listener listener;
@@ -123,8 +138,8 @@ public final class ScreenRecorder {
 	private int voiceCount;
 
 	// soundLevel: what's playing, 0 for none (no playback capture at
-	// all), 1 as it is; voice: the microphone; clarity: its consonants
-	// lifted (Presence); duckLevel: what's playing while the voice
+	// all), 1 as it is; voice: the microphone; clarity: the voice
+	// cleaned up and levelled (VoiceClarity); duckLevel: what's playing while the voice
 	// talks, 1 for no ducking.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
 			float soundLevel, boolean voice, boolean clarity, float duckLevel,
@@ -134,7 +149,7 @@ public final class ScreenRecorder {
 		this.sound = soundLevel > 0;
 		this.soundLevel = Math.min(1f, Math.max(0f, soundLevel));
 		this.voice = voice;
-		this.presence = voice && clarity ? new Presence(PRESENCE_HZ, PRESENCE_DB) : null;
+		this.clarity = voice && clarity ? new VoiceClarity() : null;
 		this.duckLevel = Math.min(1f, Math.max(0f, duckLevel));
 		this.duck = this.duckLevel < 1f;
 		this.listener = listener;
@@ -434,8 +449,8 @@ public final class ScreenRecorder {
 			if (n <= 0) {
 				continue;
 			}
-			if (presence != null) {
-				presence.process(chunk, n);
+			if (clarity != null) {
+				clarity.process(chunk, n);
 			}
 			synchronized (voiceRing) {
 				for (int i = 0; i < n; ++i) {
@@ -473,8 +488,8 @@ public final class ScreenRecorder {
 				if (n <= 0) {
 					continue;
 				}
-				if (!stereo && presence != null) {
-					presence.process(chunk, n);
+				if (!stereo && clarity != null) {
+					clarity.process(chunk, n);
 				}
 				int frames = n / channels;
 				if (stereo && micThread != null) {
@@ -545,9 +560,43 @@ public final class ScreenRecorder {
 		return (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, sample));
 	}
 
-	// A high shelf (RBJ cookbook biquad, shelf slope 1) for the voice:
-	// gainDb above about hz, unchanged below. Mono, at RATE.
-	private static final class Presence {
+	// Clearer voice's chain (see LOW_CUT_HZ), mono, at RATE.
+	private static final class VoiceClarity {
+		private final Biquad lowCut = Biquad.highPass(LOW_CUT_HZ);
+		private final Biquad mud = Biquad.peaking(MUD_HZ, 1, MUD_DB);
+		private final Biquad presence = Biquad.highShelf(PRESENCE_HZ, PRESENCE_DB);
+		private final double threshold = Math.pow(10, LEVEL_THRESHOLD_DB / 20);
+		private final double makeup = Math.pow(10, LEVEL_MAKEUP_DB / 20);
+		private final double attack = 1 - Math.exp(-1 / (LEVEL_ATTACK_S * RATE));
+		private final double release = 1 - Math.exp(-1 / (LEVEL_RELEASE_S * RATE));
+		// The level the leveller follows, full scale 1.
+		private double envelope;
+
+		// Processes the first n samples in place.
+		void process(@NonNull short[] samples, int n) {
+			for (int i = 0; i < n; ++i) {
+				double x = samples[i] / 32768.0;
+				x = presence.process(mud.process(lowCut.process(x)));
+				double level = Math.abs(x);
+				envelope += (level - envelope) * (level > envelope ? attack : release);
+				double gain = makeup;
+				if (envelope > threshold) {
+					gain *= Math.pow(threshold / envelope, 1 - 1 / LEVEL_RATIO);
+				}
+				x *= gain;
+				// Soft limit: straight up to LIMIT, then easing towards 1.
+				double magnitude = Math.abs(x);
+				if (magnitude > LIMIT) {
+					x = Math.signum(x) * (LIMIT + (1 - LIMIT) *
+							Math.tanh((magnitude - LIMIT) / (1 - LIMIT)));
+				}
+				samples[i] = clip((int) Math.round(x * 32767));
+			}
+		}
+	}
+
+	// An RBJ cookbook biquad, at RATE.
+	private static final class Biquad {
 		private final double b0;
 		private final double b1;
 		private final double b2;
@@ -558,31 +607,54 @@ public final class ScreenRecorder {
 		private double y1;
 		private double y2;
 
-		Presence(double hz, double gainDb) {
+		private Biquad(double b0, double b1, double b2, double a0, double a1, double a2) {
+			this.b0 = b0 / a0;
+			this.b1 = b1 / a0;
+			this.b2 = b2 / a0;
+			this.a1 = a1 / a0;
+			this.a2 = a2 / a0;
+		}
+
+		// Butterworth (Q 0.707): nothing below hz.
+		static Biquad highPass(double hz) {
+			double w = 2 * Math.PI * hz / RATE;
+			double cos = Math.cos(w);
+			double alpha = Math.sin(w) / (2 * Math.sqrt(0.5));
+			return new Biquad((1 + cos) / 2, -(1 + cos), (1 + cos) / 2,
+					1 + alpha, -2 * cos, 1 - alpha);
+		}
+
+		// gainDb round hz, q wide.
+		static Biquad peaking(double hz, double q, double gainDb) {
 			double a = Math.pow(10, gainDb / 40);
 			double w = 2 * Math.PI * hz / RATE;
 			double cos = Math.cos(w);
-			double alpha = Math.sin(w) / 2 * Math.sqrt(2);
-			double root = 2 * Math.sqrt(a) * alpha;
-			double a0 = (a + 1) - (a - 1) * cos + root;
-			b0 = a * ((a + 1) + (a - 1) * cos + root) / a0;
-			b1 = -2 * a * ((a - 1) + (a + 1) * cos) / a0;
-			b2 = a * ((a + 1) + (a - 1) * cos - root) / a0;
-			a1 = 2 * ((a - 1) - (a + 1) * cos) / a0;
-			a2 = ((a + 1) - (a - 1) * cos - root) / a0;
+			double alpha = Math.sin(w) / (2 * q);
+			return new Biquad(1 + alpha * a, -2 * cos, 1 - alpha * a,
+					1 + alpha / a, -2 * cos, 1 - alpha / a);
 		}
 
-		// Filters the first n samples in place.
-		void process(@NonNull short[] samples, int n) {
-			for (int i = 0; i < n; ++i) {
-				double x = samples[i];
-				double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-				x2 = x1;
-				x1 = x;
-				y2 = y1;
-				y1 = y;
-				samples[i] = clip((int) Math.round(y));
-			}
+		// gainDb above about hz (shelf slope 1).
+		static Biquad highShelf(double hz, double gainDb) {
+			double a = Math.pow(10, gainDb / 40);
+			double w = 2 * Math.PI * hz / RATE;
+			double cos = Math.cos(w);
+			double root = 2 * Math.sqrt(a) * Math.sin(w) / 2 * Math.sqrt(2);
+			return new Biquad(a * ((a + 1) + (a - 1) * cos + root),
+					-2 * a * ((a - 1) + (a + 1) * cos),
+					a * ((a + 1) + (a - 1) * cos - root),
+					(a + 1) - (a - 1) * cos + root,
+					2 * ((a - 1) - (a + 1) * cos),
+					(a + 1) - (a - 1) * cos - root);
+		}
+
+		double process(double x) {
+			double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+			x2 = x1;
+			x1 = x;
+			y2 = y1;
+			y1 = y;
+			return y;
 		}
 	}
 
