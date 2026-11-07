@@ -995,3 +995,7 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 
 - UltraIterator is sluggish on a friend's lesser phone (heightfield mode); "can we do more?" Read ~/dev/android/UltraIterator (read only, as it's outside this tree). Keep 30 only scales pixels (renderScale, ⅛ to full). In heightfield mode the mesh (2×192+2 cells a side, ~300k triangles, per layer drawn), MSAA, parallax/shadow steps and Sampling's counts don't shrink with it, and at the ⅛ floor nothing more happens. Proposed: a second adaptive stage stepping those down before the resolution gets blurry, first-run defaults by device, and getting the friend's phone model and UltraFps numbers (GPU vs CPU) first. Asked to work in that repo.
 - "wrong Claude!": the UltraIterator question was meant for that project's own chat. Nothing changed there; the findings above are only for reference.
+
+## 2026-11-07
+
+- Release not ready yet. Asked for a list of what sets Enki apart from the original Shader Editor, for a demo video. Enki forked at upstream 2.36.3 (f534a689), so everything since is Enki's: from CHANGELOG 2.36.4-2.38.3, the coming 2.38.4 (Record Screen) and the commit history. Gave a grouped list ordered for a demo, with what to show for each.
