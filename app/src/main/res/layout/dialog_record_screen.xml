@@ -35,6 +35,13 @@
 		android:text="@string/record_screen_voice_clarity"/>
 
 	<CheckBox
+		android:id="@+id/record_voice_track"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="24dp"
+		android:text="@string/record_screen_voice_track"/>
+
+	<CheckBox
 		android:id="@+id/record_duck"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"

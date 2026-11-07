@@ -45,7 +45,8 @@ import java.util.Locale;
 // playback capture of what's playing (Enki's sound passes and music among
 // it), in stereo, and the microphone through the VOICE_COMMUNICATION
 // source, so the phone's echo canceller keeps the speaker's sound out of
-// the voice; with both, the voice is mixed into both channels. Frames and
+// the voice; with both, the voice is mixed into both channels (and can go
+// in a second, mono audio track as well, for editing). Frames and
 // sound share one clock (System.nanoTime(), which the virtual display's
 // frames carry), so they stay in step. Runs on threads of its own.
 // Needs API 29 (playback capture, MediaStore paths) and, for any sound,
@@ -109,12 +110,16 @@ public final class ScreenRecorder {
 	private final boolean voice;
 	@Nullable
 	private final VoiceClarity clarity;
+	// The voice in a track of its own too, after the mix (with both).
+	private final boolean voiceTrack;
 	private final boolean duck;
 	private final float duckLevel;
 	private final Listener listener;
 
 	private MediaCodec video;
 	private MediaCodec audio;
+	@Nullable
+	private MediaCodec voiceAudio;
 	private Surface inputSurface;
 	private VirtualDisplay display;
 	private AudioRecord playback;
@@ -139,17 +144,19 @@ public final class ScreenRecorder {
 
 	// soundLevel: what's playing, 0 for none (no playback capture at
 	// all), 1 as it is; voice: the microphone; clarity: the voice
-	// cleaned up and levelled (VoiceClarity); duckLevel: what's playing while the voice
-	// talks, 1 for no ducking.
+	// cleaned up and levelled (VoiceClarity); voiceTrack: the voice in a
+	// second audio track too, for editing (only with what's playing as well);
+	// duckLevel: what's playing while the voice talks, 1 for no ducking.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
-			float soundLevel, boolean voice, boolean clarity, float duckLevel,
-			@NonNull Listener listener) {
+			float soundLevel, boolean voice, boolean clarity, boolean voiceTrack,
+			float duckLevel, @NonNull Listener listener) {
 		this.context = context.getApplicationContext();
 		this.projection = projection;
 		this.sound = soundLevel > 0;
 		this.soundLevel = Math.min(1f, Math.max(0f, soundLevel));
 		this.voice = voice;
 		this.clarity = voice && clarity ? new VoiceClarity() : null;
+		this.voiceTrack = voice && voiceTrack;
 		this.duckLevel = Math.min(1f, Math.max(0f, duckLevel));
 		this.duck = this.duckLevel < 1f;
 		this.listener = listener;
@@ -190,14 +197,11 @@ public final class ScreenRecorder {
 				}
 			}
 			if (channels > 0) {
-				audio = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
-				MediaFormat audioFormat = MediaFormat.createAudioFormat(
-						MediaFormat.MIMETYPE_AUDIO_AAC, RATE, channels);
-				audioFormat.setInteger(MediaFormat.KEY_AAC_PROFILE,
-						MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-				audioFormat.setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE);
-				audioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, CHUNK * channels * 2 * 2);
-				audio.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+				audio = audioEncoder(channels);
+			}
+			// (With the voice alone, the mix is the voice already.)
+			if (voiceTrack && playback != null && mic != null) {
+				voiceAudio = audioEncoder(1);
 			}
 
 			String name = "Enki screen recording " + new SimpleDateFormat(
@@ -209,7 +213,8 @@ public final class ScreenRecorder {
 				throw new IOException("no file for the recording");
 			}
 			muxer = new Muxer(new MediaMuxer(fd.getFileDescriptor(),
-					MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4), audio != null ? 2 : 1);
+					MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4),
+					1 + (audio != null ? 1 : 0) + (voiceAudio != null ? 1 : 0));
 
 			callbackThread = new HandlerThread("record-projection");
 			callbackThread.start();
@@ -232,6 +237,9 @@ public final class ScreenRecorder {
 			videoThread.start();
 			if (audio != null) {
 				audio.start();
+				if (voiceAudio != null) {
+					voiceAudio.start();
+				}
 				if (playback != null) {
 					playback.startRecording();
 				}
@@ -246,7 +254,7 @@ public final class ScreenRecorder {
 				audioThread.start();
 			}
 			Log.i(TAG, "recording " + size[0] + "x" + size[1] + (playback != null ? ", sound" : "") +
-					(mic != null ? ", voice" : ""));
+					(mic != null ? ", voice" : "") + (voiceAudio != null ? ", voice track" : ""));
 			return true;
 		} catch (IOException | RuntimeException e) {
 			Log.e(TAG, "couldn't start recording", e);
@@ -323,7 +331,7 @@ public final class ScreenRecorder {
 			echoCanceler.release();
 			echoCanceler = null;
 		}
-		for (MediaCodec codec : new MediaCodec[]{video, audio}) {
+		for (MediaCodec codec : new MediaCodec[]{video, audio, voiceAudio}) {
 			if (codec != null) {
 				try {
 					codec.stop();
@@ -335,6 +343,7 @@ public final class ScreenRecorder {
 		}
 		video = null;
 		audio = null;
+		voiceAudio = null;
 		if (inputSurface != null) {
 			inputSurface.release();
 			inputSurface = null;
@@ -367,6 +376,19 @@ public final class ScreenRecorder {
 			context.getContentResolver().delete(uri, null, null);
 			uri = null;
 		}
+	}
+
+	@NonNull
+	private static MediaCodec audioEncoder(int channels) throws IOException {
+		MediaCodec codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
+		MediaFormat format = MediaFormat.createAudioFormat(
+				MediaFormat.MIMETYPE_AUDIO_AAC, RATE, channels);
+		format.setInteger(MediaFormat.KEY_AAC_PROFILE,
+				MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+		format.setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE);
+		format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, CHUNK * channels * 2 * 2);
+		codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+		return codec;
 	}
 
 	// The biggest size, down from the screen's own (16-pixel aligned),
@@ -471,12 +493,15 @@ public final class ScreenRecorder {
 		short[] chunk = new short[CHUNK * channels];
 		short[] voiceChunk = new short[CHUNK];
 		ByteBuffer bytes = ByteBuffer.allocate(chunk.length * 2).order(ByteOrder.nativeOrder());
+		ByteBuffer voiceBytes = ByteBuffer.allocate(CHUNK * 2).order(ByteOrder.nativeOrder());
+		int voiceFrames = 0;
 		long samples = 0;
 		long firstUs = -1;
 		// What's playing's gain from ducking, and how long it's held.
 		float duckGain = 1f;
 		int hold = 0;
 		MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+		MediaCodec.BufferInfo voiceInfo = new MediaCodec.BufferInfo();
 		boolean ended = false;
 		while (!ended) {
 			int n;
@@ -504,6 +529,7 @@ public final class ScreenRecorder {
 							voiceChunk[i] = 0;
 						}
 					}
+					voiceFrames = frames;
 					float from = duckGain;
 					if (duck) {
 						double sum = 0;
@@ -537,23 +563,43 @@ public final class ScreenRecorder {
 							(long) (n / channels) * 1_000_000 / RATE;
 				}
 			}
-			int index = audio.dequeueInputBuffer(TIMEOUT_US * 10);
-			if (index >= 0) {
-				ByteBuffer input = audio.getInputBuffer(index);
-				long us = Math.max(0, firstUs) + samples * 1_000_000 / RATE;
-				if (ended || input == null) {
-					audio.queueInputBuffer(index, 0, 0, us, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-				} else {
-					bytes.clear();
-					bytes.asShortBuffer().put(chunk, 0, n);
-					input.clear();
-					input.put(bytes.array(), 0, Math.min(n * 2, input.remaining()));
-					audio.queueInputBuffer(index, 0, n * 2, us, 0);
-					samples += n / channels;
+			long us = Math.max(0, firstUs) + samples * 1_000_000 / RATE;
+			if (queue(audio, bytes, chunk, n, us, ended)) {
+				samples += n / channels;
+				if (voiceAudio != null) {
+					// The voice as it went into the mix, at the same time.
+					queue(voiceAudio, voiceBytes, voiceChunk, voiceFrames, us, false);
 				}
 			}
+			if (ended && voiceAudio != null) {
+				queue(voiceAudio, voiceBytes, voiceChunk, 0, us, true);
+			}
 			drain(audio, info, ended);
+			if (voiceAudio != null) {
+				drain(voiceAudio, voiceInfo, ended);
+			}
 		}
+	}
+
+	// Gives codec n samples of pcm (by way of bytes) at us, or its end
+	// of stream; true if the samples went in.
+	private static boolean queue(@NonNull MediaCodec codec, @NonNull ByteBuffer bytes,
+			@NonNull short[] pcm, int n, long us, boolean ended) {
+		int index = codec.dequeueInputBuffer(TIMEOUT_US * 10);
+		if (index < 0) {
+			return false;
+		}
+		ByteBuffer input = codec.getInputBuffer(index);
+		if (ended || input == null) {
+			codec.queueInputBuffer(index, 0, 0, us, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+			return false;
+		}
+		bytes.clear();
+		bytes.asShortBuffer().put(pcm, 0, n);
+		input.clear();
+		input.put(bytes.array(), 0, Math.min(n * 2, input.remaining()));
+		codec.queueInputBuffer(index, 0, n * 2, us, 0);
+		return true;
 	}
 
 	private static short clip(int sample) {
@@ -668,6 +714,7 @@ public final class ScreenRecorder {
 	private void drain(@NonNull MediaCodec codec, @NonNull MediaCodec.BufferInfo info,
 			boolean toEnd) {
 		boolean isVideo = codec == video;
+		int kind = isVideo ? Muxer.VIDEO : codec == audio ? Muxer.MIX : Muxer.VOICE;
 		while (true) {
 			int index;
 			try {
@@ -682,7 +729,13 @@ public final class ScreenRecorder {
 				continue;
 			}
 			if (index == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-				muxer.addTrack(isVideo, codec.getOutputFormat());
+				muxer.addTrack(kind, codec.getOutputFormat());
+				// One thread drains both audio tracks: leave this one's
+				// samples till later rather than wait in write() for the other's
+				// format, which that wait would hold up.
+				if (!toEnd && !muxer.isStarted()) {
+					return;
+				}
 				continue;
 			}
 			if (index < 0) {
@@ -696,7 +749,7 @@ public final class ScreenRecorder {
 					info.presentationTimeUs -= startNanos / 1000;
 				}
 				if (info.presentationTimeUs >= 0) {
-					muxer.write(isVideo, output, info);
+					muxer.write(kind, output, info);
 				}
 			}
 			codec.releaseOutputBuffer(index, false);
@@ -716,40 +769,51 @@ public final class ScreenRecorder {
 		return resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
 	}
 
-	// A MediaMuxer started once every track's format is in; samples that
-	// come before that wait for it (briefly), and ones that come later
-	// keep their order per track.
+	// A MediaMuxer started once every track's format is in, adding them
+	// in a fixed order (video, mix, voice: players play the first audio
+	// track); samples that come before that wait for it (briefly), and
+	// ones that come later keep their order per track.
 	private static final class Muxer {
+		static final int VIDEO = 0;
+		static final int MIX = 1;
+		static final int VOICE = 2;
+
 		private final MediaMuxer muxer;
 		private final int tracks;
+		private final MediaFormat[] formats = new MediaFormat[3];
+		private final int[] track = {-1, -1, -1};
+		private final long[] lastUs = {-1, -1, -1};
 		private int added;
-		private int videoTrack = -1;
-		private int audioTrack = -1;
 		private boolean started;
 		private boolean wrote;
-		private long lastVideoUs = -1;
-		private long lastAudioUs = -1;
 
 		Muxer(@NonNull MediaMuxer muxer, int tracks) {
 			this.muxer = muxer;
 			this.tracks = tracks;
 		}
 
-		synchronized void addTrack(boolean isVideo, @NonNull MediaFormat format) {
-			int track = muxer.addTrack(format);
-			if (isVideo) {
-				videoTrack = track;
-			} else {
-				audioTrack = track;
+		synchronized void addTrack(int kind, @NonNull MediaFormat format) {
+			if (formats[kind] != null) {
+				return;
 			}
+			formats[kind] = format;
 			if (++added == tracks) {
+				for (int k = 0; k < formats.length; ++k) {
+					if (formats[k] != null) {
+						track[k] = muxer.addTrack(formats[k]);
+					}
+				}
 				muxer.start();
 				started = true;
 				notifyAll();
 			}
 		}
 
-		synchronized void write(boolean isVideo, @NonNull ByteBuffer data,
+		synchronized boolean isStarted() {
+			return started;
+		}
+
+		synchronized void write(int kind, @NonNull ByteBuffer data,
 				@NonNull MediaCodec.BufferInfo info) {
 			long deadline = System.currentTimeMillis() + 2000;
 			while (!started) {
@@ -764,18 +828,11 @@ public final class ScreenRecorder {
 					return;
 				}
 			}
-			if (isVideo) {
-				if (info.presentationTimeUs <= lastVideoUs) {
-					return;
-				}
-				lastVideoUs = info.presentationTimeUs;
-			} else {
-				if (info.presentationTimeUs <= lastAudioUs) {
-					return;
-				}
-				lastAudioUs = info.presentationTimeUs;
+			if (info.presentationTimeUs <= lastUs[kind]) {
+				return;
 			}
-			muxer.writeSampleData(isVideo ? videoTrack : audioTrack, data, info);
+			lastUs[kind] = info.presentationTimeUs;
+			muxer.writeSampleData(track[kind], data, info);
 			wrote = true;
 		}
 

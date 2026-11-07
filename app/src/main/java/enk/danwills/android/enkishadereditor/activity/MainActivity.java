@@ -212,6 +212,7 @@ public class MainActivity extends AppCompatActivity {
 	private static final String RECORD_SOUND_LEVEL = "record_screen_sound_level";
 	private static final String RECORD_VOICE = "record_screen_voice";
 	private static final String RECORD_CLARITY = "record_screen_voice_clarity";
+	private static final String RECORD_VOICE_TRACK = "record_screen_voice_track";
 	private static final String RECORD_DUCK = "record_screen_duck";
 	private static final String RECORD_DUCK_DB = "record_screen_duck_db";
 	private static final String CRASH_RECOVERY_COMMENT = """
@@ -339,6 +340,8 @@ public class MainActivity extends AppCompatActivity {
 	private boolean recordVoice;
 	// The voice's consonants lifted (ScreenRecorder's Presence).
 	private boolean recordClarity;
+	// The voice in a second audio track too, for editing.
+	private boolean recordVoiceTrack;
 	// Lower what's playing while the voice is talking, by this many dB.
 	private boolean recordDuck;
 	private int recordDuckDb;
@@ -2162,6 +2165,7 @@ public class MainActivity extends AppCompatActivity {
 		recordSoundLevel = prefs.getInt(RECORD_SOUND_LEVEL, 50);
 		recordVoice = prefs.getBoolean(RECORD_VOICE, true);
 		recordClarity = prefs.getBoolean(RECORD_CLARITY, true);
+		recordVoiceTrack = prefs.getBoolean(RECORD_VOICE_TRACK, false);
 		recordDuck = prefs.getBoolean(RECORD_DUCK, true);
 		recordDuckDb = prefs.getInt(RECORD_DUCK_DB, 9);
 		View view = getLayoutInflater().inflate(R.layout.dialog_record_screen, null);
@@ -2169,6 +2173,7 @@ public class MainActivity extends AppCompatActivity {
 		SeekBar level = view.findViewById(R.id.record_sound_level);
 		CheckBox voice = view.findViewById(R.id.record_voice);
 		CheckBox clarity = view.findViewById(R.id.record_voice_clarity);
+		CheckBox voiceTrack = view.findViewById(R.id.record_voice_track);
 		CheckBox duck = view.findViewById(R.id.record_duck);
 		TextView depthLabel = view.findViewById(R.id.record_duck_depth_label);
 		SeekBar depth = view.findViewById(R.id.record_duck_depth);
@@ -2176,6 +2181,7 @@ public class MainActivity extends AppCompatActivity {
 		Runnable enableDuck = () -> {
 			clarity.setEnabled(voice.isChecked());
 			boolean both = level.getProgress() > 0 && voice.isChecked();
+			voiceTrack.setEnabled(both);
 			duck.setEnabled(both);
 			depthLabel.setEnabled(both && duck.isChecked());
 			depth.setEnabled(both && duck.isChecked());
@@ -2216,6 +2222,7 @@ public class MainActivity extends AppCompatActivity {
 		level.setProgress(recordSoundLevel);
 		voice.setChecked(recordVoice);
 		clarity.setChecked(recordClarity);
+		voiceTrack.setChecked(recordVoiceTrack);
 		duck.setChecked(recordDuck);
 		depth.setProgress(recordDuckDb - 3);
 		depthLabel.setText(getString(R.string.record_screen_duck_depth, recordDuckDb));
@@ -2231,12 +2238,14 @@ public class MainActivity extends AppCompatActivity {
 					recordSoundLevel = level.getProgress();
 					recordVoice = voice.isChecked();
 					recordClarity = clarity.isChecked();
+					recordVoiceTrack = voiceTrack.isChecked();
 					recordDuck = duck.isChecked();
 					recordDuckDb = 3 + depth.getProgress();
 					prefs.edit()
 							.putInt(RECORD_SOUND_LEVEL, recordSoundLevel)
 							.putBoolean(RECORD_VOICE, recordVoice)
 							.putBoolean(RECORD_CLARITY, recordClarity)
+							.putBoolean(RECORD_VOICE_TRACK, recordVoiceTrack)
 							.putBoolean(RECORD_DUCK, recordDuck)
 							.putInt(RECORD_DUCK_DB, recordDuckDb)
 							.apply();
@@ -2311,7 +2320,7 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
-				recordSoundLevel / 100f, recordVoice, recordClarity,
+				recordSoundLevel / 100f, recordVoice, recordClarity, recordVoiceTrack,
 				recordDuck ? (float) Math.pow(10, -recordDuckDb / 20.0) : 1f);
 		// As onMediaProjectionResult(): the picker can leave something
 		// else in front.

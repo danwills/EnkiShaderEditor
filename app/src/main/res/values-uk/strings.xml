@@ -410,6 +410,7 @@
 	<string name="record_screen_sound_off">Звук (те, що грає): вимк.</string>
 	<string name="record_screen_voice">Голос (мікрофон)</string>
 	<string name="record_screen_voice_clarity">Чіткіший голос (еквалайзер і вирівнювання)</string>
+	<string name="record_screen_voice_track">Голос ще й окремою доріжкою (для монтажу)</string>
 	<string name="record_screen_duck">Приглушувати звук, коли я говорю</string>
 	<string name="record_screen_duck_depth">Тихіше на %1$d дБ</string>
 	<string name="record_screen_stop_hint">Зупинити: кнопка зменшення гучності, поки Enki на екрані, сповіщення або «Інші параметри».</string>
