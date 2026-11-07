@@ -718,7 +718,10 @@ public final class ScreenRecorder {
 		while (true) {
 			int index;
 			try {
-				index = codec.dequeueOutputBuffer(info, TIMEOUT_US);
+				// (Not waiting when it's only what's ready: the audio thread
+				// drains after every 20 ms chunk, two codecs with the voice
+				// track, and waiting there made it fall behind and lose sound.)
+				index = codec.dequeueOutputBuffer(info, toEnd ? TIMEOUT_US : 0);
 			} catch (IllegalStateException e) {
 				return;
 			}
