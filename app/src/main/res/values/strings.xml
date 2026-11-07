@@ -411,8 +411,6 @@
 	<string name="record_screen_voice">Voice (microphone)</string>
 	<string name="record_screen_voice_clarity">Clearer voice (EQ and levelling)</string>
 	<string name="record_screen_voice_track">Voice on its own track too (for editing)</string>
-	<string name="record_screen_hear_level">Hear yourself in headphones: %1$d%%</string>
-	<string name="record_screen_hear_off">Hear yourself in headphones: off</string>
 	<string name="record_screen_duck">Lower the sound while I talk</string>
 	<string name="record_screen_duck_depth">Down by %1$d dB</string>
 	<string name="record_screen_stop_hint">Stop it with volume-down while Enki\'s in front, or from the notification or More Options.</string>

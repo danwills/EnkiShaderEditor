@@ -403,8 +403,6 @@
 	<string name="record_screen_voice">语音（麦克风）</string>
 	<string name="record_screen_voice_clarity">更清晰的人声（均衡与电平控制）</string>
 	<string name="record_screen_voice_track">人声另存为单独音轨（便于剪辑）</string>
-	<string name="record_screen_hear_level">在耳机中听到自己：%1$d%%</string>
-	<string name="record_screen_hear_off">在耳机中听到自己：关</string>
 	<string name="record_screen_duck">我说话时降低声音</string>
 	<string name="record_screen_duck_depth">降低 %1$d dB</string>
 	<string name="record_screen_stop_hint">停止方式：在 Enki 前台时按音量减小键，或通过通知或“更多选项”。</string>
