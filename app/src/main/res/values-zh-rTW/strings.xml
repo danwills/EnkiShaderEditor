@@ -401,6 +401,7 @@
 	<string name="record_screen_sound_level">聲音（正在播放的內容）：%1$d%%</string>
 	<string name="record_screen_sound_off">聲音（正在播放的內容）：關</string>
 	<string name="record_screen_voice">語音（麥克風）</string>
+	<string name="record_screen_voice_clarity">更清晰的人聲（增強齒音）</string>
 	<string name="record_screen_duck">我說話時降低聲音</string>
 	<string name="record_screen_duck_depth">降低 %1$d dB</string>
 	<string name="record_screen_stop_hint">停止方式：在 Enki 前景時按音量減小鍵，或透過通知或「更多選項」。</string>

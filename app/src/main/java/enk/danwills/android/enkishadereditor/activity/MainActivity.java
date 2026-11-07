@@ -208,6 +208,12 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PAUSED_BEFORE_FULLSCREEN = "paused_before_fullscreen";
 	private static final String TOOLBAR_HIDDEN = "toolbar_hidden";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
+	// Record Screen's settings, as last used.
+	private static final String RECORD_SOUND_LEVEL = "record_screen_sound_level";
+	private static final String RECORD_VOICE = "record_screen_voice";
+	private static final String RECORD_CLARITY = "record_screen_voice_clarity";
+	private static final String RECORD_DUCK = "record_screen_duck";
+	private static final String RECORD_DUCK_DB = "record_screen_duck_db";
 	private static final String CRASH_RECOVERY_COMMENT = """
 			// Shader Editor disabled this shader because it caused a crash while loading.
 			// Fix the shader and remove the #if 0 wrapper to re-enable it.
@@ -326,12 +332,16 @@ public class MainActivity extends AppCompatActivity {
 	// Record Screen's (see recordScreen()).
 	private ActivityResultLauncher<Intent> screenRecordLauncher;
 	private ActivityResultLauncher<String> recordAudioPermissionLauncher;
-	// Percent of what's playing in the mix, 0 for none.
-	private int recordSoundLevel = 100;
-	private boolean recordVoice = true;
+	// Record Screen's settings, as last used (kept in the preferences -
+	// see recordScreen()). Percent of what's playing in the mix, 0 for
+	// none.
+	private int recordSoundLevel;
+	private boolean recordVoice;
+	// The voice's consonants lifted (ScreenRecorder's Presence).
+	private boolean recordClarity;
 	// Lower what's playing while the voice is talking, by this many dB.
-	private boolean recordDuck = true;
-	private int recordDuckDb = 9;
+	private boolean recordDuck;
+	private int recordDuckDb;
 	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
 	@Nullable
 	private LocalMusicPlayer localMusicPlayer;
@@ -2148,15 +2158,23 @@ public class MainActivity extends AppCompatActivity {
 			ScreenRecordService.stop(this);
 			return;
 		}
+		SharedPreferences prefs = ShaderEditorApp.preferences.getSharedPreferences();
+		recordSoundLevel = prefs.getInt(RECORD_SOUND_LEVEL, 50);
+		recordVoice = prefs.getBoolean(RECORD_VOICE, true);
+		recordClarity = prefs.getBoolean(RECORD_CLARITY, true);
+		recordDuck = prefs.getBoolean(RECORD_DUCK, true);
+		recordDuckDb = prefs.getInt(RECORD_DUCK_DB, 9);
 		View view = getLayoutInflater().inflate(R.layout.dialog_record_screen, null);
 		TextView levelLabel = view.findViewById(R.id.record_sound_level_label);
 		SeekBar level = view.findViewById(R.id.record_sound_level);
 		CheckBox voice = view.findViewById(R.id.record_voice);
+		CheckBox clarity = view.findViewById(R.id.record_voice_clarity);
 		CheckBox duck = view.findViewById(R.id.record_duck);
 		TextView depthLabel = view.findViewById(R.id.record_duck_depth_label);
 		SeekBar depth = view.findViewById(R.id.record_duck_depth);
 		// Ducking's settings, usable only with both sound and voice.
 		Runnable enableDuck = () -> {
+			clarity.setEnabled(voice.isChecked());
 			boolean both = level.getProgress() > 0 && voice.isChecked();
 			duck.setEnabled(both);
 			depthLabel.setEnabled(both && duck.isChecked());
@@ -2197,6 +2215,7 @@ public class MainActivity extends AppCompatActivity {
 		duck.setOnCheckedChangeListener((button, checked) -> enableDuck.run());
 		level.setProgress(recordSoundLevel);
 		voice.setChecked(recordVoice);
+		clarity.setChecked(recordClarity);
 		duck.setChecked(recordDuck);
 		depth.setProgress(recordDuckDb - 3);
 		depthLabel.setText(getString(R.string.record_screen_duck_depth, recordDuckDb));
@@ -2211,8 +2230,16 @@ public class MainActivity extends AppCompatActivity {
 				.setPositiveButton(R.string.record_screen_start, (dialog, which) -> {
 					recordSoundLevel = level.getProgress();
 					recordVoice = voice.isChecked();
+					recordClarity = clarity.isChecked();
 					recordDuck = duck.isChecked();
 					recordDuckDb = 3 + depth.getProgress();
+					prefs.edit()
+							.putInt(RECORD_SOUND_LEVEL, recordSoundLevel)
+							.putBoolean(RECORD_VOICE, recordVoice)
+							.putBoolean(RECORD_CLARITY, recordClarity)
+							.putBoolean(RECORD_DUCK, recordDuck)
+							.putInt(RECORD_DUCK_DB, recordDuckDb)
+							.apply();
 					if ((recordSoundLevel > 0 || recordVoice) && ContextCompat.checkSelfPermission(this,
 							Manifest.permission.RECORD_AUDIO) !=
 							PackageManager.PERMISSION_GRANTED) {
@@ -2284,7 +2311,7 @@ public class MainActivity extends AppCompatActivity {
 			return;
 		}
 		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
-				recordSoundLevel / 100f, recordVoice,
+				recordSoundLevel / 100f, recordVoice, recordClarity,
 				recordDuck ? (float) Math.pow(10, -recordDuckDb / 20.0) : 1f);
 		// As onMediaProjectionResult(): the picker can leave something
 		// else in front.

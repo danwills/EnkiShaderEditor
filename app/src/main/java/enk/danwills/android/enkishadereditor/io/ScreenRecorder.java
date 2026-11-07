@@ -76,6 +76,12 @@ public final class ScreenRecorder {
 	// so it doesn't pump between words, then comes back up over
 	// DUCK_RELEASE.
 	private static final double DUCK_THRESHOLD = 500;
+	// Clearer voice: a high shelf lifting the voice by PRESENCE_DB above
+	// about PRESENCE_HZ, where the consonants ("s", "t", "f") that make
+	// speech intelligible are, so a soft voice still cuts through the
+	// music.
+	private static final double PRESENCE_HZ = 3000;
+	private static final double PRESENCE_DB = 9;
 	private static final int DUCK_HOLD = RATE * 3 / 10;
 	private static final int DUCK_RELEASE = RATE / 2;
 	private static final long TIMEOUT_US = 10_000;
@@ -86,6 +92,8 @@ public final class ScreenRecorder {
 	// What's playing in the mix, 1 as it is.
 	private final float soundLevel;
 	private final boolean voice;
+	@Nullable
+	private final Presence presence;
 	private final boolean duck;
 	private final float duckLevel;
 	private final Listener listener;
@@ -115,15 +123,18 @@ public final class ScreenRecorder {
 	private int voiceCount;
 
 	// soundLevel: what's playing, 0 for none (no playback capture at
-	// all), 1 as it is; voice: the microphone; duckLevel: what's playing
-	// while the voice talks, 1 for no ducking.
+	// all), 1 as it is; voice: the microphone; clarity: its consonants
+	// lifted (Presence); duckLevel: what's playing while the voice
+	// talks, 1 for no ducking.
 	public ScreenRecorder(@NonNull Context context, @NonNull MediaProjection projection,
-			float soundLevel, boolean voice, float duckLevel, @NonNull Listener listener) {
+			float soundLevel, boolean voice, boolean clarity, float duckLevel,
+			@NonNull Listener listener) {
 		this.context = context.getApplicationContext();
 		this.projection = projection;
 		this.sound = soundLevel > 0;
 		this.soundLevel = Math.min(1f, Math.max(0f, soundLevel));
 		this.voice = voice;
+		this.presence = voice && clarity ? new Presence(PRESENCE_HZ, PRESENCE_DB) : null;
 		this.duckLevel = Math.min(1f, Math.max(0f, duckLevel));
 		this.duck = this.duckLevel < 1f;
 		this.listener = listener;
@@ -423,6 +434,9 @@ public final class ScreenRecorder {
 			if (n <= 0) {
 				continue;
 			}
+			if (presence != null) {
+				presence.process(chunk, n);
+			}
 			synchronized (voiceRing) {
 				for (int i = 0; i < n; ++i) {
 					voiceRing[(voiceHead + voiceCount) % RATE] = chunk[i];
@@ -458,6 +472,9 @@ public final class ScreenRecorder {
 				n = (stereo ? playback : mic).read(chunk, 0, chunk.length);
 				if (n <= 0) {
 					continue;
+				}
+				if (!stereo && presence != null) {
+					presence.process(chunk, n);
 				}
 				int frames = n / channels;
 				if (stereo && micThread != null) {
@@ -526,6 +543,47 @@ public final class ScreenRecorder {
 
 	private static short clip(int sample) {
 		return (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, sample));
+	}
+
+	// A high shelf (RBJ cookbook biquad, shelf slope 1) for the voice:
+	// gainDb above about hz, unchanged below. Mono, at RATE.
+	private static final class Presence {
+		private final double b0;
+		private final double b1;
+		private final double b2;
+		private final double a1;
+		private final double a2;
+		private double x1;
+		private double x2;
+		private double y1;
+		private double y2;
+
+		Presence(double hz, double gainDb) {
+			double a = Math.pow(10, gainDb / 40);
+			double w = 2 * Math.PI * hz / RATE;
+			double cos = Math.cos(w);
+			double alpha = Math.sin(w) / 2 * Math.sqrt(2);
+			double root = 2 * Math.sqrt(a) * alpha;
+			double a0 = (a + 1) - (a - 1) * cos + root;
+			b0 = a * ((a + 1) + (a - 1) * cos + root) / a0;
+			b1 = -2 * a * ((a - 1) + (a + 1) * cos) / a0;
+			b2 = a * ((a + 1) + (a - 1) * cos - root) / a0;
+			a1 = 2 * ((a - 1) - (a + 1) * cos) / a0;
+			a2 = ((a + 1) - (a - 1) * cos - root) / a0;
+		}
+
+		// Filters the first n samples in place.
+		void process(@NonNull short[] samples, int n) {
+			for (int i = 0; i < n; ++i) {
+				double x = samples[i];
+				double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+				x2 = x1;
+				x1 = x;
+				y2 = y1;
+				y1 = y;
+				samples[i] = clip((int) Math.round(y));
+			}
+		}
 	}
 
 	private void drainVideo() {
