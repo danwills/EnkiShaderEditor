@@ -7,9 +7,11 @@ import android.opengl.GLSurfaceView;
 import android.util.Log;
 import android.view.Choreographer;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -1340,7 +1342,22 @@ public class ShaderViewManager {
 		var names = new ArrayList<CharSequence>(Arrays.asList(
 				activity.getResources().getStringArray(R.array.quality_names)));
 		names.add(activity.getString(R.string.upscaling_menu));
-		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names);
+		// A wrap_content Spinner is as wide as its widest item's closed
+		// view, so Upscaling… (never shown closed - it reverts) is blank
+		// there: otherwise the button kept room for that word beside
+		// "1/4", and pushed the toolbar onto an extra row.
+		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names) {
+			@NonNull
+			@Override
+			public View getView(int position, @Nullable View convertView,
+					@NonNull ViewGroup parent) {
+				View view = super.getView(position, convertView, parent);
+				if (position >= qualityValues.length && view instanceof TextView text) {
+					text.setText("");
+				}
+				return view;
+			}
+		};
 		adapter.setDropDownViewResource(
 				android.R.layout.simple_spinner_dropdown_item);
 		qualitySpinner.setAdapter(adapter);
