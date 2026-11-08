@@ -192,9 +192,16 @@ final class HighResScreenshotCapture {
 	// MIN_CHUNK_SIZE piece so even the very first draw can't run long.
 	private static final long TARGET_CHUNK_MS = 125;
 	private static final int MIN_CHUNK_SIZE = 32;
-	// The most a piece may grow by from one to the next, so one quick
-	// (or mis-timed) piece can't leap straight to a huge one.
-	private static final int MAX_CHUNK_GROWTH = 4;
+	// The most a piece may grow by (on a side) from one to the next, so
+	// one quick (or mis-timed) piece can't leap straight to a huge one.
+	private static final int MAX_CHUNK_GROWTH = 2;
+	// The biggest piece, whatever the timing says: cost varies across an
+	// image too, and quick pieces over Outback Window's sky grew them to
+	// 1978x4240 before its terrain, where that one took 2.5s - a reset.
+	// At the slowest rate seen (about 1us a pixel) this takes ~0.3s.
+	private static final int MAX_CHUNK_SIZE = 512;
+	// A piece that took this long most likely ran into the driver's reset.
+	private static final long RESET_NANOS = 2_000_000_000L;
 	// The most pixels read back at once - see renderTiles(). 16MB of
 	// int per array; a full Max tile (2048 + margins) still fits in one.
 	private static final int READBACK_BAND_PIXELS = 4 << 20;
@@ -971,6 +978,14 @@ final class HighResScreenshotCapture {
 		if (isFatalGlError(GLES20.glGetError())) {
 			return false;
 		}
+		if (nanos >= RESET_NANOS) {
+			// Adreno resets the GPU without reporting GL_CONTEXT_LOST to a
+			// context that didn't ask for robustness: everything after it
+			// draws nothing, so the capture would come out black.
+			Log.e(TAG, "drawInChunks: a " + width + "x" + height + " draw took " +
+					nanos / 1_000_000 + "ms - taking it as a GPU reset");
+			return false;
+		}
 		chunkSize[0] = nextChunkSize(chunkSize[0], width, height, nanos, maxChunkSize);
 		return true;
 	}
@@ -984,7 +999,7 @@ final class HighResScreenshotCapture {
 		double nanosPerPixel = Math.max(1.0, nanos) / Math.max(1, width * height);
 		int ideal = (int) Math.sqrt(TARGET_CHUNK_MS * 1_000_000.0 / nanosPerPixel);
 		int next = Math.min(ideal, size * MAX_CHUNK_GROWTH);
-		next = Math.max(MIN_CHUNK_SIZE, Math.min(maxChunkSize, next));
+		next = Math.max(MIN_CHUNK_SIZE, Math.min(Math.min(MAX_CHUNK_SIZE, maxChunkSize), next));
 		if (next < size / 2) {
 			Log.w(TAG, "drawInChunks: a " + width + "x" + height + " draw took " +
 					nanos / 1_000_000 + "ms - drawing " + next + "px pieces from here on");

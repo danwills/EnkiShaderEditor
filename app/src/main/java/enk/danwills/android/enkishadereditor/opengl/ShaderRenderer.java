@@ -2232,8 +2232,12 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// tiling exists to avoid, so it's never offered a shortcut
 		// around tiling regardless of bucket size.
 		Bitmap bitmap;
-		if (hasBufferPasses()) {
-			renderCaptureBuffers(useDevice, width * oversample, height * oversample);
+		if (hasBufferPasses() &&
+				!renderCaptureBuffers(useDevice, width * oversample, height * oversample)) {
+			// A GPU reset: the context draws nothing (or leftovers) from
+			// here, so there's no image to make.
+			releaseCaptureBuffers(useDevice);
+			return null;
 		}
 		try {
 			bitmap = HighResScreenshotCapture.capture(
@@ -2410,24 +2414,27 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// texture and CAPTURE_BUFFER_BYTES allow), each into a target of its
 	// own that later passes and the Image pass read until
 	// releaseCaptureBuffers(). The frame's uniforms are the capture's
-	// own, so this doesn't advance `frame`. One that can't be made or
-	// drawn keeps its live frame.
-	private void renderCaptureBuffers(@NonNull GlDevice useDevice, int width, int height) {
+	// own, so this doesn't advance `frame`. One that can't be made keeps
+	// its live frame. False on a GPU reset, which ends the capture.
+	private boolean renderCaptureBuffers(@NonNull GlDevice useDevice, int width, int height) {
 		var passes = programManager.getBufferPasses();
 		var frame = builtinUniforms.beginFrame(useDevice, renderPipeline.getBackTexture());
 		if (frame == null) {
-			return;
+			return true;
 		}
 		if (maxTextureSize <= 0) {
 			maxTextureSize = useDevice.getMaxTextureSize();
 		}
 		var bindings = frame.bindings();
 		boolean stepping = programManager.getSteps() > 1;
-		int[] chunkSize = {32};
 		for (var pass : passes) {
 			if (!redrawnForCapture(pass)) {
 				continue;
 			}
+			// Each pass from a tiny piece: they cost very different amounts
+			// a pixel, so a size a cheap pass grew to could be far too big
+			// for a heavy one's first piece.
+			int[] chunkSize = {32};
 			double fit = Math.min(1.0, Math.min((double) maxTextureSize / width,
 					(double) maxTextureSize / height));
 			fit = Math.min(fit, Math.sqrt((double) CAPTURE_BUFFER_BYTES /
@@ -2449,8 +2456,9 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			builtinUniforms.bindPassResolution(bindings, passWidth, passHeight);
 			if (!HighResScreenshotCapture.drawPassInChunks(useDevice, pass.getCaptureFramebuffer(),
 					bindings, program, passWidth, passHeight, chunkSize)) {
-				pass.releaseCaptureTarget(useDevice);
-				break;
+				Log.e(TAG, "capture: GPU reset drawing Buffer " + (char) ('A' + pass.buffer));
+				builtinUniforms.bindPassResolution(bindings, 0, 0);
+				return false;
 			}
 			if (pass.buffer < bufferNeedsMipmaps.length && bufferNeedsMipmaps[pass.buffer]) {
 				useDevice.generateMipmap(pass.getCurrentTexture());
@@ -2459,6 +2467,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 					passWidth + "x" + passHeight);
 		}
 		builtinUniforms.bindPassResolution(bindings, 0, 0);
+		return true;
 	}
 
 	private void releaseCaptureBuffers(@NonNull GlDevice useDevice) {
