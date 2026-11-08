@@ -674,9 +674,10 @@ public class ShaderViewManager {
 	// the capture runs as a standalone GL-thread operation dispatched
 	// via queueEvent(), so it works the same whether playback is
 	// currently paused or not. progressListener (may be null) is called
-	// after every tile; each call also resets this method's own timeout,
-	// so an oversample factor large enough to make the *whole* capture
-	// take minutes doesn't get mistaken for a hang - only actually
+	// after every tile; each call (and each piece of a buffer pass,
+	// onWorking()) also resets this method's own timeout, so a capture
+	// that takes minutes - a big oversample, or a heavy buffer pass at
+	// 4x the screen - doesn't get mistaken for a hang; only actually
 	// making no progress for 60s does.
 	@Nullable
 	public byte[] takeHighResScreenshot(int width, int height, int oversample,
@@ -704,6 +705,13 @@ public class ShaderViewManager {
 			@Override
 			public boolean keepPartialOnStop() {
 				return progressListener != null && progressListener.keepPartialOnStop();
+			}
+
+			@Override
+			public void onWorking() {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
 			}
 		};
 		shaderView.queueEvent(() -> {
@@ -770,13 +778,25 @@ public class ShaderViewManager {
 		boolean[] doneHolder = new boolean[1];
 		boolean[] successHolder = new boolean[1];
 		long[] lastProgressMillis = {System.currentTimeMillis()};
-		ShaderRenderer.HighResProgressListener innerTileListener = (tilesDone, totalTiles) -> {
-			synchronized (lock) {
-				lastProgressMillis[0] = System.currentTimeMillis();
+		ShaderRenderer.HighResProgressListener innerTileListener = new ShaderRenderer.HighResProgressListener() {
+			@Override
+			public boolean onProgress(int tilesDone, int totalTiles) {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
+				boolean continueCapture = progressListener == null ||
+						progressListener.onProgress(tilesDone, totalTiles);
+				pacedProgressDelay();
+				return continueCapture;
 			}
-			boolean continueCapture = progressListener == null || progressListener.onProgress(tilesDone, totalTiles);
-			pacedProgressDelay();
-			return continueCapture;
+
+			// (A buffer pass's pieces, between tiles - see takeHighResScreenshot().)
+			@Override
+			public void onWorking() {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
+			}
 		};
 		ShaderRenderer.SequenceProgressListener innerSequenceListener = (skipping, stepIndex, totalSteps) -> {
 			synchronized (lock) {

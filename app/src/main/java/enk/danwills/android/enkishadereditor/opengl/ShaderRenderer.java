@@ -66,6 +66,11 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		default boolean keepPartialOnStop() {
 			return false;
 		}
+
+		// A piece of a buffer pass is done: no tile yet (a heavy pass at a
+		// big size can take minutes), but the capture's still going.
+		default void onWorking() {
+		}
 	}
 
 	// Reports one tile's actual rendered pixels as soon as it's read
@@ -2233,7 +2238,8 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 		// around tiling regardless of bucket size.
 		Bitmap bitmap;
 		if (hasBufferPasses() &&
-				!renderCaptureBuffers(useDevice, width * oversample, height * oversample)) {
+				!renderCaptureBuffers(useDevice, width * oversample, height * oversample,
+						progressListener == null ? null : progressListener::onWorking)) {
 			// A GPU reset: the context draws nothing (or leftovers) from
 			// here, so there's no image to make.
 			releaseCaptureBuffers(useDevice);
@@ -2415,8 +2421,10 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 	// own that later passes and the Image pass read until
 	// releaseCaptureBuffers(). The frame's uniforms are the capture's
 	// own, so this doesn't advance `frame`. One that can't be made keeps
-	// its live frame. False on a GPU reset, which ends the capture.
-	private boolean renderCaptureBuffers(@NonNull GlDevice useDevice, int width, int height) {
+	// its live frame. False on a GPU reset, which ends the capture. working
+	// hears after every piece drawn.
+	private boolean renderCaptureBuffers(@NonNull GlDevice useDevice, int width, int height,
+			@Nullable Runnable working) {
 		var passes = programManager.getBufferPasses();
 		var frame = builtinUniforms.beginFrame(useDevice, renderPipeline.getBackTexture());
 		if (frame == null) {
@@ -2455,7 +2463,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			}
 			builtinUniforms.bindPassResolution(bindings, passWidth, passHeight);
 			if (!HighResScreenshotCapture.drawPassInChunks(useDevice, pass.getCaptureFramebuffer(),
-					bindings, program, passWidth, passHeight, chunkSize)) {
+					bindings, program, passWidth, passHeight, chunkSize, working)) {
 				Log.e(TAG, "capture: GPU reset drawing Buffer " + (char) ('A' + pass.buffer));
 				builtinUniforms.bindPassResolution(bindings, 0, 0);
 				return false;

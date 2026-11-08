@@ -825,7 +825,7 @@ final class HighResScreenshotCapture {
 			device.clear(GLES20.GL_COLOR_BUFFER_BIT);
 			device.applyBindings(bindings);
 			boolean drawn = drawInChunks(device, fullScreenQuad, tileProgram,
-					drawX0, drawY0, drawW, drawH, chunkSize, tileContentSize + margin * 2);
+					drawX0, drawY0, drawW, drawH, chunkSize, tileContentSize + margin * 2, null);
 			device.disableScissor();
 			// Checked before the readback, every tile: a draw that hit
 			// the driver's per-draw deadline resets the GPU, after which
@@ -932,15 +932,16 @@ final class HighResScreenshotCapture {
 	// Draws program over the whole of framebuffer (width x height) in
 	// timed pieces, as the tiles are - for a buffer pass a capture draws
 	// at its own size (see ShaderRenderer.renderCaptureBuffers()).
-	// chunkSize[0] carries over between calls. False on a GPU reset.
+	// chunkSize[0] carries over between calls; working hears after every
+	// piece. False on a GPU reset.
 	static boolean drawPassInChunks(@NonNull GlDevice device, @NonNull GlFramebuffer framebuffer,
 			@NonNull ProgramBindings bindings, @NonNull GlProgram program, int width, int height,
-			@NonNull int[] chunkSize) {
+			@NonNull int[] chunkSize, @Nullable Runnable working) {
 		device.bindFramebuffer(framebuffer);
 		device.setViewport(0, 0, width, height);
 		device.applyBindings(bindings);
 		boolean drawn = drawInChunks(device, Mesh.fullScreenQuad(), program, 0, 0, width, height,
-				chunkSize, Math.max(width, height));
+				chunkSize, Math.max(width, height), working);
 		device.disableScissor();
 		device.bindFramebuffer(null);
 		return drawn;
@@ -955,20 +956,21 @@ final class HighResScreenshotCapture {
 	// GPU reset) means the capture should stop.
 	private static boolean drawInChunks(@NonNull GlDevice device, @NonNull Mesh quad,
 			@NonNull GlProgram program, int x0, int y0, int width, int height,
-			@NonNull int[] chunkSize, int maxChunkSize) {
+			@NonNull int[] chunkSize, int maxChunkSize, @Nullable Runnable working) {
 		if (width > chunkSize[0] || height > chunkSize[0]) {
 			// Split on even pixels, so 2x2 shading quads never straddle
 			// two pieces.
 			int halfW = width > chunkSize[0] ? (width / 2 + 1) & ~1 : width;
 			int halfH = height > chunkSize[0] ? (height / 2 + 1) & ~1 : height;
-			return drawInChunks(device, quad, program, x0, y0, halfW, halfH, chunkSize, maxChunkSize) &&
+			return drawInChunks(device, quad, program, x0, y0, halfW, halfH, chunkSize,
+					maxChunkSize, working) &&
 					(halfW >= width || drawInChunks(device, quad, program, x0 + halfW, y0,
-							width - halfW, halfH, chunkSize, maxChunkSize)) &&
+							width - halfW, halfH, chunkSize, maxChunkSize, working)) &&
 					(halfH >= height || drawInChunks(device, quad, program, x0, y0 + halfH,
-							halfW, height - halfH, chunkSize, maxChunkSize)) &&
+							halfW, height - halfH, chunkSize, maxChunkSize, working)) &&
 					(halfW >= width || halfH >= height || drawInChunks(device, quad, program,
 							x0 + halfW, y0 + halfH, width - halfW, height - halfH, chunkSize,
-							maxChunkSize));
+							maxChunkSize, working));
 		}
 		device.setScissor(x0, y0, width, height);
 		long start = System.nanoTime();
@@ -987,6 +989,9 @@ final class HighResScreenshotCapture {
 			return false;
 		}
 		chunkSize[0] = nextChunkSize(chunkSize[0], width, height, nanos, maxChunkSize);
+		if (working != null) {
+			working.run();
+		}
 		return true;
 	}
 
