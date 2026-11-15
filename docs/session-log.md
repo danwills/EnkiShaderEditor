@@ -1026,3 +1026,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - Dan: the 4x Outback capture seemed stuck at the compile step. It wasn't stuck: Buffer D took 2 min reporting no progress, and the 60 s no-progress timeout gave up ('timed out waiting for GL thread'). Fixed: buffer-pass pieces report onWorking(), which resets the timeout. Retest got to tile 288/300, then Dan opened Settings: leaving Enki mid-capture of a multipass shader blocks onPause on the busy GL thread, an ANR (existing bug, not yet fixed).
 - Retest, phone left alone: 4x Outback (5760x12352) rendered fine in 208 s, no GPU errors, Enki still running.
 - (A tester's notes on a pebble menu were meant for another session; nothing changed here.) Dan has installed untrunc; rescuing take-10.17-unfinished.mp4 is left for next time. He'll try a recording later today.
+
+## 2026-11-16
+
+- **"Did we look into my VTIs and come up with initial-state generators?"** Yes, this project: the vtipack work. The build is complete (1,635 of 1,635 unique files): 1,350 kept, 5.17 GB of saved states down to 123.5 MB (432 synthetic seeds, 384 patch seeds, 222 needing nothing, 312 8/16-bit copies), 285 left out. Curation: 31 packs, 579 patterns.
+- **"Pass the work-to-date to another Claude?"** Wrote `~/dev/shaderEditor/vtipack/HANDOFF.md` (where it stands, Dan's rules, files, commands, what's next, gotchas) and a memory entry pointing to it.
