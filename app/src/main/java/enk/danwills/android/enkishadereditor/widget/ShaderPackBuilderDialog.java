@@ -95,11 +95,37 @@ public final class ShaderPackBuilderDialog {
 		open(activity, preselected, suggestedTitle, picker, null);
 	}
 
-	// From the menu: the open shader (if any) starts ticked, along with
-	// the last save's.
+	// From the menu: if the open shader is in the last save, that pack
+	// comes back with it; otherwise a new pack is started from the open
+	// shader alone, named after it without its version number ("Floating
+	// Land v24" -> "Floating Land").
 	public static void show(@NonNull Activity activity, long openShaderId,
 			@Nullable Host picker) {
-		open(activity, openShaderId > 0 ? List.of(openShaderId) : List.of(), null, picker, null);
+		if (openShaderId <= 0 || activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+				.getStringSet(KEY_SHADERS, Set.of()).contains(String.valueOf(openShaderId))) {
+			open(activity, openShaderId > 0 ? List.of(openShaderId) : List.of(), null,
+					picker, null);
+			return;
+		}
+		open(activity, List.of(openShaderId), OPEN_SHADER_TITLE, picker, null);
+	}
+
+	// open()'s suggestedTitle for the open shader's own name, looked up
+	// with the rest.
+	private static final String OPEN_SHADER_TITLE = "\u0000open";
+
+	@NonNull
+	private static String seriesTitle(@NonNull DataRecords.ShaderInfo shader) {
+		String title = shader.getTitle();
+		if (title == null) {
+			return "";
+		}
+		int separator = title.indexOf(DataRecords.ShaderInfo.PACK_NAME_SEPARATOR);
+		if (shader.isFromPack() && separator >= 0) {
+			title = title.substring(separator + DataRecords.ShaderInfo.PACK_NAME_SEPARATOR.length());
+		}
+		String series = title.replaceFirst("[\\s_-]*[vV]?[0-9]+$", "").trim();
+		return series.isEmpty() ? title : series;
 	}
 
 	// Edit Pack: an installed pack's details, settings and shaders filled
@@ -131,6 +157,16 @@ public final class ShaderPackBuilderDialog {
 			}
 			Preset editing = preset;
 			List<DataRecords.ShaderInfo> shaders = dataSource.shader.getShaders(false);
+			String title = suggestedTitle;
+			if (OPEN_SHADER_TITLE.equals(title)) {
+				title = null;
+				for (var shader : shaders) {
+					if (preselected.contains(shader.id())) {
+						title = seriesTitle(shader);
+					}
+				}
+			}
+			String suggested = title;
 			var soundtracks = soundtrackChoices(activity, dataSource, shaders);
 			if (picker != null) {
 				soundtracks.add(new Soundtrack(activity.getString(R.string.pack_show_choose_module),
@@ -139,7 +175,7 @@ public final class ShaderPackBuilderDialog {
 			activity.runOnUiThread(() -> {
 				if (!activity.isFinishing() && !activity.isDestroyed()) {
 					showDialog(activity, shaders, new LinkedHashSet<>(preselected),
-							suggestedTitle, soundtracks, picker, editing, installedVersions);
+							suggested, soundtracks, picker, editing, installedVersions);
 				}
 			});
 		}).start();
