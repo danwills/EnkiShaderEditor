@@ -1,5 +1,6 @@
 package enk.danwills.android.enkishadereditor.activity;
 
+import android.Manifest;
 import android.animation.ValueAnimator;
 import android.app.ActivityManager;
 import android.app.WallpaperManager;
@@ -13,6 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -40,6 +42,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Choreographer;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -167,6 +170,7 @@ import enk.danwills.android.enkishadereditor.opengl.TileRenderOrder;
 import enk.danwills.android.enkishadereditor.opengl.Upscaling;
 import enk.danwills.android.enkishadereditor.preference.Preferences;
 import enk.danwills.android.enkishadereditor.service.AudioCaptureForegroundService;
+import enk.danwills.android.enkishadereditor.service.ScreenRecordService;
 import enk.danwills.android.enkishadereditor.service.HighResCaptureService;
 import enk.danwills.android.enkishadereditor.service.ShaderWallpaperService;
 import enk.danwills.android.enkishadereditor.service.TileSizeProber;
@@ -204,6 +208,13 @@ public class MainActivity extends AppCompatActivity {
 	private static final String PAUSED_BEFORE_FULLSCREEN = "paused_before_fullscreen";
 	private static final String TOOLBAR_HIDDEN = "toolbar_hidden";
 	private static final String AUDIO_CAPTURE_TAG = "AudioCapture";
+	// Record Screen's settings, as last used.
+	private static final String RECORD_SOUND_LEVEL = "record_screen_sound_level";
+	private static final String RECORD_VOICE = "record_screen_voice";
+	private static final String RECORD_CLARITY = "record_screen_voice_clarity";
+	private static final String RECORD_VOICE_TRACK = "record_screen_voice_track";
+	private static final String RECORD_DUCK = "record_screen_duck";
+	private static final String RECORD_DUCK_DB = "record_screen_duck_db";
 	private static final String CRASH_RECOVERY_COMMENT = """
 			// Shader Editor disabled this shader because it caused a crash while loading.
 			// Fix the shader and remove the #if 0 wrapper to re-enable it.
@@ -319,6 +330,21 @@ public class MainActivity extends AppCompatActivity {
 	private int trackedFindMatchStart = -1;
 	private int trackedFindMatchLength = 0;
 	private ActivityResultLauncher<Intent> mediaProjectionLauncher;
+	// Record Screen's (see recordScreen()).
+	private ActivityResultLauncher<Intent> screenRecordLauncher;
+	private ActivityResultLauncher<String> recordAudioPermissionLauncher;
+	// Record Screen's settings, as last used (kept in the preferences -
+	// see recordScreen()). Percent of what's playing in the mix, 0 for
+	// none.
+	private int recordSoundLevel;
+	private boolean recordVoice;
+	// The voice's consonants lifted (ScreenRecorder's Presence).
+	private boolean recordClarity;
+	// The voice in a second audio track too, for editing.
+	private boolean recordVoiceTrack;
+	// Lower what's playing while the voice is talking, by this many dB.
+	private boolean recordDuck;
+	private int recordDuckDb;
 	private ActivityResultLauncher<Uri> localMusicDirectoryLauncher;
 	@Nullable
 	private LocalMusicPlayer localMusicPlayer;
@@ -369,6 +395,12 @@ public class MainActivity extends AppCompatActivity {
 		mediaProjectionLauncher = registerForActivityResult(
 				new ActivityResultContracts.StartActivityForResult(),
 				this::onMediaProjectionResult);
+		screenRecordLauncher = registerForActivityResult(
+				new ActivityResultContracts.StartActivityForResult(),
+				this::onScreenRecordConsent);
+		recordAudioPermissionLauncher = registerForActivityResult(
+				new ActivityResultContracts.RequestPermission(),
+				this::onRecordAudioPermission);
 		localMusicDirectoryLauncher = registerForActivityResult(
 				new ActivityResultContracts.OpenDocumentTree(),
 				this::onLocalMusicDirectoryPicked);
@@ -395,6 +427,9 @@ public class MainActivity extends AppCompatActivity {
 				qualitySpinnerView,
 				dataSource,
 				createShaderViewListener());
+		// Record Screen stops the projection system audio had: carry on
+		// with the recording's (see SharedProjection).
+		ScreenRecordService.setOnRecordingStarted(shaderViewManager::onRecordingStarted);
 		audioPreferenceListener = (preferences, key) -> {
 			if (Preferences.USE_SYSTEM_AUDIO.equals(key) ||
 					Preferences.USE_OWN_SOUND_AUDIO.equals(key)) {
@@ -630,6 +665,22 @@ public class MainActivity extends AppCompatActivity {
 	// handling).
 	@Override
 	public boolean dispatchKeyEvent(@NonNull KeyEvent event) {
+		// Volume-down stops Record Screen: a button on screen would be in
+		// the recording (Android can't keep a window out of it).
+		if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN &&
+				Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+				ScreenRecordService.isRecording()) {
+			if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+				ScreenRecordService.stop(this);
+				// Felt, not seen: in fullscreen nothing drawn over the
+				// shader shows (the saved bar included).
+				getWindow().getDecorView().performHapticFeedback(
+						Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+								? HapticFeedbackConstants.CONFIRM
+								: HapticFeedbackConstants.LONG_PRESS);
+			}
+			return true;
+		}
 		if (sendKeyToShader(event)) {
 			return true;
 		}
@@ -907,7 +958,7 @@ public class MainActivity extends AppCompatActivity {
 			text.setCompoundDrawablePadding(dpToPx(8));
 			text.setMaxLines(4);
 		}
-		snackbar.show();
+		showOverShader(snackbar);
 	}
 
 	private boolean sendKeyToShader(@NonNull KeyEvent event) {
@@ -1358,6 +1409,9 @@ public class MainActivity extends AppCompatActivity {
 	protected void onResume() {
 		super.onResume();
 		activityResumed = true;
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			ScreenRecordService.setSavedListener(this::showRecordingSaved);
+		}
 		// A HighResCaptureService capture that finished while this
 		// Activity wasn't in the foreground couldn't safely show its
 		// result then (a Toast posted from a backgrounded/cached process
@@ -1394,6 +1448,7 @@ public class MainActivity extends AppCompatActivity {
 
 	@Override
 	protected void onPause() {
+		ScreenRecordService.setSavedListener(null);
 		shaderViewManager.getKeyboardInput().releaseAll();
 		if (ShaderEditorApp.preferences.autoSave()) {
 			shaderManager.saveShader();
@@ -1430,6 +1485,7 @@ public class MainActivity extends AppCompatActivity {
 			shaderListManager.destroy();
 		}
 		if (shaderViewManager != null) {
+			ScreenRecordService.setOnRecordingStarted(null);
 			shaderViewManager.destroy();
 		}
 		if (audioPreferenceListener != null) {
@@ -1857,7 +1913,7 @@ public class MainActivity extends AppCompatActivity {
 					text.setCompoundDrawables(icon, null, null, null);
 					text.setCompoundDrawablePadding(dpToPx(8));
 				}
-				snackbar.show();
+				showOverShader(snackbar);
 			}
 		};
 	}
@@ -2080,7 +2136,200 @@ public class MainActivity extends AppCompatActivity {
 			public void onPlayLocalMusic() {
 				openLocalMusicPlayer();
 			}
+
+			@Override
+			public void onRecordScreen() {
+				recordScreen();
+			}
+
+			@Override
+			public boolean isRecordingScreen() {
+				return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+						ScreenRecordService.isRecording();
+			}
 		};
+	}
+
+	// More Options' Record Screen: stops a recording, or asks what to
+	// record (sound, voice), then for the microphone if that needs it,
+	// then for the screen - see onScreenRecordConsent().
+	private void recordScreen() {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+			return;
+		}
+		if (ScreenRecordService.isRecording()) {
+			ScreenRecordService.stop(this);
+			return;
+		}
+		SharedPreferences prefs = ShaderEditorApp.preferences.getSharedPreferences();
+		recordSoundLevel = prefs.getInt(RECORD_SOUND_LEVEL, 50);
+		recordVoice = prefs.getBoolean(RECORD_VOICE, true);
+		recordClarity = prefs.getBoolean(RECORD_CLARITY, true);
+		recordVoiceTrack = prefs.getBoolean(RECORD_VOICE_TRACK, false);
+		recordDuck = prefs.getBoolean(RECORD_DUCK, true);
+		recordDuckDb = prefs.getInt(RECORD_DUCK_DB, 9);
+		View view = getLayoutInflater().inflate(R.layout.dialog_record_screen, null);
+		TextView levelLabel = view.findViewById(R.id.record_sound_level_label);
+		SeekBar level = view.findViewById(R.id.record_sound_level);
+		CheckBox voice = view.findViewById(R.id.record_voice);
+		CheckBox clarity = view.findViewById(R.id.record_voice_clarity);
+		CheckBox voiceTrack = view.findViewById(R.id.record_voice_track);
+		CheckBox duck = view.findViewById(R.id.record_duck);
+		TextView depthLabel = view.findViewById(R.id.record_duck_depth_label);
+		SeekBar depth = view.findViewById(R.id.record_duck_depth);
+		// Ducking's settings, usable only with both sound and voice.
+		Runnable enableDuck = () -> {
+			clarity.setEnabled(voice.isChecked());
+			boolean both = level.getProgress() > 0 && voice.isChecked();
+			voiceTrack.setEnabled(both);
+			duck.setEnabled(both);
+			depthLabel.setEnabled(both && duck.isChecked());
+			depth.setEnabled(both && duck.isChecked());
+		};
+		depth.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				depthLabel.setText(getString(R.string.record_screen_duck_depth, 3 + progress));
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		});
+		level.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				levelLabel.setText(progress > 0
+						? getString(R.string.record_screen_sound_level, progress)
+						: getString(R.string.record_screen_sound_off));
+				enableDuck.run();
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar seekBar) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+			}
+		});
+		voice.setOnCheckedChangeListener((button, checked) -> enableDuck.run());
+		duck.setOnCheckedChangeListener((button, checked) -> enableDuck.run());
+		level.setProgress(recordSoundLevel);
+		voice.setChecked(recordVoice);
+		clarity.setChecked(recordClarity);
+		voiceTrack.setChecked(recordVoiceTrack);
+		duck.setChecked(recordDuck);
+		depth.setProgress(recordDuckDb - 3);
+		depthLabel.setText(getString(R.string.record_screen_duck_depth, recordDuckDb));
+		enableDuck.run();
+		// (setProgress() doesn't call the listener when it's unchanged.)
+		levelLabel.setText(recordSoundLevel > 0
+				? getString(R.string.record_screen_sound_level, recordSoundLevel)
+				: getString(R.string.record_screen_sound_off));
+		new MaterialAlertDialogBuilder(this)
+				.setTitle(R.string.record_screen_title)
+				.setView(view)
+				.setPositiveButton(R.string.record_screen_start, (dialog, which) -> {
+					recordSoundLevel = level.getProgress();
+					recordVoice = voice.isChecked();
+					recordClarity = clarity.isChecked();
+					recordVoiceTrack = voiceTrack.isChecked();
+					recordDuck = duck.isChecked();
+					recordDuckDb = 3 + depth.getProgress();
+					prefs.edit()
+							.putInt(RECORD_SOUND_LEVEL, recordSoundLevel)
+							.putBoolean(RECORD_VOICE, recordVoice)
+							.putBoolean(RECORD_CLARITY, recordClarity)
+							.putBoolean(RECORD_VOICE_TRACK, recordVoiceTrack)
+							.putBoolean(RECORD_DUCK, recordDuck)
+							.putInt(RECORD_DUCK_DB, recordDuckDb)
+							.apply();
+					if ((recordSoundLevel > 0 || recordVoice) && ContextCompat.checkSelfPermission(this,
+							Manifest.permission.RECORD_AUDIO) !=
+							PackageManager.PERMISSION_GRANTED) {
+						recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO);
+					} else {
+						askToRecordScreen();
+					}
+				})
+				.setNegativeButton(android.R.string.cancel, null)
+				.show();
+	}
+
+	// Shows bar where it can be seen over the shader. The window leaves
+	// out what it last counted as transparent over the preview (a
+	// SurfaceView), and a bar sliding in from below the screen isn't
+	// counted: in fullscreen, where nearly all of the window is preview,
+	// a bar never showed. So it's recounted once the bar's in place.
+	private void showOverShader(@NonNull Snackbar bar) {
+		bar.addCallback(new Snackbar.Callback() {
+			@Override
+			public void onShown(Snackbar shown) {
+				View preview = findViewById(R.id.preview);
+				if (preview.getParent() instanceof ViewGroup parent) {
+					parent.requestTransparentRegion(preview);
+				}
+			}
+		});
+		bar.show();
+	}
+
+	// Record Screen's "saved", as a bar with View - the service's toast
+	// went unnoticed.
+	private boolean showRecordingSaved(@NonNull Uri uri) {
+		showOverShader(Snackbar.make(findViewById(R.id.main_coordinator),
+				R.string.record_screen_saved, 6000)
+				.setAction(R.string.record_screen_view, v -> {
+					try {
+						startActivity(new Intent(Intent.ACTION_VIEW)
+								.setDataAndType(uri, "video/mp4")
+								.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+					} catch (ActivityNotFoundException e) {
+						Toast.makeText(this, R.string.record_screen_saved,
+								Toast.LENGTH_LONG).show();
+					}
+				}));
+		return true;
+	}
+
+	private void onRecordAudioPermission(boolean granted) {
+		if (!granted && (recordSoundLevel > 0 || recordVoice)) {
+			Toast.makeText(this, R.string.record_screen_no_mic, Toast.LENGTH_LONG).show();
+			recordSoundLevel = 0;
+			recordVoice = false;
+		}
+		askToRecordScreen();
+	}
+
+	private void askToRecordScreen() {
+		MediaProjectionManager projectionManager =
+				getSystemService(MediaProjectionManager.class);
+		if (projectionManager != null) {
+			screenRecordLauncher.launch(projectionManager.createScreenCaptureIntent());
+		}
+	}
+
+	private void onScreenRecordConsent(ActivityResult result) {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+				result.getResultCode() != RESULT_OK || result.getData() == null) {
+			return;
+		}
+		ScreenRecordService.start(this, result.getResultCode(), result.getData(),
+				recordSoundLevel / 100f, recordVoice, recordClarity, recordVoiceTrack,
+				recordDuck ? (float) Math.pow(10, -recordDuckDb / 20.0) : 1f);
+		// As onMediaProjectionResult(): the picker can leave something
+		// else in front.
+		try {
+			startActivity(new Intent(this, MainActivity.class)
+					.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+		} catch (RuntimeException e) {
+			Log.e(AUDIO_CAPTURE_TAG, "Could not bring task to front", e);
+		}
 	}
 
 	private void duplicateShader(long id) {

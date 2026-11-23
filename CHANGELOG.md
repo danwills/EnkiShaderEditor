@@ -1,5 +1,13 @@
 # Change Log
 
+## 2.38.4
+* Add Record Screen (Android 10+): tutorial screen recordings with the app's sound and a voice-over from the microphone, the sound ducking under the voice, a clearer-voice option and the voice on its own track too; volume-down stops it
+* Fix big captures resetting the GPU, which saved a black image and could close the app
+* Fix long captures of buffer shaders giving up as if stuck
+* Fix system audio being refused after it was asked for again
+* Show bars over the shader in fullscreen
+* Make the quality dropdown only as wide as its labels, so the toolbar fits in 2 rows
+
 ## 2.38.3
 * Sharper app icon, from a cleaner crystal render
 * High-res captures of buffer shaders draw per-frame buffers at the capture's size, so a coarse preview no longer leaves blocky edges

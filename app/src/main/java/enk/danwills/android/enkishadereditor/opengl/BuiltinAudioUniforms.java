@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat;
 
 import enk.danwills.android.enkishadereditor.app.ShaderEditorApp;
 import enk.danwills.android.enkishadereditor.hardware.AudioSpectrumListener;
+import enk.danwills.android.enkishadereditor.service.SharedProjection;
 
 final class BuiltinAudioUniforms {
 	private static final String TAG = "BuiltinAudioUniforms";
@@ -158,7 +159,7 @@ final class BuiltinAudioUniforms {
 		if (destroyed) {
 			if (mediaProjection != null) {
 				Log.i(TAG, "setMediaProjection: already destroyed, stopping it immediately");
-				mediaProjection.stop();
+				SharedProjection.release(mediaProjection);
 			}
 			return;
 		}
@@ -222,10 +223,31 @@ final class BuiltinAudioUniforms {
 	// nothing else ever calls stop() and the whole chain leaks.
 	synchronized void releaseMediaProjection() {
 		destroyed = true;
+		stopMediaProjection();
+	}
+
+	// Ends the current MediaProjection session but keeps taking new ones -
+	// for a manual reacquire (ShaderViewManager.reacquireSystemAudio()),
+	// which releaseMediaProjection() above would leave stopping every
+	// later grant on arrival.
+	synchronized void stopMediaProjection() {
 		unregisterListener();
 		if (mediaProjection != null) {
-			mediaProjection.stop();
+			SharedProjection.release(mediaProjection);
 			mediaProjection = null;
+		}
+	}
+
+	// Record Screen has started, which stopped the projection this had
+	// (Android allows one at a time): carries on with the recording's.
+	synchronized void onRecordingStarted() {
+		if (destroyed || mediaProjection == null) {
+			return;
+		}
+		MediaProjection shared = SharedProjection.borrow();
+		if (shared != null) {
+			Log.i(TAG, "onRecordingStarted: sharing the recording's projection");
+			setMediaProjection(shared);
 		}
 	}
 
@@ -326,6 +348,11 @@ final class BuiltinAudioUniforms {
 		}
 
 		if (wantsSystemAudio) {
+			if (mediaProjection == null) {
+				// While Record Screen's going, its projection (asking for
+				// another would end the recording).
+				mediaProjection = SharedProjection.borrow();
+			}
 			if (mediaProjection != null) {
 				var listener = new AudioSpectrumListener();
 				listener.setFullIntervalMode(fullInterval);

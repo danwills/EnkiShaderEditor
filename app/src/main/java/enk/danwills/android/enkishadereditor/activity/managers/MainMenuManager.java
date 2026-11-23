@@ -3,6 +3,7 @@ package enk.danwills.android.enkishadereditor.activity.managers;
 import android.app.Activity;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.ViewGroup;
@@ -90,6 +91,11 @@ public class MainMenuManager {
 		void onImportModule();
 
 		void onPlayLocalMusic();
+
+		// Starts or stops recording the screen - see ScreenRecordService.
+		void onRecordScreen();
+
+		boolean isRecordingScreen();
 	}
 
 	@NonNull
@@ -100,6 +106,8 @@ public class MainMenuManager {
 	private final EditorActions editorActions;
 	@NonNull
 	private final ShaderActions shaderActions;
+	@NonNull
+	private final NavigationActions navigationActions;
 	@NonNull
 	private final Activity activity;
 	@Nullable
@@ -112,6 +120,7 @@ public class MainMenuManager {
 		this.activity = activity;
 		this.editorActions = editorActions;
 		this.shaderActions = shaderActions;
+		this.navigationActions = navigationActions;
 		ViewGroup root = activity.findViewById(android.R.id.content);
 		View view = activity.getLayoutInflater().inflate(
 				R.layout.main_menu, root, false);
@@ -180,6 +189,10 @@ public class MainMenuManager {
 				navigationActions::onSaveBufferAsTexture);
 		setMoreOptionsClickListener(R.id.import_module, navigationActions::onImportModule);
 		setMoreOptionsClickListener(R.id.play_local_music, navigationActions::onPlayLocalMusic);
+		setMoreOptionsClickListener(R.id.record_screen, navigationActions::onRecordScreen);
+		// (It needs API 29's playback capture and MediaStore paths.)
+		moreOptionsView.findViewById(R.id.record_screen).setVisibility(
+				Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? View.VISIBLE : View.GONE);
 		setMoreOptionsClickListener(R.id.faq, navigationActions::onShowFaq);
 
 		CompoundButton extraKeysToggle = moreOptionsView.findViewById(
@@ -230,6 +243,11 @@ public class MainMenuManager {
 				ShaderEditorApp.preferences.getWallpaperShader() == selectedShaderId
 						? R.string.update_wallpaper
 						: R.string.set_as_wallpaper);
+
+		((Button) menuView.findViewById(R.id.record_screen)).setText(
+				navigationActions.isRecordingScreen()
+						? R.string.stop_recording
+						: R.string.record_screen);
 
 		updateExtraKeysToggle(menuView.findViewById(R.id.show_extra_keys_box),
 				ShaderEditorApp.preferences.showExtraKeys());

@@ -7,9 +7,11 @@ import android.opengl.GLSurfaceView;
 import android.util.Log;
 import android.view.Choreographer;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -672,9 +674,10 @@ public class ShaderViewManager {
 	// the capture runs as a standalone GL-thread operation dispatched
 	// via queueEvent(), so it works the same whether playback is
 	// currently paused or not. progressListener (may be null) is called
-	// after every tile; each call also resets this method's own timeout,
-	// so an oversample factor large enough to make the *whole* capture
-	// take minutes doesn't get mistaken for a hang - only actually
+	// after every tile; each call (and each piece of a buffer pass,
+	// onWorking()) also resets this method's own timeout, so a capture
+	// that takes minutes - a big oversample, or a heavy buffer pass at
+	// 4x the screen - doesn't get mistaken for a hang; only actually
 	// making no progress for 60s does.
 	@Nullable
 	public byte[] takeHighResScreenshot(int width, int height, int oversample,
@@ -702,6 +705,13 @@ public class ShaderViewManager {
 			@Override
 			public boolean keepPartialOnStop() {
 				return progressListener != null && progressListener.keepPartialOnStop();
+			}
+
+			@Override
+			public void onWorking() {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
 			}
 		};
 		shaderView.queueEvent(() -> {
@@ -768,13 +778,25 @@ public class ShaderViewManager {
 		boolean[] doneHolder = new boolean[1];
 		boolean[] successHolder = new boolean[1];
 		long[] lastProgressMillis = {System.currentTimeMillis()};
-		ShaderRenderer.HighResProgressListener innerTileListener = (tilesDone, totalTiles) -> {
-			synchronized (lock) {
-				lastProgressMillis[0] = System.currentTimeMillis();
+		ShaderRenderer.HighResProgressListener innerTileListener = new ShaderRenderer.HighResProgressListener() {
+			@Override
+			public boolean onProgress(int tilesDone, int totalTiles) {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
+				boolean continueCapture = progressListener == null ||
+						progressListener.onProgress(tilesDone, totalTiles);
+				pacedProgressDelay();
+				return continueCapture;
 			}
-			boolean continueCapture = progressListener == null || progressListener.onProgress(tilesDone, totalTiles);
-			pacedProgressDelay();
-			return continueCapture;
+
+			// (A buffer pass's pieces, between tiles - see takeHighResScreenshot().)
+			@Override
+			public void onWorking() {
+				synchronized (lock) {
+					lastProgressMillis[0] = System.currentTimeMillis();
+				}
+			}
 		};
 		ShaderRenderer.SequenceProgressListener innerSequenceListener = (skipping, stepIndex, totalSteps) -> {
 			synchronized (lock) {
@@ -1018,6 +1040,12 @@ public class ShaderViewManager {
 				shaderView.getRenderer().setMediaProjection(mediaProjection));
 	}
 
+	// Record Screen has started - see BuiltinAudioUniforms.
+	// onRecordingStarted().
+	public void onRecordingStarted() {
+		shaderView.queueEvent(() -> shaderView.getRenderer().onRecordingStarted());
+	}
+
 	// audioSessionId 0 means local playback stopped (see
 	// BuiltinAudioUniforms.localPlaybackAudioSessionId's own doc) - no
 	// leak-prone resource is involved the way a MediaProjection is, so
@@ -1054,7 +1082,7 @@ public class ShaderViewManager {
 						R.string.audio_capture_already_working, Toast.LENGTH_SHORT).show());
 				return;
 			}
-			renderer.releaseMediaProjection();
+			renderer.stopMediaProjection();
 			renderer.resetAudioCaptureConsent();
 			renderer.refreshAudioCaptureSource();
 		});
@@ -1334,7 +1362,22 @@ public class ShaderViewManager {
 		var names = new ArrayList<CharSequence>(Arrays.asList(
 				activity.getResources().getStringArray(R.array.quality_names)));
 		names.add(activity.getString(R.string.upscaling_menu));
-		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names);
+		// A wrap_content Spinner is as wide as its widest item's closed
+		// view, so Upscaling… (never shown closed - it reverts) is blank
+		// there: otherwise the button kept room for that word beside
+		// "1/4", and pushed the toolbar onto an extra row.
+		var adapter = new ArrayAdapter<>(activity, R.layout.spinner_item_quality, names) {
+			@NonNull
+			@Override
+			public View getView(int position, @Nullable View convertView,
+					@NonNull ViewGroup parent) {
+				View view = super.getView(position, convertView, parent);
+				if (position >= qualityValues.length && view instanceof TextView text) {
+					text.setText("");
+				}
+				return view;
+			}
+		};
 		adapter.setDropDownViewResource(
 				android.R.layout.simple_spinner_dropdown_item);
 		qualitySpinner.setAdapter(adapter);
