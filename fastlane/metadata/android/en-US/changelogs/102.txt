@@ -1,0 +1,4 @@
+* Record Screen (Android 10+): screen recordings with the app's sound and your voice-over, the sound ducking under your voice; volume-down stops it
+* Big captures no longer turn out black or close the app
+* Long captures of buffer shaders no longer give up as if stuck
+* Fixes for system audio and for bars in fullscreen
