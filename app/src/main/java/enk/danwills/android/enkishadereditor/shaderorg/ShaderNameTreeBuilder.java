@@ -22,7 +22,8 @@ public final class ShaderNameTreeBuilder {
 	// top-level node of their pack's own - keyed by the pack's id, never
 	// by name, so it can't merge with one of the user's groups that
 	// happens to be called the same - with the rest of their name
-	// grouped inside it as usual. Those nodes sort before everything else.
+	// grouped inside it as usual. Alphabetically, those nodes sort before
+	// everything else.
 	private static final String PACK_KEY_PREFIX = "\u0001pack:";
 
 	@NonNull

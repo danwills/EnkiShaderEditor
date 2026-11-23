@@ -152,7 +152,14 @@ public class ShaderListManager {
 				} else if (row.isSelectable()) {
 					listener.onShaderSelected(row.node().shader.id());
 				} else {
-					shaderTreeAdapter.toggleExpand(position);
+					// A group: open its newest shader (its chevron or icon
+					// expands it).
+					var newest = shaderTreeAdapter.getNewestShader(row);
+					if (newest != null) {
+						listener.onShaderSelected(newest.id());
+					} else {
+						shaderTreeAdapter.toggleExpand(position);
+					}
 				}
 			} else {
 				listener.onShaderSelected(id);
@@ -267,7 +274,7 @@ public class ShaderListManager {
 		newestFirstBox = activity.findViewById(R.id.sort_tree_newest);
 		if (newestFirstBox != null) {
 			var prefs = ShaderEditorApp.preferences.getSharedPreferences();
-			boolean newestFirst = prefs.getBoolean(PREF_TREE_NEWEST, false);
+			boolean newestFirst = prefs.getBoolean(PREF_TREE_NEWEST, true);
 			newestFirstBox.setChecked(newestFirst);
 			shaderTreeAdapter.setNewestFirst(newestFirst);
 			newestFirstBox.setVisibility(treeMode ? View.VISIBLE : View.GONE);

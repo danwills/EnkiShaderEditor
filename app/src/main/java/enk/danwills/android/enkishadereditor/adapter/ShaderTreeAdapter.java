@@ -3,6 +3,9 @@ package enk.danwills.android.enkishadereditor.adapter;
 import android.content.Context;
 import android.graphics.BitmapFactory;
 import android.graphics.drawable.Drawable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,6 +22,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -29,8 +33,9 @@ import enk.danwills.android.enkishadereditor.shaderorg.ShaderNameTreeBuilder;
 
 // Flattens a ShaderNameNode tree into a list of visible rows for display
 // in a plain ListView (Android has no built-in arbitrary-depth tree
-// widget), expanding/collapsing on tap of either the row's chevron or,
-// for group-only rows, anywhere on the row.
+// widget). A group's chevron (or icon) expands/collapses it; tapping
+// the rest of a group-only row opens the newest shader in it, which the
+// row names after its count.
 public class ShaderTreeAdapter extends BaseAdapter {
 	public record Row(@NonNull ShaderNameNode node, int depth, @NonNull String path,
 			boolean hasChildren) {
@@ -43,6 +48,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private final int textColorUnselected;
 	private final int textColorPack;
 	private final int textColorGroup;
+	private final int textColorGroupNewest;
 	private final Drawable highlightRing;
 	private final int indentPx;
 
@@ -72,7 +78,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private Map<Long, Double> similarityScores;
 	// Children ordered by the newest shader in their subtree (by code
 	// change, as the flat list's "sort by last modification") rather
-	// than alphabetically. Packs still come first.
+	// than alphabetically, packs among the rest.
 	private boolean newestFirst;
 	// The sidebar filter's match scores (see NameMatch), keyed by shader
 	// id: when set, children are ordered by the best match in their
@@ -81,8 +87,11 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	private Map<Long, Double> matchScores;
 	// Each node's best match, worked out once per setData().
 	private final Map<ShaderNameNode, Double> bestMatches = new IdentityHashMap<>();
-	// Each node's newest sourceModified, worked out once per setData().
+	// Each node's newest sourceModified, the node of the shader that has
+	// it and how many shaders are under it, worked out once per setData().
 	private final Map<ShaderNameNode, String> newest = new IdentityHashMap<>();
+	private final Map<ShaderNameNode, ShaderNameNode> newestNode = new IdentityHashMap<>();
+	private final Map<ShaderNameNode, Integer> counts = new IdentityHashMap<>();
 
 	public ShaderTreeAdapter(Context context) {
 		textColorSelected = ContextCompat.getColor(context, R.color.accent);
@@ -92,6 +101,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		// drawer background here is dark, so group labels need a light
 		// color like the other drawer text, just a bit dimmer.
 		textColorGroup = ContextCompat.getColor(context, R.color.drawer_text_unselected);
+		textColorGroupNewest = (textColorGroup & 0x00ffffff) | 0x99000000;
 		highlightRing = ContextCompat.getDrawable(context, R.drawable.search_match_ring);
 		indentPx = (int) (16 * context.getResources().getDisplayMetrics().density);
 		unnamedGroupLabel = context.getString(R.string.unnamed_shaders_group);
@@ -106,6 +116,8 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	public void setData(@NonNull List<ShaderInfo> shaders) {
 		root = ShaderNameTreeBuilder.build(shaders, unnamedGroupLabel, showPackIds);
 		newest.clear();
+		newestNode.clear();
+		counts.clear();
 		findNewest(root);
 		bestMatches.clear();
 		if (matchScores != null) {
@@ -130,21 +142,30 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	@NonNull
 	private String findNewest(@NonNull ShaderNameNode node) {
 		String best = "";
+		ShaderNameNode bestNode = null;
+		int count = 0;
 		if (node.shader != null) {
 			String date = node.shader.sourceModified() != null
 					? node.shader.sourceModified()
 					: node.shader.modified();
-			if (date != null) {
-				best = date;
-			}
+			best = date != null ? date : "";
+			bestNode = node;
+			count = 1;
 		}
 		for (ShaderNameNode child : node.children.values()) {
 			String date = findNewest(child);
-			if (date.compareTo(best) > 0) {
+			ShaderNameNode childNewest = newestNode.get(child);
+			if (childNewest != null && (bestNode == null || date.compareTo(best) > 0)) {
 				best = date;
+				bestNode = childNewest;
 			}
+			count += counts.get(child);
 		}
 		newest.put(node, best);
+		if (bestNode != null) {
+			newestNode.put(node, bestNode);
+		}
+		counts.put(node, count);
 		return best;
 	}
 
@@ -207,6 +228,56 @@ public class ShaderTreeAdapter extends BaseAdapter {
 	@NonNull
 	public Row getRow(int position) {
 		return visibleRows.get(position);
+	}
+
+	// The newest shader under a row (by code change), or null.
+	@Nullable
+	public ShaderInfo getNewestShader(@NonNull Row row) {
+		ShaderNameNode node = newestNode.get(row.node());
+		return node != null ? node.shader : null;
+	}
+
+	// The newest shader's name below the group's own ("v24" in
+	// "Floating Land"), or null.
+	@Nullable
+	private String newestName(@NonNull Row row) {
+		ShaderNameNode node = newestNode.get(row.node());
+		if (node == null) {
+			return null;
+		}
+		// Its own name, with the group's tokens (the row's path) cut off
+		// the front as they appear in it, so "v21" stays "v21" where the
+		// tree splits it into "v" and "21".
+		String title = node.shader.getTitle();
+		if (title != null && node.shader.isFromPack()) {
+			int separator = title.indexOf(ShaderInfo.PACK_NAME_SEPARATOR);
+			if (separator >= 0) {
+				title = title.substring(separator + ShaderInfo.PACK_NAME_SEPARATOR.length());
+			}
+		}
+		if (title != null) {
+			String lower = title.toLowerCase(Locale.ROOT);
+			int at = 0;
+			for (String token : row.path().split("/")) {
+				if (token.startsWith("\u0001")) {
+					continue; // a pack's own node
+				}
+				int found = lower.indexOf(token.toLowerCase(Locale.ROOT), at);
+				if (found < 0) {
+					at = -1;
+					break;
+				}
+				at = found + token.length();
+			}
+			if (at >= 0) {
+				String rest = title.substring(at).replaceFirst("^[\\s_\\-:.]+", "");
+				if (!rest.isEmpty()) {
+					return rest;
+				}
+			}
+		}
+		String path = findPathToShader(row.node(), "", node.shader.id());
+		return path != null ? path.replace('/', ' ') : null;
 	}
 
 	public void toggleExpand(int position) {
@@ -314,7 +385,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 						return byMatch;
 					}
 				}
-				if (a.isPack() != b.isPack()) {
+				if (!newestFirst && a.isPack() != b.isPack()) {
 					return a.isPack() ? -1 : 1;
 				}
 				return newestFirst ? newestOf(b).compareTo(newestOf(a)) : 0;
@@ -353,6 +424,25 @@ public class ShaderTreeAdapter extends BaseAdapter {
 		return date != null ? date : "";
 	}
 
+	// "Floating Land  28 · v24": the group, how many shaders are in it
+	// and (dimmer) its newest, which tapping the row opens.
+	@NonNull
+	private CharSequence groupLabel(@NonNull Row row) {
+		String label = row.node().getLabel();
+		String newestName = newestName(row);
+		if (newestName == null) {
+			return label;
+		}
+		Integer count = counts.get(row.node());
+		SpannableStringBuilder text = new SpannableStringBuilder(label);
+		int start = text.length();
+		text.append(String.format(Locale.US, "  %d \u00b7 %s",
+				count != null ? count : 0, newestName));
+		text.setSpan(new ForegroundColorSpan(textColorGroupNewest), start, text.length(),
+				Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		return text;
+	}
+
 	private class ViewHolder {
 		private final View root;
 		private final ImageView chevron;
@@ -377,6 +467,14 @@ public class ShaderTreeAdapter extends BaseAdapter {
 			} else {
 				chevron.setVisibility(View.INVISIBLE);
 				chevron.setOnClickListener(null);
+			}
+			// A group-only row's icon expands it too, so the tap that opens
+			// its newest shader can have the rest of the row.
+			if (row.hasChildren() && row.node().shader == null) {
+				icon.setOnClickListener(v -> toggleExpand(position));
+			} else {
+				icon.setOnClickListener(null);
+				icon.setClickable(false);
 			}
 
 			ShaderInfo shader = row.node().shader;
@@ -407,7 +505,7 @@ public class ShaderTreeAdapter extends BaseAdapter {
 						: row.node().isPack()
 								? R.drawable.ic_pack
 								: R.drawable.ic_quick_reference_all);
-				title.setText(row.node().getLabel());
+				title.setText(groupLabel(row));
 				title.setTextColor(row.node().isPack()
 						? textColorPack
 						: textColorGroup);
