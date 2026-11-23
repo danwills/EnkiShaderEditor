@@ -1031,3 +1031,8 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 
 - **"Did we look into my VTIs and come up with initial-state generators?"** Yes, this project: the vtipack work. The build is complete (1,635 of 1,635 unique files): 1,350 kept, 5.17 GB of saved states down to 123.5 MB (432 synthetic seeds, 384 patch seeds, 222 needing nothing, 312 8/16-bit copies), 285 left out. Curation: 31 packs, 579 patterns.
 - **"Pass the work-to-date to another Claude?"** Wrote `~/dev/shaderEditor/vtipack/HANDOFF.md` (where it stands, Dan's rules, files, commands, what's next, gotchas) and a memory entry pointing to it.
+
+## 2026-11-23
+
+- **"The base README.md on github looked like the Markus one still ... can we make it more like Enki's landing page?"** Rewrote README.md after the docs site: tagline, intro and fork credit, three screenshots (the site's posters), features with Enki's additions, the APK download (noting the F-Droid/Play listings are Markus's), support (Patreon, then Markus's links), building, credits, licence. Dan's web edit on master (donations removed) recorded with `merge -s ours`. On the branch only for now.
+- **"Is the current branch merged?"** No: master's last squash is 2.38.3. Since then the branch has Record Screen (voice-over, ducking, voice track), the capture fixes and now the README, which is the planned 2.38.4.
