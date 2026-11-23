@@ -1036,3 +1036,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 
 - **"The base README.md on github looked like the Markus one still ... can we make it more like Enki's landing page?"** Rewrote README.md after the docs site: tagline, intro and fork credit, three screenshots (the site's posters), features with Enki's additions, the APK download (noting the F-Droid/Play listings are Markus's), support (Patreon, then Markus's links), building, credits, licence. Dan's web edit on master (donations removed) recorded with `merge -s ours`. On the branch only for now.
 - **"Is the current branch merged?"** No: master's last squash is 2.38.3. Since then the branch has Record Screen (voice-over, ducking, voice track), the capture fixes and now the README, which is the planned 2.38.4.
+- **"Put it on master now please."** README-only commit on master (44dd27d8), pushed to origin; recorded on the branch with `merge -s ours`.
