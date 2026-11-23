@@ -169,7 +169,14 @@ public class ScreenRecordService extends Service {
 			} else {
 				startForeground(NOTIFICATION_ID, notification);
 			}
-			MediaProjectionManager manager = getSystemService(MediaProjectionManager.class);
+			// The application's manager, not this service's: a
+			// MediaProjection keeps the Context of the manager that made
+			// it, and its callback binder is held from native code until
+			// system_server lets go - well after stop() - so with this
+			// service's Context LeakCanary found every stopped recording's
+			// service still alive (as MainActivity's audio capture did).
+			MediaProjectionManager manager = getApplicationContext()
+					.getSystemService(MediaProjectionManager.class);
 			Intent data = intent.getParcelableExtra(EXTRA_DATA);
 			projection = manager != null && data != null
 					? manager.getMediaProjection(intent.getIntExtra(EXTRA_RESULT_CODE, 0), data)
