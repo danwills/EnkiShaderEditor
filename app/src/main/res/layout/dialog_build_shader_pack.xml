@@ -202,6 +202,12 @@
 		android:maxLines="1" />
 
 	<CheckBox
+		android:id="@+id/pack_newest_only"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:text="@string/pack_newest_only" />
+
+	<CheckBox
 		android:id="@+id/pack_similar"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"

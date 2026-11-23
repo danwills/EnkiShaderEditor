@@ -43,6 +43,7 @@ import enk.danwills.android.enkishadereditor.database.Database;
 import enk.danwills.android.enkishadereditor.io.ShaderPackWriter;
 import enk.danwills.android.enkishadereditor.opengl.ShaderSourcePreparer;
 import enk.danwills.android.enkishadereditor.pack.PackShow;
+import enk.danwills.android.enkishadereditor.shaderorg.ShaderSeries;
 import enk.danwills.android.enkishadereditor.shaderorg.ShaderSimilarity;
 
 // Build Shader Pack: pick shaders (a filterable checklist, optionally
@@ -216,6 +217,7 @@ public final class ShaderPackBuilderDialog {
 		EditText descriptionView = view.findViewById(R.id.pack_description);
 		EditText filterView = view.findViewById(R.id.pack_filter);
 		CheckBox similarBox = view.findViewById(R.id.pack_similar);
+		CheckBox newestBox = view.findViewById(R.id.pack_newest_only);
 		TextView thresholdLabel = view.findViewById(R.id.pack_similar_threshold_label);
 		SeekBar thresholdBar = view.findViewById(R.id.pack_similar_threshold);
 		ListView listView = view.findViewById(R.id.pack_shaders);
@@ -392,6 +394,10 @@ public final class ShaderPackBuilderDialog {
 		});
 		filterView.addTextChangedListener(new SimpleWatcher(() ->
 				adapter.setFilter(filterView.getText().toString())));
+		// Newest of each series only: one shader per run of versions, as
+		// the sidebar's tree groups them - see ShaderSeries.
+		newestBox.setOnCheckedChangeListener((box, isChecked) ->
+				adapter.setNewestOnly(isChecked ? ShaderSeries.newestOfEach(shaders) : null));
 
 		// Similar to ticked: the shaders like any ticked one, best first,
 		// scored when it's turned on or the threshold moves - not on every
@@ -643,6 +649,14 @@ public final class ShaderPackBuilderDialog {
 		@Nullable
 		private Map<Long, Double> scores;
 		private double threshold;
+		// Newest of each series only (see showDialog()), or null for off.
+		@Nullable
+		private Set<Long> newestOnly;
+
+		void setNewestOnly(@Nullable Set<Long> ids) {
+			newestOnly = ids;
+			refresh();
+		}
 
 		void setFilter(@NonNull String filter) {
 			this.filter = filter.trim().toLowerCase(Locale.ROOT);
@@ -664,6 +678,10 @@ public final class ShaderPackBuilderDialog {
 				}
 				if (scores != null && !checked.contains(shader.id()) &&
 						score(shader) < threshold) {
+					continue;
+				}
+				if (newestOnly != null && !checked.contains(shader.id()) &&
+						!newestOnly.contains(shader.id())) {
 					continue;
 				}
 				matching.add(shader);

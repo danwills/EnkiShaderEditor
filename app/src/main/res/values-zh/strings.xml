@@ -725,6 +725,7 @@
 	<string name="pack_show_own_sound">每个着色器自己的声音</string>
 	<string name="pack_show_choose_module">选择模块文件…</string>
 	<string name="pack_similar_to_ticked">与已勾选的相似</string>
+	<string name="pack_newest_only">每个系列只显示最新的</string>
 	<string name="pack_show_module">模块：%s</string>
 	<string name="pack_show_sound_pass">%s 的声音通道</string>
 	<string name="pack_show_bad_timeline">该时间线不是放映可读取的 JSON</string>

@@ -758,6 +758,7 @@
 	<string name="pack_show_own_sound">Each shader\'s own sound</string>
 	<string name="pack_show_choose_module">Choose a module file…</string>
 	<string name="pack_similar_to_ticked">Similar to ticked</string>
+	<string name="pack_newest_only">Newest of each series only</string>
 	<string name="pack_show_module">Module: %s</string>
 	<string name="pack_show_sound_pass">Sound pass of %s</string>
 	<string name="pack_show_bad_timeline">That timeline isn\'t JSON a show can read</string>

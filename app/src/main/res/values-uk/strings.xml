@@ -774,6 +774,7 @@
 	<string name="pack_show_own_sound">Власний звук кожного шейдера</string>
 	<string name="pack_show_choose_module">Вибрати файл модуля…</string>
 	<string name="pack_similar_to_ticked">Схожі на позначені</string>
+	<string name="pack_newest_only">Лише найновіша версія кожної серії</string>
 	<string name="pack_show_module">Модуль: %s</string>
 	<string name="pack_show_sound_pass">Звуковий прохід %s</string>
 	<string name="pack_show_bad_timeline">Цей сценарій не є JSON, зрозумілим для шоу</string>
