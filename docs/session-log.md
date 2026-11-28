@@ -1060,3 +1060,10 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
 - **"Extremely dark at night ... still want the cracks to be deep and sharp, not just rounded valleys ... just don't want to see through it or see floating sections ... a tad brighter in daytime, especially the shadow side ... bluer sky ... fake bounce light."** Floating Boulder v4 (id 1317, 1/16, 9.8 fps).
   - Cracks: no crack blending (CRACK_FILL 0, so the cracks are sharp again), a deeper core (CORE_DEPTH 0.2) so nothing shows through, and each block's rounding capped at 0.3 of its narrowest width (ROUND_MAX_FRAC), so small blocks stay attached and don't shrink into floating pebbles.
   - Light: bluer, stronger sky (ROCK_SKY 1.6, ROCK_SKY_COLOR), a fake bounce from the side away from the sun or moon (ROCK_FILL 0.5), stronger ground bounce (0.6), and a night lift (ROCK_NIGHT_LIFT).
+- **"The cracks still seem unnaturally dark. Add lichen, moss (on unoccluded sky-facing areas) and an algae that lives mostly in the cracks. At night make the lichen and algae glow."** Floating Boulder v5 (id 1318, 1/16, 5.5 fps; v4 was 9.8).
+  - Cracks: lighter (ROCK_CRACK_DARK 0.75 -> 0.3, ROCK_AO 0.7).
+  - Lichen: crusty patches broken into spots (grey-green, with some orange), with brighter rims.
+  - Moss: on upward-facing, unoccluded parts, in the boulder's own frame so it stays put as it turns.
+  - Algae: in and around the cracks and in deep, damp hollows, streaky, with a wet sheen.
+  - Night glow: lichen and algae glow, breathing slowly (LICHEN_GLOW, ALGAE_GLOW, GLOW_PULSE). The first try was cartoonish (neon grid at night, splats of bright moss), so it was toned down twice on the desktop.
+  - The rock's sky tint is a little less blue (it was reading lavender).
