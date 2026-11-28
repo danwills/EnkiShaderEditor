@@ -1107,3 +1107,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - `flareRGB()`: white-hot core; halo and spikes drawn per colour at its own scale (FLARE_DISPERSION 0.15, red widest) with the spikes banded along their length (FLARE_BANDING 0.7, FLARE_BAND_FREQ 160), so they fringe into spectra outward.
   - mrender.py: finishes each frame (a long unbounded queue lost the context and returned black frames).
 - **New adb port (10.1.1.198:42485).** Floating Boulder v14 on the phone (id 1327) and v13 checked at last: both compile and run. Real frame rates (SurfaceFlinger, fullscreen, 1/16): v12 31, v13 62, v14 57 fps - the buffer split doubled it, thin film and spectral flares cost ~9%. `marble/sfps.sh` was tapping the camera button instead of Fullscreen (the toolbar has moved): now taps (286,385), overridable with `FS="x y"`.
+- **"Worked a treat thanks!"** - Dan happy with v14 on the phone.
