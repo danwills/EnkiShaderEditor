@@ -1108,3 +1108,4 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - mrender.py: finishes each frame (a long unbounded queue lost the context and returned black frames).
 - **New adb port (10.1.1.198:42485).** Floating Boulder v14 on the phone (id 1327) and v13 checked at last: both compile and run. Real frame rates (SurfaceFlinger, fullscreen, 1/16): v12 31, v13 62, v14 57 fps - the buffer split doubled it, thin film and spectral flares cost ~9%. `marble/sfps.sh` was tapping the camera button instead of Fullscreen (the toolbar has moved): now taps (286,385), overridable with `FS="x y"`.
 - **"Worked a treat thanks!"** - Dan happy with v14 on the phone.
+- **"yeah it does and it looks orsm! ok thanks heaps pack up for today please"** - 4x capture of v14 confirmed sharp with the new capture buffer cap. Packed up: everything committed and pushed, phone left in Enki debug on v14.
