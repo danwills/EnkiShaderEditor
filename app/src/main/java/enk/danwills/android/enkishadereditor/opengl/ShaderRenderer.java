@@ -2,6 +2,7 @@ package enk.danwills.android.enkishadereditor.opengl;
 
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -2388,8 +2389,28 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	// The most a capture's buffers drawn at its size (see
 	// renderCaptureBuffers()) may take, each - past it, one's drawn
-	// smaller.
-	private static final long CAPTURE_BUFFER_BYTES = 256L << 20;
+	// smaller: an eighth of the device's memory, within these bounds (so
+	// a 4x capture of a 1440x3088 screen fits half-float buffers on a
+	// 12 GB phone, and a small phone stays at the old 256 MB).
+	private static final long MIN_CAPTURE_BUFFER_BYTES = 256L << 20;
+	private static final long MAX_CAPTURE_BUFFER_BYTES = 1L << 30;
+	private long captureBufferBytes;
+
+	private long getCaptureBufferBytes() {
+		if (captureBufferBytes == 0) {
+			long total = 0;
+			var activityManager = (ActivityManager) context.getSystemService(
+					Context.ACTIVITY_SERVICE);
+			if (activityManager != null) {
+				var info = new ActivityManager.MemoryInfo();
+				activityManager.getMemoryInfo(info);
+				total = info.totalMem;
+			}
+			captureBufferBytes = Math.max(MIN_CAPTURE_BUFFER_BYTES,
+					Math.min(MAX_CAPTURE_BUFFER_BYTES, total / 8));
+		}
+		return captureBufferBytes;
+	}
 
 	// Whether a capture draws this buffer afresh at its own size: one the
 	// render's size sets, that starts from nothing every frame - no state
@@ -2417,7 +2438,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 
 	// Draws the buffers redrawnForCapture() picks, in chain order, at a
 	// width x height capture's size (or as near as the GPU's largest
-	// texture and CAPTURE_BUFFER_BYTES allow), each into a target of its
+	// texture and getCaptureBufferBytes() allow), each into a target of its
 	// own that later passes and the Image pass read until
 	// releaseCaptureBuffers(). The frame's uniforms are the capture's
 	// own, so this doesn't advance `frame`. One that can't be made keeps
@@ -2445,7 +2466,7 @@ public class ShaderRenderer implements GLSurfaceView.Renderer {
 			int[] chunkSize = {32};
 			double fit = Math.min(1.0, Math.min((double) maxTextureSize / width,
 					(double) maxTextureSize / height));
-			fit = Math.min(fit, Math.sqrt((double) CAPTURE_BUFFER_BYTES /
+			fit = Math.min(fit, Math.sqrt((double) getCaptureBufferBytes() /
 					((double) width * height * pass.bytesPerPixel())));
 			int passWidth = Math.max(1, (int) (width * fit));
 			int passHeight = Math.max(1, (int) (height * fit));
