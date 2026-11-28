@@ -1067,3 +1067,6 @@ Then, unattended overnight on `audio-and-shows` (all untested on a device - see
   - Algae: in and around the cracks and in deep, damp hollows, streaky, with a wet sheen.
   - Night glow: lichen and algae glow, breathing slowly (LICHEN_GLOW, ALGAE_GLOW, GLOW_PULSE). The first try was cartoonish (neon grid at night, splats of bright moss), so it was toned down twice on the desktop.
   - The rock's sky tint is a little less blue (it was reading lavender).
+- **"Lichen is awesome but can glow slightly more at night. The algae is too blue during the day ... not olive enough ... uniformly covers flat faces ... fade more at the less deep parts and maybe be a bit noisier ... glow slightly more at night."** Floating Boulder v6 (id 1319, 1/16, 5.7 fps).
+  - Algae: olive (ALGAE_COLOR 0.1, 0.11, 0.035). Its cover now grows with depth (occlusion used as a gradient from 0.85 down to 0.2), thins out towards the crack lips, and is broken up by two octaves of noise, so it no longer coats the flat faces.
+  - Glow: lichen about 1.6x, algae 1.5x.
